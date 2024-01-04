@@ -1,0 +1,56 @@
+{
+  "name": "@manyducksco/dolla",
+  "version": "0.65.4",
+  "description": "Front-end components, routing and state management.",
+  "main": "lib/index.js",
+  "types": "./index.d.ts",
+  "type": "module",
+  "sideEffects": false,
+  "repository": "https://github.com/manyducksco/borf",
+  "scripts": {
+    "test": "tsc && node --test",
+    "build": "tsc && node build.js",
+    "start": "tsc --watch",
+    "prepublishOnly": "NODE_ENV=production npm run build"
+  },
+  "keywords": [
+    "web app",
+    "front end framework",
+    "functional",
+    "reactive state"
+  ],
+  "author": "tony@manyducks.co",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./index.d.ts"
+    },
+    "./testing": {
+      "import": "./lib/testing/index.js"
+    },
+    "./jsx-runtime": {
+      "import": "./lib/jsx/jsx-runtime.js",
+      "types": "./jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "import": "./lib/jsx/jsx-dev-runtime.js",
+      "types": "./jsx-dev-runtime.d.ts"
+    }
+  },
+  "dependencies": {
+    "@borf/bedrock": "^3.1.0",
+    "fetch-ponyfill": "^7.1.0",
+    "history": "^5.3.0",
+    "nanoid": "^4.0.2",
+    "simple-color-hash": "^1.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^18.17.6",
+    "csstype": "^3.1.2",
+    "esbuild": "^0.19.2",
+    "prettier": "^2.8.8",
+    "typescript": "^5.2.2",
+    "zod": "^3.22.2"
+  }
+}

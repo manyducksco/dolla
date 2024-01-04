@@ -1,0 +1,8 @@
+node_modules/
+dist/
+lib/
+coverage/
+.DS_Store
+.nova/
+tsconfig.tsbuildinfo
+esbuild-meta.json
