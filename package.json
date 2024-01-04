@@ -1,12 +1,12 @@
 {
-  "name": "@manyducksco/dolla",
+  "name": "@manyducks.co/dolla",
   "version": "0.66.0",
   "description": "Front-end components, routing and state management.",
   "main": "lib/index.js",
   "types": "./index.d.ts",
   "type": "module",
   "sideEffects": false,
-  "repository": "https://github.com/manyducksco/borf",
+  "repository": "https://github.com/manyducksco/dolla",
   "scripts": {
     "test": "tsc && node --test",
     "build": "tsc && node build.js",
