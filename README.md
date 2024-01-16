@@ -466,7 +466,7 @@ function ExampleView(props, ctx) {
 
 function LayoutView() {
   return (
-    <StoreScope store={ExampleStore}>
+    <StoreScope stores={[ExampleStore]}>
       <ExampleView />
     </StoreScope>
   );
@@ -512,7 +512,7 @@ The main view (defined with the app's `main` method) is the top-level view that 
 // Here is a hypothetical main view with a layout and navigation:
 app.main((props, ctx) => {
   return (
-    <div className="todo-layout">
+    <div class="todo-layout">
       <nav>
         <ul>
           <li>

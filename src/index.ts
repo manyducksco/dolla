@@ -21,7 +21,7 @@ export type { ViewContext } from "./view.js";
 export type { StoreContext } from "./store.js";
 export type { Markup } from "./markup.js";
 export type { HTTPMiddleware } from "./stores/http.js";
-export type { InputType } from "./types.js";
+export type { InputType, Renderable } from "./types.js";
 // export "./types.js";
 
 import type { IntrinsicElements as Elements } from "./types";

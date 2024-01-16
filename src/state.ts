@@ -249,13 +249,22 @@ export function computed(...args: any): Readable<any> {
     const compute = args[1];
 
     return {
-      get: () => compute(readable.get()),
+      get: () => {
+        const computed = compute(readable.get());
+        if (isReadable(computed)) {
+          return computed.get();
+        } else {
+          return computed;
+        }
+      },
       [OBSERVE]: (callback) => {
         let lastComputedValue: any = UNOBSERVED;
         let lastObservedValue: any;
 
         return readable[OBSERVE]((currentValue) => {
           const computedValue = compute(currentValue, lastObservedValue);
+
+          // TODO: Handle returning Readable from compute
 
           if (!deepEqual(computedValue, lastComputedValue)) {
             const previousValue = lastComputedValue === UNOBSERVED ? undefined : lastComputedValue;

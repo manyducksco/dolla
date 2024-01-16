@@ -91,7 +91,7 @@ interface StoreConfig<O> {
   store: Store<O, any>;
   appContext: AppContext;
   elementContext: ElementContext;
-  options: O;
+  options?: O;
 }
 
 export function initStore<O>(config: StoreConfig<O>) {

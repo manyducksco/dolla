@@ -1,5 +1,5 @@
 import { assertObject, isFunction, isObject, isPromise, typeOf } from "@borf/bedrock";
-import { computed, readable, writable, type Readable } from "../state.js";
+import { computed, isReadable, readable, writable, type Readable } from "../state.js";
 import { type StoreContext } from "../store.js";
 import { type Stringable } from "../types.js";
 import { deepEqual } from "../utils.js";
@@ -152,7 +152,7 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
         const readableValues: Record<string, Readable<any>> = {};
 
         for (const [key, value] of Object.entries<any>(values)) {
-          if (typeof value?.observe === "function") {
+          if (isReadable(value)) {
             readableValues[key] = value;
           }
         }
