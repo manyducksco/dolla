@@ -137,7 +137,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
   const $$query = writable<ParsedQuery>({});
 
   // Track and skip updating the URL when the change came from URL navigation
-  let isRouteChange = false;
+  let isRouteChange = true;
 
   // Update URL when query changes
   ctx.observe($$query, (current) => {
@@ -187,7 +187,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
       lastQuery = location.search;
 
       isRouteChange = true;
-      $$query.set(parseQueryParams(location.search));
+      $$query.set(parseQueryParams(location.search.startsWith("?") ? location.search.slice(1) : location.search));
     }
 
     const matched = matchRoutes(ctx.options.routes, location.pathname);

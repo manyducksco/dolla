@@ -7,27 +7,27 @@ export interface StoreConfig<O, E> {
   options?: O;
 }
 
-export interface StoreScopeProps<O, E> {
-  stores: (StoreConfig<O, E> | Store<O, E>)[];
+export interface StoreScopeProps {
+  stores: (StoreConfig<unknown, unknown> | Store<unknown, unknown>)[];
 }
 
 /**
  * Creates an instance of a store available only to children of this StoreScope.
  */
-export function StoreScope<O, E>(props: StoreScopeProps<O, E>, ctx: ViewContext) {
+export function StoreScope(props: StoreScopeProps, ctx: ViewContext) {
   const { appContext, elementContext } = getViewSecrets(ctx);
 
   const instances: ReturnType<typeof initStore>[] = [];
 
   for (const config of props.stores) {
-    let store: Store<O, E>;
-    let options: O | undefined;
+    let store: Store<unknown, unknown>;
+    let options: unknown;
 
     if (isFunction(config)) {
-      store = config as Store<O, E>;
+      store = config as Store<unknown, unknown>;
     } else {
-      store = (config as StoreConfig<O, E>).store;
-      options = (config as StoreConfig<O, E>).options;
+      store = (config as StoreConfig<unknown, unknown>).store;
+      options = (config as StoreConfig<unknown, unknown>).options;
     }
 
     const instance = initStore({

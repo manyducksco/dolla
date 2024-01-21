@@ -198,7 +198,7 @@ async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>)
   // This is the function that performs the actual request after the final middleware.
   const handler = async () => {
     const query = request.query.toString();
-    const fullURL = request.query.keys.length > 0 ? request.uri + "?" + query : request.uri;
+    const fullURL = query.length > 0 ? request.uri + "?" + query : request.uri;
 
     let reqBody: BodyInit;
 

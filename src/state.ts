@@ -228,7 +228,10 @@ export function observe(readable: any, callback: (...args: any) => void): StopFu
 ||          computed()          ||
 \*==============================*/
 
-export function computed<I, O>(readable: Readable<I>, compute: (currentValue: I, previousValue?: I) => O): Readable<O>;
+export function computed<I, O>(
+  readable: Readable<I>,
+  compute: (currentValue: I, previousValue?: I) => O | Readable<O>
+): Readable<O>;
 
 export function computed<I extends Readable<any>[], O>(
   readables: [...I],
@@ -264,7 +267,14 @@ export function computed(...args: any): Readable<any> {
         return readable[OBSERVE]((currentValue) => {
           const computedValue = compute(currentValue, lastObservedValue);
 
-          // TODO: Handle returning Readable from compute
+          // Handle returning Readable from compute. Observed value should unwrap the nested Readable.
+          if (isReadable(computedValue)) {
+            lastComputedValue = computedValue;
+            return computedValue[OBSERVE]((current, previous) => {
+              callback(current, previous);
+              lastObservedValue = current;
+            });
+          }
 
           if (!deepEqual(computedValue, lastComputedValue)) {
             const previousValue = lastComputedValue === UNOBSERVED ? undefined : lastComputedValue;
