@@ -530,34 +530,3 @@ function toTypeOf<T>(target: T, source: unknown): T | unknown {
 
 // Attributes in this list will not be forwarded to the DOM node.
 const privateProps = ["ref", "children", "class", "style", "data"];
-
-//const booleanAttrs = [
-//  "allowfullscreen",
-//  "async",
-//  "autocomplete",
-//  "autofocus",
-//  "autoplay",
-//  "checked",
-//  "contenteditable",
-//  "controls",
-//  "default",
-//  "defer",
-//  "disabled",
-//  "formnovalidate",
-//  "hidden",
-//  "ismap",
-//  "itemscope",
-//  "loop",
-//  "multiple",
-//  "muted",
-//  "nomodule",
-//  "open",
-//  "playsinline",
-//  "readonly",
-//  "required",
-//  "reversed",
-//  "selected",
-//  "spellcheck",
-//  "translate",
-//  "truespeed",
-//];

@@ -1,5 +1,5 @@
+import { $, $$ } from "../state.js";
 import { type StoreContext } from "../store.js";
-import { writable, readable } from "../state.js";
 
 type ScreenOrientation = "landscape" | "portrait";
 type ColorScheme = "light" | "dark";
@@ -7,10 +7,10 @@ type ColorScheme = "light" | "dark";
 export function DocumentStore(ctx: StoreContext) {
   ctx.name = "dolla/document";
 
-  const $$title = writable(document.title);
-  const $$visibility = writable(document.visibilityState);
-  const $$orientation = writable<ScreenOrientation>("landscape");
-  const $$colorScheme = writable<ColorScheme>("light");
+  const $$title = $$(document.title);
+  const $$visibility = $$(document.visibilityState);
+  const $$orientation = $$<ScreenOrientation>("landscape");
+  const $$colorScheme = $$<ColorScheme>("light");
 
   /* ----- Title and Visibility ----- */
 
@@ -68,8 +68,8 @@ export function DocumentStore(ctx: StoreContext) {
 
   return {
     $$title,
-    $visibility: readable($$visibility),
-    $orientation: readable($$orientation),
-    $colorScheme: readable($$colorScheme),
+    $visibility: $($$visibility),
+    $orientation: $($$orientation),
+    $colorScheme: $($$colorScheme),
   };
 }

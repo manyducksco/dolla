@@ -9,35 +9,54 @@ Dolla is a frontend framework that covers the common needs of complex apps, such
 
 Dolla gives you a set of composable state container primitives. Everything that happens in your app is a direct result of a value changing inside one of these containers. There is no VDOM. There is no other way to make the app function than to use these containers correctly. However, the advantage is that state, transformations and their side effects are expressed right in front of your eyes rather than being hidden deep in the framework. It's a bit more work to understand up front, but when you do the whole app becomes easier to understand and maintain.
 
+A Dolla app is like a house. In this house, State is to data as pipes are to water. Views are appliances that receive that data and make it do something for the user. ShowerView sprays liquid data over their head. FreezerView makes data ice cubes for later. Stores are parts of this system the user doesn't interact with directly, but that hold or process data. WaterHeaterStore keeps data nice and hot for ShowerView and SinkView. SewerStore drains used data away from the app for further processing.
+
+But if you're reading this, you're probably a programmer and not a plumber. All of this is to say, State is a static structure that moves a constantly changing stream of data between Views where data informs the state of DOM nodes the user sees and interacts with. Stores are a type of stateful data component that can be used to share data between Views or provide methods to abstract away interacting with an API.
+
 Let's first get into some examples.
 
 ## State
 
-### Writables
+States come in two varieties, each with a constructor function and a TypeScript type to match. These are:
 
-Writables have a few methods:
+- `Readable<T>`, which has only a `.get()` method that returns the current value.
+- `Writable<T>`, which extends `Readable<T>` and adds a couple methods:
+  - `.set(value: T)` to replace the stored value.
+  - `.update(callback: (current: T) => T)` which takes a function that receives the current value and returns a new one.
+
+The constructor functions are `$` for `Readable`s and `$$` for `Writable`s. By convention, the names for each are prefixed with the same number of `$`s to indicate its type. This makes the data flow in code a lot easier to understand at a glance.
 
 ```js
-const $$number = writable(5);
+import { $, $$ } from "@manyducks.co/dolla";
+
+// By convention, Writable names are prefixed with two dollar signs and Readable with one.
+const $$number = $$(5);
 
 // Returns the current value held by the Writable.
 $$number.get();
-
 // Stores a new value to the Writable.
 $$number.set(12);
-
 // Uses a callback to update the value. Takes the current value and returns the next.
 $$number.update((current) => current + 1);
+
+// Convert to a read-only Readable with the same live value.
+const $readOnlyNumber = $($$number);
+
+// Derive a new state from an existing one.
+const $doubled = $($$number, (value) => value * 2);
+$doubled.get(); // 26 ($$number is 13)
+
+// Derive one new state from the latest values of many other states.
+const $many = $($$number, $doubled, (num, doubled) => num + doubled);
 ```
 
-For the first example, a simple greeter app. The user types their name into a text input and that value is reflected in a heading above the input. For this we will use the `writable` function to create a state container. That container can be slotted into our JSX as a text node or DOM property. Any changes to the value will now be reflected in the DOM.
+Now how do we use it? For a real example, a simple greeter app. The user types their name into a text input and that value is reflected in a heading above the input. For this we will use the `writable` function to create a state container. That container can be slotted into our JSX as a text node or DOM property. Any changes to the value will now be reflected in the DOM.
 
 ```jsx
-import { writable } from "@manyducks.co/dolla";
+import { $$ } from "@manyducks.co/dolla";
 
 function UserView() {
-  // By convention writables start with '$$'
-  const $$name = writable("Valued Customer");
+  const $$name = $$("Valued Customer");
 
   return (
     <section>
@@ -56,31 +75,16 @@ function UserView() {
 }
 ```
 
-### Readables
-
-Readables are like Writables with only a `get` function. Typically, readables are derived from a Writable or derived from other states with `computed`.
-
-```js
-import { writable, readable } from "@manyducks.co/dolla";
-
-const $$value = writable("This is the value.");
-
-// By convention Readable names start with '$'.
-const $value = readable($$value);
-```
-
-You can now safely pass `$value` around without worrying about that code changing it. `$value` will always reflect the value of `$$value`.
-
 ### Computed
 
 Computed states take one or more Readables or Writables and produce a new value _computed_ from those.
 
 ```js
-import { writable, computed } from "@manyducks.co/dolla";
+import { $, $$ } from "@manyducks.co/dolla";
 
-const $$count = writable(100);
+const $$count = $$(100);
 
-const $double = computed($$count, (value) => value * 2);
+const $double = $($$count, (value) => value * 2);
 ```
 
 In that example, `$$double` will always have a value derived from that of `$$count`.
@@ -88,13 +92,13 @@ In that example, `$$double` will always have a value derived from that of `$$cou
 Let's look at a more typical example where we're basically joining two pieces of data; a list of users and the ID of the selected user.
 
 ```js
-import { writable, computed } from "@manyducks.co/dolla";
+import { $, $$ } from "@manyducks.co/dolla";
 
 // Let's assume this list of users was fetched from an API somewhere.
-const $$people = writable([
+const $$people = $$([
   {
     id: 1,
-    name: "Bob",
+    name: "Borb",
   },
   {
     id: 2,
@@ -107,15 +111,15 @@ const $$people = writable([
 ]);
 
 // Let's assume this ID was chosen from an input where the above users were displayed.
-const $$selectedId = writable(2);
+const $$selectedId = $$(2);
 
 // Now we get the object of the person who is selected.
-const $selectedPerson = computed([$$people, $$selectedId], ([people, selectedId]) => {
+const $selectedPerson = $($$people, $$selectedId, (people, selectedId) => {
   return people.find((person) => person.id === selectedId);
 });
 
 // Now we get a Readable of just that person's name. Say we're going to display it on the page somewhere.
-const $personName = computed($selectedPerson, (person) => person.name);
+const $personName = $($selectedPerson, (person) => person.name);
 
 console.log($personName.get()); // "Bex"
 ```
@@ -127,12 +131,12 @@ Notice that the structure above composes a data pipeline; if any of the data cha
 The `unwrap` function returns the current value of a Readable or Writable, or if passed a non-Readable value returns that exact value. This function is used to guarantee you have a plain value when you may be dealing with either a container or a plain value.
 
 ```js
-import { readable, writable, unwrap } from "@manyducks.co/dolla";
+import { unwrap } from "@manyducks.co/dolla";
 
-const $$number = writable(5);
+const $$number = $$(5);
 
 unwrap($$number); // 5
-unwrap(readable(5)); // 5
+unwrap(State.readable(5)); // 5
 unwrap(5); // 5
 ```
 
@@ -177,7 +181,7 @@ function ListItemView(props) {
 }
 ```
 
-As you may have guessed, you can pass Readables and Writables as props and slot them in in exactly the same way. This is important because Views do not re-render the way you might expect from other frameworks. Whatever you pass as props is what the View gets for its entire lifecycle.
+As you may have guessed, you can pass States as props and slot them in in exactly the same way. This is important because Views do not re-render the way you might expect from other frameworks. Whatever you pass as props is what the View gets for its entire lifecycle.
 
 ### View Helpers
 
@@ -213,7 +217,7 @@ The `repeat` helper repeats a render function for each item in a list. The `keyF
 
 ```jsx
 function RepeatedListView() {
-  const $items = readable(["Squirrel", "Chipmunk", "Groundhog"]);
+  const $items = $(["Squirrel", "Chipmunk", "Groundhog"]);
 
   return (
     <ul>
@@ -332,7 +336,7 @@ function ExampleView(props, ctx) {
 }
 ```
 
-#### Observing Readables
+#### Observing States
 
 The `observe` function starts observing when the view is connected and stops when disconnected. This takes care of cleaning up observers so you don't have to worry about memory leaks.
 
@@ -353,10 +357,10 @@ function ExampleView(props, ctx) {
 Putting it all together, we have a view that maintains a counter. The user sees the current count displayed, and below it three buttons; one to increment by 1, one to decrement by 1, and one to reset the value to 0.
 
 ```jsx
-import { writable } from "@manyducks.co/dolla";
+import { $$ } from "@manyducks.co/dolla";
 
 function CounterView(props, ctx) {
-  const $$count = writable(0);
+  const $$count = $$(0);
 
   function increment() {
     $$count.update((n) => n + 1);
@@ -392,9 +396,9 @@ Stores are accessed with the `getStore` function available on the context object
 Stores are helpful for managing persistent state that needs to be accessed in many places.
 
 ```js
-import { makeApp } from "@manyducks.co/dolla";
+import { App } from "@manyducks.co/dolla";
 
-const app = makeApp();
+const app = App();
 
 // We define a store that just exports a message.
 function MessageStore() {
@@ -476,9 +480,9 @@ function LayoutView() {
 ## Apps and Routing
 
 ```jsx
-import { makeApp } from "@manyducks.co/dolla";
+import { App } from "@manyducks.co/dolla";
 
-const app = makeApp({
+const app = App({
   // Debug options control what gets printed from messages logged through view and store contexts.
   debug: {
     // A comma-separated list of filters. '*' means allow everything and '-dolla/*' means suppress messages with labels beginning with 'dolla/'.
@@ -495,63 +499,80 @@ const app = makeApp({
     error: true,
   },
 
-  // Router options control how routes are matched
-  router: {
-    hash: true, // Use hash-based routing
-  },
-
   mode: "development", // or "production" (enables additional debug features and logging in "development")
+
+  view: (_, ctx) => {
+    // Define a custom root view. By default this just renders any routes like so:
+    return ctx.outlet();
+  },
 });
 ```
 
-#### Main View, Routes and Outlets
+#### Routes and Outlets
 
 The main view (defined with the app's `main` method) is the top-level view that will always be displayed while the app is connected.
 
 ```jsx
-// Here is a hypothetical main view with a layout and navigation:
-app.main((props, ctx) => {
-  return (
-    <div class="todo-layout">
-      <nav>
-        <ul>
-          <li>
-            <a href="/tasks">Tasks</a>
-          </li>
-          <li>
-            <a href="/completed">Completed</a>
-          </li>
-        </ul>
-      </nav>
-      {/*
-       * An outlet is where children of a view are shown.
-       * Because this is a main view, children in this case
-       * are the views that correspond to matched routes.
-       */}
-      {ctx.outlet()}
-    </div>
-  );
+// Here is an app with a hypothetical main view with a layout and navigation:
+const app = App({
+  view: (_, ctx) => {
+    return (
+      <div class="todo-layout">
+        <nav>
+          <ul>
+            <li>
+              <a href="/tasks">Tasks</a>
+            </li>
+            <li>
+              <a href="/completed">Completed</a>
+            </li>
+          </ul>
+        </nav>
+        {/*
+         * An outlet is where children of a view are shown.
+         * Because this is a main view, children in this case
+         * are the views that correspond to matched routes.
+         */}
+        {ctx.outlet()}
+      </div>
+    );
+  },
 });
 
-// Here are a couple of routes to be rendered into our layout:
-app.route("/tasks", TasksView);
-app.route("/completed", CompletedView);
+app.addStore(RouterStore, {
+  hash: true, // Use hash-based routing (default false)
+
+  // Here are a couple of routes to be rendered into our layout:
+  routes: [
+    { path: "/tasks", view: TasksView },
+    { path: "/completed", view: CompletedView },
+  ],
+});
 ```
 
 Routes can also be nested. Just like the main view and its routes, subroutes will be displayed in the outlet of their parent view.
 
 ```jsx
-app.route("/tasks", TasksView, (sub) => {
-  sub.route("/", TaskListView);
+app.addStore(RouterStore, {
+  routes: [
+    {
+      path: "/tasks",
+      view: TasksView,
+      routes: [
+        { path: "/", view: TaskListView },
 
-  // In routes, `{value}` is a dynamic value that matches anything,
-  // and `{#value}` is a dynamic value that matches a number.
-  sub.route("/{#id}", TaskDetailsView);
-  sub.route("/{#id}/edit", TaskEditView);
+        // In routes, `{value}` is a dynamic value that matches anything,
+        // and `{#value}` is a dynamic value that matches a number.
+        { path: "/{#id}", view: TaskDetailsView },
+        { path: "/{#id}/edit", view: TaskEditView },
 
-  // If the route is any other than the ones defined above, redirect to the list.
-  // Redirects support './' and '../' style relative paths.
-  sub.redirect("*", "./");
+        // If the route is any other than the ones defined above, redirect to the list.
+        // Redirects support './' and '../' style relative paths.
+        { path: "*", redirect: "./" },
+      ],
+    },
+    { path: "/completed", view: CompletedView },
+  ],
 });
 ```
 
@@ -561,11 +582,9 @@ Dolla makes heavy use of client-side routing. You can define as many routes as y
 will determine which one the app shows at any given time. By building an app around routes, lots of things one expects
 from a web app will just work; back and forward buttons, sharable URLs, bookmarks, etc.
 
-Routing in Dolla is aesthetically inspired by [choo.js](https://www.choo.io/docs/routing)
-with technical inspiration from [@reach/router](https://reach.tech/router/), as routes are matched by highest
-specificity regardless of the order they were registered. This avoids some confusing situations that come up with
-order-based routers like that of `express`. On the other hand, order-based routers can support regular expressions as
-patterns which Dolla's router cannot.
+Routes are matched by highest specificity regardless of the order they were registered.
+This avoids some confusing situations that come up with order-based routers like that of `express`.
+On the other hand, order-based routers can support regular expressions as patterns which Dolla's router cannot.
 
 #### Route Patterns
 
@@ -584,31 +603,38 @@ to your code (`router` store, `$params` readable). Below are some examples of pa
 Now, here are some route examples in the context of an app:
 
 ```js
+import { App, RouterStore } from "@manyducks.co/dolla";
 import { PersonDetails, ThingIndex, ThingDetails, ThingEdit, ThingDelete } from "./components.js";
 
-const app = createApp();
+const app = App();
 
-app
-  .route("/people/{name}", PersonDetails)
-
-  // Routes can be nested. Also, a `null` component with subroutes acts as a namespace for those subroutes.
-  // Passing a view instead of `null` results in subroutes being rendered inside that view wherever `ctx.outlet()` is called.
-  .route("/things", null, (sub) => {
-    sub.route("/", ThingIndex); // matches `/things`
-    sub.route("/{#id}", ThingDetails); // matches `/things/{#id}`
-    sub.route("/{#id}/edit", ThingEdit); // matches `/things/{#id}/edit`
-    sub.route("/{#id}/delete", ThingDelete); // matches `/things/{#id}/delete`
-  });
+app.addStore(RouterStore, {
+  routes: [
+    { path: "/people/{name}", view: PersonDetails },
+    {
+      // A `null` component with subroutes acts as a namespace for those subroutes.
+      // Passing a view instead of `null` results in subroutes being rendered inside that view wherever `ctx.outlet()` is called.
+      path: "/things",
+      view: null,
+      routes: [
+        { path: "/", view: ThingIndex }, // matches `/things`
+        { path: "/{#id}", view: ThingDetails }, // matches `/things/{#id}`
+        { path: "/{#id}/edit", view: ThingEdit }, // matches `/things/{#id}/edit`
+        { path: "/{#id}/delete", view: ThingDelete }, // matches `/things/{#id}/delete`
+      ],
+    },
+  ],
+});
 ```
 
 As you may have inferred from the code above, when the URL matches a pattern the corresponding view is displayed. If we
 visit `/people/john`, we will see the `PersonDetails` view and the params will be `{ name: "john" }`. Params can be
-accessed inside those views through the built-in `router` store.
+accessed inside those views through `RouterStore`.
 
 ```js
 function PersonDetails(props, ctx) {
   // `router` store allows you to work with the router from inside the app.
-  const router = ctx.getStore("router");
+  const router = ctx.getStore(RouterStore);
 
   // Info about the current route is exported as a set of Readables. Query params are also Writable through $$query:
   const { $path, $pattern, $params, $$query } = router;

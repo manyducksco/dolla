@@ -1,6 +1,6 @@
 import { type AppContext, type ElementContext } from "../app.js";
 import { type DOMHandle } from "../markup.js";
-import { observe, readable, writable, type Readable, type StopFunction, type Writable } from "../state.js";
+import { $, $$, observe, type Readable, type Writable, type StopFunction } from "../state.js";
 import { initView, type ViewContext, type ViewResult } from "../view.js";
 
 // ----- Types ----- //
@@ -127,8 +127,8 @@ export class Repeat<T> implements DOMHandle {
         connected.$$index.set(potential.index);
         newItems[potential.index] = connected;
       } else {
-        const $$value = writable(potential.value) as Writable<T>;
-        const $$index = writable(potential.index);
+        const $$value = $$(potential.value) as Writable<T>;
+        const $$index = $$(potential.index);
 
         newItems[potential.index] = {
           key: potential.key,
@@ -138,7 +138,7 @@ export class Repeat<T> implements DOMHandle {
             view: RepeatItemView,
             appContext: this.appContext,
             elementContext: this.elementContext,
-            props: { $value: readable($$value), $index: readable($$index), renderFn: this.renderFn },
+            props: { $value: $($$value), $index: $($$index), renderFn: this.renderFn },
           }),
         };
       }

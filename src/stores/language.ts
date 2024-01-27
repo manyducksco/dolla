@@ -1,5 +1,5 @@
-import { assertObject, isFunction, isObject, isPromise, typeOf } from "@borf/bedrock";
-import { computed, isReadable, readable, writable, type Readable } from "../state.js";
+import { assertObject, isFunction, isObject, isString, typeOf } from "@borf/bedrock";
+import { $, $$, isReadable, type Readable } from "../state.js";
 import { type StoreContext } from "../store.js";
 import { type Stringable } from "../types.js";
 import { deepEqual } from "../utils.js";
@@ -13,24 +13,21 @@ import { deepEqual } from "../utils.js";
 type Translation = Record<string, string | Record<string, string | Record<string, string | Record<string, string>>>>;
 
 export interface LanguageConfig {
+  name: string;
+
   /**
-   * The translated strings for this language, or a callback function that returns them.
+   * Path to a JSON file with translated strings for this language, a plain object containing said translations, or a callback function that returns them.
    */
-  translation: Translation | (() => Translation) | (() => Promise<Translation>);
+  translations: string | Translation | (() => Translation) | (() => Promise<Translation>);
 }
 
 type LanguageOptions = {
-  /**
-   * Languages supported by the app (as added with App.language())
-   */
-  languages: {
-    [tag: string]: LanguageConfig;
-  };
+  languages: LanguageConfig[];
 
   /**
    * Default language to load on startup
    */
-  currentLanguage?: string;
+  default?: string;
 };
 
 // ----- Code ----- //
@@ -38,23 +35,61 @@ type LanguageOptions = {
 export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
   ctx.name = "dolla/language";
 
-  const languages = new Map<string, Language>();
+  const languages = new Map<string, LanguageConfig>();
+  const cache = new Map<string, Translation>();
 
   // Convert languages into Language instances.
-  Object.entries(ctx.options.languages).forEach(([tag, config]) => {
-    languages.set(tag, new Language(tag, config));
+  ctx.options.languages.forEach((entry) => {
+    languages.set(entry.name, entry);
   });
 
   ctx.info(
     `App supports ${languages.size} language${languages.size === 1 ? "" : "s"}: '${[...languages.keys()].join("', '")}'`
   );
 
-  const $$isLoaded = writable(false);
-  const $$language = writable<string | undefined>(undefined);
-  const $$translation = writable<Translation | undefined>(undefined);
+  async function getTranslation(config: LanguageConfig) {
+    if (!cache.has(config.name)) {
+      let fn: () => Promise<Translation>;
+
+      if (isString(config.translations)) {
+        fn = async () => {
+          return fetch(config.translations as string).then((res) => res.json());
+        };
+      } else if (isFunction(config.translations)) {
+        fn = async () => (config.translations as () => Translation)();
+      } else if (isObject(config.translations)) {
+        fn = async () => config.translations as Translation;
+      } else {
+        throw new TypeError(
+          `Translation of '${
+            config.name
+          }' must be an object of translated strings, a path to an object of translated strings, a function that returns one, or an async function that resolves to one. Got type: ${typeOf(
+            config.translations
+          )}, value: ${config.translations}`
+        );
+      }
+
+      try {
+        const translation = await fn();
+        assertObject(
+          translation,
+          `Expected '${config.name}' translations to resolve to an object. Got type: %t, value: %v`
+        );
+        cache.set(config.name, translation);
+      } catch (err) {
+        throw err;
+      }
+    }
+
+    return cache.get(config.name);
+  }
+
+  const $$isLoaded = $$(false);
+  const $$language = $$<string>();
+  const $$translation = $$<Translation>();
 
   // Fallback labels for missing state and data.
-  const $noLanguageValue = readable("[NO LANGUAGE SET]");
+  const $noLanguageValue = $("[NO LANGUAGE SET]");
 
   // Cache readable translations by key and values.
   // Return a cached one instead of creating a new, identical mapped value.
@@ -89,17 +124,17 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
   }
 
   // TODO: Determine and load default language.
-  const currentLanguage = ctx.options.currentLanguage
-    ? languages.get(ctx.options.currentLanguage)
+  const currentLanguage = ctx.options.default
+    ? languages.get(ctx.options.default)
     : languages.get([...languages.keys()][0]);
 
   if (currentLanguage == null) {
     $$isLoaded.set(true);
   } else {
-    ctx.info(`Current language is '${currentLanguage.tag}'.`);
+    ctx.info(`Current language is '${currentLanguage.name}'.`);
 
-    currentLanguage.getTranslation().then((translation) => {
-      $$language.set(currentLanguage.tag);
+    getTranslation(currentLanguage).then((translation) => {
+      $$language.set(currentLanguage.name);
       $$translation.set(translation);
 
       $$isLoaded.set(true);
@@ -107,8 +142,8 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
   }
 
   return {
-    $isLoaded: readable($$isLoaded),
-    $currentLanguage: readable($$language),
+    $isLoaded: $($$isLoaded),
+    $currentLanguage: $($$language),
     supportedLanguages: [...languages.keys()],
 
     async setLanguage(tag: string) {
@@ -119,7 +154,7 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
       const lang = languages.get(tag)!;
 
       try {
-        const translation = await lang.getTranslation();
+        const translation = await getTranslation(lang);
 
         $$translation.set(translation);
         $$language.set(tag);
@@ -161,7 +196,8 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
         // that contains the translation with interpolated observable values.
         const readableEntries = Object.entries(readableValues);
         if (readableEntries.length > 0) {
-          const $merged = computed([$$translation, ...readableEntries.map((x) => x[1])], ([t, ...entryValues]) => {
+          const readables = readableEntries.map((x) => x[1]);
+          const $merged = $([$$translation, ...readables], (t, ...entryValues) => {
             const entries = entryValues.map((_, i) => readableEntries[i]);
             const mergedValues = {
               ...values,
@@ -182,7 +218,7 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
         }
       }
 
-      const $replaced = computed($$translation, (t) => {
+      const $replaced = $($$translation, (t) => {
         let result = resolve(t, key) || `[NO TRANSLATION: ${key}]`;
 
         if (values) {
@@ -216,61 +252,4 @@ function resolve(object: any, key: string) {
   }
 
   return value;
-}
-
-class Language {
-  #tag;
-  #config;
-  #translation?: Translation;
-
-  get tag() {
-    return this.#tag;
-  }
-
-  constructor(tag: string, config: LanguageConfig) {
-    this.#tag = tag;
-    this.#config = config;
-  }
-
-  async getTranslation() {
-    if (!this.#translation) {
-      // Translation can be an object of strings, a function that returns one, or an async function that resolves to one.
-      if (isFunction(this.#config.translation)) {
-        const result = this.#config.translation();
-
-        if (isPromise(result)) {
-          const resolved = await result;
-
-          assertObject(
-            resolved,
-            `Translation promise of language '${
-              this.#tag
-            }' must resolve to an object of translated strings. Got type: %t, value: %v`
-          );
-
-          this.#translation = resolved;
-        } else if (isObject(result)) {
-          this.#translation = result;
-        } else {
-          throw new TypeError(
-            `Translation function of '${this.#tag}' must return an object or promise. Got type: ${typeOf(
-              result
-            )}, value: ${result}`
-          );
-        }
-      } else if (isObject(this.#config.translation)) {
-        this.#translation = this.#config.translation;
-      } else {
-        throw new TypeError(
-          `Translation of '${
-            this.#tag
-          }' must be an object of translated strings, a function that returns one, or an async function that resolves to one. Got type: ${typeOf(
-            this.#config.translation
-          )}, value: ${this.#config.translation}`
-        );
-      }
-    }
-
-    return this.#translation;
-  }
 }

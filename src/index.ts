@@ -1,26 +1,26 @@
 // App
-export { makeApp } from "./app.js";
+export { App } from "./app.js";
 
 // State
-export { spring } from "./spring.js";
-export { readable, writable, computed, proxy, observe, unwrap, isReadable, isWritable } from "./state.js";
+export { $, $$, observe, unwrap, isReadable, isWritable, type Readable, type Writable } from "./state.js";
 
 // Markup
 export { m, cond, repeat, portal } from "./markup.js";
 
 // Views
 export { Fragment } from "./views/fragment.js";
-export { StoreScope } from "./views/store-scope.js";
+export { StoreScope, type StoreScopeProps } from "./views/store-scope.js";
+
+// Stores
+export { RouterStore } from "./stores/router.js";
+export { LanguageStore } from "./stores/language.js";
+export { HTTPStore, type HTTPMiddleware } from "./stores/http.js";
+export { DialogStore, type DialogProps } from "./stores/dialog.js";
 
 // Types
-export type { DialogProps } from "./stores/dialog.js";
-export type { StoreScopeProps } from "./views/store-scope.js";
-export type { Spring } from "./spring.js";
-export type { Readable, Writable } from "./state.js";
 export type { ViewContext } from "./view.js";
 export type { StoreContext } from "./store.js";
 export type { Markup } from "./markup.js";
-export type { HTTPMiddleware } from "./stores/http.js";
 export type { InputType, Renderable } from "./types.js";
 // export "./types.js";
 

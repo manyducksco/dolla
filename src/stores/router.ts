@@ -1,24 +1,28 @@
-import { isFunction, isString, joinPath, matchRoutes, parseQueryParams, resolvePath, type Route } from "@borf/bedrock";
+import {
+  isFunction,
+  isString,
+  joinPath,
+  matchRoutes,
+  parseQueryParams,
+  patternToFragments,
+  resolvePath,
+  sortRoutes,
+  splitPath,
+} from "@borf/bedrock";
 import { createBrowserHistory, createHashHistory, type History, type Listener } from "history";
-import { type Stringable } from "../types.js";
-import { getRenderHandle, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
-import { readable, writable } from "../state.js";
+import { getRenderHandle, m, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
+import { $, $$ } from "../state.js";
 import { getStoreSecrets, type StoreContext } from "../store.js";
+import { type Stringable } from "../types.js";
+import { View, type ViewContext } from "../view.js";
 
 // ----- Types ----- //
 
-export interface RouterOptions {
-  /**
-   * Use hash-based routing if true.
-   */
-  hash?: boolean;
-
-  /**
-   * A history object from the `history` package.
-   *
-   * @see https://www.npmjs.com/package/history
-   */
-  history?: History;
+export interface Route {
+  path: string;
+  redirect?: string;
+  view?: View<any>;
+  routes?: Route[];
 }
 
 export interface RouteConfig {
@@ -82,19 +86,31 @@ interface NavigateOptions {
   replace?: boolean;
 }
 
-interface RouterStoreOptions extends RouterOptions {
+interface RouterStoreOptions {
+  routes: Route[];
+
   /**
-   * An instance of Router with the app's routes preloaded.
+   * Use hash-based routing if true.
    */
-  routes: Route<RouteConfig["meta"]>[];
+  hash?: boolean;
+
+  /**
+   * A history object from the `history` package.
+   *
+   * @see https://www.npmjs.com/package/history
+   */
+  history?: History;
 }
 
 // ----- Code ----- //
+
+const DefaultView = (_: {}, ctx: ViewContext) => ctx.outlet();
 
 export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
   ctx.name = "dolla/router";
 
   const { appContext, elementContext } = getStoreSecrets(ctx);
+  const render = ctx.getStore("render");
 
   let history: History;
 
@@ -106,8 +122,98 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     history = createBrowserHistory();
   }
 
+  let layerId = 0;
+
+  /**
+   * Parses a route definition object into a set of matchable routes.
+   *
+   * @param route - Route config object.
+   * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
+   */
+  function prepareRoute(route: Route, layers = []) {
+    if (!(typeof route === "object" && !Array.isArray(route)) || !(typeof route.path === "string")) {
+      throw new TypeError(`Route configs must be objects with a 'path' string property. Got: ${route}`);
+    }
+
+    if (route.redirect && route.routes) {
+      throw new Error(`Route cannot have both a 'redirect' and nested 'routes'.`);
+    } else if (route.redirect && route.view) {
+      throw new Error(`Route cannot have both a 'redirect' and a 'view'.`);
+    } else if (!route.view && !route.routes && !route.redirect) {
+      throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
+    }
+
+    const parts = splitPath(route.path);
+
+    // Remove trailing wildcard for joining with nested routes.
+    if (parts[parts.length - 1] === "*") {
+      parts.pop();
+    }
+
+    const routes: RouteConfig[] = [];
+
+    if (route.redirect) {
+      let redirect = route.redirect;
+
+      if (isString(redirect)) {
+        redirect = resolvePath(joinPath(parts), redirect);
+
+        if (!redirect.startsWith("/")) {
+          redirect = "/" + redirect;
+        }
+      }
+
+      routes.push({
+        pattern: route.path,
+        meta: {
+          redirect,
+        },
+      });
+
+      return routes;
+    }
+
+    let view: View<any> = DefaultView;
+
+    if (typeof route.view === "function") {
+      view = route.view;
+    } else if (route.view) {
+      throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
+    }
+
+    // Parse nested routes if they exist.
+    if (route.routes) {
+      for (const subroute of route.routes) {
+        routes.push(...prepareRoute(subroute));
+      }
+    } else {
+      const markup = m(view);
+      const layer: RouteLayer = { id: layerId++, markup };
+
+      routes.push({
+        pattern: route.path,
+        meta: {
+          pattern: route.path,
+          layers: [...layers, layer],
+        },
+      });
+    }
+
+    return routes;
+  }
+
+  const routes = sortRoutes(
+    ctx.options.routes
+      .flatMap((route) => prepareRoute(route))
+      .map((route) => ({
+        pattern: route.pattern,
+        meta: route.meta,
+        fragments: patternToFragments(route.pattern),
+      }))
+  );
+
   // Test redirects to make sure all possible redirect targets actually exist.
-  for (const route of ctx.options.routes) {
+  for (const route of routes) {
     if (route.meta.redirect) {
       let redirectPath: string;
 
@@ -119,7 +225,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
       }
 
-      const match = matchRoutes(ctx.options.routes, redirectPath, {
+      const match = matchRoutes(routes, redirectPath, {
         willMatch(r) {
           return r !== route;
         },
@@ -131,10 +237,14 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     }
   }
 
-  const $$pattern = writable<string | null>(null);
-  const $$path = writable("");
-  const $$params = writable<ParsedParams>({});
-  const $$query = writable<ParsedQuery>({});
+  ctx.onConnected(() => {
+    ctx.info(`Total routes: ${routes.length}`);
+  });
+
+  const $$pattern = $$<string | null>(null);
+  const $$path = $$("");
+  const $$params = $$<ParsedParams>({});
+  const $$query = $$<ParsedQuery>({});
 
   // Track and skip updating the URL when the change came from URL navigation
   let isRouteChange = true;
@@ -190,7 +300,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
       $$query.set(parseQueryParams(location.search.startsWith("?") ? location.search.slice(1) : location.search));
     }
 
-    const matched = matchRoutes(ctx.options.routes, location.pathname);
+    const matched = matchRoutes(routes, location.pathname);
 
     if (!matched) {
       $$pattern.set(null);
@@ -245,7 +355,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
             const rendered = renderMarkupToDOM(matchedLayer.markup, renderContext);
             const handle = getRenderHandle(rendered);
 
-            requestAnimationFrame(() => {
+            render.update(() => {
               if (activeLayer && activeLayer.handle.connected) {
                 // Disconnect first mismatched active layer.
                 activeLayer.handle.disconnect();
@@ -256,7 +366,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
               } else {
                 appContext.rootView!.setChildren(rendered);
               }
-            });
+            }, "dolla-router-change");
 
             // Push and connect new active layer.
             activeLayers.push({ id: matchedLayer.id, handle });
@@ -291,17 +401,17 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     /**
      * The currently matched route pattern, if any.
      */
-    $pattern: readable($$pattern),
+    $pattern: $($$pattern),
 
     /**
      * The current URL path.
      */
-    $path: readable($$path),
+    $path: $($$path),
 
     /**
      * The current named path params.
      */
-    $params: readable($$params),
+    $params: $($$params),
 
     /**
      * The current query params. Changes to this object will be reflected in the URL.

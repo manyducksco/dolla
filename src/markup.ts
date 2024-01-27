@@ -7,7 +7,7 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
-import { isReadable, readable, type Readable } from "./state.js";
+import { $, isReadable, type Readable } from "./state.js";
 import type { Renderable, Stringable } from "./types.js";
 import { initView, type View, type ViewContext, type ViewResult } from "./view.js";
 
@@ -132,7 +132,7 @@ export function m<P>(type: string | View<P>, props?: P, ...children: Renderable[
  * Displays content conditionally. When `predicate` holds a truthy value, `thenContent` is displayed; when `predicate` holds a falsy value, `elseContent` is displayed.
  */
 export function cond(predicate: any | Readable<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  const $predicate = readable(predicate);
+  const $predicate = $(predicate);
 
   return m("$cond", {
     $predicate,
@@ -150,7 +150,7 @@ export function repeat<T>(
   keyFn: (value: T, index: number) => string | number | symbol,
   renderFn: ($value: Readable<T>, $index: Readable<number>, ctx: ViewContext) => ViewResult
 ): Markup {
-  const $items = readable(items);
+  const $items = $(items);
 
   return m("$repeat", { $items, keyFn, renderFn });
 }

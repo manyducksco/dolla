@@ -1,5 +1,5 @@
 import { type DOMHandle } from "../markup.js";
-import { observe, writable, type Writable } from "../state.js";
+import { $$, observe, type Writable } from "../state.js";
 import { getStoreSecrets, type StoreContext } from "../store.js";
 import { initView, type View } from "../view.js";
 
@@ -35,6 +35,8 @@ export function DialogStore(ctx: StoreContext) {
 
   const { appContext, elementContext } = getStoreSecrets(ctx);
 
+  const render = ctx.getStore("render");
+
   const container = document.createElement("div");
   container.style.position = "fixed";
   container.style.top = "0";
@@ -47,7 +49,7 @@ export function DialogStore(ctx: StoreContext) {
    * A first-in-last-out queue of dialogs. The last one appears on top.
    * This way if a dialog opens another dialog the new dialog stacks.
    */
-  const $$dialogs = writable<OpenDialog[]>([]);
+  const $$dialogs = $$<OpenDialog[]>([]);
 
   let activeDialogs: OpenDialog[] = [];
 
@@ -66,7 +68,7 @@ export function DialogStore(ctx: StoreContext) {
 
   // Diff dialogs when value is updated, adding and removing dialogs as necessary.
   ctx.observe($$dialogs, (dialogs) => {
-    requestAnimationFrame(() => {
+    render.update(() => {
       let removed: OpenDialog[] = [];
       let added: OpenDialog[] = [];
 
@@ -116,7 +118,7 @@ export function DialogStore(ctx: StoreContext) {
   });
 
   function open<P extends DialogProps>(view: View<P>, props?: Omit<P, keyof DialogProps>) {
-    const $$open = writable(true);
+    const $$open = $$(true);
 
     let dialog: OpenDialog | undefined;
 

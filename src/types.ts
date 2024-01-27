@@ -39,11 +39,7 @@ export type Renderable =
 export type StoreExports<T> = T extends Store<any, infer O> ? O : unknown;
 
 export interface BuiltInStores {
-  http: StoreExports<typeof HTTPStore>;
-  dialog: StoreExports<typeof DialogStore>;
-  language: StoreExports<typeof LanguageStore>;
   document: StoreExports<typeof DocumentStore>;
-  router: StoreExports<typeof RouterStore>;
   render: StoreExports<typeof RenderStore>;
 }
 
@@ -1915,7 +1911,7 @@ export interface IntrinsicElements {
   rp: PropertiesOf<HTMLElement>;
 
   /**
-   * Wraps a piece of content, providing an additional machine-readable version in a `value` attribute.
+   * Wraps a piece of content, providing an additional machine-Readable version in a `value` attribute.
    * For date or time related data, a `<time>` element is preferred.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/data
@@ -1923,7 +1919,7 @@ export interface IntrinsicElements {
   data: HTMLDataElementProps;
 
   /**
-   * Represents a specific period in time. It may include the `datetime` attribute to translate dates into machine-readable format,
+   * Represents a specific period in time. It may include the `datetime` attribute to translate dates into machine-Readable format,
    * allowing for better search engine results or custom features such as reminders.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
@@ -2154,7 +2150,7 @@ interface HTMLAbbrElementProps extends PropertiesOf<HTMLElement> {
 
 interface HTMLDataElementProps extends PropertiesOf<HTMLDataElement> {
   /**
-   * Specifies the machine-readable translation of the content of the element.
+   * Specifies the machine-Readable translation of the content of the element.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/data
    */
@@ -3300,7 +3296,7 @@ interface HTMLTrackElementProps extends PropertiesOf<HTMLTrackElement> {
   kind?: OptionalProperty<"subtitles" | "captions" | "descriptions" | "chapters" | "metadata">;
 
   /**
-   * A user-readable title of the text track which is used by the browser when listing available text tracks.
+   * A user-Readable title of the text track which is used by the browser when listing available text tracks.
    */
   label?: OptionalProperty<string>;
 

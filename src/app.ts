@@ -1,51 +1,36 @@
-import {
-  assertFunction,
-  assertInstanceOf,
-  assertString,
-  isFunction,
-  isObject,
-  isString,
-  joinPath,
-  patternToFragments,
-  resolvePath,
-  sortRoutes,
-  splitPath,
-  typeOf,
-  type Route,
-} from "@borf/bedrock";
+import { assertFunction, assertInstanceOf, isObject, isString } from "@borf/bedrock";
 import { CrashCollector } from "./classes/CrashCollector.js";
 import { DebugHub, type DebugOptions } from "./classes/DebugHub.js";
 import { DOMHandle, m } from "./markup.js";
-import { observe } from "./state.js";
 import { initStore, type Store } from "./store.js";
-import { DialogStore } from "./stores/dialog.js";
 import { DocumentStore } from "./stores/document.js";
-import { HTTPStore } from "./stores/http.js";
-import { LanguageStore, type LanguageConfig } from "./stores/language.js";
 import { RenderStore } from "./stores/render.js";
-import {
-  RouterStore,
-  type RedirectContext,
-  type RouteConfig,
-  type RouteLayer,
-  type RouterOptions,
-} from "./stores/router.js";
-import { type BuiltInStores, type StoreExports } from "./types.js";
+import { type BuiltInStores } from "./types.js";
 import { merge } from "./utils.js";
 import { initView, type View, type ViewContext } from "./view.js";
 
 // ----- Types ----- //
 
-interface AppOptions {
+interface StoreConfig<O, E> {
+  store: Store<O, E>;
+  options?: O;
+}
+
+interface IAppOptions {
   /**
    * Options for the debug system.
    */
   debug?: DebugOptions;
 
   /**
-   * Options to configure how routing works.
+   * The view to be rendered by the app.
    */
-  router?: RouterOptions;
+  view?: View<{}>;
+
+  /**
+   * App-level stores.
+   */
+  stores?: StoreConfig<any, any>[];
 
   /**
    * Configures the app based on the environment it's running in.
@@ -78,93 +63,19 @@ export interface StoreRegistration<O = any> {
   instance?: ReturnType<typeof initStore>;
 }
 
-interface AppRouter {
-  /**
-   * Adds a new pattern, a view to display while that pattern matches the current URL, and an optional function to configure route chaining.
-   * Route chaining allows you to add nested routes and redirects that are displayed within the `view`'s outlet while `pattern` matches the current URL.
-   *
-   * @param pattern - A URL pattern to match against the current URL.
-   * @param view - The view to display while `pattern` matches the current URL.
-   * @param subroutes - A callback that takes a router object. Use this to append nested routes and redirects.
-   */
-  route<I>(pattern: string, view: View<I>, subroutes?: (router: AppRouter) => void): this;
-
-  /**
-   * Adds a new pattern and chains a set of nested routes that are displayed without a layout `view`.
-   *
-   * @param pattern - A URL pattern to match against the current URL.
-   * @param view - Pass null to render subroutes without a parent view.
-   * @param subroutes - A callback that takes a router object. Use this to append nested routes and redirects.
-   */
-  route(pattern: string, view: null, subroutes: (router: AppRouter) => void): this;
-
-  /**
-   * Adds a new pattern that will redirect to a different route when matched.
-   *
-   * @param pattern - A URL pattern to match against the current URL.
-   * @param redirectPath - A path to redirect to when `pattern` matches the current URL.
-   */
-  redirect(pattern: string, redirectPath: string): this;
-
-  /**
-   * Adds a new pattern that will redirect to a different route when matched, as calculated by a callback function.
-   * Useful when you require more insight into the path that matched the pattern before deciding where to send the user.
-   *
-   * @param pattern - A URL pattern to match against the current URL.
-   * @param createPath - A function that generates a redirect path from the current URL match.
-   */
-  redirect(pattern: string, createPath: (ctx: RedirectContext) => string): this;
-}
-
 interface ConfigureContext {
   // use
 }
 
 type ConfigureCallback = (ctx: ConfigureContext) => void | Promise<void>;
 
-export interface App extends AppRouter {
+export interface IApp {
   readonly isConnected: boolean;
-
-  /**
-   * Displays view at the root of the app. All other routes render inside this view's outlet.
-   */
-  main<A extends Record<string, any>>(view: View<A>, attributes?: A): this;
 
   /**
    * Makes this store accessible from any other component in the app, except for stores registered before this one.
    */
-  store<O>(store: Store<O, any>, options?: O): this;
-
-  /**
-   * Returns the shared instance of `store`.
-   */
-  getStore<T extends Store<any, any>>(store: T): ReturnType<T>;
-  /**
-   * Returns the shared instance of a built-in store.
-   */
-  getStore<N extends keyof BuiltInStores>(name: N): BuiltInStores[N];
-
-  /**
-   * Adds a new language translation to the app.
-   *
-   * @param tag - A valid BCP47 language tag, like `en-US`, `en-GB`, `ja`, etc.
-   * @param config - Language configuration.
-   */
-  language(tag: string, config: LanguageConfig): this;
-
-  /**
-   * Sets the initial language. The app will default to the first language added if this is not called.
-   */
-  setLanguage(tag: string): this;
-
-  /**
-   * Sets the initial language based on the user's locale.
-   * Falls back to `fallback` language if provided, otherwise falls back to the first language added.
-   *
-   * @param tag - Set to "auto" to autodetect the user's language.
-   * @param fallback - The language tag to default to if the app fails to detect an appropriate language.
-   */
-  setLanguage(tag: "auto", fallback?: string): this;
+  // addStore<O>(store: Store<O, any>, options?: O): this;
 
   /**
    * Runs `callback` after app-level stores are connected to the app, but before views are connected to the DOM.
@@ -198,16 +109,20 @@ function DefaultRootView(_: {}, ctx: ViewContext) {
   return ctx.outlet();
 }
 
-export function makeApp(options?: AppOptions): App {
-  if (options && !isObject(options)) {
+function isAppOptions(value: unknown): value is IAppOptions {
+  return isObject(value);
+}
+
+export function App(options?: IAppOptions): IApp {
+  if (options && !isAppOptions(options)) {
     throw new TypeError(`App options must be an object. Got: ${options}`);
   }
 
   let isConnected = false;
-  let mainView = m(DefaultRootView);
+  let mainView = m(options?.view ?? DefaultRootView);
   let configureCallback: ConfigureCallback | undefined;
 
-  const settings: AppOptions = merge(
+  const settings: IAppOptions = merge(
     {
       debug: {
         filter: "*,-dolla/*",
@@ -215,122 +130,21 @@ export function makeApp(options?: AppOptions): App {
         warn: "development", // Only print warnings in development.
         error: true, // Always print errors.
       },
-      router: {
-        hash: false,
-      },
       mode: "production",
     },
     options ?? {}
   );
 
   const stores = new Map<keyof BuiltInStores | Store<any, any>, StoreRegistration>([
-    ["dialog", { store: DialogStore }],
-    ["router", { store: RouterStore }],
-    ["document", { store: DocumentStore }],
-    ["http", { store: HTTPStore }],
-    ["language", { store: LanguageStore }],
     ["render", { store: RenderStore }],
+    ["document", { store: DocumentStore }],
   ]);
 
-  const languages = new Map<string, LanguageConfig>();
-  let currentLanguage: string;
-
-  /*=============================*\
-  ||           Routing           ||
-  \*=============================*/
-
-  let layerId = 0;
-  let routes: Route<RouteConfig["meta"]>[] = [];
-
-  /**
-   * Parses a route definition object into a set of matchable routes.
-   *
-   * @param route - Route config object.
-   * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
-   */
-  function prepareRoute(
-    route: {
-      pattern: string;
-      redirect?: string | ((ctx: RedirectContext) => void);
-      view?: View<unknown> | null;
-      subroutes?: (router: AppRouter) => void;
-    },
-    layers = []
-  ) {
-    if (!isObject(route) || !isString(route.pattern)) {
-      throw new TypeError(`Route configs must be objects with a 'pattern' string property. Got: ${route}`);
+  if (options?.stores) {
+    for (const entry of options.stores) {
+      assertFunction(entry.store, `Expected a store function. Got type: %t, value: %v`);
+      stores.set(entry.store, entry);
     }
-
-    const parts = splitPath(route.pattern);
-
-    // Remove trailing wildcard for joining with nested routes.
-    if (parts[parts.length - 1] === "*") {
-      parts.pop();
-    }
-
-    const routes: RouteConfig[] = [];
-
-    if (route.redirect) {
-      let redirect = route.redirect;
-
-      if (isString(redirect)) {
-        redirect = resolvePath(joinPath(parts), redirect);
-
-        if (!redirect.startsWith("/")) {
-          redirect = "/" + redirect;
-        }
-      }
-
-      routes.push({
-        pattern: route.pattern,
-        meta: {
-          redirect,
-        },
-      });
-
-      return routes;
-    }
-
-    let view: View<{}> | undefined;
-
-    if (!route.view) {
-      view = DefaultRootView;
-    } else if (typeof route.view === "function") {
-      view = route.view;
-    } else {
-      throw new TypeError(`Route '${route.pattern}' expected a view function. Got: ${route.view}`);
-    }
-
-    const markup = m(view);
-    const layer: RouteLayer = { id: layerId++, markup };
-
-    // Parse nested routes if they exist.
-    if (route.subroutes) {
-      const router: AppRouter = {
-        route: (pattern: string, view: View<any> | null, subroutes: (router: AppRouter) => void) => {
-          pattern = joinPath([...parts, pattern]);
-          routes.push(...prepareRoute({ pattern, view, subroutes }));
-          return router;
-        },
-        redirect: (pattern, redirect) => {
-          pattern = joinPath([...parts, pattern]);
-          routes.push(...prepareRoute({ pattern, redirect }));
-          return router;
-        },
-      };
-
-      route.subroutes(router);
-    } else {
-      routes.push({
-        pattern: route.pattern,
-        meta: {
-          pattern: route.pattern,
-          layers: [...layers, layer],
-        },
-      });
-    }
-
-    return routes;
   }
 
   /*=============================*\
@@ -365,47 +179,6 @@ export function makeApp(options?: AppOptions): App {
   });
 
   /*=============================*\
-  ||     Batched DOM Updates     ||
-  \*=============================*/
-
-  // let isUpdating = false;
-
-  // // Keyed updates ensure only the most recent callback queued with a certain key
-  // // will be called, keeping DOM operations to a minimum.
-  // const queuedUpdatesKeyed = new Map<string, () => void>();
-  // // All unkeyed updates are run on every batch.
-  // let queuedUpdatesUnkeyed: (() => void)[] = [];
-
-  // function runUpdates() {
-  //   const totalQueued = queuedUpdatesKeyed.size + queuedUpdatesUnkeyed.length;
-
-  //   if (!isConnected || totalQueued === 0) {
-  //     isUpdating = false;
-  //   }
-
-  //   if (!isUpdating) return;
-
-  //   requestAnimationFrame(() => {
-  //     debugChannel.info(`Batching ${queuedUpdatesKeyed.size + queuedUpdatesUnkeyed.length} queued DOM update(s).`);
-
-  //     // Run keyed updates first.
-  //     for (const callback of queuedUpdatesKeyed.values()) {
-  //       callback();
-  //     }
-  //     queuedUpdatesKeyed.clear();
-
-  //     // Run unkeyed updates second.
-  //     for (const callback of queuedUpdatesUnkeyed) {
-  //       callback();
-  //     }
-  //     queuedUpdatesUnkeyed = [];
-
-  //     // Trigger again to catch updates queued while this batch was running.
-  //     runUpdates();
-  //   });
-  // }
-
-  /*=============================*\
   ||        App Lifecycle        ||
   \*=============================*/
 
@@ -424,31 +197,6 @@ export function makeApp(options?: AppOptions): App {
 
       appContext.rootElement = element!;
 
-      // Sort routes by specificity for correct matching.
-      routes = sortRoutes(routes);
-
-      // Pass language options to language store.
-      const language = stores.get("language")!;
-      stores.set("language", {
-        ...language,
-        options: {
-          languages: Object.fromEntries(languages.entries()),
-          currentLanguage,
-        },
-      });
-
-      // Pass route options to router store.
-      const router = stores.get("router")!;
-      stores.set("router", {
-        ...router,
-        options: {
-          options: settings.router,
-          routes: routes,
-        },
-      });
-
-      debugChannel.info(`Total routes: ${routes.length}`);
-
       // First, initialize the root view. The router store needs this to connect the initial route.
       appContext.rootView = initView({
         view: mainView.type as View<any>,
@@ -462,7 +210,7 @@ export function makeApp(options?: AppOptions): App {
         const { store, options } = item;
 
         // Channel prefix is displayed before the global's name in console messages that go through a debug channel.
-        // Built-in globals get an additional 'dolla/' prefix so it's clear messages are from the framework.
+        // Bundled stores get an additional 'dolla/' prefix so it's clear messages are from the framework.
         // 'dolla/*' messages are filtered out by default, but this can be overridden with the app's `debug.filter` option.
         const channelPrefix = isString(key) ? "dolla/store" : "store";
         const label = isString(key) ? key : store.name ?? "(anonymous)";
@@ -493,7 +241,7 @@ export function makeApp(options?: AppOptions): App {
         });
       }
 
-      const { $isLoaded } = stores.get("language")!.instance!.exports as StoreExports<typeof LanguageStore>;
+      // const { $isLoaded } = stores.get("language")!.instance!.exports as StoreExports<typeof LanguageStore>;
 
       const done = () => {
         // Then connect the root view.
@@ -505,16 +253,18 @@ export function makeApp(options?: AppOptions): App {
         resolve();
       };
 
-      if ($isLoaded.get()) {
-        return done();
-      }
+      done();
 
-      const stop = observe($isLoaded, (isLoaded) => {
-        if (isLoaded) {
-          stop();
-          done();
-        }
-      });
+      //       if ($isLoaded.get()) {
+      //         return done();
+      //       }
+      //
+      //       const stop = observe($isLoaded, (isLoaded) => {
+      //         if (isLoaded) {
+      //           stop();
+      //           done();
+      //         }
+      //       });
     });
   }
 
@@ -548,7 +298,6 @@ export function makeApp(options?: AppOptions): App {
     debugHub,
     stores,
     mode: settings.mode ?? "production",
-    // $dialogs - added by dialog store
   };
   const elementContext: ElementContext = {
     stores: new Map(),
@@ -566,130 +315,54 @@ export function makeApp(options?: AppOptions): App {
       return isConnected;
     },
 
-    main<A extends Record<string, any>>(view: View<A>, attributes?: A) {
-      if (mainView.type !== DefaultRootView) {
-        debugChannel.warn(`Root view is already defined. Only the final main call will take effect.`);
-      }
-
-      if (typeof view === "function") {
-        mainView = m(view, attributes);
-      } else {
-        throw new TypeError(`Expected a view function. Got type: ${typeOf(view)}, value: ${view}`);
-      }
-
-      return app;
-    },
-
-    store<O>(store: Store<O, any>, options?: O) {
-      let config: StoreRegistration | undefined;
-
-      if (isFunction(store)) {
-        config = { store, options };
-      } else {
-        throw new TypeError(`Expected a store function. Got type: ${typeOf(store)}, value: ${store}`);
-      }
-
-      assertFunction(store, "Expected a store function or a store config object. Got type: %t, value: %v");
-
-      stores.set(store, config);
-
-      return app;
-    },
-
-    getStore(store: keyof BuiltInStores | Store<any, any>) {
-      const match = stores.get(store);
-      const name = isString(store) ? store : store.name;
-      if (!match) {
-        throw new Error(`Store '${name}' is not registered on this app.`);
-      }
-      if (!match.instance) {
-        throw new Error(`Store '${name}' is not yet initialized. App must be connected first.`);
-      }
-      return match.instance.exports;
-    },
-
-    language(tag: string, config: LanguageConfig) {
-      languages.set(tag, config);
-
-      return app;
-    },
-
-    setLanguage(tag: string, fallback?: string) {
-      if (tag === "auto") {
-        let tags = [];
-
-        if (typeof navigator === "object") {
-          const nav = navigator as any;
-
-          if (nav.languages?.length > 0) {
-            tags.push(...nav.languages);
-          } else if (nav.language) {
-            tags.push(nav.language);
-          } else if (nav.browserLanguage) {
-            tags.push(nav.browserLanguage);
-          } else if (nav.userLanguage) {
-            tags.push(nav.userLanguage);
-          }
-        }
-
-        for (const tag of tags) {
-          if (languages.has(tag)) {
-            // Found a matching language.
-            currentLanguage = tag;
-            return this;
-          }
-        }
-
-        if (!currentLanguage && fallback) {
-          if (languages.has(fallback)) {
-            currentLanguage = fallback;
-          }
-        }
-      } else {
-        // Tag is the actual tag to set.
-        if (languages.has(tag)) {
-          currentLanguage = tag;
-        } else {
-          throw new Error(`Language '${tag}' has not been added to this app yet.`);
-        }
-      }
-
-      return app;
-    },
-
-    route(pattern: string, view: View<unknown> | null, subroutes?: (sub: AppRouter) => void) {
-      assertString(pattern, "Pattern must be a string. Got type: %t, value: %v");
-
-      if (view == null) {
-        assertFunction(subroutes, "Sub routes must be defined when `view` is null.");
-      }
-
-      prepareRoute({ pattern, view, subroutes }).forEach((route) => {
-        routes.push({
-          pattern: route.pattern,
-          meta: route.meta,
-          fragments: patternToFragments(route.pattern),
-        });
-      });
-
-      return app;
-    },
-
-    redirect(pattern: string, redirect: string | ((ctx: RedirectContext) => string)) {
-      if (!isFunction(redirect) && !isString(redirect)) {
-        throw new TypeError(`Expected a redirect path or function. Got type: ${typeOf(redirect)}, value: ${redirect}`);
-      }
-
-      prepareRoute({ pattern, redirect }).forEach((route) => {
-        routes.push({
-          pattern: route.pattern,
-          meta: route.meta,
-          fragments: patternToFragments(route.pattern),
-        });
-      });
-
-      return app;
-    },
+    //     language(tag: string, config: LanguageConfig) {
+    //       languages.set(tag, config);
+    //
+    //       return app;
+    //     },
+    //
+    //     setLanguage(tag: string, fallback?: string) {
+    //       if (tag === "auto") {
+    //         let tags = [];
+    //
+    //         if (typeof navigator === "object") {
+    //           const nav = navigator as any;
+    //
+    //           if (nav.languages?.length > 0) {
+    //             tags.push(...nav.languages);
+    //           } else if (nav.language) {
+    //             tags.push(nav.language);
+    //           } else if (nav.browserLanguage) {
+    //             tags.push(nav.browserLanguage);
+    //           } else if (nav.userLanguage) {
+    //             tags.push(nav.userLanguage);
+    //           }
+    //         }
+    //
+    //         for (const tag of tags) {
+    //           if (languages.has(tag)) {
+    //             // Found a matching language.
+    //             currentLanguage = tag;
+    //             return this;
+    //           }
+    //         }
+    //
+    //         if (!currentLanguage && fallback) {
+    //           if (languages.has(fallback)) {
+    //             currentLanguage = fallback;
+    //           }
+    //         }
+    //       } else {
+    //         // Tag is the actual tag to set.
+    //         if (languages.has(tag)) {
+    //           currentLanguage = tag;
+    //         } else {
+    //           throw new Error(`Language '${tag}' has not been added to this app yet.`);
+    //         }
+    //       }
+    //
+    //       return app;
+    //     },
 
     configure(callback: ConfigureCallback) {
       if (configureCallback !== undefined) {

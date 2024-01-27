@@ -5,7 +5,7 @@ import { deepEqual } from "./utils.js";
 const UNOBSERVED = Symbol("Unobserved");
 
 // Symbol to access observe method used internally by the library.
-export const OBSERVE = Symbol("Observe");
+const OBSERVE = Symbol("Observe");
 
 /*==============================*\
 ||             Types            ||
@@ -15,7 +15,7 @@ export const OBSERVE = Symbol("Observe");
  * Stops the observer that created it when called.
  */
 export type StopFunction = () => void;
-type ObserveMethod<T> = (callback: (currentValue: T, previousValue?: T) => void) => StopFunction;
+type ObserveMethod<T> = (callback: (currentValue: T) => void) => StopFunction;
 
 /**
  * Extracts value types from an array of Readables.
@@ -23,8 +23,6 @@ type ObserveMethod<T> = (callback: (currentValue: T, previousValue?: T) => void)
 export type ReadableValues<T extends Readable<any>[]> = {
   [K in keyof T]: T[K] extends Readable<infer U> ? U : never;
 };
-
-export type Unwrapped<T> = T extends Readable<infer U> ? U : T;
 
 export interface Observable<T> {
   /**
@@ -53,13 +51,24 @@ export interface Writable<T> extends Readable<T> {
   update(callback: (currentValue: T) => T): void;
 }
 
+export type MaybeReadable<T> = Readable<T> | T;
+
+type Value<T> = T extends Readable<infer V> ? V : T;
+
+interface ComputedContext<I extends any[]> {
+  lastValues: I;
+  // lastReturned: O | undefined;
+}
+
 /*==============================*\
 ||           Utilities          ||
 \*==============================*/
 
-export function isObservable<T>(value: any): value is Observable<T> {
-  return value != null && typeof value === "object" && typeof value[OBSERVE] === "function";
-}
+// function isObservable<T>(value: any): value is Observable<T> {
+//   return value != null && typeof value === "object" && typeof value[OBSERVE] === "function";
+// }
+
+// State.isObservable = isObservable;
 
 export function isReadable<T>(value: any): value is Readable<T> {
   return (
@@ -75,16 +84,193 @@ export function isWritable<T>(value: any): value is Writable<T> {
 }
 
 /*==============================*\
+||          $() and $$()        ||
+\*==============================*/
+
+export function $$<T>(value: Writable<T>): Writable<T>;
+export function $$<T>(value: Readable<T>): never; // TODO: How to throw a type error in TS before runtime?
+export function $$<T>(value: undefined): Writable<T | undefined>;
+export function $$<T>(): Writable<T | undefined>;
+export function $$<T>(value: T): Writable<Value<T>>;
+
+/**
+ * Creates a proxy `Writable` around an existing `Writable`.
+ * The config object contains custom `get` and `set` methods.
+ * All reads of this proxy goes through the `get` method
+ * and all writes go through `set`.
+ */
+export function $$<Source extends Writable<any>, Value>(source: Source, config: ProxyConfig<Value>): Writable<Value>;
+
+/**
+ * Creates a proxy `Writable` around an existing `Readable`.
+ * The config object contains custom `get` and `set` methods.
+ * All reads of this proxy goes through the `get` method
+ * and all writes go through `set`.
+ */
+export function $$<Source extends Readable<any>, Value>(source: Source, config: ProxyConfig<Value>): Writable<Value>;
+
+// Same as writable()
+export function $$(initialValue?: any, config?: any) {
+  if (config) {
+    return proxy(initialValue, config);
+  } else {
+    return writable(initialValue);
+  }
+}
+
+export function $<T>(value: Writable<T>): Readable<T>;
+export function $<T>(value: Readable<T>): Readable<T>;
+export function $<T>(value: undefined): Readable<T | undefined>;
+export function $<T>(): Readable<T | undefined>;
+export function $<T>(value: T): Readable<Value<T>>;
+
+export function $<I, O>(state: MaybeReadable<I>, compute: (value: I) => O | Readable<O>): Readable<O>;
+
+export function $<I extends MaybeReadable<any>[], O>(
+  states: [...I],
+  compute: (...currentValues: ReadableValues<I> /*ctx: ComputedContext<I>*/) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  compute: (value1: I1, value2: I2) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  compute: (value1: I1, value2: I2, value3: I3) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, I5, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, I5, I6, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, I5, I6, I7, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, I5, I6, I7, I8, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  state8: MaybeReadable<I8>,
+  compute: (
+    value1: I1,
+    value2: I2,
+    value3: I3,
+    value4: I4,
+    value5: I5,
+    value6: I6,
+    value7: I7,
+    value8: I8
+  ) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  state8: MaybeReadable<I8>,
+  state9: MaybeReadable<I9>,
+  compute: (
+    value1: I1,
+    value2: I2,
+    value3: I3,
+    value4: I4,
+    value5: I5,
+    value6: I6,
+    value7: I7,
+    value8: I8,
+    value9: I9
+  ) => O | Readable<O>
+): Readable<O>;
+
+export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, O>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  state8: MaybeReadable<I8>,
+  state9: MaybeReadable<I9>,
+  state10: MaybeReadable<I10>,
+  compute: (
+    value1: I1,
+    value2: I2,
+    value3: I3,
+    value4: I4,
+    value5: I5,
+    value6: I6,
+    value7: I7,
+    value8: I8,
+    value9: I9,
+    value10: I10
+  ) => O | Readable<O>
+): Readable<O>;
+
+// Hybrid of readable() and computed() - if last arg is a function, it's computed()
+export function $(...args: any[]) {
+  if (args.length > 1) {
+    return computed(...args);
+  } else {
+    return readable(args[0]);
+  }
+}
+
+/*==============================*\
 ||          readable()          ||
 \*==============================*/
 
-export function readable<T>(value: Writable<T>): Readable<Unwrapped<T>>;
-export function readable<T>(value: Readable<T>): Readable<Unwrapped<T>>;
-export function readable<T>(value: undefined): Readable<T | undefined>;
-export function readable<T>(): Readable<T | undefined>;
-export function readable<T>(value: T): Readable<Unwrapped<T>>;
+function readable<T>(value: Writable<T>): Readable<T>;
+function readable<T>(value: Readable<T>): Readable<T>;
+function readable<T>(value: undefined): Readable<T | undefined>;
+function readable<T>(): Readable<T | undefined>;
+function readable<T>(value: T): Readable<Value<T>>;
 
-export function readable(value?: unknown): Readable<any> {
+function readable(value?: unknown): Readable<any> {
   // Return a proxy Readable with the value of this Writable.
   if (isWritable(value)) {
     return {
@@ -102,23 +288,155 @@ export function readable(value?: unknown): Readable<any> {
   return {
     get: () => value,
     [OBSERVE]: (callback) => {
-      callback(value, undefined); // call with current value and undefined for the previous value
+      callback(value); // call with current value and undefined for the previous value
       return function stop() {}; // value can never change, so this function is not implemented
     },
   };
 }
 
 /*==============================*\
+||          computed()          ||
+\*==============================*/
+
+function computed(...args: any): Readable<any> {
+  const compute = args.pop();
+  if (typeof compute !== "function") {
+    throw new TypeError(`Final argument must be a function. Got ${typeOf(compute)}: ${compute}`);
+  }
+  args = args.flat(); // Support an array of states
+  if (args.length < 1) {
+    throw new Error(`Must pass at least one state before the callback function.`);
+  }
+  const readables = args as Readable<any>[];
+
+  if (readables.length === 1) {
+    const readable = readables[0];
+
+    return {
+      get: () => {
+        const computed = compute(readable.get());
+        if (isReadable(computed)) {
+          return computed.get();
+        } else {
+          return computed;
+        }
+      },
+      [OBSERVE]: (callback) => {
+        let lastComputedValue: any = UNOBSERVED;
+
+        return readable[OBSERVE]((currentValue) => {
+          const computedValue = compute(currentValue);
+
+          // Handle returning Readable from compute. Observed value should unwrap the nested Readable.
+          if (isReadable(computedValue)) {
+            lastComputedValue = computedValue;
+            return computedValue[OBSERVE]((current) => {
+              callback(current);
+            });
+          }
+
+          if (!deepEqual(computedValue, lastComputedValue)) {
+            callback(computedValue);
+            lastComputedValue = computedValue;
+          }
+        });
+      },
+    };
+  } else {
+    const observers: ((...currentValues: any[]) => void)[] = [];
+
+    let stopCallbacks: StopFunction[] = [];
+    let isObserving = false;
+    let observedValues: any[] = [];
+    let latestComputedValue: any = UNOBSERVED;
+
+    function updateValue() {
+      const computedValue = compute(...observedValues);
+
+      // Skip equality check on initial subscription to guarantee
+      // that observers receive an initial value, even if undefined.
+      if (!deepEqual(computedValue, latestComputedValue)) {
+        // const previousValue = latestComputedValue === UNOBSERVED ? undefined : latestComputedValue;
+        latestComputedValue = computedValue;
+
+        for (const callback of observers) {
+          callback(computedValue);
+        }
+      }
+    }
+
+    function startObserving() {
+      if (isObserving) return;
+
+      for (let i = 0; i < readables.length; i++) {
+        const readable = readables[i];
+
+        stopCallbacks.push(
+          observe(readable, (value: any) => {
+            observedValues[i] = value;
+
+            if (isObserving) {
+              updateValue();
+            }
+          })
+        );
+      }
+
+      observedValues = readables.map((x) => x.get());
+      isObserving = true;
+      updateValue();
+    }
+
+    function stopObserving() {
+      isObserving = false;
+
+      for (const callback of stopCallbacks) {
+        callback();
+      }
+      stopCallbacks = [];
+    }
+
+    return {
+      get: () => {
+        if (isObserving) {
+          return latestComputedValue;
+        } else {
+          return compute(...readables.map((x) => x.get()));
+        }
+      },
+      [OBSERVE]: (callback) => {
+        // First start observing
+        if (!isObserving) {
+          startObserving();
+        }
+
+        // Then call callback and add it to observers for future changes
+        callback(latestComputedValue);
+        observers.push(callback);
+
+        return function stop() {
+          observers.splice(observers.indexOf(callback), 1);
+
+          if (observers.length === 0) {
+            stopObserving();
+          }
+        };
+      },
+    };
+  }
+}
+
+/*==============================*\
 ||          writable()          ||
 \*==============================*/
 
-export function writable<T>(value: Writable<T>): Writable<Unwrapped<T>>;
-export function writable<T>(value: Readable<T>): never; // TODO: How to throw a type error in TS before runtime?
-export function writable<T>(value: undefined): Writable<T | undefined>;
-export function writable<T>(): Writable<T | undefined>;
-export function writable<T>(value: T): Writable<Unwrapped<T>>;
+function writable<T>(value: Writable<T>): Writable<T>;
+function writable<T>(value: Readable<T>): never; // TODO: How to throw a type error in TS before runtime?
+function writable<T>(value: undefined): Writable<T | undefined>;
+function writable<T>(): Writable<T | undefined>;
+function writable<T>(value: T): Writable<Value<T>>;
 
-export function writable(value?: unknown): Writable<any> {
+function writable(value?: unknown): Writable<any> {
   // Return the same Writable.
   if (isWritable(value)) {
     return value;
@@ -145,7 +463,7 @@ export function writable(value?: unknown): Writable<any> {
         observers.splice(observers.indexOf(callback), 1);
       }
 
-      callback(currentValue, undefined); // call with current value
+      callback(currentValue); // call with current value
 
       // return function to remove observer
       return stop;
@@ -176,235 +494,12 @@ export function writable(value?: unknown): Writable<any> {
 }
 
 /*==============================*\
-||          observe()           ||
-\*==============================*/
-
-/**
- * Observes a readable value. Calls `callback` each time the value changes.
- * Returns a function to stop observing changes. This MUST be called when you are done
- * with this observer to prevent memory leaks.
- */
-export function observe<T>(readable: Readable<T>, callback: (currentValue: T, previousValue: T) => void): StopFunction;
-
-/**
- * Observes a set of readable values.
- * Calls `callback` with each value in the same order as `readables` each time any of their values change.
- * Returns a function to stop observing changes. This MUST be called when you are done
- * with this observer to prevent memory leaks.
- */
-export function observe<T extends Readable<any>[]>(
-  readables: [...T],
-  callback: (currentValues: ReadableValues<T>, previousValues: ReadableValues<T>) => void
-): StopFunction;
-
-export function observe(readable: any, callback: (...args: any) => void): StopFunction {
-  const readables: Readable<any>[] = [];
-
-  if (Array.isArray(readable) && readable.every(isReadable)) {
-    readables.push(...readable);
-  } else if (isReadable(readable)) {
-    readables.push(readable);
-  } else {
-    console.warn(readable);
-    throw new TypeError(
-      `Expected one Readable or an array of Readables as the first argument. Got value: ${readable}, type: ${typeOf(
-        readable
-      )}`
-    );
-  }
-
-  if (readables.length === 0) {
-    throw new TypeError(`Expected at least one readable.`);
-  }
-
-  if (readables.length > 1) {
-    return computed(readables, callback)[OBSERVE](() => {});
-  } else {
-    return readables[0][OBSERVE](callback);
-  }
-}
-
-/*==============================*\
-||          computed()          ||
-\*==============================*/
-
-export function computed<I, O>(
-  readable: Readable<I>,
-  compute: (currentValue: I, previousValue?: I) => O | Readable<O>
-): Readable<O>;
-
-export function computed<I extends Readable<any>[], O>(
-  readables: [...I],
-  compute: (currentValues: ReadableValues<I>, previousValues?: ReadableValues<I>) => O
-): Readable<O>;
-
-export function computed(...args: any): Readable<any> {
-  if (isReadable(args[0])) {
-    if (typeof args[1] !== "function") {
-      throw new TypeError(
-        `When first argument is a Readable the second argument must be a callback function. Got type: ${typeOf(
-          args[1]
-        )}, value: ${args[1]}`
-      );
-    }
-
-    const readable = args[0];
-    const compute = args[1];
-
-    return {
-      get: () => {
-        const computed = compute(readable.get());
-        if (isReadable(computed)) {
-          return computed.get();
-        } else {
-          return computed;
-        }
-      },
-      [OBSERVE]: (callback) => {
-        let lastComputedValue: any = UNOBSERVED;
-        let lastObservedValue: any;
-
-        return readable[OBSERVE]((currentValue) => {
-          const computedValue = compute(currentValue, lastObservedValue);
-
-          // Handle returning Readable from compute. Observed value should unwrap the nested Readable.
-          if (isReadable(computedValue)) {
-            lastComputedValue = computedValue;
-            return computedValue[OBSERVE]((current, previous) => {
-              callback(current, previous);
-              lastObservedValue = current;
-            });
-          }
-
-          if (!deepEqual(computedValue, lastComputedValue)) {
-            const previousValue = lastComputedValue === UNOBSERVED ? undefined : lastComputedValue;
-            callback(computedValue, previousValue);
-            lastComputedValue = computedValue;
-            lastObservedValue = currentValue;
-          }
-        });
-      },
-    };
-  } else if (Array.isArray(args[0])) {
-    if (typeof args[1] !== "function") {
-      throw new TypeError(
-        `When first argument is an array of Readables the second argument must be a callback function. Got type: ${typeOf(
-          args[1]
-        )}, value: ${args[1]}`
-      );
-    }
-
-    if (!args[0].every(isReadable)) {
-      throw new TypeError(
-        `Computed expected an array of Readables. Got: [${args[0]
-          .map((x) => (isReadable(x) ? `Readable<${typeOf(x.get())}>` : typeof x))
-          .join(", ")}]`
-      );
-    }
-
-    const readables = args[0];
-    const compute = args[1];
-
-    const observers: ((currentValues: any, previousValues?: any) => void)[] = [];
-
-    let stopCallbacks: StopFunction[] = [];
-    let isObserving = false;
-    let previousObservedValues: any[] = [];
-    let observedValues: any[] = [];
-    let latestComputedValue: any = UNOBSERVED;
-
-    function updateValue() {
-      const computedValue = compute(observedValues, previousObservedValues);
-
-      // Skip equality check on initial subscription to guarantee
-      // that observers receive an initial value, even if undefined.
-      if (!deepEqual(computedValue, latestComputedValue)) {
-        const previousValue = latestComputedValue === UNOBSERVED ? undefined : latestComputedValue;
-        latestComputedValue = computedValue;
-        previousObservedValues = observedValues;
-
-        for (const callback of observers) {
-          callback(computedValue, previousValue);
-        }
-      }
-    }
-
-    function startObserving() {
-      if (isObserving) return;
-
-      for (let i = 0; i < readables.length; i++) {
-        const readable = readables[i];
-
-        stopCallbacks.push(
-          observe(readable, (value: any) => {
-            observedValues[i] = value;
-
-            if (isObserving) {
-              updateValue();
-            }
-          })
-        );
-      }
-
-      previousObservedValues = new Array<any>().fill(undefined, 0, readables.length);
-      observedValues = readables.map((x) => x.get());
-      isObserving = true;
-      updateValue();
-    }
-
-    function stopObserving() {
-      isObserving = false;
-
-      for (const callback of stopCallbacks) {
-        callback();
-      }
-      stopCallbacks = [];
-    }
-
-    return {
-      get: () => {
-        if (isObserving) {
-          return latestComputedValue;
-        } else {
-          return compute(
-            readables.map((x) => x.get()),
-            new Array<any>().fill(undefined, 0, readables.length)
-          );
-        }
-      },
-      [OBSERVE]: (callback) => {
-        // First start observing
-        if (!isObserving) {
-          startObserving();
-        }
-
-        // Then call callback and add it to observers for future changes
-        callback(latestComputedValue, undefined);
-        observers.push(callback);
-
-        return function stop() {
-          observers.splice(observers.indexOf(callback), 1);
-
-          if (observers.length === 0) {
-            stopObserving();
-          }
-        };
-      },
-    };
-  } else {
-    throw new TypeError(
-      `Expected a Readable or array of Readables as a first argument. Got: ${typeOf(args[0])}, value: ${args[0]}`
-    );
-  }
-}
-
-/*==============================*\
 ||           proxy()            ||
 \*==============================*/
 
-interface ProxyConfig<Source, Value> {
-  get(source: Source): Value;
-  set(source: Source, value: Value): void;
+interface ProxyConfig<Value> {
+  get(): Value;
+  set(value: Value): void;
 }
 
 /**
@@ -413,10 +508,7 @@ interface ProxyConfig<Source, Value> {
  * All reads of this proxy goes through the `get` method
  * and all writes go through `set`.
  */
-export function proxy<Source extends Writable<any>, Value>(
-  source: Source,
-  config: ProxyConfig<Source, Value>
-): Writable<Value>;
+function proxy<Source extends Writable<any>, Value>(source: Source, config: ProxyConfig<Value>): Writable<Value>;
 
 /**
  * Creates a proxy `Writable` around an existing `Readable`.
@@ -424,34 +516,31 @@ export function proxy<Source extends Writable<any>, Value>(
  * All reads of this proxy goes through the `get` method
  * and all writes go through `set`.
  */
-export function proxy<Source extends Readable<any>, Value>(
-  source: Source,
-  config: ProxyConfig<Source, Value>
-): Writable<Value>;
+function proxy<Source extends Readable<any>, Value>(source: Source, config: ProxyConfig<Value>): Writable<Value>;
 
-export function proxy<Source, Value>(source: Source, config: ProxyConfig<Source, Value>): Writable<Value> {
+function proxy<Source, Value>(source: Source, config: ProxyConfig<Value>): Writable<Value> {
   // Throw error; can't add write access to a Readable.
   if (!isReadable(source)) {
     throw new TypeError(`Proxy source must be a Readable.`);
   }
 
-  const observers: ((currentValue: any, previousValue?: any) => void)[] = [];
-  const currentValue = () => config.get(source);
+  // const observers: ((currentValue: any, previousValue?: any) => void)[] = [];
+  // const currentValue = () => config.get();
 
   // Return a new Writable.
   return {
     // ----- Readable ----- //
 
-    get: () => config.get(source),
+    get: () => config.get(),
     [OBSERVE]: (callback) => {
       let lastComputedValue: any = UNOBSERVED;
 
-      return source[OBSERVE]((_) => {
-        const computedValue = config.get(source);
+      return observe(source, (_) => {
+        const computedValue = config.get();
 
         if (!deepEqual(computedValue, lastComputedValue)) {
-          const previousValue = lastComputedValue === UNOBSERVED ? undefined : lastComputedValue;
-          callback(computedValue, previousValue);
+          // const previousValue = lastComputedValue === UNOBSERVED ? undefined : lastComputedValue;
+          callback(computedValue);
           lastComputedValue = computedValue;
         }
       });
@@ -459,14 +548,161 @@ export function proxy<Source, Value>(source: Source, config: ProxyConfig<Source,
 
     // ----- Writable ----- //
 
-    set: (newValue) => {
-      config.set(source, newValue);
+    set: (value) => {
+      config.set(value);
     },
     update: (callback) => {
-      const newValue = callback(config.get(source));
-      config.set(source, newValue);
+      config.set(callback(config.get()));
     },
   };
+}
+
+/*==============================*\
+||          observe()           ||
+\*==============================*/
+
+/**
+ * Observes a readable value. Calls `callback` each time the value changes.
+ * Returns a function to stop observing changes. This MUST be called when you are done
+ * with this observer to prevent memory leaks.
+ */
+export function observe<T>(state: Readable<T>, callback: (currentValue: T, previousValue: T) => void): StopFunction;
+
+/**
+ * Observes a set of readable values.
+ * Calls `callback` with each value in the same order as `readables` each time any of their values change.
+ * Returns a function to stop observing changes. This MUST be called when you are done
+ * with this observer to prevent memory leaks.
+ */
+export function observe<T extends MaybeReadable<any>[]>(
+  states: [...T],
+  callback: (currentValues: ReadableValues<T>, previousValues: ReadableValues<T>) => void
+): StopFunction;
+
+export function observe<I1, I2>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  callback: (value1: I1, value2: I2) => void
+): StopFunction;
+
+export function observe<I1, I2, I3>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  callback: (value1: I1, value2: I2, value3: I3) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4, I5>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4, I5, I6>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4, I5, I6, I7>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4, I5, I6, I7, I8>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  state8: MaybeReadable<I8>,
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7, value8: I8) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  state8: MaybeReadable<I8>,
+  state9: MaybeReadable<I9>,
+  callback: (
+    value1: I1,
+    value2: I2,
+    value3: I3,
+    value4: I4,
+    value5: I5,
+    value6: I6,
+    value7: I7,
+    value8: I8,
+    value9: I9
+  ) => void
+): StopFunction;
+
+export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10>(
+  state1: MaybeReadable<I1>,
+  state2: MaybeReadable<I2>,
+  state3: MaybeReadable<I3>,
+  state4: MaybeReadable<I4>,
+  state5: MaybeReadable<I5>,
+  state6: MaybeReadable<I6>,
+  state7: MaybeReadable<I7>,
+  state8: MaybeReadable<I8>,
+  state9: MaybeReadable<I9>,
+  state10: MaybeReadable<I10>,
+  callback: (
+    value1: I1,
+    value2: I2,
+    value3: I3,
+    value4: I4,
+    value5: I5,
+    value6: I6,
+    value7: I7,
+    value8: I8,
+    value9: I9,
+    value10: I10
+  ) => void
+): StopFunction;
+
+export function observe(...args: any[]): StopFunction {
+  const callback = args.pop() as (...args: any) => void;
+  const readables = args.flat();
+
+  if (readables.length === 0) {
+    throw new TypeError(`Expected at least one readable.`);
+  }
+
+  if (readables.length > 1) {
+    return computed(...readables, callback)[OBSERVE](() => null);
+  } else {
+    return readables[0][OBSERVE](callback);
+  }
 }
 
 /*==============================*\

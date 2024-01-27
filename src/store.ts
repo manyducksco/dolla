@@ -1,7 +1,7 @@
 import { isObject, typeOf } from "@borf/bedrock";
 import { type AppContext, type ElementContext } from "./app.js";
 import { type DebugChannel } from "./classes/DebugHub.js";
-import { Readable, observe, type ReadableValues } from "./state.js";
+import { MaybeReadable, observe, type ReadableValues } from "./state.js";
 import type { BuiltInStores } from "./types.js";
 
 /*=====================================*\
@@ -44,15 +44,126 @@ export interface StoreContext<Options = any> extends DebugChannel {
   /**
    * Observes a readable value while this store is connected. Calls `callback` each time the value changes.
    */
-  observe<T>(readable: Readable<T>, callback: (currentValue: T, previousValue: T) => void): void;
+  observe<T>(state: MaybeReadable<T>, callback: (currentValue: T) => void): void;
 
   /**
    * Observes a set of readable values while this store is connected.
    * Calls `callback` with each value in the same order as `readables` each time any of their values change.
    */
-  observe<T extends Readable<any>[], V>(
-    readables: [...T],
-    callback: (currentValues: ReadableValues<T>, previousValues: ReadableValues<T>) => void
+  observe<T extends MaybeReadable<any>[]>(
+    states: [...T],
+    callback: (...currentValues: ReadableValues<T>) => void
+  ): void;
+
+  observe<I1, I2>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    callback: (value1: I1, value2: I2) => void
+  ): void;
+
+  observe<I1, I2, I3>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    callback: (value1: I1, value2: I2, value3: I3) => void
+  ): void;
+
+  observe<I1, I2, I3, I4>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4) => void
+  ): void;
+
+  observe<I1, I2, I3, I4, I5>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    state5: MaybeReadable<I5>,
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => void
+  ): void;
+
+  observe<I1, I2, I3, I4, I5, I6>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    state5: MaybeReadable<I5>,
+    state6: MaybeReadable<I6>,
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => void
+  ): void;
+
+  observe<I1, I2, I3, I4, I5, I6, I7>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    state5: MaybeReadable<I5>,
+    state6: MaybeReadable<I6>,
+    state7: MaybeReadable<I7>,
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => void
+  ): void;
+
+  observe<I1, I2, I3, I4, I5, I6, I7, I8>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    state5: MaybeReadable<I5>,
+    state6: MaybeReadable<I6>,
+    state7: MaybeReadable<I7>,
+    state8: MaybeReadable<I8>,
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7, value8: I8) => void
+  ): void;
+
+  observe<I1, I2, I3, I4, I5, I6, I7, I8, I9>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    state5: MaybeReadable<I5>,
+    state6: MaybeReadable<I6>,
+    state7: MaybeReadable<I7>,
+    state8: MaybeReadable<I8>,
+    state9: MaybeReadable<I9>,
+    callback: (
+      value1: I1,
+      value2: I2,
+      value3: I3,
+      value4: I4,
+      value5: I5,
+      value6: I6,
+      value7: I7,
+      value8: I8,
+      value9: I9
+    ) => void
+  ): void;
+
+  observe<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10>(
+    state1: MaybeReadable<I1>,
+    state2: MaybeReadable<I2>,
+    state3: MaybeReadable<I3>,
+    state4: MaybeReadable<I4>,
+    state5: MaybeReadable<I5>,
+    state6: MaybeReadable<I6>,
+    state7: MaybeReadable<I7>,
+    state8: MaybeReadable<I8>,
+    state9: MaybeReadable<I9>,
+    state10: MaybeReadable<I10>,
+    callback: (
+      value1: I1,
+      value2: I2,
+      value3: I3,
+      value4: I4,
+      value5: I5,
+      value6: I6,
+      value7: I7,
+      value8: I8,
+      value9: I9,
+      value10: I10
+    ) => void
   ): void;
 
   /**
@@ -161,7 +272,9 @@ export function initStore<O>(config: StoreConfig<O>) {
       config.appContext.crashCollector.crash({ error, componentName: ctx.name });
     },
 
-    observe(readables: any, callback: any) {
+    observe(...args: any[]) {
+      const callback = args.pop();
+      const readables = args.flat();
       if (isConnected) {
         // If called when the component is connected, we assume this code is in a lifecycle hook
         // where it will be triggered at some point again after the component is reconnected.

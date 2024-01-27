@@ -1,4 +1,4 @@
-import { type ElementContext, type AppContext } from "../app.js";
+import { type AppContext, type ElementContext } from "../app.js";
 import { type DOMHandle } from "../markup.js";
 import { observe, type Readable, type StopFunction } from "../state.js";
 
