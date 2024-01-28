@@ -17,11 +17,13 @@ const OBSERVE = Symbol("Observe");
 export type StopFunction = () => void;
 type ObserveMethod<T> = (callback: (currentValue: T) => void) => StopFunction;
 
+type Value<T> = T extends Readable<infer V> ? V : T;
+
 /**
  * Extracts value types from an array of Readables.
  */
-export type ReadableValues<T extends Readable<any>[]> = {
-  [K in keyof T]: T[K] extends Readable<infer U> ? U : never;
+export type ReadableValues<T extends MaybeReadable<any>[]> = {
+  [K in keyof T]: Value<T[K]>;
 };
 
 export interface Observable<T> {
@@ -52,13 +54,6 @@ export interface Writable<T> extends Readable<T> {
 }
 
 export type MaybeReadable<T> = Readable<T> | T;
-
-type Value<T> = T extends Readable<infer V> ? V : T;
-
-interface ComputedContext<I extends any[]> {
-  lastValues: I;
-  // lastReturned: O | undefined;
-}
 
 /*==============================*\
 ||           Utilities          ||
@@ -128,7 +123,7 @@ export function $<I, O>(state: MaybeReadable<I>, compute: (value: I) => O | Read
 
 export function $<I extends MaybeReadable<any>[], O>(
   states: [...I],
-  compute: (...currentValues: ReadableValues<I> /*ctx: ComputedContext<I>*/) => O | Readable<O>
+  compute: (...currentValues: ReadableValues<I>) => O | Readable<O>
 ): Readable<O>;
 
 export function $<I1, I2, O>(
@@ -303,9 +298,9 @@ function computed(...args: any): Readable<any> {
   if (typeof compute !== "function") {
     throw new TypeError(`Final argument must be a function. Got ${typeOf(compute)}: ${compute}`);
   }
-  args = args.flat(); // Support an array of states
+  args = args.flat().map(readable); // Support an array of states
   if (args.length < 1) {
-    throw new Error(`Must pass at least one state before the callback function.`);
+    throw new Error(`Must pass at least one value before the callback function.`);
   }
   const readables = args as Readable<any>[];
 
