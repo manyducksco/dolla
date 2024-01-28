@@ -414,7 +414,7 @@ export class HTML implements DOMHandle {
         } else if (isString(value)) {
           setProperty(key, value);
         } else if (isNumber(value)) {
-          setProperty(key, value + "px");
+          setProperty(key, String(value));
         } else {
           throw new TypeError(`Style properties should be strings, $states or numbers. Got (${key}: ${value})`);
         }
