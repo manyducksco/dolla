@@ -24,7 +24,7 @@ States come in two varieties, each with a constructor function and a TypeScript 
   - `.set(value: T)` to replace the stored value.
   - `.update(callback: (current: T) => T)` which takes a function that receives the current value and returns a new one.
 
-The constructor functions are `$` for `Readable`s and `$$` for `Writable`s. By convention, the names for each are prefixed with the same number of `$`s to indicate its type. This makes the data flow in code a lot easier to understand at a glance.
+The constructor functions are `$` for `Readable` and `$$` for `Writable`. By convention, the names of each are prefixed with `$` or `$$` to indicate its type, making the data flow a lot easier to understand at a glance.
 
 ```js
 import { $, $$ } from "@manyducks.co/dolla";
@@ -131,12 +131,12 @@ Notice that the structure above composes a data pipeline; if any of the data cha
 The `unwrap` function returns the current value of a Readable or Writable, or if passed a non-Readable value returns that exact value. This function is used to guarantee you have a plain value when you may be dealing with either a container or a plain value.
 
 ```js
-import { unwrap } from "@manyducks.co/dolla";
+import { $, $$, unwrap } from "@manyducks.co/dolla";
 
 const $$number = $$(5);
 
 unwrap($$number); // 5
-unwrap(State.readable(5)); // 5
+unwrap($(5)); // 5
 unwrap(5); // 5
 ```
 
@@ -398,7 +398,10 @@ Stores are helpful for managing persistent state that needs to be accessed in ma
 ```js
 import { App } from "@manyducks.co/dolla";
 
-const app = App();
+const app = App({
+  view: LayoutView,
+  stores: [MessageStore],
+});
 
 // We define a store that just exports a message.
 function MessageStore() {
@@ -406,9 +409,6 @@ function MessageStore() {
     message: "Hello from the message store!",
   };
 }
-
-// Register it on the app.
-app.store(MessageStore);
 
 // All instances of MessageView will share just one instance of MessageStore.
 function MessageView(props, ctx) {
@@ -430,9 +430,6 @@ function LayoutView() {
     </div>
   );
 }
-
-// Use LayoutView as the app's main view.
-app.main(LayoutView);
 
 // Connect the app.
 app.connect("#app");
@@ -537,15 +534,20 @@ const app = App({
       </div>
     );
   },
-});
 
-app.addStore(RouterStore, {
-  hash: true, // Use hash-based routing (default false)
+  stores: [
+    {
+      store: RouterStore,
+      options: {
+        hash: true, // Use hash-based routing (default false)
 
-  // Here are a couple of routes to be rendered into our layout:
-  routes: [
-    { path: "/tasks", view: TasksView },
-    { path: "/completed", view: CompletedView },
+        // Here are a couple of routes to be rendered into our layout:
+        routes: [
+          { path: "/tasks", view: TasksView },
+          { path: "/completed", view: CompletedView },
+        ],
+      },
+    },
   ],
 });
 ```
@@ -553,25 +555,32 @@ app.addStore(RouterStore, {
 Routes can also be nested. Just like the main view and its routes, subroutes will be displayed in the outlet of their parent view.
 
 ```jsx
-app.addStore(RouterStore, {
-  routes: [
+const app = App({
+  stores: [
     {
-      path: "/tasks",
-      view: TasksView,
-      routes: [
-        { path: "/", view: TaskListView },
+      store: RouterStore,
+      options: {
+        routes: [
+          {
+            path: "/tasks",
+            view: TasksView,
+            routes: [
+              { path: "/", view: TaskListView },
 
-        // In routes, `{value}` is a dynamic value that matches anything,
-        // and `{#value}` is a dynamic value that matches a number.
-        { path: "/{#id}", view: TaskDetailsView },
-        { path: "/{#id}/edit", view: TaskEditView },
+              // In routes, `{value}` is a dynamic value that matches anything,
+              // and `{#value}` is a dynamic value that matches a number.
+              { path: "/{#id}", view: TaskDetailsView },
+              { path: "/{#id}/edit", view: TaskEditView },
 
-        // If the route is any other than the ones defined above, redirect to the list.
-        // Redirects support './' and '../' style relative paths.
-        { path: "*", redirect: "./" },
-      ],
+              // If the route is any other than the ones defined above, redirect to the list.
+              // Redirects support './' and '../' style relative paths.
+              { path: "*", redirect: "./" },
+            ],
+          },
+          { path: "/completed", view: CompletedView },
+        ],
+      },
     },
-    { path: "/completed", view: CompletedView },
   ],
 });
 ```
@@ -606,22 +615,27 @@ Now, here are some route examples in the context of an app:
 import { App, RouterStore } from "@manyducks.co/dolla";
 import { PersonDetails, ThingIndex, ThingDetails, ThingEdit, ThingDelete } from "./components.js";
 
-const app = App();
-
-app.addStore(RouterStore, {
-  routes: [
-    { path: "/people/{name}", view: PersonDetails },
+const app = App({
+  stores: [
     {
-      // A `null` component with subroutes acts as a namespace for those subroutes.
-      // Passing a view instead of `null` results in subroutes being rendered inside that view wherever `ctx.outlet()` is called.
-      path: "/things",
-      view: null,
-      routes: [
-        { path: "/", view: ThingIndex }, // matches `/things`
-        { path: "/{#id}", view: ThingDetails }, // matches `/things/{#id}`
-        { path: "/{#id}/edit", view: ThingEdit }, // matches `/things/{#id}/edit`
-        { path: "/{#id}/delete", view: ThingDelete }, // matches `/things/{#id}/delete`
-      ],
+      store: RouterStore,
+      options: {
+        routes: [
+          { path: "/people/{name}", view: PersonDetails },
+          {
+            // A `null` component with subroutes acts as a namespace for those subroutes.
+            // Passing a view instead of `null` results in subroutes being rendered inside that view wherever `ctx.outlet()` is called.
+            path: "/things",
+            view: null,
+            routes: [
+              { path: "/", view: ThingIndex }, // matches `/things`
+              { path: "/{#id}", view: ThingDetails }, // matches `/things/{#id}`
+              { path: "/{#id}/edit", view: ThingEdit }, // matches `/things/{#id}/edit`
+              { path: "/{#id}/delete", view: ThingDelete }, // matches `/things/{#id}/delete`
+            ],
+          },
+        ],
+      },
     },
   ],
 });
