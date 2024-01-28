@@ -1,4 +1,4 @@
-import { isObject } from "@borf/bedrock";
+import { isObject } from "./typeChecking.js";
 
 function isPlainObject<T = { [name: string]: any }>(value: any): value is T {
   return (

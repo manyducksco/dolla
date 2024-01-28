@@ -1,6 +1,6 @@
+import { createBrowserHistory, createHashHistory, type History, type Listener } from "history";
+import { getRenderHandle, m, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
 import {
-  isFunction,
-  isString,
   joinPath,
   matchRoutes,
   parseQueryParams,
@@ -8,11 +8,10 @@ import {
   resolvePath,
   sortRoutes,
   splitPath,
-} from "@borf/bedrock";
-import { createBrowserHistory, createHashHistory, type History, type Listener } from "history";
-import { getRenderHandle, m, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
+} from "../routing.js";
 import { $, $$ } from "../state.js";
 import { getStoreSecrets, type StoreContext } from "../store.js";
+import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
 import { View, type ViewContext } from "../view.js";
 

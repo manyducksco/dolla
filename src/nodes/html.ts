@@ -1,8 +1,8 @@
-import { isFunction, isNumber, isObject, isString } from "@borf/bedrock";
 import { nanoid } from "nanoid";
 import { type AppContext, type ElementContext } from "../app.js";
 import { renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
 import { isReadable, isWritable, observe, type Readable, type StopFunction } from "../state.js";
+import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import { BuiltInStores } from "../types.js";
 import { omit } from "../utils.js";
 

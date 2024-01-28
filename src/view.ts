@@ -1,4 +1,4 @@
-import { isArrayOf, typeOf } from "@borf/bedrock";
+import { isArrayOf, typeOf } from "./typeChecking.js";
 import { nanoid } from "nanoid";
 import { type AppContext, type ElementContext } from "./app.js";
 import { type DebugChannel } from "./classes/DebugHub.js";

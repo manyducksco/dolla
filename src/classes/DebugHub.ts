@@ -1,6 +1,6 @@
 import colorHash from "simple-color-hash";
+import { isString } from "../typeChecking.js";
 import { type CrashCollector } from "./CrashCollector.js";
-import { isString } from "@borf/bedrock";
 
 export type DebugOptions = {
   /**

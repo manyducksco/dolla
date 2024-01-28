@@ -1,4 +1,4 @@
-import { typeOf } from "@borf/bedrock";
+import { typeOf } from "./typeChecking.js";
 import { deepEqual } from "./utils.js";
 
 // Symbol to mark an observed value as unobserved. Callbacks are always called once for unobserved values.
@@ -249,7 +249,9 @@ export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, O>(
 // Hybrid of readable() and computed() - if last arg is a function, it's computed()
 export function $(...args: any[]) {
   if (args.length > 1) {
-    return computed(...args);
+    const callback = args.pop() as (...args: any) => void;
+    const readables = args.flat().map(readable);
+    return computed(...readables, callback);
   } else {
     return readable(args[0]);
   }
@@ -298,7 +300,6 @@ function computed(...args: any): Readable<any> {
   if (typeof compute !== "function") {
     throw new TypeError(`Final argument must be a function. Got ${typeOf(compute)}: ${compute}`);
   }
-  args = args.flat().map(readable); // Support an array of states
   if (args.length < 1) {
     throw new Error(`Must pass at least one value before the callback function.`);
   }
@@ -687,7 +688,7 @@ export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10>(
 
 export function observe(...args: any[]): StopFunction {
   const callback = args.pop() as (...args: any) => void;
-  const readables = args.flat();
+  const readables = args.flat().map(readable);
 
   if (readables.length === 0) {
     throw new TypeError(`Expected at least one readable.`);
@@ -704,7 +705,7 @@ export function observe(...args: any[]): StopFunction {
 ||           unwrap()           ||
 \*==============================*/
 
-export function unwrap<T>(value: Readable<T> | T): T;
+export function unwrap<T>(value: MaybeReadable<T>): T;
 
 export function unwrap(value: any) {
   if (isReadable(value)) {

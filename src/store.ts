@@ -1,7 +1,7 @@
-import { isObject, typeOf } from "@borf/bedrock";
 import { type AppContext, type ElementContext } from "./app.js";
 import { type DebugChannel } from "./classes/DebugHub.js";
-import { MaybeReadable, observe, type ReadableValues } from "./state.js";
+import { observe, type MaybeReadable, type ReadableValues } from "./state.js";
+import { isObject, typeOf } from "./typeChecking.js";
 import type { BuiltInStores } from "./types.js";
 
 /*=====================================*\

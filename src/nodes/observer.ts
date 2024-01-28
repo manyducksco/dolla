@@ -1,4 +1,3 @@
-import { typeOf } from "@borf/bedrock";
 import { type AppContext, type ElementContext } from "../app.js";
 import {
   getRenderHandle,
@@ -10,6 +9,7 @@ import {
   type DOMHandle,
 } from "../markup.js";
 import { observe, type Readable, type StopFunction } from "../state.js";
+import { typeOf } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
 
 interface ObserverOptions {

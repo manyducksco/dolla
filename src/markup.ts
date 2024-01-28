@@ -1,4 +1,3 @@
-import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "@borf/bedrock";
 import { type AppContext, type ElementContext } from "./app.js";
 import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
@@ -8,6 +7,7 @@ import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
 import { $, isReadable, type Readable } from "./state.js";
+import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
 import { initView, type View, type ViewContext, type ViewResult } from "./view.js";
 

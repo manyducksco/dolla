@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert";
-import { proxy, observe, readable, writable, computed, unwrap, isReadable, isWritable } from "../lib/index.js";
+import { $, $$, observe, unwrap, isReadable, isWritable } from "../lib/index.js";
 
 test("isReadable, isWritable: returns correct results", (t) => {
-  const $$writable = writable(5);
-  const $readable = readable($$writable);
-  const $computed = computed($readable, (x) => x * 2);
+  const $$writable = $$(5);
+  const $readable = $($$writable);
+  const $computed = $($readable, (x) => x * 2);
 
   assert.strictEqual(isWritable($$writable), true);
   assert.strictEqual(isReadable($$writable), true);
@@ -18,16 +18,16 @@ test("isReadable, isWritable: returns correct results", (t) => {
 });
 
 test("readable, writable, computed: basic functionality", (t) => {
-  const $$writable = writable("writable");
-  const $readable = readable("test");
-  const $x = computed($readable, (v) => v.toUpperCase());
-  const $y = readable($$writable);
+  const $$writable = $$("writable");
+  const $readable = $("test");
+  const $x = $($readable, (v) => v.toUpperCase());
+  const $y = $($$writable);
 
-  const compute = t.mock.fn(([x, y]) => {
+  const compute = t.mock.fn((x, y) => {
     return x + y;
   });
 
-  const $computed = computed([$x, $y], compute);
+  const $computed = $([$x, $y], compute);
 
   assert.strictEqual($computed.get(), "TESTwritable");
 
@@ -51,15 +51,15 @@ test("readable, writable, computed: basic functionality", (t) => {
   assert.strictEqual($computed.get(), "TESTcan you hear me now?");
 
   assert.strictEqual(observer.mock.calls.length, 3);
-  assert.deepEqual(observer.mock.calls[0].arguments, ["writable", undefined]);
-  assert.deepEqual(observer.mock.calls[1].arguments, ["new value", "writable"]);
-  assert.deepEqual(observer.mock.calls[2].arguments, ["new value 2", "new value"]);
+  assert.deepEqual(observer.mock.calls[0].arguments, ["writable"]);
+  assert.deepEqual(observer.mock.calls[1].arguments, ["new value"]);
+  assert.deepEqual(observer.mock.calls[2].arguments, ["new value 2"]);
 });
 
 test("writable -> readable -> readable: chained transforms", (t) => {
-  const $$number = writable(5);
-  const $doubled = computed($$number, (x) => x * 2);
-  const $quadrupled = computed($doubled, (x) => x * 2);
+  const $$number = $$(5);
+  const $doubled = $($$number, (x) => x * 2);
+  const $quadrupled = $($doubled, (x) => x * 2);
   const observer = t.mock.fn();
 
   assert.strictEqual($doubled.get(), 10);
@@ -68,12 +68,12 @@ test("writable -> readable -> readable: chained transforms", (t) => {
   const stop = observe($quadrupled, observer);
 
   assert.strictEqual(observer.mock.calls.length, 1);
-  assert.deepEqual(observer.mock.calls[0].arguments, [20, undefined]);
+  assert.deepEqual(observer.mock.calls[0].arguments, [20]);
 
   $$number.set(50);
 
   assert.strictEqual(observer.mock.calls.length, 2);
-  assert.deepEqual(observer.mock.calls[1].arguments, [200, 20]);
+  assert.deepEqual(observer.mock.calls[1].arguments, [200]);
 
   stop();
 
@@ -86,7 +86,7 @@ test("writable -> readable -> readable: chained transforms", (t) => {
 });
 
 test("writable: update", (t) => {
-  const $$numbers = writable(["one", "two", "three"]);
+  const $$numbers = $$(["one", "two", "three"]);
 
   const original = $$numbers.get();
 
@@ -99,54 +99,54 @@ test("writable: update", (t) => {
 });
 
 test("readable, writable, computed: observer called with initial value when registered", (t) => {
-  const $$value = writable(1);
-  const $value = readable(5);
-  const $doubled = computed($value, (x) => x * 2);
-  const $multi = computed([$value, $doubled], ([x, y]) => x + y);
+  const $$value = $$(1);
+  const $value = $(5);
+  const $doubled = $($value, (x) => x * 2);
+  const $multi = $([$value, $doubled], (x, y) => x + y);
 
   // Writable
   const wObserver = t.mock.fn();
   const wStop = observe($$value, wObserver);
   assert.strictEqual(wObserver.mock.calls.length, 1);
-  assert.deepEqual(wObserver.mock.calls[0].arguments, [1, undefined]);
+  assert.deepEqual(wObserver.mock.calls[0].arguments, [1]);
   wStop();
 
   // Readable
   const rObserver = t.mock.fn();
   const rStop = observe($value, rObserver);
   assert.strictEqual(rObserver.mock.calls.length, 1);
-  assert.deepEqual(rObserver.mock.calls[0].arguments, [5, undefined]);
+  assert.deepEqual(rObserver.mock.calls[0].arguments, [5]);
   rStop();
 
   // Computed (single source)
   const cObserver1 = t.mock.fn();
   const cStop1 = observe($doubled, cObserver1);
   assert.strictEqual(cObserver1.mock.calls.length, 1);
-  assert.deepEqual(cObserver1.mock.calls[0].arguments, [10, undefined]);
+  assert.deepEqual(cObserver1.mock.calls[0].arguments, [10]);
   cStop1();
 
   // Computed (multi source)
   const cObserver2 = t.mock.fn();
   const cStop2 = observe($multi, cObserver2);
   assert.strictEqual(cObserver2.mock.calls.length, 1);
-  assert.deepEqual(cObserver2.mock.calls[0].arguments, [15, undefined]);
+  assert.deepEqual(cObserver2.mock.calls[0].arguments, [15]);
   cStop2();
 });
 
 test("computed: basic functionality", (t) => {
-  const $$one = writable(2);
-  const $$two = writable(4);
-  const $$three = writable(8);
+  const $$one = $$(2);
+  const $$two = $$(4);
+  const $$three = $$(8);
 
-  const joinFirst = t.mock.fn(([one, two]) => {
+  const joinFirst = t.mock.fn((one, two) => {
     return one + two;
   });
-  const $first = computed([$$one, $$two], joinFirst);
+  const $first = $([$$one, $$two], joinFirst);
 
-  const joinSecond = t.mock.fn(([one, two, three]) => {
+  const joinSecond = t.mock.fn((one, two, three) => {
     return one + two + three;
   });
-  const $second = computed([$$one, $$two, $$three], joinSecond);
+  const $second = $([$$one, $$two, $$three], joinSecond);
 
   assert.strictEqual($first.get(), 6);
   assert.strictEqual($second.get(), 14);
@@ -158,7 +158,7 @@ test("computed: basic functionality", (t) => {
   const stop = observe($second, observer);
 
   assert.strictEqual(observer.mock.callCount(), 1);
-  assert.deepEqual(observer.mock.calls[0].arguments, [14, undefined]); // Observer receives initial value.
+  assert.deepEqual(observer.mock.calls[0].arguments, [14]); // Observer receives initial value.
   assert.strictEqual(joinSecond.mock.callCount(), 2);
 
   $$two.set(16);
@@ -173,7 +173,7 @@ test("computed: basic functionality", (t) => {
   assert.strictEqual(joinSecond.mock.callCount(), 3);
 
   assert.strictEqual(observer.mock.callCount(), 2); // Observer received value.
-  assert.deepEqual(observer.mock.calls[1].arguments, [26, 14]);
+  assert.deepEqual(observer.mock.calls[1].arguments, [26]);
 
   stop();
 
@@ -189,10 +189,10 @@ test("computed: basic functionality", (t) => {
 });
 
 test("computed: observers received value when undefined", (t) => {
-  const $$one = writable(true);
-  const $$two = writable(false);
+  const $$one = $$(true);
+  const $$two = $$(false);
 
-  const $joined = computed([$$one, $$two], ([one, two]) => {
+  const $joined = $([$$one, $$two], (one, two) => {
     if (one && two) {
       return true;
     }
@@ -207,19 +207,19 @@ test("computed: observers received value when undefined", (t) => {
   const stop = observe($joined, observer);
 
   assert.strictEqual(observer.mock.calls.length, 1);
-  assert.deepEqual(observer.mock.calls[0].arguments, [undefined, undefined]);
+  assert.deepEqual(observer.mock.calls[0].arguments, [undefined]);
 
   $$two.set(true);
 
   assert.strictEqual($joined.get(), true);
   assert.strictEqual(observer.mock.calls.length, 2);
-  assert.deepEqual(observer.mock.calls[1].arguments, [true, undefined]);
+  assert.deepEqual(observer.mock.calls[1].arguments, [true]);
 
   $$one.set(false);
 
   assert.strictEqual($joined.get(), undefined);
   assert.strictEqual(observer.mock.calls.length, 3);
-  assert.deepEqual(observer.mock.calls[2].arguments, [undefined, true]);
+  assert.deepEqual(observer.mock.calls[2].arguments, [undefined]);
 
   stop();
 
@@ -231,14 +231,14 @@ test("computed: observers received value when undefined", (t) => {
 });
 
 test("computed: observer only gets new values when they are different", (t) => {
-  const $$source = writable({ name: "Jimbo Jones", age: 346 });
-  const $age = computed($$source, (x) => x.age);
+  const $$source = $$({ name: "Jimbo Jones", age: 346 });
+  const $age = $($$source, (x) => x.age);
 
   const ageObserver = t.mock.fn();
   const stop = observe($age, ageObserver);
 
   assert.strictEqual(ageObserver.mock.calls.length, 1);
-  assert.deepEqual(ageObserver.mock.calls[0].arguments, [346, undefined]);
+  assert.deepEqual(ageObserver.mock.calls[0].arguments, [346]);
 
   $$source.update((current) => {
     return { ...current, name: "Not Jimbo Jones" };
@@ -251,19 +251,19 @@ test("computed: observer only gets new values when they are different", (t) => {
   });
 
   assert.strictEqual(ageObserver.mock.calls.length, 2); // Age change should have been observed.
-  assert.deepEqual(ageObserver.mock.calls[1].arguments, [347, 346]);
+  assert.deepEqual(ageObserver.mock.calls[1].arguments, [347]);
 
   stop();
 });
 
 test("proxy", (t) => {
-  const $$numbers = writable([1, 2, 3]);
-  const $$hasTwo = proxy($$numbers, {
-    get(source) {
-      return source.get().includes(2);
+  const $$numbers = $$([1, 2, 3]);
+  const $$hasTwo = $$($$numbers, {
+    get() {
+      return $$numbers.get().includes(2);
     },
-    set(source, value) {
-      source.update((numbers) => {
+    set(value) {
+      $$numbers.update((numbers) => {
         if (value && !numbers.includes(2)) {
           return [...numbers, 2].sort();
         }

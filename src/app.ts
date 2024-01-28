@@ -1,10 +1,10 @@
-import { assertFunction, assertInstanceOf, isObject, isString } from "@borf/bedrock";
 import { CrashCollector } from "./classes/CrashCollector.js";
 import { DebugHub, type DebugOptions } from "./classes/DebugHub.js";
 import { DOMHandle, m } from "./markup.js";
 import { initStore, type Store } from "./store.js";
 import { DocumentStore } from "./stores/document.js";
 import { RenderStore } from "./stores/render.js";
+import { assertFunction, assertInstanceOf, isObject, isString } from "./typeChecking.js";
 import { type BuiltInStores } from "./types.js";
 import { merge } from "./utils.js";
 import { initView, type View, type ViewContext } from "./view.js";

@@ -1,4 +1,4 @@
-import { isObject } from "@borf/bedrock";
+import { isObject } from "../typeChecking.js";
 import { type StoreContext } from "../store.js";
 
 interface HTTPStoreOptions {

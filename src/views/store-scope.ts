@@ -1,5 +1,5 @@
-import { isFunction } from "@borf/bedrock";
 import { Store, initStore } from "../store.js";
+import { isFunction } from "../typeChecking.js";
 import { ViewContext, getViewSecrets } from "../view.js";
 
 export interface StoreConfig<O, E> {
