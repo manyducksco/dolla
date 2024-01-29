@@ -27,7 +27,7 @@ type LanguageOptions = {
   /**
    * Default language to load on startup
    */
-  default?: string;
+  defaultLanguage?: string;
 };
 
 // ----- Code ----- //
@@ -44,7 +44,7 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
   });
 
   ctx.info(
-    `App supports ${languages.size} language${languages.size === 1 ? "" : "s"}: '${[...languages.keys()].join("', '")}'`
+    `App supports ${languages.size} language${languages.size === 1 ? "" : "s"}: '${[...languages.keys()].join("', '")}'`,
   );
 
   async function getTranslation(config: LanguageConfig) {
@@ -64,8 +64,8 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
           `Translation of '${
             config.name
           }' must be an object of translated strings, a path to an object of translated strings, a function that returns one, or an async function that resolves to one. Got type: ${typeOf(
-            config.translations
-          )}, value: ${config.translations}`
+            config.translations,
+          )}, value: ${config.translations}`,
         );
       }
 
@@ -73,7 +73,7 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
         const translation = await fn();
         assertObject(
           translation,
-          `Expected '${config.name}' translations to resolve to an object. Got type: %t, value: %v`
+          `Expected '${config.name}' translations to resolve to an object. Got type: %t, value: %v`,
         );
         cache.set(config.name, translation);
       } catch (err) {
@@ -91,20 +91,16 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
   // Fallback labels for missing state and data.
   const $noLanguageValue = $("[NO LANGUAGE SET]");
 
-  // Cache readable translations by key and values.
-  // Return a cached one instead of creating a new, identical mapped value.
-  // The same keys are typically used in many places across the app.
-
   // TODO: Keep an eye on this for memory leaks. Keeping a bunch of unused alternates with varied values might be an issue.
   const translationCache: [
     key: string,
     values: Record<string, Stringable | Readable<Stringable>> | undefined,
-    readable: Readable<string>
+    readable: Readable<string>,
   ][] = [];
 
   function getCached(
     key: string,
-    values?: Record<string, Stringable | Readable<Stringable>>
+    values?: Record<string, Stringable | Readable<Stringable>>,
   ): Readable<string> | undefined {
     for (const entry of translationCache) {
       if (entry[0] === key && deepEqual(entry[1], values)) {
@@ -123,49 +119,77 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
     return template;
   }
 
-  // TODO: Determine and load default language.
-  const currentLanguage = ctx.options.default
-    ? languages.get(ctx.options.default)
-    : languages.get([...languages.keys()][0]);
+  async function setLanguage(tag: string) {
+    let realTag!: string;
 
-  if (currentLanguage == null) {
-    $$isLoaded.set(true);
-  } else {
-    ctx.info(`Current language is '${currentLanguage.name}'.`);
+    if (tag === "auto") {
+      let tags = [];
 
-    getTranslation(currentLanguage).then((translation) => {
-      $$language.set(currentLanguage.name);
+      if (typeof navigator === "object") {
+        const nav = navigator as any;
+
+        if (nav.languages?.length > 0) {
+          tags.push(...nav.languages);
+        } else if (nav.language) {
+          tags.push(nav.language);
+        } else if (nav.browserLanguage) {
+          tags.push(nav.browserLanguage);
+        } else if (nav.userLanguage) {
+          tags.push(nav.userLanguage);
+        }
+      }
+
+      for (const tag of tags) {
+        if (languages.has(tag)) {
+          // Found a matching language.
+          realTag = tag;
+        }
+      }
+    } else {
+      // Tag is the actual tag to set.
+      if (languages.has(tag)) {
+        realTag = tag;
+      }
+    }
+
+    if (realTag == null) {
+      const firstLanguage = ctx.options.languages[0];
+      if (firstLanguage) {
+        realTag = firstLanguage.name;
+      }
+    }
+
+    if (!realTag || !languages.has(tag)) {
+      throw new Error(`Language '${tag}' is not configured for this app.`);
+    }
+
+    const lang = languages.get(tag)!;
+
+    try {
+      const translation = await getTranslation(lang);
+
       $$translation.set(translation);
+      $$language.set(tag);
 
-      $$isLoaded.set(true);
-    });
+      ctx.info("set language to " + tag);
+    } catch (error) {
+      if (error instanceof Error) {
+        ctx.crash(error);
+      }
+    }
   }
+
+  // TODO: Determine and load default language.
+  setLanguage(ctx.options.defaultLanguage ?? "auto").then(() => {
+    $$isLoaded.set(true);
+  });
 
   return {
     $isLoaded: $($$isLoaded),
     $currentLanguage: $($$language),
     supportedLanguages: [...languages.keys()],
 
-    async setLanguage(tag: string) {
-      if (!languages.has(tag)) {
-        throw new Error(`Language '${tag}' is not supported.`);
-      }
-
-      const lang = languages.get(tag)!;
-
-      try {
-        const translation = await getTranslation(lang);
-
-        $$translation.set(translation);
-        $$language.set(tag);
-
-        ctx.info("set language to " + tag);
-      } catch (error) {
-        if (error instanceof Error) {
-          ctx.crash(error);
-        }
-      }
-    },
+    setLanguage,
 
     /**
      * Returns a Readable of the translated value.

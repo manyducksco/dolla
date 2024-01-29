@@ -1,17 +1,10 @@
 import assert from "node:assert";
 import test from "node:test";
 
-import {
-  Route,
-  joinPath,
-  matchRoutes,
-  patternToFragments,
-  resolvePath,
-  sortRoutes,
-} from "./routing.js";
+import { ParsedRoute, joinPath, matchRoutes, patternToFragments, resolvePath, sortRoutes } from "./routing.js";
 
 test("add and match routes", (t) => {
-  let routes: Route<{ testId: number }>[] = [];
+  let routes: ParsedRoute<{ testId: number }>[] = [];
 
   routes.push({
     pattern: "/{named}",
@@ -52,14 +45,14 @@ test("add and match routes", (t) => {
   const match4 = matchRoutes(
     routes,
     // Query params should be parsed but won't affect path matching.
-    "/users/123/edit?example=5&other_thing=test&yes=true"
+    "/users/123/edit?example=5&other_thing=test&yes=true",
   );
   const match5 = matchRoutes(routes, "/users/2/edit");
   const match6 = matchRoutes(routes, "/wild/some/other/stuff");
   const matchNone = matchRoutes(routes, "/no/matches/too/many/segments");
 
   assert(match1);
-  assert.equal(match1!.meta.testId, 1)
+  assert.equal(match1!.meta.testId, 1);
   assert.deepEqual(match1!.params, { named: "example" });
 
   assert(match2);

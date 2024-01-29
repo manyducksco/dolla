@@ -40,14 +40,14 @@ export type RouteFragment = {
   value: string | number | null;
 };
 
-export type Route<T> = {
+export type ParsedRoute<T> = {
   pattern: string;
   fragments: RouteFragment[];
   meta: T;
 };
 
 export type RouteMatchOptions<T> = {
-  willMatch?: (route: Route<T>) => boolean;
+  willMatch?: (route: ParsedRoute<T>) => boolean;
 };
 
 /**
@@ -75,7 +75,7 @@ export function joinPath(parts: { toString(): string }[]): string {
   assertArrayOf(
     (part) => isFunction(part?.toString),
     parts,
-    "Expected `parts` to be an array of objects with a .toString() method. Got type: %t, value: %v"
+    "Expected `parts` to be an array of objects with a .toString() method. Got type: %t, value: %v",
   );
 
   parts = parts.filter((x) => x).flatMap(String);
@@ -144,9 +144,7 @@ export function resolvePath(base: string, part: string | null) {
   return joinPath([resolved, part]);
 }
 
-export function parseQueryParams(
-  query: string
-): Record<string, string | number | boolean> {
+export function parseQueryParams(query: string): Record<string, string | number | boolean> {
   if (!query) return {};
 
   const entries = query
@@ -181,17 +179,16 @@ export function parseQueryParams(
  * @param options - Options to customize how matching operates.
  */
 export function matchRoutes<T>(
-  routes: Route<T>[],
+  routes: ParsedRoute<T>[],
   url: string,
-  options: RouteMatchOptions<T> = {}
+  options: RouteMatchOptions<T> = {},
 ): RouteMatch<T> | undefined {
   const [path, query] = url.split("?");
   const parts = splitPath(path);
 
   routes: for (const route of routes) {
     const { fragments } = route;
-    const hasWildcard =
-      fragments[fragments.length - 1]?.type === FragTypes.Wildcard;
+    const hasWildcard = fragments[fragments.length - 1]?.type === FragTypes.Wildcard;
 
     if (!hasWildcard && fragments.length !== parts.length) {
       continue routes;
@@ -283,7 +280,7 @@ export function matchRoutes<T>(
  *
  * Routes without named params and routes with more fragments are weighted more heavily.
  */
-export function sortRoutes<T>(routes: Route<T>[]): Route<T>[] {
+export function sortRoutes<T>(routes: ParsedRoute<T>[]): ParsedRoute<T>[] {
   const withoutParams = [];
   const withNumericParams = [];
   const withParams = [];
@@ -303,7 +300,7 @@ export function sortRoutes<T>(routes: Route<T>[]): Route<T>[] {
     }
   }
 
-  const bySizeDesc = (a: Route<T>, b: Route<T>) => {
+  const bySizeDesc = (a: ParsedRoute<T>, b: ParsedRoute<T>) => {
     if (a.fragments.length > b.fragments.length) {
       return -1;
     } else {
@@ -333,9 +330,7 @@ export function patternToFragments(pattern: string): RouteFragment[] {
 
     if (part === "*") {
       if (i !== parts.length - 1) {
-        throw new Error(
-          `Wildcard must be at the end of a pattern. Received: ${pattern}`
-        );
+        throw new Error(`Wildcard must be at the end of a pattern. Received: ${pattern}`);
       }
       fragments.push({
         type: FragTypes.Wildcard,

@@ -13,7 +13,8 @@ import { $, $$ } from "../state.js";
 import { getStoreSecrets, type StoreContext } from "../store.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
-import { View, type ViewContext } from "../view.js";
+import { type View } from "../view.js";
+import { DefaultView } from "../views/default-view.js";
 
 // ----- Types ----- //
 
@@ -102,8 +103,6 @@ interface RouterStoreOptions {
 }
 
 // ----- Code ----- //
-
-const DefaultView = (_: {}, ctx: ViewContext) => ctx.outlet();
 
 export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
   ctx.name = "dolla/router";
@@ -208,7 +207,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         pattern: route.pattern,
         meta: route.meta,
         fragments: patternToFragments(route.pattern),
-      }))
+      })),
   );
 
   // Test redirects to make sure all possible redirect targets actually exist.
