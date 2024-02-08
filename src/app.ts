@@ -66,7 +66,15 @@ export interface StoreRegistration<O = any> {
 }
 
 interface ConfigureContext {
-  // use
+  /**
+   * Returns the shared instance of `store`.
+   */
+  getStore<T extends Store<any, any>>(store: T): ReturnType<T>;
+
+  /**
+   * Returns the shared instance of a built-in store.
+   */
+  getStore<N extends keyof BuiltInStores>(name: N): BuiltInStores[N];
 }
 
 type ConfigureCallback = (ctx: ConfigureContext) => void | Promise<void>;
@@ -224,6 +232,43 @@ export function App(options?: IAppOptions): IApp {
       if (configureCallback) {
         await configureCallback({
           // TODO: Add context methods
+          getStore(store: keyof BuiltInStores | Store<any, any>) {
+            let name: string;
+
+            if (typeof store === "string") {
+              name = store as keyof BuiltInStores;
+            } else {
+              name = store.name;
+            }
+
+            if (typeof store !== "string") {
+              let ec: ElementContext | undefined = elementContext;
+              while (ec) {
+                if (ec.stores.has(store)) {
+                  return ec.stores.get(store)?.instance!.exports;
+                }
+                ec = ec.parent;
+              }
+            }
+
+            if (appContext.stores.has(store)) {
+              const _store = appContext.stores.get(store)!;
+
+              if (!_store.instance) {
+                appContext.crashCollector.crash({
+                  componentName: "@manyducks.co/dolla/App",
+                  error: new Error(`Store '${name}' is not registered on this app.`),
+                });
+              }
+
+              return _store.instance!.exports;
+            }
+
+            appContext.crashCollector.crash({
+              componentName: "@manyducks.co/dolla/App",
+              error: new Error(`Store '${name}' is not registered on this app.`),
+            });
+          },
         });
       }
 

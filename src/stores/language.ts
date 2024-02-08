@@ -1,4 +1,4 @@
-import { $, $$, isReadable, type Readable } from "../state.js";
+import { $, $$, isReadable, observe, type Readable } from "../state.js";
 import { type StoreContext } from "../store.js";
 import { assertObject, isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
@@ -159,19 +159,19 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
       }
     }
 
-    if (!realTag || !languages.has(tag)) {
+    if (!realTag || !languages.has(realTag)) {
       throw new Error(`Language '${tag}' is not configured for this app.`);
     }
 
-    const lang = languages.get(tag)!;
+    const lang = languages.get(realTag)!;
 
     try {
       const translation = await getTranslation(lang);
 
       $$translation.set(translation);
-      $$language.set(tag);
+      $$language.set(realTag);
 
-      ctx.info("set language to " + tag);
+      ctx.info("set language to " + realTag);
     } catch (error) {
       if (error instanceof Error) {
         ctx.crash(error);
@@ -185,6 +185,17 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
   });
 
   return {
+    loaded: new Promise<void>((resolve, reject) => {
+      const stop = observe($$isLoaded, (isLoaded) => {
+        if (isLoaded) {
+          setTimeout(() => {
+            stop();
+            resolve();
+          }, 0);
+        }
+      });
+    }),
+
     $isLoaded: $($$isLoaded),
     $currentLanguage: $($$language),
     supportedLanguages: [...languages.keys()],
