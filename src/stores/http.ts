@@ -91,7 +91,7 @@ function getDefaultFetch(): typeof window.fetch {
 
 export type HTTPMiddleware = (
   request: HTTPRequest<unknown>,
-  next: () => Promise<HTTPResponse<unknown>>
+  next: () => Promise<HTTPResponse<unknown>>,
 ) => void | Promise<void>;
 
 interface RequestOptions<ReqBody> {
@@ -103,12 +103,12 @@ interface RequestOptions<ReqBody> {
   /**
    * Headers to send with the request.
    */
-  headers?: Record<string, string | number | boolean> | Headers;
+  headers?: Record<string, any> | Headers;
 
   /**
    * Query params to interpolate into the URL.
    */
-  query?: Record<string, string | number | boolean> | URLSearchParams;
+  query?: Record<string, any> | URLSearchParams;
 }
 
 interface HTTPRequest<Body> {
@@ -171,7 +171,12 @@ async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>)
       });
     } else if (headers != null && typeof headers === "object" && !Array.isArray(headers)) {
       for (const name in headers) {
-        request.headers.set(name, String(headers[name]));
+        const value = headers[name];
+        if (value instanceof Date) {
+          request.headers.set(name, value.toISOString());
+        } else if (value != null) {
+          request.headers.set(name, String(value));
+        }
       }
     } else {
       throw new TypeError(`Unknown headers type. Got: ${headers}`);
@@ -186,7 +191,12 @@ async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>)
       });
     } else if (query != null && typeof query === "object" && !Array.isArray(query)) {
       for (const name in query) {
-        request.query.set(name, String(query[name]));
+        const value = query[name];
+        if (value instanceof Date) {
+          request.query.set(name, value.toISOString());
+        } else if (value != null) {
+          request.query.set(name, String(value));
+        }
       }
     } else {
       throw new TypeError(`Unknown query params type. Got: ${query}`);
