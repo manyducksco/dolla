@@ -10,19 +10,57 @@ import {
   splitPath,
 } from "../routing.js";
 import { $, $$ } from "../state.js";
-import { getStoreSecrets, type StoreContext } from "../store.js";
+import { getStoreSecrets, type Store, type StoreContext } from "../store.js";
 import { isFunction, isString } from "../typeChecking.js";
-import { type Stringable } from "../types.js";
+import { type BuiltInStores, type Stringable } from "../types.js";
 import { type View } from "../view.js";
 import { DefaultView } from "../views/default-view.js";
+import { ElementContext } from "../app.js";
 
 // ----- Types ----- //
 
+export interface RouteMatchContext {
+  /**
+   * Returns the shared instance of `store`.
+   */
+  getStore<T extends Store<any, any>>(store: T): ReturnType<T>;
+
+  /**
+   * Returns the shared instance of a built-in store.
+   */
+  getStore<N extends keyof BuiltInStores>(name: N): BuiltInStores[N];
+
+  /**
+   * Redirects the user to a different route instead of matching the current one.
+   */
+  redirect(path: string): void;
+}
+
 export interface Route {
+  /**
+   * The path or path fragment to match.
+   */
   path: string;
+
+  /**
+   * Path to redirect to when this route is matched.
+   */
   redirect?: string;
+
+  /**
+   * View to display when this route is matched.
+   */
   view?: View<any>;
+
+  /**
+   * Subroutes.
+   */
   routes?: Route[];
+
+  /**
+   * Called after the match is identified but before it is acted on. Use this to set state, load data, etc.
+   */
+  beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
 }
 
 export interface RouteConfig {
@@ -31,6 +69,7 @@ export interface RouteConfig {
     redirect?: string | ((ctx: RedirectContext) => void);
     pattern?: string;
     layers?: RouteLayer[];
+    beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
   };
 }
 
@@ -193,6 +232,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         meta: {
           pattern: route.path,
           layers: [...layers, layer],
+          beforeMatch: route.beforeMatch,
         },
       });
     }
@@ -307,6 +347,52 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         wildcard: location.pathname,
       });
       return;
+    }
+
+    if (matched.meta.beforeMatch) {
+      await matched.meta.beforeMatch({
+        getStore(store: keyof BuiltInStores | Store<any, any>) {
+          let name: string;
+
+          if (typeof store === "string") {
+            name = store as keyof BuiltInStores;
+          } else {
+            name = store.name;
+          }
+
+          if (typeof store !== "string") {
+            let ec: ElementContext | undefined = elementContext;
+            while (ec) {
+              if (ec.stores.has(store)) {
+                return ec.stores.get(store)?.instance!.exports;
+              }
+              ec = ec.parent;
+            }
+          }
+
+          if (appContext.stores.has(store)) {
+            const _store = appContext.stores.get(store)!;
+
+            if (!_store.instance) {
+              appContext.crashCollector.crash({
+                componentName: ctx.name,
+                error: new Error(`Store '${name}' is not registered on this app.`),
+              });
+            }
+
+            return _store.instance!.exports;
+          }
+
+          appContext.crashCollector.crash({
+            componentName: ctx.name,
+            error: new Error(`Store '${name}' is not registered on this app.`),
+          });
+        },
+        redirect: (path) => {
+          // TODO: Implement
+          throw new Error(`Redirect not yet implemented.`);
+        },
+      });
     }
 
     ctx.info(`Matched route: '${matched.pattern}'`);

@@ -12,7 +12,7 @@ export { Fragment } from "./views/fragment.js";
 export { StoreScope, type StoreScopeProps } from "./views/store-scope.js";
 
 // Stores
-export { RouterStore } from "./stores/router.js";
+export { RouterStore, type RouteMatchContext } from "./stores/router.js";
 export { LanguageStore } from "./stores/language.js";
 export { HTTPStore, type HTTPMiddleware } from "./stores/http.js";
 export { DialogStore, type DialogProps } from "./stores/dialog.js";
