@@ -75,20 +75,20 @@ export interface ViewContext extends DebugChannel {
    */
   observe<T extends MaybeReadable<any>[]>(
     states: [...T],
-    callback: (...currentValues: ReadableValues<T>) => void
+    callback: (...currentValues: ReadableValues<T>) => void,
   ): void;
 
   observe<I1, I2>(
     state1: MaybeReadable<I1>,
     state2: MaybeReadable<I2>,
-    callback: (value1: I1, value2: I2) => void
+    callback: (value1: I1, value2: I2) => void,
   ): void;
 
   observe<I1, I2, I3>(
     state1: MaybeReadable<I1>,
     state2: MaybeReadable<I2>,
     state3: MaybeReadable<I3>,
-    callback: (value1: I1, value2: I2, value3: I3) => void
+    callback: (value1: I1, value2: I2, value3: I3) => void,
   ): void;
 
   observe<I1, I2, I3, I4>(
@@ -96,7 +96,7 @@ export interface ViewContext extends DebugChannel {
     state2: MaybeReadable<I2>,
     state3: MaybeReadable<I3>,
     state4: MaybeReadable<I4>,
-    callback: (value1: I1, value2: I2, value3: I3, value4: I4) => void
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4) => void,
   ): void;
 
   observe<I1, I2, I3, I4, I5>(
@@ -105,7 +105,7 @@ export interface ViewContext extends DebugChannel {
     state3: MaybeReadable<I3>,
     state4: MaybeReadable<I4>,
     state5: MaybeReadable<I5>,
-    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => void
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => void,
   ): void;
 
   observe<I1, I2, I3, I4, I5, I6>(
@@ -115,7 +115,7 @@ export interface ViewContext extends DebugChannel {
     state4: MaybeReadable<I4>,
     state5: MaybeReadable<I5>,
     state6: MaybeReadable<I6>,
-    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => void
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => void,
   ): void;
 
   observe<I1, I2, I3, I4, I5, I6, I7>(
@@ -126,7 +126,7 @@ export interface ViewContext extends DebugChannel {
     state5: MaybeReadable<I5>,
     state6: MaybeReadable<I6>,
     state7: MaybeReadable<I7>,
-    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => void
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => void,
   ): void;
 
   observe<I1, I2, I3, I4, I5, I6, I7, I8>(
@@ -138,7 +138,7 @@ export interface ViewContext extends DebugChannel {
     state6: MaybeReadable<I6>,
     state7: MaybeReadable<I7>,
     state8: MaybeReadable<I8>,
-    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7, value8: I8) => void
+    callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7, value8: I8) => void,
   ): void;
 
   observe<I1, I2, I3, I4, I5, I6, I7, I8, I9>(
@@ -160,8 +160,8 @@ export interface ViewContext extends DebugChannel {
       value6: I6,
       value7: I7,
       value8: I8,
-      value9: I9
-    ) => void
+      value9: I9,
+    ) => void,
   ): void;
 
   observe<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10>(
@@ -185,8 +185,8 @@ export interface ViewContext extends DebugChannel {
       value7: I7,
       value8: I8,
       value9: I9,
-      value10: I10
-    ) => void
+      value10: I10,
+    ) => void,
   ): void;
 
   /**
@@ -382,7 +382,7 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
       rendered = getRenderHandle(renderMarkupToDOM(result, { appContext, elementContext }));
     } else if (isReadable(result)) {
       rendered = getRenderHandle(
-        renderMarkupToDOM(m("$observer", { readables: [result], renderFn: (x) => x }), { appContext, elementContext })
+        renderMarkupToDOM(m("$observer", { readables: [result], renderFn: (x) => x }), { appContext, elementContext }),
       );
     } else {
       console.warn(result, config);
@@ -390,7 +390,7 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
         error: new TypeError(
           `Expected '${
             config.view.name
-          }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`
+          }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
         ),
         componentName: ctx.name,
       });
@@ -459,6 +459,7 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     },
 
     async setChildren(children) {
+      console.log("setChildren", { name: ctx.name, children });
       $$children.set(children);
     },
   };

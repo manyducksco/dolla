@@ -148,7 +148,7 @@ export function cond(predicate: any | Readable<any>, thenContent?: Renderable, e
 export function repeat<T>(
   items: Readable<T[]> | T[],
   keyFn: (value: T, index: number) => string | number | symbol,
-  renderFn: ($value: Readable<T>, $index: Readable<number>, ctx: ViewContext) => ViewResult
+  renderFn: ($value: Readable<T>, $index: Readable<number>, ctx: ViewContext) => ViewResult,
 ): Markup {
   const $items = $(items);
 
@@ -305,17 +305,17 @@ export function getRenderHandle(handles: DOMHandle[]): DOMHandle {
     get connected() {
       return isConnected;
     },
-    async connect(parent: Node, after?: Node) {
+    connect(parent: Node, after?: Node) {
       parent.insertBefore(node, after ? after : null);
 
       for (const handle of handles) {
         const previous = handles[handles.length - 1]?.node ?? node;
-        await handle.connect(parent, previous);
+        handle.connect(parent, previous);
       }
 
       isConnected = true;
     },
-    async disconnect() {
+    disconnect() {
       if (isConnected) {
         for (const handle of handles) {
           handle.disconnect();
@@ -326,7 +326,9 @@ export function getRenderHandle(handles: DOMHandle[]): DOMHandle {
 
       isConnected = false;
     },
-    async setChildren() {},
+    setChildren() {
+      throw new Error(`setChildren not supported on renderHandle`);
+    },
   };
 }
 

@@ -167,7 +167,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
    * @param route - Route config object.
    * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
    */
-  function prepareRoute(route: Route, layers = []) {
+  function prepareRoute(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
     if (!(typeof route === "object" && !Array.isArray(route)) || !(typeof route.path === "string")) {
       throw new TypeError(`Route configs must be objects with a 'path' string property. Got: ${route}`);
     }
@@ -180,7 +180,13 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
       throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
     }
 
-    const parts = splitPath(route.path);
+    let parts: string[] = [];
+
+    for (const parent of parents) {
+      parts.push(...splitPath(parent.path));
+    }
+
+    parts.push(...splitPath(route.path));
 
     // Remove trailing wildcard for joining with nested routes.
     if (parts[parts.length - 1] === "*") {
@@ -200,8 +206,10 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         }
       }
 
+      console.log({ parts, route, parents, layers });
+
       routes.push({
-        pattern: route.path,
+        pattern: "/" + joinPath([...parts, ...splitPath(route.path)]),
         meta: {
           redirect,
         },
@@ -218,17 +226,17 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
       throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
     }
 
+    const markup = m(view);
+    const layer: RouteLayer = { id: layerId++, markup };
+
     // Parse nested routes if they exist.
     if (route.routes) {
       for (const subroute of route.routes) {
-        routes.push(...prepareRoute(subroute));
+        routes.push(...prepareRoute(subroute, [...parents, route], [...layers, layer]));
       }
     } else {
-      const markup = m(view);
-      const layer: RouteLayer = { id: layerId++, markup };
-
       routes.push({
-        pattern: route.path,
+        pattern: parent ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
         meta: {
           pattern: route.path,
           layers: [...layers, layer],
@@ -276,7 +284,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
   }
 
   ctx.onConnected(() => {
-    ctx.info(`Total routes: ${routes.length}`);
+    ctx.info("Routes registered:", routes);
   });
 
   const $$pattern = $$<string | null>(null);
@@ -395,7 +403,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
       });
     }
 
-    ctx.info(`Matched route: '${matched.pattern}'`);
+    ctx.info(`Matched route: '${matched.pattern}' ('${matched.path}')`);
 
     if (matched.meta.redirect != null) {
       if (typeof matched.meta.redirect === "string") {
@@ -430,7 +438,8 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
           const activeLayer = activeLayers[i];
 
           if (activeLayer?.id !== matchedLayer.id) {
-            ctx.info(`Replacing layer ${i} (active ID: ${activeLayer?.id}, matched ID: ${matchedLayer.id})`);
+            ctx.info(`Replacing layer @${i} (active ID: ${activeLayer?.id}, matched ID: ${matchedLayer.id})`);
+
             activeLayers = activeLayers.slice(0, i);
 
             const parentLayer = activeLayers[activeLayers.length - 1];
@@ -439,18 +448,17 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
             const rendered = renderMarkupToDOM(matchedLayer.markup, renderContext);
             const handle = getRenderHandle(rendered);
 
-            render.update(() => {
-              if (activeLayer && activeLayer.handle.connected) {
-                // Disconnect first mismatched active layer.
-                activeLayer.handle.disconnect();
-              }
+            if (activeLayer && activeLayer.handle.connected) {
+              // Disconnect first mismatched active layer.
+              activeLayer.handle.disconnect();
+            }
 
-              if (parentLayer) {
-                parentLayer.handle.setChildren(rendered);
-              } else {
-                appContext.rootView!.setChildren(rendered);
-              }
-            }, "dolla-router-change");
+            if (parentLayer) {
+              parentLayer.handle.setChildren(rendered);
+              ctx.log({ rendered, markup: matchedLayer.markup });
+            } else {
+              appContext.rootView!.setChildren(rendered);
+            }
 
             // Push and connect new active layer.
             activeLayers.push({ id: matchedLayer.id, handle });
