@@ -206,8 +206,6 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         }
       }
 
-      console.log({ parts, route, parents, layers });
-
       routes.push({
         pattern: "/" + joinPath([...parts, ...splitPath(route.path)]),
         meta: {
@@ -319,8 +317,11 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     history.listen(onRouteChange);
     onRouteChange(history);
 
+    ctx.info("Intercepting <a> clicks within root element:", appContext.rootElement);
     catchLinks(appContext.rootElement!, (anchor) => {
       let href = anchor.getAttribute("href")!;
+
+      ctx.info("Intercepted link click", anchor, href);
 
       if (!/^https?:\/\/|^\//.test(href)) {
         href = joinPath([history.location.pathname, href]);
@@ -455,7 +456,6 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
 
             if (parentLayer) {
               parentLayer.handle.setChildren(rendered);
-              ctx.log({ rendered, markup: matchedLayer.markup });
             } else {
               appContext.rootView!.setChildren(rendered);
             }

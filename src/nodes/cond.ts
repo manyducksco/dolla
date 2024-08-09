@@ -78,6 +78,10 @@ export class Conditional implements DOMHandle {
     }
     this.connectedContent = [];
 
+    if (this.node.parentNode == null) {
+      return;
+    }
+
     if (value && this.thenContent) {
       this.connectedContent = renderMarkupToDOM(this.thenContent, this);
     } else if (!value && this.elseContent) {
@@ -87,7 +91,7 @@ export class Conditional implements DOMHandle {
     for (let i = 0; i < this.connectedContent.length; i++) {
       const handle = this.connectedContent[i];
       const previous = this.connectedContent[i - 1]?.node ?? this.node;
-      handle.connect(this.node.parentNode!, previous);
+      handle.connect(this.node.parentNode, previous);
     }
 
     if (this.appContext.mode === "development") {
