@@ -459,7 +459,6 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     },
 
     async setChildren(children) {
-      console.log("setChildren", { name: ctx.name, children });
       $$children.set(children);
     },
   };
