@@ -25,6 +25,16 @@ export interface ViewContext extends DebugChannel {
   readonly uniqueId: string;
 
   /**
+   * Sets a variable in the view context. This variable is accessible to child views.
+   */
+  set<T>(name: string, value: T): void;
+
+  /**
+   * Gets a variable from the view context.
+   */
+  get<T>(name: string): T;
+
+  /**
    * Returns the shared instance of `store`.
    */
   getStore<T extends Store<any, any>>(store: T): ReturnType<T>;
@@ -239,6 +249,8 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
   const $$children = $$<DOMHandle[]>(renderMarkupToDOM(config.children ?? [], { appContext, elementContext }));
 
   let isConnected = false;
+  let variables: Record<string, any> = {};
+  let _parentElement: Node | null = null;
 
   // Lifecycle and observers
   const stopObserverCallbacks: (() => void)[] = [];
@@ -255,6 +267,33 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     },
 
     name: config.view.name ?? "anonymous",
+
+    set<T>(name: string, value: T) {
+      variables[name] = value;
+    },
+
+    get<T>(name: string): T {
+      if (variables.hasOwnProperty(name)) {
+        return variables[name] as T;
+      } else if (_parentElement) {
+        let element: any = _parentElement;
+        while (element) {
+          if (element["__variables"]?.hasOwnProperty(name)) {
+            return element["__variables"][name] as T;
+          }
+          element = element.parentElement;
+        }
+      } else {
+        // Not connected yet.
+      }
+
+      const error = new Error(`Context variable '${name}' is not defined.`);
+      appContext.crashCollector.crash({
+        componentName: ctx.name,
+        error,
+      });
+      throw error;
+    },
 
     getStore(store: keyof BuiltInStores | Store<any, any>) {
       let name: string;
@@ -425,6 +464,8 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
 
       if (!wasConnected) {
         isConnected = true;
+        _parentElement = parent;
+        (parent as any)["__variables"] = variables;
 
         requestAnimationFrame(() => {
           while (connectedCallbacks.length > 0) {
@@ -446,6 +487,7 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
       }
 
       isConnected = false;
+      _parentElement = null;
 
       while (disconnectedCallbacks.length > 0) {
         const callback = disconnectedCallbacks.shift()!;
@@ -459,7 +501,6 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     },
 
     async setChildren(children) {
-      console.log("setChildren", { name: ctx.name, children });
       $$children.set(children);
     },
   };
