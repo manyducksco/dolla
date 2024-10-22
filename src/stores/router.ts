@@ -411,7 +411,8 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         let path = matched.meta.redirect;
 
         for (const key in matched.params) {
-          path = path.replace(":" + key, matched.params[key].toString());
+          const value = matched.params[key].toString();
+          path = path.replace(`{${key}}`, value).replace(`{#${key}}`, value);
         }
 
         // TODO: Update this code to work with new `{param}` style. Looks like it's still for `:params`
