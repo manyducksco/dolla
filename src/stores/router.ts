@@ -43,9 +43,9 @@ export interface Route {
   path: string;
 
   /**
-   * Path to redirect to when this route is matched.
+   * Path to redirect to when this route is matched, or a callback function that returns such path.
    */
-  redirect?: string;
+  redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
 
   /**
    * View to display when this route is matched.
@@ -66,7 +66,7 @@ export interface Route {
 export interface RouteConfig {
   pattern: string;
   meta: {
-    redirect?: string | ((ctx: RedirectContext) => void);
+    redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
     pattern?: string;
     layers?: RouteLayer[];
     beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
@@ -79,9 +79,9 @@ export interface RouteLayer {
 }
 
 /**
- * Properties passed to a redirect function.
+ * Object passed to redirect callbacks. Contains information useful for determining how to redirect.
  */
-export interface RedirectContext {
+export interface RouteRedirectContext {
   /**
    * The path as it appears in the URL bar.
    */
@@ -262,21 +262,22 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
       let redirectPath: string;
 
       if (isFunction(route.meta.redirect)) {
-        throw new Error(`Redirect functions are not yet supported.`);
+        // throw new Error(`Redirect functions are not yet supported.`);
+        // Just allow, though it could fail later. Best not to call the function and cause potential side effects.
       } else if (isString(route.meta.redirect)) {
         redirectPath = route.meta.redirect;
+
+        const match = matchRoutes(routes, redirectPath, {
+          willMatch(r) {
+            return r !== route;
+          },
+        });
+
+        if (!match) {
+          throw new Error(`Found a redirect to an undefined URL. From '${route.pattern}' to '${route.meta.redirect}'`);
+        }
       } else {
         throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
-      }
-
-      const match = matchRoutes(routes, redirectPath, {
-        willMatch(r) {
-          return r !== route;
-        },
-      });
-
-      if (!match) {
-        throw new Error(`Found a redirect to an undefined URL. From '${route.pattern}' to '${route.meta.redirect}'`);
       }
     }
   }
@@ -408,20 +409,26 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
 
     if (matched.meta.redirect != null) {
       if (typeof matched.meta.redirect === "string") {
-        let path = matched.meta.redirect;
-
-        for (const key in matched.params) {
-          const value = matched.params[key].toString();
-          path = path.replace(`{${key}}`, value).replace(`{#${key}}`, value);
-        }
-
-        // TODO: Update this code to work with new `{param}` style. Looks like it's still for `:params`
-
+        const path = replaceParams(matched.meta.redirect, matched.params);
         ctx.info(`Redirecting to: '${path}'`);
         history.replace(path);
       } else if (typeof matched.meta.redirect === "function") {
-        // TODO: Implement redirect by function.
-        throw new Error(`Redirect functions aren't implemented yet.`);
+        const redirectContext: RouteRedirectContext = {
+          path: matched.path,
+          pattern: matched.pattern,
+          params: matched.params,
+          query: matched.query,
+        };
+        let path = await matched.meta.redirect(redirectContext);
+        if (typeof path !== "string") {
+          throw new Error(`Redirect function must return a path to redirect to.`);
+        }
+        if (!path.startsWith("/")) {
+          // Not absolute. Resolve against matched path.
+          path = resolvePath(matched.path, path);
+        }
+        ctx.info(`Redirecting to: '${path}'`);
+        history.replace(path);
       } else {
         throw new TypeError(`Redirect must either be a path string or a function.`);
       }
@@ -535,6 +542,16 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
      * @param args - One or more path segments optionally followed by an options object.
      */
     navigate,
+
+    /**
+     * Updates a query param in place.
+     */
+    // updateQuery(key: string, value: string) {},
+
+    /**
+     * Updates a route param in place.
+     */
+    // updateParam(key: string, value: string) {},
   };
 }
 
@@ -595,4 +612,16 @@ export function catchLinks(root: HTMLElement, callback: (anchor: HTMLAnchorEleme
   return function cancel() {
     root.removeEventListener("click", handler);
   };
+}
+
+/**
+ * Replace route pattern param placeholders with real matched values.
+ */
+function replaceParams(path: string, params: Record<string, string | number>) {
+  for (const key in params) {
+    const value = params[key].toString();
+    path = path.replace(`{${key}}`, value).replace(`{#${key}}`, value);
+  }
+
+  return path;
 }
