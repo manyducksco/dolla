@@ -151,7 +151,7 @@ export class HTML implements DOMHandle {
             render.update(() => {
               callback(value);
             }, updateKey);
-          })
+          }),
         );
       } else {
         render.update(() => {
@@ -176,7 +176,7 @@ export class HTML implements DOMHandle {
                 (element as any).setAttribute(name, String(current));
               }
             },
-            this.getUpdateKey("attr", name)
+            this.getUpdateKey("attr", name),
           );
         }
       } else if (key === "eventListeners") {
@@ -203,7 +203,7 @@ export class HTML implements DOMHandle {
           (current) => {
             (element as any).value = String(current);
           },
-          this.getUpdateKey("prop", "value")
+          this.getUpdateKey("prop", "value"),
         );
 
         const listener: EventListener = (e) => {
@@ -257,7 +257,7 @@ export class HTML implements DOMHandle {
               element.setAttribute(key, String(current));
             }
           },
-          this.getUpdateKey("attr", key)
+          this.getUpdateKey("attr", key),
         );
       } else if (!privateProps.includes(key)) {
         if (this.elementContext.isSVG) {
@@ -270,7 +270,7 @@ export class HTML implements DOMHandle {
                 element.removeAttribute(key);
               }
             },
-            this.getUpdateKey("attr", key)
+            this.getUpdateKey("attr", key),
           );
         } else {
           switch (key) {
@@ -281,7 +281,7 @@ export class HTML implements DOMHandle {
                 (current) => {
                   (element as any)[key] = String(current);
                 },
-                this.getUpdateKey("prop", key)
+                this.getUpdateKey("prop", key),
               );
               break;
 
@@ -291,7 +291,7 @@ export class HTML implements DOMHandle {
                 (current) => {
                   (element as any).htmlFor = current;
                 },
-                this.getUpdateKey("prop", "htmlFor")
+                this.getUpdateKey("prop", "htmlFor"),
               );
               break;
 
@@ -308,7 +308,7 @@ export class HTML implements DOMHandle {
                     element.removeAttribute("checked");
                   }
                 },
-                this.getUpdateKey("prop", "checked")
+                this.getUpdateKey("prop", "checked"),
               );
               break;
 
@@ -327,7 +327,7 @@ export class HTML implements DOMHandle {
                     element.setAttribute(_key, String(current));
                   }
                 },
-                this.getUpdateKey("attr", _key)
+                this.getUpdateKey("attr", _key),
               );
               break;
             }
@@ -345,7 +345,7 @@ export class HTML implements DOMHandle {
                     (element as any).autocomplete = "off";
                   }
                 },
-                this.getUpdateKey("prop", key)
+                this.getUpdateKey("prop", key),
               );
               break;
 
@@ -355,7 +355,7 @@ export class HTML implements DOMHandle {
                 (current) => {
                   (element as any)[key] = current;
                 },
-                this.getUpdateKey("prop", key)
+                this.getUpdateKey("prop", key),
               );
               break;
             }
@@ -365,23 +365,28 @@ export class HTML implements DOMHandle {
     }
   }
 
-  applyStyles(element: HTMLElement | SVGElement, styles: Record<string, any>, stopCallbacks: StopFunction[]) {
+  applyStyles(element: HTMLElement | SVGElement, styles: string | Record<string, any>, stopCallbacks: StopFunction[]) {
     const render = this.appContext.stores.get("render")!.instance?.exports as BuiltInStores["render"];
     const propStopCallbacks: StopFunction[] = [];
 
     if (styles == undefined) {
       element.style.cssText = "";
+    } else if (typeof styles === "string") {
+      element.style.cssText = styles;
     } else if (isReadable<object>(styles)) {
       let unapply: () => void;
 
       const stop = observe(styles, (current) => {
-        render.update(() => {
-          if (isFunction(unapply)) {
-            unapply();
-          }
-          element.style.cssText = "";
-          unapply = this.applyStyles(element, current, stopCallbacks);
-        }, this.getUpdateKey("styles", "*"));
+        render.update(
+          () => {
+            if (isFunction(unapply)) {
+              unapply();
+            }
+            element.style.cssText = "";
+            unapply = this.applyStyles(element, current, stopCallbacks);
+          },
+          this.getUpdateKey("styles", "*"),
+        );
       });
 
       stopCallbacks.push(stop);
@@ -400,13 +405,16 @@ export class HTML implements DOMHandle {
 
         if (isReadable<any>(value)) {
           const stop = observe(value, (current) => {
-            render.update(() => {
-              if (current != null) {
-                setProperty(key, current);
-              } else {
-                element.style.removeProperty(key);
-              }
-            }, this.getUpdateKey("style", key));
+            render.update(
+              () => {
+                if (current != null) {
+                  setProperty(key, current);
+                } else {
+                  element.style.removeProperty(key);
+                }
+              },
+              this.getUpdateKey("style", key),
+            );
           });
 
           stopCallbacks.push(stop);
@@ -439,13 +447,16 @@ export class HTML implements DOMHandle {
       let unapply: () => void;
 
       const stop = observe(classes, (current) => {
-        render.update(() => {
-          if (isFunction(unapply)) {
-            unapply();
-          }
-          element.removeAttribute("class");
-          unapply = this.applyClasses(element, current, stopCallbacks);
-        }, this.getUpdateKey("attr", "class"));
+        render.update(
+          () => {
+            if (isFunction(unapply)) {
+              unapply();
+            }
+            element.removeAttribute("class");
+            unapply = this.applyClasses(element, current, stopCallbacks);
+          },
+          this.getUpdateKey("attr", "class"),
+        );
       });
 
       stopCallbacks.push(stop);
