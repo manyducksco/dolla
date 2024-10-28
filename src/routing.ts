@@ -147,6 +147,10 @@ export function resolvePath(base: string, part: string | null) {
 export function parseQueryParams(query: string): Record<string, string | number | boolean> {
   if (!query) return {};
 
+  if (query.startsWith("?")) {
+    query = query.slice(1);
+  }
+
   const entries = query
     .split("&")
     .filter((x) => x.trim() !== "")

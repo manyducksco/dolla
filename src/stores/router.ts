@@ -120,9 +120,14 @@ interface ParsedQuery extends ParsedParams {}
 interface NavigateOptions {
   /**
    * Replace the current item in the history stack instead of adding a new one.
-   * The back button will send the user to the page they visited before this.
+   * The back button will send the user to the page they visited before this. Defaults to false.
    */
   replace?: boolean;
+
+  /**
+   * Preserve existing query params (if any) when navigating. Defaults to false.
+   */
+  preserveQuery?: boolean;
 }
 
 interface RouterStoreOptions {
@@ -289,29 +294,24 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
   const $$pattern = $$<string | null>(null);
   const $$path = $$("");
   const $$params = $$<ParsedParams>({});
-  const $$query = $$<ParsedQuery>({});
-
-  // Track and skip updating the URL when the change came from URL navigation
-  let isRouteChange = true;
+  const $$query = $$<ParsedQuery>(parseQueryParams(window.location.search));
 
   // Update URL when query changes
   ctx.observe($$query, (current) => {
-    // No-op if this is triggered by a route change.
-    if (isRouteChange) {
-      isRouteChange = false;
-      return;
-    }
-
     const params = new URLSearchParams();
 
     for (const key in current) {
       params.set(key, String(current[key]));
     }
 
-    history.replace({
-      pathname: history.location.pathname,
-      search: "?" + params.toString(),
-    });
+    const search = "?" + params.toString();
+
+    if (search != history.location.search) {
+      history.replace({
+        pathname: history.location.pathname,
+        search,
+      });
+    }
   });
 
   ctx.onConnected(() => {
@@ -344,8 +344,7 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     if (location.search !== lastQuery) {
       lastQuery = location.search;
 
-      isRouteChange = true;
-      $$query.set(parseQueryParams(location.search.startsWith("?") ? location.search.slice(1) : location.search));
+      $$query.set(parseQueryParams(location.search));
     }
 
     const matched = matchRoutes(routes, location.pathname);
@@ -489,6 +488,10 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     }
 
     joined = resolvePath(history.location.pathname, joined);
+
+    if (options.preserveQuery) {
+      joined += history.location.search;
+    }
 
     if (options.replace) {
       history.replace(joined);

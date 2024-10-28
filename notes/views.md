@@ -1,4 +1,4 @@
-```js
+```jsx
 import { View, Store, $, $$ } from "@manyducks.co/dolla";
 
 const SomeView = View("SomeView")
