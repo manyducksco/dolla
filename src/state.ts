@@ -304,6 +304,7 @@ function computed(...args: any): Readable<any> {
     throw new Error(`Must pass at least one value before the callback function.`);
   }
   const readables = args as Readable<any>[];
+
   const observers: ((...currentValues: any[]) => void)[] = [];
 
   let stopCallbacks: StopFunction[] = [];
@@ -328,12 +329,11 @@ function computed(...args: any): Readable<any> {
         computedStopCallback();
       }
 
-      latestComputedValue = computedValue;
       computedStopCallback = computedValue[OBSERVE]((current) => {
         latestComputedValue = current;
 
         for (const callback of observers) {
-          callback(computedValue);
+          callback(current);
         }
       });
     } else if (!deepEqual(computedValue, latestComputedValue)) {
@@ -398,18 +398,10 @@ function computed(...args: any): Readable<any> {
 
   return {
     get: () => {
-      let computed;
-
       if (isObserving) {
-        computed = latestComputedValue;
+        return latestComputedValue;
       } else {
-        computed = compute(...readables.map((x) => x.get()));
-      }
-
-      if (isReadable(computed)) {
-        return computed.get();
-      } else {
-        return computed;
+        return compute(...readables.map((x) => x.get()));
       }
     },
     [OBSERVE]: (callback) => {
@@ -418,7 +410,6 @@ function computed(...args: any): Readable<any> {
         startObserving();
       }
 
-      // Then call callback and add it to observers for future changes
       callback(latestComputedValue);
       observers.push(callback);
 
