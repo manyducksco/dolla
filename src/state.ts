@@ -312,6 +312,9 @@ function computed(...args: any): Readable<any> {
   let valuesChanged: boolean[] = [];
   let latestComputedValue: any = UNOBSERVED;
 
+  // Defined if computed value is itself a readable.
+  let computedStopCallback: StopFunction | undefined;
+
   function updateValue() {
     if (!valuesChanged.some((x) => x)) {
       // No values changed. Nothing to do. No need to recompute.
@@ -320,9 +323,29 @@ function computed(...args: any): Readable<any> {
 
     const computedValue = compute(...observedValues);
 
-    // Skip equality check on initial subscription to guarantee
-    // that observers receive an initial value, even if undefined.
-    if (!deepEqual(computedValue, latestComputedValue)) {
+    if (isReadable(computedValue)) {
+      if (computedStopCallback) {
+        computedStopCallback();
+      }
+
+      latestComputedValue = computedValue;
+      computedStopCallback = computedValue[OBSERVE]((current) => {
+        latestComputedValue = current;
+
+        for (const callback of observers) {
+          callback(computedValue);
+        }
+      });
+    } else if (!deepEqual(computedValue, latestComputedValue)) {
+      // Skip equality check on initial subscription to guarantee
+      // that observers receive an initial value, even if undefined.
+
+      // Clean up any previous computed readable value.
+      if (computedStopCallback) {
+        computedStopCallback();
+        computedStopCallback = undefined;
+      }
+
       // const previousValue = latestComputedValue === UNOBSERVED ? undefined : latestComputedValue;
       latestComputedValue = computedValue;
 
@@ -375,10 +398,18 @@ function computed(...args: any): Readable<any> {
 
   return {
     get: () => {
+      let computed;
+
       if (isObserving) {
-        return latestComputedValue;
+        computed = latestComputedValue;
       } else {
-        return compute(...readables.map((x) => x.get()));
+        computed = compute(...readables.map((x) => x.get()));
+      }
+
+      if (isReadable(computed)) {
+        return computed.get();
+      } else {
+        return computed;
       }
     },
     [OBSERVE]: (callback) => {
