@@ -123,20 +123,20 @@ export function $<I, O>(state: MaybeReadable<I>, compute: (value: I) => O | Read
 
 export function $<I extends MaybeReadable<any>[], O>(
   states: [...I],
-  compute: (...currentValues: ReadableValues<I>) => O | Readable<O>
+  compute: (...currentValues: ReadableValues<I>) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, O>(
   state1: MaybeReadable<I1>,
   state2: MaybeReadable<I2>,
-  compute: (value1: I1, value2: I2) => O | Readable<O>
+  compute: (value1: I1, value2: I2) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, O>(
   state1: MaybeReadable<I1>,
   state2: MaybeReadable<I2>,
   state3: MaybeReadable<I3>,
-  compute: (value1: I1, value2: I2, value3: I3) => O | Readable<O>
+  compute: (value1: I1, value2: I2, value3: I3) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, O>(
@@ -144,7 +144,7 @@ export function $<I1, I2, I3, I4, O>(
   state2: MaybeReadable<I2>,
   state3: MaybeReadable<I3>,
   state4: MaybeReadable<I4>,
-  compute: (value1: I1, value2: I2, value3: I3, value4: I4) => O | Readable<O>
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, I5, O>(
@@ -153,7 +153,7 @@ export function $<I1, I2, I3, I4, I5, O>(
   state3: MaybeReadable<I3>,
   state4: MaybeReadable<I4>,
   state5: MaybeReadable<I5>,
-  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => O | Readable<O>
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, I5, I6, O>(
@@ -163,7 +163,7 @@ export function $<I1, I2, I3, I4, I5, I6, O>(
   state4: MaybeReadable<I4>,
   state5: MaybeReadable<I5>,
   state6: MaybeReadable<I6>,
-  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => O | Readable<O>
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, I5, I6, I7, O>(
@@ -174,7 +174,7 @@ export function $<I1, I2, I3, I4, I5, I6, I7, O>(
   state5: MaybeReadable<I5>,
   state6: MaybeReadable<I6>,
   state7: MaybeReadable<I7>,
-  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => O | Readable<O>
+  compute: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, I5, I6, I7, I8, O>(
@@ -194,8 +194,8 @@ export function $<I1, I2, I3, I4, I5, I6, I7, I8, O>(
     value5: I5,
     value6: I6,
     value7: I7,
-    value8: I8
-  ) => O | Readable<O>
+    value8: I8,
+  ) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, O>(
@@ -217,8 +217,8 @@ export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, O>(
     value6: I6,
     value7: I7,
     value8: I8,
-    value9: I9
-  ) => O | Readable<O>
+    value9: I9,
+  ) => O | Readable<O>,
 ): Readable<O>;
 
 export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, O>(
@@ -242,8 +242,8 @@ export function $<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10, O>(
     value7: I7,
     value8: I8,
     value9: I9,
-    value10: I10
-  ) => O | Readable<O>
+    value10: I10,
+  ) => O | Readable<O>,
 ): Readable<O>;
 
 // Hybrid of readable() and computed() - if last arg is a function, it's computed()
@@ -304,122 +304,102 @@ function computed(...args: any): Readable<any> {
     throw new Error(`Must pass at least one value before the callback function.`);
   }
   const readables = args as Readable<any>[];
+  const observers: ((...currentValues: any[]) => void)[] = [];
 
-  if (readables.length === 1) {
-    const readable = readables[0];
+  let stopCallbacks: StopFunction[] = [];
+  let isObserving = false;
+  let observedValues: any[] = [];
+  let valuesChanged: boolean[] = [];
+  let latestComputedValue: any = UNOBSERVED;
 
-    return {
-      get: () => {
-        const computed = compute(readable.get());
-        if (isReadable(computed)) {
-          return computed.get();
-        } else {
-          return computed;
-        }
-      },
-      [OBSERVE]: (callback) => {
-        let lastComputedValue: any = UNOBSERVED;
+  function updateValue() {
+    if (!valuesChanged.some((x) => x)) {
+      // No values changed. Nothing to do. No need to recompute.
+      return;
+    }
 
-        return readable[OBSERVE]((currentValue) => {
-          const computedValue = compute(currentValue);
+    const computedValue = compute(...observedValues);
 
-          // Handle returning Readable from compute. Observed value should unwrap the nested Readable.
-          if (isReadable(computedValue)) {
-            lastComputedValue = computedValue;
-            return computedValue[OBSERVE]((current) => {
-              callback(current);
-            });
-          }
+    // Skip equality check on initial subscription to guarantee
+    // that observers receive an initial value, even if undefined.
+    if (!deepEqual(computedValue, latestComputedValue)) {
+      // const previousValue = latestComputedValue === UNOBSERVED ? undefined : latestComputedValue;
+      latestComputedValue = computedValue;
 
-          if (!deepEqual(computedValue, lastComputedValue)) {
-            callback(computedValue);
-            lastComputedValue = computedValue;
-          }
-        });
-      },
-    };
-  } else {
-    const observers: ((...currentValues: any[]) => void)[] = [];
-
-    let stopCallbacks: StopFunction[] = [];
-    let isObserving = false;
-    let observedValues: any[] = [];
-    let latestComputedValue: any = UNOBSERVED;
-
-    function updateValue() {
-      const computedValue = compute(...observedValues);
-
-      // Skip equality check on initial subscription to guarantee
-      // that observers receive an initial value, even if undefined.
-      if (!deepEqual(computedValue, latestComputedValue)) {
-        // const previousValue = latestComputedValue === UNOBSERVED ? undefined : latestComputedValue;
-        latestComputedValue = computedValue;
-
-        for (const callback of observers) {
-          callback(computedValue);
-        }
+      for (const callback of observers) {
+        callback(computedValue);
       }
     }
 
-    function startObserving() {
-      if (isObserving) return;
+    for (let i = 0; i < observedValues.length; i++) {
+      valuesChanged[i] = false;
+    }
+  }
 
-      for (let i = 0; i < readables.length; i++) {
-        const readable = readables[i];
+  function startObserving() {
+    if (isObserving) return;
 
-        stopCallbacks.push(
-          observe(readable, (value: any) => {
+    for (let i = 0; i < readables.length; i++) {
+      const readable = readables[i];
+
+      stopCallbacks.push(
+        observe(readable, (value: any) => {
+          if (!deepEqual(observedValues[i], value)) {
             observedValues[i] = value;
+            valuesChanged[i] = true;
 
             if (isObserving) {
               updateValue();
             }
-          })
-        );
-      }
-
-      observedValues = readables.map((x) => x.get());
-      isObserving = true;
-      updateValue();
-    }
-
-    function stopObserving() {
-      isObserving = false;
-
-      for (const callback of stopCallbacks) {
-        callback();
-      }
-      stopCallbacks = [];
-    }
-
-    return {
-      get: () => {
-        if (isObserving) {
-          return latestComputedValue;
-        } else {
-          return compute(...readables.map((x) => x.get()));
-        }
-      },
-      [OBSERVE]: (callback) => {
-        // First start observing
-        if (!isObserving) {
-          startObserving();
-        }
-
-        // Then call callback and add it to observers for future changes
-        callback(latestComputedValue);
-        observers.push(callback);
-
-        return function stop() {
-          observers.splice(observers.indexOf(callback), 1);
-
-          if (observers.length === 0) {
-            stopObserving();
           }
-        };
-      },
-    };
+        }),
+      );
+    }
+
+    observedValues = readables.map((x) => x.get());
+    for (let i = 0; i < observedValues.length; i++) {
+      valuesChanged[i] = true;
+    }
+    isObserving = true;
+    updateValue();
   }
+
+  function stopObserving() {
+    isObserving = false;
+
+    for (const callback of stopCallbacks) {
+      callback();
+    }
+    stopCallbacks = [];
+  }
+
+  return {
+    get: () => {
+      if (isObserving) {
+        return latestComputedValue;
+      } else {
+        return compute(...readables.map((x) => x.get()));
+      }
+    },
+    [OBSERVE]: (callback) => {
+      // First start observing
+      if (!isObserving) {
+        startObserving();
+      }
+
+      // Then call callback and add it to observers for future changes
+      callback(latestComputedValue);
+      observers.push(callback);
+
+      return function stop() {
+        observers.splice(observers.indexOf(callback), 1);
+
+        if (observers.length === 0) {
+          stopObserving();
+        }
+      };
+    },
+  };
 }
 
 /*==============================*\
@@ -572,20 +552,20 @@ export function observe<T>(state: Readable<T>, callback: (currentValue: T, previ
  */
 export function observe<T extends MaybeReadable<any>[]>(
   states: [...T],
-  callback: (currentValues: ReadableValues<T>, previousValues: ReadableValues<T>) => void
+  callback: (currentValues: ReadableValues<T>, previousValues: ReadableValues<T>) => void,
 ): StopFunction;
 
 export function observe<I1, I2>(
   state1: MaybeReadable<I1>,
   state2: MaybeReadable<I2>,
-  callback: (value1: I1, value2: I2) => void
+  callback: (value1: I1, value2: I2) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3>(
   state1: MaybeReadable<I1>,
   state2: MaybeReadable<I2>,
   state3: MaybeReadable<I3>,
-  callback: (value1: I1, value2: I2, value3: I3) => void
+  callback: (value1: I1, value2: I2, value3: I3) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4>(
@@ -593,7 +573,7 @@ export function observe<I1, I2, I3, I4>(
   state2: MaybeReadable<I2>,
   state3: MaybeReadable<I3>,
   state4: MaybeReadable<I4>,
-  callback: (value1: I1, value2: I2, value3: I3, value4: I4) => void
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4, I5>(
@@ -602,7 +582,7 @@ export function observe<I1, I2, I3, I4, I5>(
   state3: MaybeReadable<I3>,
   state4: MaybeReadable<I4>,
   state5: MaybeReadable<I5>,
-  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => void
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4, I5, I6>(
@@ -612,7 +592,7 @@ export function observe<I1, I2, I3, I4, I5, I6>(
   state4: MaybeReadable<I4>,
   state5: MaybeReadable<I5>,
   state6: MaybeReadable<I6>,
-  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => void
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4, I5, I6, I7>(
@@ -623,7 +603,7 @@ export function observe<I1, I2, I3, I4, I5, I6, I7>(
   state5: MaybeReadable<I5>,
   state6: MaybeReadable<I6>,
   state7: MaybeReadable<I7>,
-  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => void
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4, I5, I6, I7, I8>(
@@ -635,7 +615,7 @@ export function observe<I1, I2, I3, I4, I5, I6, I7, I8>(
   state6: MaybeReadable<I6>,
   state7: MaybeReadable<I7>,
   state8: MaybeReadable<I8>,
-  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7, value8: I8) => void
+  callback: (value1: I1, value2: I2, value3: I3, value4: I4, value5: I5, value6: I6, value7: I7, value8: I8) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9>(
@@ -657,8 +637,8 @@ export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9>(
     value6: I6,
     value7: I7,
     value8: I8,
-    value9: I9
-  ) => void
+    value9: I9,
+  ) => void,
 ): StopFunction;
 
 export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10>(
@@ -682,8 +662,8 @@ export function observe<I1, I2, I3, I4, I5, I6, I7, I8, I9, I10>(
     value7: I7,
     value8: I8,
     value9: I9,
-    value10: I10
-  ) => void
+    value10: I10,
+  ) => void,
 ): StopFunction;
 
 export function observe(...args: any[]): StopFunction {
