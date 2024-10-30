@@ -29,15 +29,15 @@ import { App } from "@manyducks.co/dolla";
 const app = new App();
 
 // All routes are defined using a config object.
-app.route({
+app.addRoute({
   path: "/",
   view: RootView,
-  routes: [
+  subroutes: [
     { path: "/example", view: ExampleView },
     { path: "/notes", view: NotesView },
   ],
 });
-app.route({ path: "*", redirect: "/example" });
+app.addRoute({ path: "*", redirect: "/example" });
 
 function SomeView(props, ctx) {
   // Route info and routing are exposed on ctx.route
@@ -66,8 +66,8 @@ Language support is also integrated:
 ```tsx
 const app = new App();
 
-app.language({ name: "en", path: "/locale/en.json" });
-app.language({ name: "ja", path: "/locale/ja.json" });
+app.addLanguage({ name: "en", path: "/locale/en.json" });
+app.addLanguage({ name: "ja", path: "/locale/ja.json" });
 app.setLanguage("en" /* or localStorage.getItem("appLanguage") or something */);
 
 function SomeView(props, ctx) {
@@ -170,26 +170,168 @@ bound.set(newValue);
 
 // Now Views have a state that works in a very similar way.
 
-interface ExampleViewState {
-  whatever: number;
-}
-
 interface ExampleViewProps {
   // Bound values can be passed as props to child views.
-  something: Bound<string>;
+  something: ReadableState<string>;
+
+  showDoubled: ReadableState<boolean>;
 }
 
-class ExampleView extends View<ExampleViewState, ExampleViewProps> {
-  create() {
-    this.state.set({ whatever: 5 });
+class ExampleView extends View<ExampleViewProps> {
+  value = state(5);
+  doubled = state(this.value, (n) => n * 2);
 
-    const whatever = this.state.bind("whatever");
+  let interval?: number;
 
-    this.state.subscribe("whatever", (value) => {
-      // This will be automatically cleaned up when the view is disconnected.
+  onConnected() {
+    this.interval = setInterval(() => {
+      this.value.update(current => current + 1);
+    }, 1000);
+
+    this.subscribe(this.doubled, (n) => {
+      ctx.info(n);
     });
+  }
+
+  onDisconnected() {
+    clearInterval(this.interval);
+  }
+
+  create() {
+
+
+    this.value.set(12);
+    this.value.get(); // 12
+    this.value.update((current) => current + 1);
+
+    // Implements Observable
+    const sub = this.value.subscribe((callback) => {
+      // Do something when value changes.
+    });
+    sub.value; // 13
+    sub.unsubscribe();
 
     this.props.something.get(); // get the value of the bound prop.
+
+    this.log("Some message with classname as prefix");
+
+    return m("section", { class: "container" }, [
+      m("h1", "THE COUNTER"),
+      m("p", "The number is: ", this.value),
+      cond(this.props.showDoubled, m("p", "The number doubled is: ", this.doubled)),
+      m("p", "This was passed as a prop: ", this.props.something),
+      m(AnotherView, { text: "This is props for a child view" }),
+    ]);
+  }
+}
+```
+
+## Event-based?
+
+Thinking about ways of doing state management for UIs. Everything gets super complicated and hard to manage in some way eventually. In React, state management is pretty easy but then you're having to deeply understand the rendering cycle and prevent excessive re-renders. In current Dolla you have to understand how Readable and Writable work.
+
+```tsx
+function ExampleView(ctx) {}
+
+interface ExampleViewProps {
+  items: { id: number; name: string }[];
+}
+
+interface ExampleViewState {
+  something: boolean;
+}
+
+// IDEA: Basically class-based React but built on top of web components (with scoped styles) and CSS defined in its own kind of render function. And then also including all the batteries, like HTTP client, router, multi-language support, etc.
+
+class ExampleView extends View<ExampleViewProps, ExampleViewState> {
+  static defaultState = {
+    something: true,
+  };
+
+  static defaultProps = {
+    items: [],
+  };
+
+  // Generates scoped styles. Called just before render.
+  styles() {
+    return css`
+      .container {
+        border: 1px solid ${this.state.something ? "red" : "blue"};
+      }
+    `;
+  }
+
+  // Renders the DOM nodes. Called when state or props have changed.
+  render() {
+    const { translate } = this.language;
+    //
+    //     return m("section", { class: "container" }, [
+    //       m("h1", "The Counter"),
+    //       this.state.something ? m("span", "value is truthy") : m("span", "value is falsy"),
+    //       m(
+    //         "ul",
+    //         this.props.items.map((item) => {
+    //           return m("li", { key: item.id }, item.name);
+    //         }),
+    //       ),
+    //       m(
+    //         "button",
+    //         {
+    //           onclick: () => {
+    //             this.setState(
+    //               produce((current) => {
+    //                 current.something = false;
+    //               }),
+    //             );
+    //           },
+    //         },
+    //         translate("ui.common.send"),
+    //       ),
+    //     ]);
+
+    // return m("section", { class: "container" })(
+    //   m("h1")("The Counter"),
+    //   m("span")(this.state.something ? "value is truthy" : "value is falsy"),
+    //   m("ul")(
+    //     this.props.items.map((item) => {
+    //       return m("li", { key: item.id }, item.name);
+    //     }),
+    //   ),
+    //   m("button", {
+    //     onclick: () => {
+    //       this.setState(
+    //         produce((current) => {
+    //           current.something = false;
+    //         }),
+    //       );
+    //     },
+    //   })(translate("ui.common.send")),
+    // );
+
+    return html`
+      <section class="container">
+        <h1>The Counter</h1>
+        ${this.state.something ? html`<span>Value is truthy</span>` : html`<span>Value is falsy</span>`}
+
+        <ul>
+          ${this.props.items.map((item) => {
+            return html`<li key=${item.id}>${item.name}</li>`;
+          })}
+        </ul>
+
+        <button
+          onclick=${() => {
+            this.setState(
+              produce((current) => {
+                current.something = false;
+              }),
+            );
+          }}
+        >
+          ${translate("ui.common.send")}
+        </button>
+      </section>
+    `;
   }
 }
 ```

@@ -26,57 +26,302 @@ export type ReadableValues<T extends MaybeReadable<any>[]> = {
   [K in keyof T]: Value<T[K]>;
 };
 
-export interface Observable<T> {
-  /**
-   * Receives the latest value with `callback` whenever the value changes.
-   * The `previousValue` is always undefined the first time the callback is called, then the same value as the last time it was called going forward.
-   */
-  [OBSERVE]: ObserveMethod<T>;
+export interface Subscription<T> {
+  readonly value: T;
+  readonly active: boolean;
+  unsubscribe(): void;
 }
 
-export interface Readable<T> extends Observable<T> {
+interface SubscribeOptions {
+  /**
+   * Calls the given callback immediately with the current value when true. Defaults to false.
+   */
+  eager?: boolean;
+}
+
+export interface Observable<T> {
+  subscribe(callback: (value: T) => void, options?: SubscribeOptions): Subscription<T>;
+}
+
+export interface ReadableState<T> extends Observable<T> {
   /**
    * Returns the current value.
    */
   get(): T;
 }
 
-export interface Writable<T> extends Readable<T> {
+export interface WritableState<T> extends ReadableState<T> {
   /**
-   * Sets a new value.
+   * Updates the current value and notifies all subscribers if the value has changed.
    */
   set(value: T): void;
 
   /**
-   * Passes the current value to `callback` and takes `callback`'s return value as the new value.
+   * Updates the value through a callback that takes the current value and returns a new value.
+   * Notifies all subscribers if the value has changed.
    */
-  update(callback: (currentValue: T) => T): void;
+  update(callback: (value: T) => T): void;
+
+  /**
+   * Returns a read-only version of this state.
+   */
+  toReadable(): ReadableState<T>;
 }
 
-export type MaybeReadable<T> = Readable<T> | T;
+interface ManagedSubscription<T> {
+  callback: (value: T) => void;
+  subscription: Subscription<T>;
+}
+
+class State<T> implements WritableState<T> {
+  _value: T;
+  _subscriptions: ManagedSubscription<T>[] = [];
+
+  static proxy<T>(config: ProxyStateConfig<T>) {
+    return new ProxyState(config);
+  }
+
+  static computed<T>() {
+    return new ComputedState();
+  }
+
+  constructor(initialValue: T) {
+    this._value = initialValue;
+  }
+
+  get() {
+    return this._value;
+  }
+
+  set(value: T) {
+    if (!deepEqual(this._value, value)) {
+      this._value = value;
+      this._notify();
+    }
+  }
+
+  update(callback: (value: T) => T) {
+    const value = callback(this._value);
+    this.set(value);
+  }
+
+  subscribe(callback: (value: T) => void, options?: SubscribeOptions) {
+    const subscription: Subscription<T> = {
+      value: this._value,
+      active: true,
+      unsubscribe() {
+        // Casting to get around 'readonly' typing. This is only for end users. The framework does what it wants!
+        (this.active as boolean) = false;
+      },
+    };
+
+    if (options?.eager) {
+      callback(this._value);
+    }
+
+    this._subscriptions.push({
+      callback,
+      subscription,
+    });
+
+    return subscription;
+  }
+
+  toReadable() {
+    return new ReadOnlyState(this);
+  }
+
+  _notify() {
+    // Keep only active subscriptions.
+    this._subscriptions = this._subscriptions.filter((entry) => entry.subscription.active);
+
+    for (const entry of this._subscriptions) {
+      // Once again, skirting the 'readonly' typing.
+      (entry.subscription.value as T) = this._value;
+      entry.callback(this._value);
+    }
+  }
+}
+
+class ReadOnlyState<T> implements ReadableState<T> {
+  _state: ReadableState<T>;
+
+  constructor(state: ReadableState<T>) {
+    this._state = state;
+  }
+
+  get() {
+    return this._state.get();
+  }
+
+  subscribe(callback: (value: T) => void, options?: SubscribeOptions) {
+    return this._state.subscribe(callback, options);
+  }
+}
+
+interface ProxyStateConfig<T> {
+  get(): T;
+  set(value: T): void;
+}
+
+export class ProxyState<T> implements WritableState<T> {
+  _previousValue?: T;
+  _config: ProxyStateConfig<T>;
+  _subscriptions: ManagedSubscription<T>[] = [];
+
+  constructor(config: ProxyStateConfig<T>) {
+    this._config = config;
+  }
+
+  get() {
+    return this._config.get();
+  }
+
+  set(value: T) {
+    this._config.set(value);
+    this._notify(value);
+  }
+
+  update(callback: (value: T) => T) {
+    const value = callback(this.get());
+    this.set(value);
+  }
+
+  subscribe(callback: (value: T) => void, options?: SubscribeOptions) {
+    const value = this.get();
+
+    const subscription: Subscription<T> = {
+      value,
+      active: true,
+      unsubscribe() {
+        // Casting to get around 'readonly' typing. This is only for end users. The framework does what it wants!
+        (this.active as boolean) = false;
+      },
+    };
+
+    if (options?.eager) {
+      callback(value);
+    }
+
+    this._subscriptions.push({
+      callback,
+      subscription,
+    });
+
+    return subscription;
+  }
+
+  toReadable() {
+    return new ReadOnlyState(this);
+  }
+
+  _notify(value = this.get()) {
+    // Keep only active subscriptions.
+    this._subscriptions = this._subscriptions.filter((entry) => entry.subscription.active);
+
+    for (const entry of this._subscriptions) {
+      // Once again, skirting the 'readonly' typing.
+      (entry.subscription.value as T) = value;
+      entry.callback(value);
+    }
+  }
+}
+
+interface ComputedStateConfig<T> {
+  states: ReadableState<any>[];
+  compute: (...values: any[]) => T;
+}
+
+class ComputedState<T> implements ReadableState<T> {
+  _value?: T;
+  _subscribed = false;
+  _compute: (...values: any[]) => T;
+  _states: ReadableState<any>[];
+
+  _subscriptions: ManagedSubscription<T>[] = [];
+
+  constructor(compute: (...values: any[]) => T, states: ReadableState<any>[]) {
+    this._compute = compute;
+    this._states = states;
+  }
+
+  get() {
+    if (this._subscribed) {
+      return this._value!;
+    } else {
+      return this._compute(...this._states.map((s) => s.get()));
+    }
+  }
+
+  subscribe(callback: (value: T) => void, options?: SubscribeOptions) {
+    const value = this.get();
+
+    const subscription: Subscription<T> = {
+      value,
+      active: true,
+      unsubscribe() {
+        // Casting to get around 'readonly' typing. This is only for end users. The framework does what it wants!
+        (this.active as boolean) = false;
+      },
+    };
+
+    if (options?.eager) {
+      callback(value);
+    }
+
+    this._subscriptions.push({
+      callback,
+      subscription,
+    });
+
+    return subscription;
+  }
+
+  _updateValue() {}
+
+  _startSubscribing() {}
+
+  _stopSubscribing() {}
+}
+
+export type MaybeReadable<T> = ReadableState<T> | T;
 
 /*==============================*\
 ||           Utilities          ||
 \*==============================*/
 
-// function isObservable<T>(value: any): value is Observable<T> {
-//   return value != null && typeof value === "object" && typeof value[OBSERVE] === "function";
-// }
-
-// State.isObservable = isObservable;
-
-export function isReadable<T>(value: any): value is Readable<T> {
+export function isReadable<T>(value: any): value is ReadableState<T> {
   return (
     value != null &&
     typeof value === "object" &&
-    typeof value[OBSERVE] === "function" &&
+    typeof value.subscribe === "function" &&
     typeof value.get === "function"
   );
 }
 
-export function isWritable<T>(value: any): value is Writable<T> {
+export function isWritable<T>(value: any): value is WritableState<T> {
   return isReadable(value) && typeof (value as any).set === "function" && typeof (value as any).update === "function";
 }
+
+/*==============================*\
+||         state function       ||
+\*==============================*/
+
+function state(...args: any[]) {
+  if (args.length > 1 && typeof args.at(-1) === "function") {
+    // This is a computed state; one or more readable states followed by a compute function.
+    return new ComputedState(args.pop(), args);
+  } else if (args.length <= 1) {
+    // This is a standard writable state. One initial value (or undefined).
+    return new State(args[0]);
+  } else {
+    throw new Error(`Invalid state() call signature.`);
+  }
+}
+
+state.proxy = function proxy<T>(config: ProxyConfig<T>) {
+  return new ProxyState(config);
+};
 
 /*==============================*\
 ||          $() and $$()        ||
