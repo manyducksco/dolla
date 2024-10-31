@@ -23,6 +23,7 @@ export class Conditional implements DOMHandle {
   elementContext: ElementContext;
 
   initialUpdateHappened = false;
+  previousValue?: any;
 
   constructor(config: ConditionalConfig) {
     this.$predicate = config.$predicate;
@@ -51,11 +52,12 @@ export class Conditional implements DOMHandle {
         parent.insertBefore(this.endNode, this.node.nextSibling);
       }
 
-      this.stopCallback = observe(this.$predicate, (current, previous) => {
+      this.stopCallback = observe(this.$predicate, (value) => {
         // Only update if value changed between truthy and falsy.
-        if (!this.initialUpdateHappened || (current && !previous) || (!current && previous)) {
-          this.update(current);
+        if (!this.initialUpdateHappened || (value && !this.previousValue) || (!value && this.previousValue)) {
+          this.update(value);
           this.initialUpdateHappened = true;
+          this.previousValue = value;
         }
       });
     }
