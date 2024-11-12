@@ -1,23 +1,25 @@
 import { type DOMHandle } from "../markup.js";
-import { $$, observe, type Writable } from "../state.js";
+import { type SettableSignal, signal } from "../signals.js";
 import { getStoreSecrets, type StoreContext } from "../store.js";
 import { initView, type View } from "../view.js";
 
 export interface DialogProps {
-  /**
-   * Whether the dialog is currently open.
-   */
-  $$open: Writable<boolean>;
+  dialog: {
+    /**
+     * Whether the dialog is currently open.
+     */
+    $$open: SettableSignal<boolean>;
 
-  /**
-   * Calls `callback` immediately after dialog has been connected.
-   */
-  transitionIn: (callback: () => Promise<void>) => void;
+    /**
+     * Calls `callback` immediately after dialog has been connected.
+     */
+    transitionIn: (callback: () => Promise<void>) => void;
 
-  /**
-   * Calls `callback` and awaits its Promise before disconnecting the dialog.
-   */
-  transitionOut: (callback: () => Promise<void>) => void;
+    /**
+     * Calls `callback` and awaits its Promise before disconnecting the dialog.
+     */
+    transitionOut: (callback: () => Promise<void>) => void;
+  };
 }
 
 export interface OpenDialog {
@@ -49,7 +51,7 @@ export function DialogStore(ctx: StoreContext) {
    * A first-in-last-out queue of dialogs. The last one appears on top.
    * This way if a dialog opens another dialog the new dialog stacks.
    */
-  const $$dialogs = $$<OpenDialog[]>([]);
+  const [$dialogs, setDialogs] = signal<OpenDialog[]>([]);
 
   let activeDialogs: OpenDialog[] = [];
 
@@ -67,7 +69,7 @@ export function DialogStore(ctx: StoreContext) {
   }
 
   // Diff dialogs when value is updated, adding and removing dialogs as necessary.
-  ctx.observe($$dialogs, (dialogs) => {
+  ctx.watch([$dialogs], (dialogs) => {
     render.update(() => {
       let removed: OpenDialog[] = [];
       let added: OpenDialog[] = [];
@@ -118,7 +120,7 @@ export function DialogStore(ctx: StoreContext) {
   });
 
   function open<P extends DialogProps>(view: View<P>, props?: Omit<P, keyof DialogProps>) {
-    const $$open = $$(true);
+    const $$open = signal.settable(true);
 
     let dialog: OpenDialog | undefined;
 
@@ -131,12 +133,14 @@ export function DialogStore(ctx: StoreContext) {
       elementContext,
       props: {
         ...props,
-        $$open,
-        transitionIn: (callback) => {
-          transitionInCallback = callback;
-        },
-        transitionOut: (callback) => {
-          transitionOutCallback = callback;
+        dialog: {
+          $$open,
+          transitionIn: (callback) => {
+            transitionInCallback = callback;
+          },
+          transitionOut: (callback) => {
+            transitionOutCallback = callback;
+          },
         },
       } as P,
     });
@@ -153,18 +157,18 @@ export function DialogStore(ctx: StoreContext) {
       },
     };
 
-    $$dialogs.update((current) => {
+    setDialogs((current) => {
       return [...current, dialog!];
     });
 
-    const stopObserver = observe($$open, (value) => {
+    const stopObserver = $$open.watch((value) => {
       if (!value) {
         closeDialog();
       }
     });
 
     function closeDialog() {
-      $$dialogs.update((current) => {
+      setDialogs((current) => {
         return current.filter((x) => x !== dialog);
       });
       dialog = undefined;

@@ -1,10 +1,10 @@
 import { type AppContext, type ElementContext } from "../app.js";
 import { renderMarkupToDOM, toMarkup, type DOMHandle, type Markup } from "../markup.js";
-import { observe, type Readable, type StopFunction } from "../state.js";
+import { watch, type Signal, type StopFunction } from "../signals.js";
 import { type Renderable } from "../types.js";
 
 export interface ConditionalConfig {
-  $predicate: Readable<any>;
+  $predicate: Signal<any>;
   thenContent?: Renderable;
   elseContent?: Renderable;
   appContext: AppContext;
@@ -14,7 +14,7 @@ export interface ConditionalConfig {
 export class Conditional implements DOMHandle {
   node: Node;
   endNode: Node;
-  $predicate: Readable<any>;
+  $predicate: Signal<any>;
   stopCallback?: StopFunction;
   thenContent?: Markup[];
   elseContent?: Markup[];
@@ -52,7 +52,7 @@ export class Conditional implements DOMHandle {
         parent.insertBefore(this.endNode, this.node.nextSibling);
       }
 
-      this.stopCallback = observe(this.$predicate, (value) => {
+      this.stopCallback = this.$predicate.watch((value) => {
         // Only update if value changed between truthy and falsy.
         if (!this.initialUpdateHappened || (value && !this.previousValue) || (!value && this.previousValue)) {
           this.update(value);

@@ -8,14 +8,14 @@ import {
   toMarkup,
   type DOMHandle,
 } from "../markup.js";
-import { observe, type Readable, type StopFunction } from "../state.js";
+import { watch, type Signal, type StopFunction } from "../signals.js";
 import { typeOf } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
 
 interface ObserverOptions {
   appContext: AppContext;
   elementContext: ElementContext;
-  readables: Readable<any>[];
+  signals: Signal<any>[];
   renderFn: (...values: any) => Renderable;
 }
 
@@ -35,7 +35,7 @@ export class Observer implements DOMHandle {
     return this.node.parentNode != null;
   }
 
-  constructor({ readables, renderFn, appContext, elementContext }: ObserverOptions) {
+  constructor({ signals, renderFn, appContext, elementContext }: ObserverOptions) {
     this.appContext = appContext;
     this.elementContext = elementContext;
     this.renderFn = renderFn;
@@ -49,13 +49,13 @@ export class Observer implements DOMHandle {
       start: () => {
         if (_stop != null) return;
 
-        _stop = observe(readables, (...values) => {
+        _stop = watch(signals, (...values) => {
           const rendered = this.renderFn(...values);
 
           if (!isRenderable(rendered)) {
             console.error(rendered);
             throw new TypeError(
-              `Observer received invalid value to render. Got type: ${typeOf(rendered)}, value: ${rendered}`
+              `Observer received invalid value to render. Got type: ${typeOf(rendered)}, value: ${rendered}`,
             );
           }
 

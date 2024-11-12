@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { type AppContext, type ElementContext } from "../app.js";
-import { renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
-import { isReadable, isWritable, observe, type Readable, type StopFunction } from "../state.js";
+import { isRef, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
+import { isSettableSignal, isSignal, SettableSignal, watch, type Signal, type StopFunction } from "../signals.js";
 import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import { BuiltInStores } from "../types.js";
 import { omit } from "../utils.js";
@@ -55,12 +55,10 @@ export class HTML implements DOMHandle {
 
     // Set ref if present. Refs can be a Ref object or a function that receives the node.
     if (props.ref) {
-      if (isWritable(props.ref)) {
-        props.ref.set(this.node);
-      } else if (isFunction(props.ref)) {
-        props.ref(this.node);
+      if (isRef(props.ref)) {
+        props.ref.node = this.node;
       } else {
-        throw new Error("Expected an instance of Ref. Got: " + props.ref);
+        throw new Error("Expected ref to be a Ref object. Got: " + props.ref);
       }
     }
 
@@ -144,12 +142,12 @@ export class HTML implements DOMHandle {
   applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
     const render = this.appContext.stores.get("render")!.instance?.exports as BuiltInStores["render"];
 
-    const attachProp = <T>(value: Readable<T> | T, callback: (value: T) => void, updateKey: string) => {
-      if (isReadable(value)) {
+    const attachProp = <T>(value: Signal<T> | T, callback: (value: T) => void, updateKey: string) => {
+      if (isSignal(value)) {
         this.stopCallbacks.push(
-          observe(value, (value) => {
+          value.watch((current) => {
             render.update(() => {
-              callback(value);
+              callback(current);
             }, updateKey);
           }),
         );
@@ -183,7 +181,7 @@ export class HTML implements DOMHandle {
         const values = value as Record<string, any>;
 
         for (const name in values) {
-          const listener: (e: Event) => void = isReadable<(e: Event) => void>(value)
+          const listener: (e: Event) => void = isSignal<(e: Event) => void>(value)
             ? (e: Event) => value.get()(e)
             : (value as (e: Event) => void);
 
@@ -193,33 +191,10 @@ export class HTML implements DOMHandle {
             element.removeEventListener(name, listener);
           });
         }
-      } else if (key === "$$value") {
-        if (!isWritable(value)) {
-          throw new TypeError(`$$value property must be a Writable. Got: ${value} (${typeof value})`);
-        }
-
-        attachProp(
-          value,
-          (current) => {
-            (element as any).value = String(current);
-          },
-          this.getUpdateKey("prop", "value"),
-        );
-
-        const listener: EventListener = (e) => {
-          const updated = toTypeOf(value.get(), (e.currentTarget as HTMLInputElement).value);
-          value.set(updated);
-        };
-
-        element.addEventListener("input", listener);
-
-        this.stopCallbacks.push(() => {
-          element.removeEventListener("input", listener);
-        });
       } else if (key === "onClickOutside" || key === "onclickoutside") {
         const listener = (e: Event) => {
           if (this.canClickAway && !element.contains(e.target as any)) {
-            if (isReadable<(e: Event) => void>(value)) {
+            if (isSignal<(e: Event) => void>(value)) {
               value.get()(e);
             } else {
               (value as (e: Event) => void)(e);
@@ -234,10 +209,37 @@ export class HTML implements DOMHandle {
         this.stopCallbacks.push(() => {
           window.removeEventListener("click", listener, options);
         });
+      } else if (key === "$$value") {
+        // Two-way binding for input values.
+        if (!isSettableSignal(value)) {
+          throw new TypeError(`$$value attribute must be a settable signal. Got: ${value}`);
+        }
+
+        // Read value from signal.
+        attachProp(
+          value,
+          (current) => {
+            (element as HTMLInputElement).value = String(current);
+          },
+          this.getUpdateKey("attr", "value"),
+        );
+
+        // Propagate value to signal.
+        const listener: EventListener = (e) => {
+          // Attempt to cast value back to the same type stored in the signal.
+          const updated = toTypeOf(value.get(), (e.currentTarget as HTMLInputElement).value);
+          (value as SettableSignal<any>).set(updated);
+        };
+
+        element.addEventListener("input", listener);
+
+        this.stopCallbacks.push(() => {
+          element.removeEventListener("input", listener);
+        });
       } else if (isCamelCaseEventName(key)) {
         const eventName = key.slice(2).toLowerCase();
 
-        const listener: (e: Event) => void = isReadable<(e: Event) => void>(value)
+        const listener: (e: Event) => void = isSignal<(e: Event) => void>(value)
           ? (e: Event) => value.get()(e)
           : (value as (e: Event) => void);
 
@@ -373,10 +375,10 @@ export class HTML implements DOMHandle {
       element.style.cssText = "";
     } else if (typeof styles === "string") {
       element.style.cssText = styles;
-    } else if (isReadable<object>(styles)) {
+    } else if (isSignal<object>(styles)) {
       let unapply: () => void;
 
-      const stop = observe(styles, (current) => {
+      const stop = styles.watch((current) => {
         render.update(
           () => {
             if (isFunction(unapply)) {
@@ -403,8 +405,8 @@ export class HTML implements DOMHandle {
               value == null ? element.style.removeProperty(key) : element.style.setProperty(key, value)
           : (key: string, value: string | null) => (element.style[key as any] = value ?? "");
 
-        if (isReadable<any>(value)) {
-          const stop = observe(value, (current) => {
+        if (isSignal<any>(value)) {
+          const stop = value.watch((current) => {
             render.update(
               () => {
                 if (current != null) {
@@ -443,10 +445,10 @@ export class HTML implements DOMHandle {
     const render = this.appContext.stores.get("render")!.instance?.exports as BuiltInStores["render"];
     const classStopCallbacks: StopFunction[] = [];
 
-    if (isReadable(classes)) {
+    if (isSignal(classes)) {
       let unapply: () => void;
 
-      const stop = observe(classes, (current) => {
+      const stop = classes.watch((current) => {
         render.update(
           () => {
             if (isFunction(unapply)) {
@@ -467,8 +469,8 @@ export class HTML implements DOMHandle {
       for (const name in mapped) {
         const value = mapped[name];
 
-        if (isReadable(value)) {
-          const stop = observe(value, (current) => {
+        if (isSignal(value)) {
+          const stop = value.watch((current) => {
             render.update(() => {
               if (current) {
                 element.classList.add(name);

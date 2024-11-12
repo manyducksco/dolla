@@ -1,4 +1,4 @@
-import { $, $$ } from "../state.js";
+import { signal } from "../signals.js";
 import { type StoreContext } from "../store.js";
 
 type ScreenOrientation = "landscape" | "portrait";
@@ -7,23 +7,23 @@ type ColorScheme = "light" | "dark";
 export function DocumentStore(ctx: StoreContext) {
   ctx.name = "dolla/document";
 
-  const $$title = $$(document.title);
-  const $$visibility = $$(document.visibilityState);
-  const $$orientation = $$<ScreenOrientation>("landscape");
-  const $$colorScheme = $$<ColorScheme>("light");
+  const [$title, setTitle] = signal(document.title);
+  const [$visibility, setVisibility] = signal(document.visibilityState);
+  const [$orientation, setOrientation] = signal<ScreenOrientation>("landscape");
+  const [$colorScheme, setColorScheme] = signal<ColorScheme>("light");
 
   /* ----- Title and Visibility ----- */
 
-  ctx.observe($$title, (current) => {
+  ctx.watch([$title], (current) => {
     document.title = current;
   });
 
   const onVisibilityChange = () => {
-    $$visibility.set(document.visibilityState);
+    setVisibility(document.visibilityState);
   };
 
   const onFocus = () => {
-    $$visibility.set("visible");
+    setVisibility("visible");
   };
 
   /* ----- Orientation ----- */
@@ -31,7 +31,7 @@ export function DocumentStore(ctx: StoreContext) {
   const landscapeQuery = window.matchMedia("(orientation: landscape)");
 
   function onOrientationChange(e: MediaQueryList | MediaQueryListEvent) {
-    $$orientation.set(e.matches ? "landscape" : "portrait");
+    setOrientation(e.matches ? "landscape" : "portrait");
   }
 
   // Read initial orientation.
@@ -42,7 +42,7 @@ export function DocumentStore(ctx: StoreContext) {
   const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
   function onColorChange(e: MediaQueryList | MediaQueryListEvent) {
-    $$colorScheme.set(e.matches ? "dark" : "light");
+    setColorScheme(e.matches ? "dark" : "light");
   }
 
   // Read initial color scheme.
@@ -67,9 +67,11 @@ export function DocumentStore(ctx: StoreContext) {
   /* ----- Exports ----- */
 
   return {
-    $$title,
-    $visibility: $($$visibility),
-    $orientation: $($$orientation),
-    $colorScheme: $($$colorScheme),
+    $title,
+    setTitle,
+
+    $visibility,
+    $orientation,
+    $colorScheme,
   };
 }

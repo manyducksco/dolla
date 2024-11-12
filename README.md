@@ -5,17 +5,236 @@
 
 > WARNING: This package is pre-1.0 and therefore may contain serious bugs and releases may introduce breaking changes without notice.
 
-Dolla is a frontend framework that covers the common needs of complex apps, such as routing, components and state management. Where Dolla differs from other frameworks is in its approach to state management and how state changes translate to DOM updates.
+Dolla is a batteries-included JavaScript frontend framework covering the needs of complex modern single page apps (SPA). Dolla provides:
 
-Dolla gives you a set of composable state container primitives. Everything that happens in your app is a direct result of a value changing inside one of these containers. There is no VDOM. There is no other way to make the app function than to use these containers correctly. However, the advantage is that state, transformations and their side effects are expressed right in front of your eyes rather than being hidden deep in the framework. It's a bit more work to understand up front, but when you do the whole app becomes easier to understand and maintain.
-
-A Dolla app is like a house. In this house, State is to data as pipes are to water. Views are appliances that receive that data and make it do something for the user. ShowerView sprays liquid data over their head. FreezerView makes data ice cubes for later. Stores are parts of this system the user doesn't interact with directly, but that hold or process data. WaterHeaterStore keeps data nice and hot for ShowerView and SinkView. SewerStore drains used data away from the app for further processing.
-
-But if you're reading this, you're probably a programmer and not a plumber. All of this is to say, State is a static structure that moves a constantly changing stream of data between Views where data informs the state of DOM nodes the user sees and interacts with. Stores are a type of stateful data component that can be used to share data between Views or provide methods to abstract away interacting with an API.
+- Components
+- Routing
+- State management
+  - Declarative templating and DOM updates via signals
+- An HTTP client
+-
 
 Let's first get into some examples.
 
-## State
+## A Basic Component
+
+```tsx
+import { dolla, signal } from "@manyducks.co/dolla";
+
+function Counter(props, c) {
+  const [$count, setCount] = signal(0);
+
+  function increment() {
+    setCount((count) => count + 1);
+  }
+
+  return (
+    <div>
+      <p>Clicks: {$count}</p>
+      <button onClick={increment}>Click Me</button>
+    </div>
+  );
+
+  // return html`
+  //   <div>
+  //     <p>Clicks: ${$count}</p>
+  //     <button onclick=${increment}>Click Me</button>
+  //   </div>
+  // `;
+}
+
+// Create a new dolla app...
+const app = dolla();
+
+// Mount this counter component at the root...
+app.route("/", Counter);
+
+app.route({
+  path: "/{#projectId}",
+  component: Counter,
+  routes: [{ path: "/", redirect: "../" }],
+});
+
+// And mount the app to the page.
+app.mount("body");
+```
+
+If you've ever used React before (and chances are you have if you're interested in obscure frameworks like this one) this should look very familiar to you.
+
+The biggest difference is that the Counter function runs only once when the component is mounted. All updates after that point are a direct result of the `$count` signal being updated.
+
+You'll notice that signals are typically named with a `$` at the beginning to indicate that they contain special values that may change over time.
+
+## Advanced Componentry
+
+Component functions take two arguments; props and a `Context` object. Props are passed from parent components to child components, and `Context` is provided by the app.
+
+> The following examples are shown in TypeScript for clarity. Feel free to omit the type annotations in your own code if you prefer vanilla JS.
+
+### Props
+
+Props are values passed down from parent components. These can be static values, signals, callbacks and anything else the child component needs to do its job.
+
+```tsx
+import { type Signal, type Context, html } from "@manyducks.co/dolla";
+
+type HeadingProps = {
+  $text: Signal<string>;
+};
+
+function Heading(props: HeadingProps, c: Context) {
+  return html`<h1>${props.$text}</h1>`;
+}
+
+function Layout() {
+  const [$text, setText] = signal("HELLO THERE!");
+
+  return (
+    <section>
+      <Heading $text={$text}>
+    </section>
+  );
+}
+```
+
+### Context
+
+```tsx
+import { type Signal, type Context, html } from "@manyducks.co/dolla";
+
+type HeadingProps = {
+  $text: Signal<string>;
+};
+
+function Heading(props: HeadingProps, c: Context) {
+  // A full compliment of logging functions:
+  // Log levels that get printed can be set at the app level.
+
+  c.trace("What's going on? Let's find out.");
+  c.info("This is low priority info.");
+  c.log("This is normal priority info.");
+  c.warn("Hey! This could be serious.");
+  c.error("NOT GOOD! DEFINITELY NOT GOOD!!1");
+
+  // And sometimes things are just too borked to press on:
+  c.crash(new Error("STOP THE PRESSES! BURN IT ALL DOWN!!!"));
+
+  // The four lifecycle hooks:
+
+  // c.beforeMount(() => {
+  //   c.info("Heading is going to be mounted. Good time to set things up.");
+  // });
+
+  c.onMount(() => {
+    c.info("Heading has just been mounted. Good time to access the DOM and finalize setup.");
+  });
+
+  // c.beforeUnmount(() => {
+  //   c.info("Heading is going to be unmounted. Good time to begin teardown.");
+  // });
+
+  c.onUnmount(() => {
+    c.info("Heading has just been unmounted. Good time to finalize teardown.");
+  });
+
+  // Signals can be watched by the component context.
+  // Watchers created this way are cleaned up automatically when the component unmounts.
+
+  c.watch(props.$text, (value) => {
+    c.warn(`text has changed to: ${value}`);
+  });
+
+  return html`<h1>${props.$text}</h1>`;
+}
+```
+
+## Signals
+
+Basics
+
+```jsx
+const [$count, setCount] = signal(0);
+
+// Set the value directly.
+setCount(1);
+setCount(2);
+
+// Transform the previous value into a new one.
+setCount((current) => current + 1);
+
+// This can be used to create easy helper functions:
+function increment(amount = 1) {
+  setCount((current) => current + amount);
+}
+increment();
+increment(5);
+increment(-362);
+
+// Get the current value
+$count.get(); // -354
+
+// Watch for new values. Don't forget to call stop() to clean up!
+const stop = $count.watch((current) => {
+  console.log(`count is now ${current}`);
+});
+
+increment(); // "count is now -353"
+increment(); // "count is now -352"
+
+stop();
+```
+
+Derive
+
+```jsx
+import { signal, derive } from "@manyducks.co/dolla";
+
+const [$names, setNames] = signal(["Morg", "Ton", "Bon"]);
+const [$index, setIndex] = signal(0);
+
+// Create a new signal that depends on two existing signals:
+const $selected = derive([$names, $index], (names, index) => names[index]);
+
+$selected.get(); // "Morg"
+
+setIndex(2);
+
+$selected.get(); // "Bon"
+```
+
+Proxy
+
+```jsx
+import { signal, proxy } from "@manyducks.co/dolla";
+
+const [$names, setNames] = signal(["Morg", "Ton", "Bon"]);
+const [$index, setIndex] = signal(0);
+
+const [$selected, setSelected] = proxy([$names, $index], {
+  get(names, index) {
+    return names[index];
+  },
+  set(next) {
+    const index = $names.get().indexOf(next);
+    if (index === -1) {
+      throw new Error("Name is not in the list!");
+    }
+    setIndex(index);
+  },
+});
+
+$selected.get(); // "Morg"
+$index.get(); // 0
+
+// Set selected directly by name through the proxy.
+setSelected("Ton");
+
+// Selected and the index have been updated to match.
+$selected.get(); // "Ton"
+$index.get(); // 1
+```
+
+##
 
 States come in two varieties, each with a constructor function and a TypeScript type to match. These are:
 
@@ -27,47 +246,44 @@ States come in two varieties, each with a constructor function and a TypeScript 
 The constructor functions are `$` for `Readable` and `$$` for `Writable`. By convention, the names of each are prefixed with `$` or `$$` to indicate its type, making the data flow a lot easier to understand at a glance.
 
 ```js
-import { $, $$ } from "@manyducks.co/dolla";
+import { signal } from "@manyducks.co/dolla";
 
 // By convention, Writable names are prefixed with two dollar signs and Readable with one.
-const $$number = $$(5);
+const [$number, setNumber] = signal(5);
 
 // Returns the current value held by the Writable.
-$$number.get();
+$number.get();
 // Stores a new value to the Writable.
-$$number.set(12);
+setNumber(12);
 // Uses a callback to update the value. Takes the current value and returns the next.
-$$number.update((current) => current + 1);
-
-// Convert to a read-only Readable with the same live value.
-const $readOnlyNumber = $($$number);
+setNumber((current) => current + 1);
 
 // Derive a new state from an existing one.
-const $doubled = $($$number, (value) => value * 2);
-$doubled.get(); // 26 ($$number is 13)
+const $doubled = derive([$number], (value) => value * 2);
+$doubled.get(); // 26 ($number is 13)
 
 // Derive one new state from the latest values of many other states.
-const $many = $($$number, $doubled, (num, doubled) => num + doubled);
+const $many = derive([$number, $doubled], (num, doubled) => num + doubled);
 ```
 
 Now how do we use it? For a real example, a simple greeter app. The user types their name into a text input and that value is reflected in a heading above the input. For this we will use the `writable` function to create a state container. That container can be slotted into our JSX as a text node or DOM property. Any changes to the value will now be reflected in the DOM.
 
 ```jsx
-import { $$ } from "@manyducks.co/dolla";
+import { signal } from "@manyducks.co/dolla";
 
-function UserView() {
-  const $$name = $$("Valued Customer");
+function Greeter() {
+  const [$name, setName] = signal("Valued Customer");
 
   return (
     <section>
       <header>
-        <h1>Hello, {$$name}!</h1>
+        <h1>Hello, {$name}!</h1>
       </header>
 
       <input
-        value={$$name}
+        value={$name}
         onChange={(e) => {
-          $$name.set(e.target.value);
+          setName(e.target.value);
         }}
       />
     </section>
@@ -204,7 +420,7 @@ function ConditionalListView({ $show }) {
         </ul>,
 
         // Visible when falsy
-        <span>List is hidden</span>
+        <span>List is hidden</span>,
       )}
     </div>
   );
@@ -226,7 +442,7 @@ function RepeatedListView() {
         (item) => item, // Using the string itself as the key
         ($item, $index, ctx) => {
           return <ListItemView label={$item} />;
-        }
+        },
       )}
     </ul>
   );

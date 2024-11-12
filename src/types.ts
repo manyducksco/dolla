@@ -1,22 +1,9 @@
 import type * as CSS from "csstype";
-import { type Markup } from "./markup.js";
-import { type Readable, type Writable } from "./state.js";
+import { Ref, type Markup } from "./markup.js";
 import { type Store } from "./store.js";
 import { type DocumentStore } from "./stores/document.js";
 import { type RenderStore } from "./stores/render.js";
-
-/**
- * Value will be read by the component.
- */
-export type Read<T> = T | Readable<T> | Writable<T>;
-/**
- * Value will be both read and written by the component.
- */
-export type Write<T> = Writable<T>;
-/**
- * Extracts the value from a Read or Write type.
- */
-export type Value<T> = T extends Read<infer U> ? U : T;
+import { SettableSignal, Signal } from "./signals.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -29,8 +16,8 @@ export type Renderable =
   | false
   | null
   | undefined
-  | Readable<any>
-  | (string | number | Markup | false | null | undefined | Readable<any>)[];
+  | Signal<any>
+  | (string | number | Markup | false | null | undefined | Signal<any>)[];
 
 export type StoreExports<T> = T extends Store<any, infer O> ? O : unknown;
 
@@ -42,10 +29,12 @@ export interface BuiltInStores {
 export type Stringable = { toString(): string };
 
 // export type MaybeReadable<T> = T extends Readable<any> ? T : T | Readable<T> | Readable<Exclude<T, undefined>>;
-export type MaybeReadable<T> = T | Readable<T> | Readable<T | undefined>;
+// export type MaybeReadable<T> = T | Readable<T> | Readable<T | undefined>;
 
-type OptionalProperty<T> = T | Readable<T> | Readable<T | undefined>;
-type RequiredProperty<T> = T | Readable<T>;
+type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined>;
+
+type OptionalProperty<T> = T | Signal<T> | Signal<T | undefined>;
+type RequiredProperty<T> = T | Signal<T>;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -168,12 +157,12 @@ export interface ElementProps {
   style?:
     | string
     | CSSProperties
-    | Readable<string>
-    | Readable<CSSProperties>
-    | Readable<string | CSSProperties>
-    | Readable<string | undefined>
-    | Readable<CSSProperties | undefined>
-    | Readable<string | CSSProperties | undefined>;
+    | Signal<string>
+    | Signal<CSSProperties>
+    | Signal<string | CSSProperties>
+    | Signal<string | undefined>
+    | Signal<CSSProperties | undefined>
+    | Signal<string | CSSProperties | undefined>;
 
   /*=================================*\
   ||              Events             ||
@@ -911,6 +900,8 @@ export interface HTMLElementProps extends ElementProps {
    */
   // popover?: never;
 
+  role?: OptionalProperty<string>;
+
   /**
    * This element's position in the tab order, or the order this element will be focused as the user cycles through elements with the tab key.
    *
@@ -1484,7 +1475,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeReadable<any>;
+  [className: string]: MaybeSignal<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -1496,15 +1487,9 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
   children?: any;
 
   /**
-   * A Ref object or function that receives the DOM node when rendered.
+   * A settable signal or callback that receives the DOM node when rendered.
    */
-  ref?:
-    | Writable<E>
-    | Writable<HTMLElement>
-    | Writable<Element>
-    | Writable<E | undefined>
-    | Writable<HTMLElement | undefined>
-    | Writable<Element | undefined>;
+  ref?: Ref<E> | Ref<HTMLElement> | Ref<Element> | Ref<Node>;
 }
 
 /**
@@ -2521,14 +2506,14 @@ interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementP
     | MediaSource
     | Blob
     | File
-    | Readable<MediaStream>
-    | Readable<MediaStream | undefined>
-    | Readable<MediaSource>
-    | Readable<MediaSource | undefined>
-    | Readable<Blob>
-    | Readable<Blob | undefined>
-    | Readable<File>
-    | Readable<File | undefined>;
+    | Signal<MediaStream>
+    | Signal<MediaStream | undefined>
+    | Signal<MediaSource>
+    | Signal<MediaSource | undefined>
+    | Signal<Blob>
+    | Signal<Blob | undefined>
+    | Signal<File>
+    | Signal<File | undefined>;
 
   /**
    * The current audio volume of the media element. Must be a number between 0 and 1.
@@ -3112,7 +3097,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeReadable<string>;
+  sizes?: MaybeSignal<string>;
 
   /**
    * The image URL.
@@ -3800,18 +3785,12 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   popoverTargetAction?: OptionalProperty<"toggle" | "show" | "hide">;
   readOnly?: OptionalProperty<boolean>;
   required?: OptionalProperty<boolean>;
-  size?: OptionalProperty<number>;
+  size?: OptionalProperty<number | string>;
   src?: OptionalProperty<string>;
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
   value?: OptionalProperty<string>;
-
-  /**
-   * Takes a Writable and sets up two-way binding with it.
-   * Any time the user changes the value of this input, that value will be written back to the Writable.
-   */
-  $$value?: Writable<string>;
-
+  $$value?: SettableSignal<any>;
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 
@@ -3879,7 +3858,7 @@ interface HTMLSelectElementProps extends PropertiesOf<HTMLSelectElement> {
   multiple?: OptionalProperty<boolean>;
   name?: OptionalProperty<string>;
   required?: OptionalProperty<boolean>;
-  size?: OptionalProperty<number>;
+  size?: OptionalProperty<number | string>;
   value?: OptionalProperty<string>;
 }
 
@@ -3913,7 +3892,6 @@ interface HTMLTextAreaElementProps extends PropertiesOf<HTMLTextAreaElement> {
   rows?: OptionalProperty<number>;
   wrap?: OptionalProperty<"soft" | "hard">;
   value?: OptionalProperty<string>;
-  $$value?: Writable<string>;
 }
 
 // TODO: Add complete doc comments

@@ -1,11 +1,10 @@
 // App
 export { App } from "./app.js";
 
-// State
-export { $, $$, observe, unwrap, isReadable, isWritable, type Readable, type Writable } from "./state.js";
+export * from "./signals.js";
 
 // Markup
-export { m, cond, repeat, portal } from "./markup.js";
+export { type Ref, isRef, ref, m, cond, repeat, portal } from "./markup.js";
 
 // Views
 export { Fragment } from "./views/fragment.js";

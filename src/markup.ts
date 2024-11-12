@@ -6,7 +6,8 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
-import { $, isReadable, type Readable } from "./state.js";
+// import { $, isReadable, type Readable } from "./state.js";
+import { signal, isSignal, type Signal, MaybeSignal, signalify, SettableSignal, isSettableSignal } from "./signals.js";
 import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
 import { initView, type View, type ViewContext, type ViewResult } from "./view.js";
@@ -69,9 +70,9 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
         return m("$text", { value: x });
       }
 
-      if (isReadable(x)) {
+      if (isSignal(x)) {
         return m("$observer", {
-          readables: [x],
+          signals: [x],
           renderFn: (x) => x,
         });
       }
@@ -82,19 +83,19 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
 }
 
 export interface MarkupAttributes {
-  $text: { value: Stringable | Readable<Stringable> };
-  $cond: { $predicate: Readable<any>; thenContent?: Renderable; elseContent?: Renderable };
+  $text: { value: MaybeSignal<Stringable> };
+  $cond: { $predicate: Signal<any>; thenContent?: Renderable; elseContent?: Renderable };
   $repeat: {
-    $items: Readable<any[]>;
+    $items: Signal<any[]>;
     keyFn: (value: any, index: number) => string | number | symbol;
-    renderFn: ($item: Readable<any>, $index: Readable<number>, c: ViewContext) => ViewResult;
+    renderFn: ($item: Signal<any>, $index: Signal<number>, c: ViewContext) => ViewResult;
   };
   $observer: {
-    readables: Readable<any>[];
+    signals: Signal<any>[];
     renderFn: (...items: any) => Renderable;
   };
   $outlet: {
-    $children: Readable<DOMHandle[]>;
+    $children: Signal<DOMHandle[]>;
   };
   $node: {
     value: Node;
@@ -116,12 +117,40 @@ export function m<T extends keyof MarkupAttributes>(
 export function m<I>(type: View<I>, attributes?: I, ...children: Renderable[]): Markup;
 
 export function m<P>(type: string | View<P>, props?: P, ...children: Renderable[]) {
+  if (props != null) {
+    _assertPropTypes(props as Record<string, any>);
+  }
+
   return {
     [MARKUP]: true,
     type,
     props,
     children: toMarkup(children),
   };
+}
+
+/**
+ * Throws an error if expectations based on naming conventions aren't met.
+ */
+function _assertPropTypes(props: Record<string, any>) {
+  if (props.ref) {
+    if (!isRef(props.ref)) {
+      console.warn(props.ref);
+      throw new TypeError(`Prop 'ref' must be a Ref object. Got: ${props.ref}`);
+    }
+  }
+
+  for (const key in props) {
+    if (key.startsWith("$$")) {
+      if (!isSettableSignal(props[key])) {
+        throw new TypeError(`Prop '${key}' is named as a SettableSignal but value is not. Got: ${props[key]}`);
+      }
+    } else if (key.startsWith("$")) {
+      if (!isSignal(props[key])) {
+        throw new TypeError(`Prop '${key}' is named as a Signal but value is not. Got: ${props[key]}`);
+      }
+    }
+  }
 }
 
 /*===========================*\
@@ -131,8 +160,8 @@ export function m<P>(type: string | View<P>, props?: P, ...children: Renderable[
 /**
  * Displays content conditionally. When `predicate` holds a truthy value, `thenContent` is displayed; when `predicate` holds a falsy value, `elseContent` is displayed.
  */
-export function cond(predicate: any | Readable<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  const $predicate = $(predicate);
+export function cond(predicate: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
+  const $predicate = signalify(predicate);
 
   return m("$cond", {
     $predicate,
@@ -146,11 +175,11 @@ export function cond(predicate: any | Readable<any>, thenContent?: Renderable, e
  * The result of `keyFn` is used to compare items and decide if item was added, removed or updated.
  */
 export function repeat<T>(
-  items: Readable<T[]> | T[],
+  items: MaybeSignal<T[]>,
   keyFn: (value: T, index: number) => string | number | symbol,
-  renderFn: ($value: Readable<T>, $index: Readable<number>, ctx: ViewContext) => ViewResult,
+  renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult,
 ): Markup {
-  const $items = $(items);
+  const $items = signalify(items);
 
   return m("$repeat", { $items, keyFn, renderFn });
 }
@@ -160,6 +189,45 @@ export function repeat<T>(
  */
 export function portal(content: Renderable, parent: Node) {
   return m("$portal", { content, parent });
+}
+
+/*===========================*\
+||            Ref            ||
+\*===========================*/
+
+/**
+ * A special kind of signal exclusively for storing references to DOM nodes.
+ */
+export function ref<T extends Node>(): Ref<T> {
+  const [$node, setNode] = signal<T>();
+
+  return {
+    get: $node.get,
+    watch: $node.watch,
+
+    get node() {
+      return $node.get();
+    },
+    set node(node) {
+      setNode(node);
+    },
+  };
+}
+
+export function isRef<T extends Node>(value: any): value is Ref<T> {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+
+  if (!value.hasOwnProperty("node")) {
+    return false;
+  }
+
+  return true;
+}
+
+export interface Ref<T extends Node> extends Signal<T | undefined> {
+  node: T | undefined;
 }
 
 /*===========================*\
@@ -245,7 +313,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
         case "$observer": {
           const attrs = item.props! as MarkupAttributes["$observer"];
           return new Observer({
-            readables: attrs.readables,
+            signals: attrs.signals,
             renderFn: attrs.renderFn,
             appContext: ctx.appContext,
             elementContext: ctx.elementContext,
@@ -339,7 +407,7 @@ export function isRenderable(value: unknown): value is Renderable {
     typeof value === "string" ||
     typeof value === "number" ||
     isMarkup(value) ||
-    isReadable(value) ||
+    isSignal(value) ||
     isArrayOf(isRenderable, value)
   );
 }

@@ -1,3 +1,4 @@
+import { isSignal } from "./signals.js";
 import { isObject } from "./typeChecking.js";
 
 function isPlainObject<T = { [name: string]: any }>(value: any): value is T {
@@ -12,6 +13,10 @@ function isPlainObject<T = { [name: string]: any }>(value: any): value is T {
 export function deepEqual(one: any, two: any) {
   if (one === two) {
     return true;
+  }
+
+  if (isSignal(one) || isSignal(two)) {
+    return false;
   }
 
   if (isPlainObject(one) && isPlainObject(two)) {

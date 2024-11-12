@@ -1,4 +1,5 @@
 import { createBrowserHistory, createHashHistory, type History, type Listener } from "history";
+import { ElementContext } from "../app.js";
 import { getRenderHandle, m, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
 import {
   joinPath,
@@ -9,13 +10,12 @@ import {
   sortRoutes,
   splitPath,
 } from "../routing.js";
-import { $, $$ } from "../state.js";
+import { signal } from "../signals.js";
 import { getStoreSecrets, type Store, type StoreContext } from "../store.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type BuiltInStores, type Stringable } from "../types.js";
 import { type View } from "../view.js";
 import { DefaultView } from "../views/default-view.js";
-import { ElementContext } from "../app.js";
 
 // ----- Types ----- //
 
@@ -291,13 +291,13 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     ctx.info("Routes registered:", routes);
   });
 
-  const $$pattern = $$<string | null>(null);
-  const $$path = $$("");
-  const $$params = $$<ParsedParams>({});
-  const $$query = $$<ParsedQuery>(parseQueryParams(window.location.search));
+  const [$pattern, setPattern] = signal<string | null>(null);
+  const [$path, setPath] = signal("");
+  const [$params, setParams] = signal<ParsedParams>({});
+  const [$query, setQuery] = signal<ParsedQuery>(parseQueryParams(window.location.search));
 
   // Update URL when query changes
-  ctx.observe($$query, (current) => {
+  ctx.watch([$query], (current) => {
     const params = new URLSearchParams();
 
     for (const key in current) {
@@ -344,15 +344,15 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     if (location.search !== lastQuery) {
       lastQuery = location.search;
 
-      $$query.set(parseQueryParams(location.search));
+      setQuery(parseQueryParams(location.search));
     }
 
     const matched = matchRoutes(routes, location.pathname);
 
     if (!matched) {
-      $$pattern.set(null);
-      $$path.set(location.pathname);
-      $$params.set({
+      setPattern(null);
+      setPath(location.pathname);
+      setParams({
         wildcard: location.pathname,
       });
       return;
@@ -432,11 +432,11 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
         throw new TypeError(`Redirect must either be a path string or a function.`);
       }
     } else {
-      $$path.set(matched.path);
-      $$params.set(matched.params);
+      setPath(matched.path);
+      setParams(matched.params);
 
-      if (matched.pattern !== $$pattern.get()) {
-        $$pattern.set(matched.pattern);
+      if (matched.pattern !== $pattern.get()) {
+        setPattern(matched.pattern);
 
         const layers = matched.meta.layers!;
 
@@ -504,22 +504,23 @@ export function RouterStore(ctx: StoreContext<RouterStoreOptions>) {
     /**
      * The currently matched route pattern, if any.
      */
-    $pattern: $($$pattern),
+    $pattern,
 
     /**
      * The current URL path.
      */
-    $path: $($$path),
+    $path,
 
     /**
      * The current named path params.
      */
-    $params: $($$params),
+    $params,
 
     /**
      * The current query params. Changes to this object will be reflected in the URL.
      */
-    $$query,
+    $query,
+    setQuery,
 
     /**
      * Navigate backward. Pass a number of steps to hit the back button that many times.

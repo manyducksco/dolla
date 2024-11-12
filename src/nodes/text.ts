@@ -1,17 +1,17 @@
 import { type DOMHandle } from "../markup.js";
-import { isReadable, observe, type Readable, type StopFunction } from "../state.js";
+import { isSignal, MaybeSignal, type StopFunction } from "../signals.js";
 
 interface Stringable {
   toString(): string;
 }
 
 interface TextOptions {
-  value: Stringable | Readable<Stringable>;
+  value: MaybeSignal<Stringable>;
 }
 
 export class Text implements DOMHandle {
   node = document.createTextNode("");
-  value: Stringable | Readable<Stringable> = "";
+  value: MaybeSignal<Stringable> = "";
   stopCallback?: StopFunction;
 
   get connected() {
@@ -24,8 +24,8 @@ export class Text implements DOMHandle {
 
   async connect(parent: Node, after: Node | null = null) {
     if (!this.connected) {
-      if (isReadable<Stringable>(this.value)) {
-        this.stopCallback = observe(this.value, (value) => {
+      if (isSignal<Stringable>(this.value)) {
+        this.stopCallback = this.value.watch((value) => {
           this.update(value);
         });
       } else {

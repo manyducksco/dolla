@@ -1,6 +1,7 @@
 import { type AppContext, type ElementContext } from "../app.js";
 import { type DOMHandle } from "../markup.js";
-import { $, $$, observe, type Readable, type Writable, type StopFunction } from "../state.js";
+import { signal, type Signal, type SignalSetter, type StopFunction } from "../signals.js";
+import { deepEqual } from "../utils.js";
 import { initView, type ViewContext, type ViewResult } from "../view.js";
 
 // ----- Types ----- //
@@ -8,15 +9,17 @@ import { initView, type ViewContext, type ViewResult } from "../view.js";
 interface RepeatOptions<T> {
   appContext: AppContext;
   elementContext: ElementContext;
-  $items: Readable<T[]>;
+  $items: Signal<T[]>;
   keyFn: (value: T, index: number) => string | number | symbol;
-  renderFn: ($value: Readable<T>, $index: Readable<number>, ctx: ViewContext) => ViewResult;
+  renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
 }
 
 type ConnectedItem<T> = {
   key: any;
-  $$value: Writable<T>;
-  $$index: Writable<number>;
+  $value: Signal<T>;
+  setValue: SignalSetter<T>;
+  $index: Signal<number>;
+  setIndex: SignalSetter<number>;
   handle: DOMHandle;
 };
 
@@ -25,12 +28,12 @@ type ConnectedItem<T> = {
 export class Repeat<T> implements DOMHandle {
   node: Node;
   endNode: Node;
-  $items: Readable<T[]>;
+  $items: Signal<T[]>;
   stopCallback?: StopFunction;
   connectedItems: ConnectedItem<T>[] = [];
   appContext;
   elementContext;
-  renderFn: ($value: Readable<T>, $index: Readable<number>, ctx: ViewContext) => ViewResult;
+  renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
   keyFn: (value: T, index: number) => string | number | symbol;
 
   get connected() {
@@ -58,7 +61,7 @@ export class Repeat<T> implements DOMHandle {
     if (!this.connected) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
-      this.stopCallback = observe(this.$items, (value) => {
+      this.stopCallback = this.$items.watch((value) => {
         this._update(Array.from(value));
       });
     }
@@ -123,24 +126,34 @@ export class Repeat<T> implements DOMHandle {
       const connected = this.connectedItems.find((item) => item.key === potential.key);
 
       if (connected) {
-        connected.$$value.set(potential.value);
-        connected.$$index.set(potential.index);
+        console.log("updating existing item", {
+          current: connected.$value.get(),
+          potential: potential.value,
+          equal: deepEqual(connected.$value.get(), potential.value),
+        });
+
+        connected.setValue(potential.value);
+        connected.setIndex(potential.index);
         newItems[potential.index] = connected;
       } else {
-        const $$value = $$(potential.value) as Writable<T>;
-        const $$index = $$(potential.index);
+        const [$value, setValue] = signal<T>(potential.value);
+        const [$index, setIndex] = signal(potential.index);
 
         newItems[potential.index] = {
           key: potential.key,
-          $$value,
-          $$index,
+          $value,
+          setValue,
+          $index,
+          setIndex,
           handle: initView({
             view: RepeatItemView,
             appContext: this.appContext,
             elementContext: this.elementContext,
-            props: { $value: $($$value), $index: $($$index), renderFn: this.renderFn },
+            props: { $value, $index, renderFn: this.renderFn },
           }),
         };
+
+        console.log("adding new item", newItems[potential.index]);
       }
     }
 
@@ -163,9 +176,9 @@ export class Repeat<T> implements DOMHandle {
 }
 
 interface RepeatItemProps {
-  $value: Readable<any>;
-  $index: Readable<number>;
-  renderFn: ($value: Readable<any>, $index: Readable<number>, ctx: ViewContext) => ViewResult;
+  $value: Signal<any>;
+  $index: Signal<number>;
+  renderFn: ($value: Signal<any>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
 }
 
 function RepeatItemView({ $value, $index, renderFn }: RepeatItemProps, ctx: ViewContext) {

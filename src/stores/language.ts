@@ -1,4 +1,5 @@
-import { $, $$, isReadable, observe, type Readable } from "../state.js";
+// import { $, $$, isReadable, observe, type Readable } from "../state.js";
+import { signal, isSignal, watch, type Signal, derive } from "../signals.js";
 import { type StoreContext } from "../store.js";
 import { assertObject, isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
@@ -84,24 +85,24 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
     return cache.get(config.name);
   }
 
-  const $$isLoaded = $$(false);
-  const $$language = $$<string>();
-  const $$translation = $$<Translation>();
+  const [$loaded, setLoaded] = signal(false);
+  const [$language, _setLanguage] = signal<string>();
+  const [$translation, setTranslation] = signal<Translation>();
 
   // Fallback labels for missing state and data.
-  const $noLanguageValue = $("[NO LANGUAGE SET]");
+  const [$noLanguageValue] = signal("[NO LANGUAGE SET]");
 
   // TODO: Keep an eye on this for memory leaks. Keeping a bunch of unused alternates with varied values might be an issue.
   const translationCache: [
     key: string,
-    values: Record<string, Stringable | Readable<Stringable>> | undefined,
-    readable: Readable<string>,
+    values: Record<string, Stringable | Signal<Stringable>> | undefined,
+    readable: Signal<string>,
   ][] = [];
 
   function getCached(
     key: string,
-    values?: Record<string, Stringable | Readable<Stringable>>,
-  ): Readable<string> | undefined {
+    values?: Record<string, Stringable | Signal<Stringable>>,
+  ): Signal<string> | undefined {
     for (const entry of translationCache) {
       if (entry[0] === key && deepEqual(entry[1], values)) {
         return entry[2];
@@ -168,8 +169,8 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
     try {
       const translation = await getTranslation(lang);
 
-      $$translation.set(translation);
-      $$language.set(realTag);
+      setTranslation(translation);
+      _setLanguage(realTag);
 
       ctx.info("set language to " + realTag);
     } catch (error) {
@@ -181,12 +182,12 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
 
   // TODO: Determine and load default language.
   setLanguage(ctx.options.defaultLanguage ?? "auto").then(() => {
-    $$isLoaded.set(true);
+    setLoaded(true);
   });
 
   return {
     loaded: new Promise<void>((resolve, reject) => {
-      const stop = observe($$isLoaded, (isLoaded) => {
+      const stop = $loaded.watch((isLoaded) => {
         if (isLoaded) {
           setTimeout(() => {
             stop();
@@ -196,8 +197,8 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
       });
     }),
 
-    $isLoaded: $($$isLoaded),
-    $currentLanguage: $($$language),
+    $isLoaded: $loaded,
+    $currentLanguage: $language,
     supportedLanguages: [...languages.keys()],
 
     setLanguage,
@@ -208,8 +209,8 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
      * @param key - Key to the translated value.
      * @param values - A map of {{placeholder}} names and the values to replace them with.
      */
-    translate(key: string, values?: Record<string, Stringable | Readable<Stringable>>): Readable<string> {
-      if (!$$language.get()) {
+    translate(key: string, values?: Record<string, Stringable | Signal<Stringable>>): Signal<string> {
+      if (!$language.get()) {
         return $noLanguageValue;
       }
 
@@ -219,20 +220,20 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
       }
 
       if (values) {
-        const readableValues: Record<string, Readable<any>> = {};
+        const signalValues: Record<string, Signal<any>> = {};
 
         for (const [key, value] of Object.entries<any>(values)) {
-          if (isReadable(value)) {
-            readableValues[key] = value;
+          if (isSignal(value)) {
+            signalValues[key] = value;
           }
         }
 
         // This looks extremely weird, but it creates a joined state
         // that contains the translation with interpolated observable values.
-        const readableEntries = Object.entries(readableValues);
+        const readableEntries = Object.entries(signalValues);
         if (readableEntries.length > 0) {
           const readables = readableEntries.map((x) => x[1]);
-          const $merged = $([$$translation, ...readables], (t, ...entryValues) => {
+          const $merged = derive([$translation, ...readables], (t, ...entryValues) => {
             const entries = entryValues.map((_, i) => readableEntries[i]);
             const mergedValues = {
               ...values,
@@ -253,7 +254,7 @@ export function LanguageStore(ctx: StoreContext<LanguageOptions>) {
         }
       }
 
-      const $replaced = $($$translation, (t) => {
+      const $replaced = derive([$translation], (t) => {
         let result = resolve(t, key) || `[NO TRANSLATION: ${key}]`;
 
         if (values) {

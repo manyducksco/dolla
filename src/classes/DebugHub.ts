@@ -39,6 +39,7 @@ type DebugHubOptions = DebugOptions & {
 
 export interface DebugChannelOptions {
   name: string;
+  id?: string;
 }
 
 export interface DebugChannel {
@@ -90,8 +91,20 @@ export class DebugHub {
         ) {
           return noOp;
         } else {
-          const label = `%c${name}`;
-          return _console.info.bind(_console, label, `color:${hash(label)};font-weight:bold`);
+          let label = `%c${name}`;
+          if (options.id) {
+            label += ` %c[uid: %c${options.id}%c]`;
+          } else {
+            label += `%c%c%c`;
+          }
+          return _console.info.bind(
+            _console,
+            label,
+            `color:${hash(label)};font-weight:bold`,
+            `color:#777`,
+            `color:#aaa`,
+            `color:#777`,
+          );
         }
       },
 
@@ -105,8 +118,20 @@ export class DebugHub {
         ) {
           return noOp;
         } else {
-          const label = `%c${name}`;
-          return _console.log.bind(_console, label, `color:${hash(label)};font-weight:bold`);
+          let label = `%c${name}`;
+          if (options.id) {
+            label += ` %c[uid: %c${options.id}%c]`;
+          } else {
+            label += `%c%c%c`;
+          }
+          return _console.log.bind(
+            _console,
+            label,
+            `color:${hash(label)};font-weight:bold`,
+            `color:#777`,
+            `color:#aaa`,
+            `color:#777`,
+          );
         }
       },
 
@@ -120,8 +145,20 @@ export class DebugHub {
         ) {
           return noOp;
         } else {
-          const label = `%c${name}`;
-          return _console.warn.bind(_console, label, `color:${hash(label)};font-weight:bold`);
+          let label = `%c${name}`;
+          if (options.id) {
+            label += ` %c[uid: %c${options.id}%c]`;
+          } else {
+            label += `%c%c%c`;
+          }
+          return _console.warn.bind(
+            _console,
+            label,
+            `color:${hash(label)};font-weight:bold`,
+            `color:#777`,
+            `color:#aaa`,
+            `color:#777`,
+          );
         }
       },
 
@@ -135,8 +172,20 @@ export class DebugHub {
         ) {
           return noOp;
         } else {
-          const label = `%c${name}`;
-          return _console.error.bind(_console, label, `color:${hash(label)};font-weight:bold`);
+          let label = `%c${name}`;
+          if (options.id) {
+            label += ` %c[uid: %c${options.id}%c]`;
+          } else {
+            label += `%c%c%c`;
+          }
+          return _console.error.bind(
+            _console,
+            label,
+            `color:${hash(label)};font-weight:bold`,
+            `color:#777`,
+            `color:#aaa`,
+            `color:#777`,
+          );
         }
       },
     };
