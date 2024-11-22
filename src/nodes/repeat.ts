@@ -126,12 +126,6 @@ export class Repeat<T> implements DOMHandle {
       const connected = this.connectedItems.find((item) => item.key === potential.key);
 
       if (connected) {
-        console.log("updating existing item", {
-          current: connected.$value.get(),
-          potential: potential.value,
-          equal: deepEqual(connected.$value.get(), potential.value),
-        });
-
         connected.setValue(potential.value);
         connected.setIndex(potential.index);
         newItems[potential.index] = connected;
@@ -152,8 +146,6 @@ export class Repeat<T> implements DOMHandle {
             props: { $value, $index, renderFn: this.renderFn },
           }),
         };
-
-        console.log("adding new item", newItems[potential.index]);
       }
     }
 
