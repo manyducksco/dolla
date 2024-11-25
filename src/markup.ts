@@ -141,11 +141,11 @@ function _assertPropTypes(props: Record<string, any>) {
   }
 
   for (const key in props) {
-    if (key.startsWith("$$")) {
+    if (key.startsWith("$$") && props[key] !== undefined) {
       if (!isSettableSignal(props[key])) {
         throw new TypeError(`Prop '${key}' is named as a SettableSignal but value is not. Got: ${props[key]}`);
       }
-    } else if (key.startsWith("$")) {
+    } else if (key.startsWith("$") && props[key] !== undefined) {
       if (!isSignal(props[key])) {
         throw new TypeError(`Prop '${key}' is named as a Signal but value is not. Got: ${props[key]}`);
       }

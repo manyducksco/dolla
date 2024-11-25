@@ -49,7 +49,7 @@ export class CrashCollector {
       callback(ctx);
     }
 
-    throw error; // Throws the error so developer can work with the stack trace in the console.
+    // throw error; // Throws the error so developer can work with the stack trace in the console.
   }
 
   /**
