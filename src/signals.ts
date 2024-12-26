@@ -54,17 +54,11 @@ export interface Signal<T> {
   watch(callback: (value: T) => void, options?: SignalWatchOptions<T>): StopFunction;
 }
 
-export interface SignalSetter<I, O = I> {
-  /**
-   * Updates the signal's value.
-   */
-  (value: O): void;
+/** A new value for a signal, or a callback that receives the current value and returns a new one. */
+export type SetSignalAction<I, O = I> = O | ((current: I) => O);
 
-  /**
-   * Takes a callback that receives the signal's current value and returns a new one.
-   */
-  (callback: (current: I) => O): void;
-}
+/** Callback that updates the value of a signal. */
+export type SignalSetter<I, O = I> = (value: SetSignalAction<I, O>) => void;
 
 export type MaybeSignal<T> = Signal<T> | T;
 
@@ -296,14 +290,12 @@ function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Si
     },
   };
 
-  function setValue(next: T): void;
-  function setValue(update: (current: T) => T): void;
-  function setValue(next: unknown) {
+  function setValue(action: SetSignalAction<T>) {
     let value: T;
-    if (typeof next === "function") {
-      value = next(currentValue);
+    if (typeof action === "function") {
+      value = (action as (next: T) => T)(currentValue);
     } else {
-      value = next as T;
+      value = action as T;
     }
     if (!equal(value, currentValue)) {
       currentValue = value;
