@@ -1,6 +1,6 @@
 {
   "name": "@manyducks.co/dolla",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Front-end components, routing and state management.",
   "main": "lib/index.js",
   "types": "./index.d.ts",
