@@ -1,11 +1,17 @@
-import { type AppContext, type ElementContext } from "../app.js";
-import { getRenderHandle, isDOMHandle, isMarkup, renderMarkupToDOM, toMarkup, type DOMHandle } from "../markup.js";
+import {
+  getRenderHandle,
+  isDOMHandle,
+  isMarkup,
+  renderMarkupToDOM,
+  toMarkup,
+  type DOMHandle,
+  type ElementContext,
+} from "../markup.js";
 import { type Renderable } from "../types.js";
 
 interface PortalConfig {
   content: Renderable;
   parent: Node;
-  appContext: AppContext;
   elementContext: ElementContext;
 }
 
@@ -33,9 +39,9 @@ export class Portal implements DOMHandle {
     if (isDOMHandle(content)) {
       this.handle = content;
     } else if (isMarkup(content)) {
-      this.handle = getRenderHandle(renderMarkupToDOM(content, this.config));
+      this.handle = getRenderHandle(renderMarkupToDOM(content, this.config.elementContext));
     } else {
-      this.handle = getRenderHandle(renderMarkupToDOM(toMarkup(content), this.config));
+      this.handle = getRenderHandle(renderMarkupToDOM(toMarkup(content), this.config.elementContext));
     }
 
     this.handle.connect(parent);

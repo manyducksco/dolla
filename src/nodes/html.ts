@@ -1,16 +1,15 @@
 import { nanoid } from "nanoid";
-import { type AppContext, type ElementContext } from "../app.js";
-import { isRef, renderMarkupToDOM, type DOMHandle, type Markup } from "../markup.js";
-import { isSettableSignal, isSignal, SettableSignal, watch, type Signal, type StopFunction } from "../signals.js";
+import { isRef, renderMarkupToDOM, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
+import { Environment, getEnv } from "../modules/core.js";
+import * as render from "../modules/render.js";
+import { isSettableSignal, isSignal, SettableSignal, type Signal, type StopFunction } from "../signals.js";
 import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
-import { BuiltInStores } from "../types.js";
 import { omit } from "../utils.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 
 type HTMLOptions = {
-  appContext: AppContext;
   elementContext: ElementContext;
   tag: string;
   props?: any;
@@ -22,7 +21,6 @@ export class HTML implements DOMHandle {
   props: Record<string, any>;
   children: DOMHandle[];
   stopCallbacks: StopFunction[] = [];
-  appContext;
   elementContext;
   uniqueId = nanoid();
 
@@ -33,7 +31,7 @@ export class HTML implements DOMHandle {
     return this.node.parentNode != null;
   }
 
-  constructor({ tag, props, children, appContext, elementContext }: HTMLOptions) {
+  constructor({ tag, props, children, elementContext }: HTMLOptions) {
     elementContext = { ...elementContext };
 
     // This and all nested views will be created as SVG elements.
@@ -49,7 +47,7 @@ export class HTML implements DOMHandle {
     }
 
     // Add unique ID to attributes for debugging purposes.
-    if (appContext.mode === "development") {
+    if (getEnv() === Environment.development) {
       this.node.dataset.uniqueId = this.uniqueId;
     }
 
@@ -66,9 +64,7 @@ export class HTML implements DOMHandle {
       ...omit(["ref", "class", "className"], props),
       class: props.className ?? props.class,
     };
-    this.children = children ? renderMarkupToDOM(children, { appContext, elementContext }) : [];
-
-    this.appContext = appContext;
+    this.children = children ? renderMarkupToDOM(children, elementContext) : [];
     this.elementContext = elementContext;
   }
 
@@ -140,8 +136,6 @@ export class HTML implements DOMHandle {
   }
 
   applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
-    const render = this.appContext.stores.get("render")!.instance?.exports as BuiltInStores["render"];
-
     const attachProp = <T>(value: Signal<T> | T, callback: (value: T) => void, updateKey: string) => {
       if (isSignal(value)) {
         this.stopCallbacks.push(
@@ -368,7 +362,6 @@ export class HTML implements DOMHandle {
   }
 
   applyStyles(element: HTMLElement | SVGElement, styles: string | Record<string, any>, stopCallbacks: StopFunction[]) {
-    const render = this.appContext.stores.get("render")!.instance?.exports as BuiltInStores["render"];
     const propStopCallbacks: StopFunction[] = [];
 
     if (styles == undefined) {
@@ -442,7 +435,6 @@ export class HTML implements DOMHandle {
   }
 
   applyClasses(element: HTMLElement | SVGElement, classes: unknown, stopCallbacks: StopFunction[]) {
-    const render = this.appContext.stores.get("render")!.instance?.exports as BuiltInStores["render"];
     const classStopCallbacks: StopFunction[] = [];
 
     if (isSignal(classes)) {

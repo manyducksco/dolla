@@ -1,11 +1,24 @@
 import { nanoid } from "nanoid";
-import { type AppContext, type ElementContext } from "./app.js";
-import { type DebugChannel } from "./classes/DebugHub.js";
-import { type DOMHandle, getRenderHandle, isMarkup, m, type Markup, renderMarkupToDOM } from "./markup.js";
-import { isSignal, type MaybeSignal, Signal, signal, type SignalValues, type StopFunction, watch } from "./signals.js";
-import { type Store } from "./store.js";
+import {
+  type DOMHandle,
+  type ElementContext,
+  getRenderHandle,
+  isMarkup,
+  m,
+  type Markup,
+  renderMarkupToDOM,
+} from "./markup.js";
+import { _CRASH } from "./modules/logging.js";
+import {
+  createSignal,
+  isSignal,
+  type MaybeSignal,
+  Signal,
+  type SignalValues,
+  type StopFunction,
+  watch,
+} from "./signals.js";
 import { isArrayOf, typeOf } from "./typeChecking.js";
-import type { BuiltInStores } from "./types.js";
 
 /*=====================================*\
 ||                Types                ||
@@ -18,45 +31,16 @@ export type ViewResult = Node | Signal<any> | Markup | Markup[] | null;
 
 export type View<P> = (props: P, context: ViewContext) => ViewResult;
 
-export interface ViewContext extends DebugChannel {
+export interface ViewContext {
   /**
    * A string ID unique to this view.
    */
   readonly uid: string;
 
   /**
-   * Returns the shared instance of `store`.
+   * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
    */
-  getStore<T extends Store<any, any>>(store: T): ReturnType<T>;
-
-  /**
-   * Returns the shared instance of a built-in store.
-   */
-  getStore<N extends keyof BuiltInStores>(name: N): BuiltInStores[N];
-
-  /**
-   * Runs `callback` just before this view is connected. DOM nodes are not yet attached to the page.
-   * @deprecated
-   */
-  beforeConnect(callback: () => void): void;
-
-  /**
-   * Runs `callback` after this view is connected. DOM nodes are now attached to the page.
-   * @deprecated use onMount
-   */
-  onConnected(callback: () => void): void;
-
-  /**
-   * Runs `callback` just before this view is disconnected. DOM nodes are still attached to the page.
-   * @deprecated
-   */
-  beforeDisconnect(callback: () => void): void;
-
-  /**
-   * Runs `callback` after this view is disconnected. DOM nodes are no longer attached to the page.
-   * @deprecated use onUnmount
-   */
-  onDisconnected(callback: () => void): void;
+  beforeMount(callback: () => void): void;
 
   /**
    * Registers a callback to run just after this view is mounted.
@@ -64,19 +48,14 @@ export interface ViewContext extends DebugChannel {
   onMount(callback: () => void): void;
 
   /**
+   * Registers a callback to run just before this view is unmounted. DOM nodes are still attached to the page.
+   */
+  beforeUnmount(callback: () => void): void;
+
+  /**
    * Registers a callback to run just after this view is unmounted.
    */
   onUnmount(callback: () => void): void;
-
-  /**
-   * The name of this view for logging and debugging purposes.
-   */
-  name: string;
-
-  /**
-   * Takes an Error object, unmounts the app and displays its crash page.
-   */
-  crash(error: Error): void;
 
   /**
    * Watch a set of signals. The callback is called when any of the signals receive a new value.
@@ -88,21 +67,6 @@ export interface ViewContext extends DebugChannel {
    * Returns a Markup element that displays this view's children.
    */
   outlet(): Markup;
-}
-
-/*=====================================*\
-||          Context Accessors          ||
-\*=====================================*/
-
-export interface ViewContextSecrets {
-  appContext: AppContext;
-  elementContext: ElementContext;
-}
-
-const SECRETS = Symbol("VIEW_SECRETS");
-
-export function getViewSecrets(ctx: ViewContext): ViewContextSecrets {
-  return (ctx as any)[SECRETS];
 }
 
 /*=====================================*\
@@ -118,22 +82,17 @@ export function view<P>(callback: View<P>) {
  */
 interface ViewConfig<P> {
   view: View<P>;
-  appContext: AppContext;
-  elementContext: ElementContext;
+  elementContext?: ElementContext;
   props: P;
   children?: Markup[];
 }
 
 export function initView<P>(config: ViewConfig<P>): DOMHandle {
-  const appContext = config.appContext;
   const elementContext = {
-    ...config.elementContext,
-    stores: new Map(),
+    ...(config.elementContext ?? {}),
     parent: config.elementContext,
   };
-  const [$children, setChildren] = signal<DOMHandle[]>(
-    renderMarkupToDOM(config.children ?? [], { appContext, elementContext }),
-  );
+  const [$children, setChildren] = createSignal<DOMHandle[]>(renderMarkupToDOM(config.children ?? [], elementContext));
 
   let isConnected = false;
 
@@ -146,77 +105,25 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
 
   const uniqueId = nanoid();
 
-  const ctx: Omit<ViewContext, keyof DebugChannel> = {
+  const ctx: ViewContext = {
     get uid() {
       return uniqueId;
     },
 
-    name: config.view.name ?? "anonymous",
-
-    getStore(store: keyof BuiltInStores | Store<any, any>) {
-      let name: string;
-
-      if (typeof store === "string") {
-        name = store as keyof BuiltInStores;
-      } else {
-        name = store.name;
-      }
-
-      if (typeof store !== "string") {
-        let ec: ElementContext | undefined = elementContext;
-        while (ec) {
-          if (ec.stores.has(store)) {
-            return ec.stores.get(store)?.instance!.exports;
-          }
-          ec = ec.parent;
-        }
-      }
-
-      if (appContext.stores.has(store)) {
-        const _store = appContext.stores.get(store)!;
-
-        if (!_store.instance) {
-          appContext.crashCollector.crash({
-            componentName: ctx.name,
-            error: new Error(`Store '${name}' is not registered on this app.`),
-          });
-        }
-
-        return _store.instance!.exports;
-      }
-
-      appContext.crashCollector.crash({
-        componentName: ctx.name,
-        error: new Error(`Store '${name}' is not registered on this app.`),
-      });
-    },
-
-    onConnected(callback) {
-      connectedCallbacks.push(callback);
-    },
-
-    onDisconnected(callback) {
-      disconnectedCallbacks.push(callback);
-    },
-
-    beforeConnect(callback) {
+    beforeMount(callback) {
       beforeConnectCallbacks.push(callback);
-    },
-
-    beforeDisconnect(callback) {
-      beforeDisconnectCallbacks.push(callback);
     },
 
     onMount(callback) {
       connectedCallbacks.push(callback);
     },
 
-    onUnmount(callback) {
-      disconnectedCallbacks.push(callback);
+    beforeUnmount(callback) {
+      beforeDisconnectCallbacks.push(callback);
     },
 
-    crash(error: Error) {
-      config.appContext.crashCollector.crash({ error, componentName: ctx.name });
+    onUnmount(callback) {
+      disconnectedCallbacks.push(callback);
     },
 
     watch(signals, callback) {
@@ -251,26 +158,6 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     },
   };
 
-  const debugChannel = appContext.debugHub.channel({
-    get name() {
-      return ctx.name;
-    },
-    get id() {
-      return uniqueId;
-    },
-  });
-
-  Object.defineProperties(ctx, Object.getOwnPropertyDescriptors(debugChannel));
-
-  Object.defineProperty(ctx, SECRETS, {
-    enumerable: false,
-    configurable: false,
-    value: {
-      appContext,
-      elementContext,
-    } as ViewContextSecrets,
-  });
-
   let rendered: DOMHandle | undefined;
 
   function initialize() {
@@ -280,38 +167,33 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
       result = config.view(config.props, ctx as ViewContext);
     } catch (error) {
       if (error instanceof Error) {
-        appContext.crashCollector.crash({ error, componentName: ctx.name });
+        _CRASH({ error, loggerName: "dolla/view", uid: ctx.uid });
       }
       throw error;
     }
 
     if (result instanceof Promise) {
-      appContext.crashCollector.crash({
-        error: new TypeError(`View function cannot return a Promise.`),
-        componentName: ctx.name,
-      });
+      throw new TypeError(`View function cannot return a Promise.`);
     }
 
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      rendered = getRenderHandle(renderMarkupToDOM(m("$node", { value: result }), { appContext, elementContext }));
+      rendered = getRenderHandle(renderMarkupToDOM(m("$node", { value: result }), elementContext));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      rendered = getRenderHandle(renderMarkupToDOM(result, { appContext, elementContext }));
+      rendered = getRenderHandle(renderMarkupToDOM(result, elementContext));
     } else if (isSignal(result)) {
       rendered = getRenderHandle(
-        renderMarkupToDOM(m("$observer", { signals: [result], renderFn: (x) => x }), { appContext, elementContext }),
+        renderMarkupToDOM(m("$observer", { signals: [result], renderFn: (x) => x }), elementContext),
       );
     } else {
-      console.warn(result, config);
-      appContext.crashCollector.crash({
-        error: new TypeError(
-          `Expected '${
-            config.view.name
-          }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
-        ),
-        componentName: ctx.name,
-      });
+      // console.warn(result, config);
+      const error = new TypeError(
+        `Expected '${
+          config.view.name
+        }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
+      );
+      _CRASH({ error, loggerName: "dolla/view", uid: ctx.uid });
     }
   }
 

@@ -1,10 +1,9 @@
-import { type AppContext, type ElementContext } from "../app.js";
-import { type DOMHandle } from "../markup.js";
-import { watch, type Signal, type StopFunction } from "../signals.js";
+import { type DOMHandle, type ElementContext } from "../markup.js";
+import { isDevEnvironment } from "../modules/core.js";
+import { type Signal, type StopFunction } from "../signals.js";
 
 export interface OutletConfig {
   $children: Signal<DOMHandle[]>;
-  appContext: AppContext;
   elementContext: ElementContext;
 }
 
@@ -17,15 +16,13 @@ export class Outlet implements DOMHandle {
   $children: Signal<DOMHandle[]>;
   stopCallback?: StopFunction;
   connectedChildren: DOMHandle[] = [];
-  appContext: AppContext;
   elementContext: ElementContext;
 
   constructor(config: OutletConfig) {
     this.$children = config.$children;
-    this.appContext = config.appContext;
     this.elementContext = config.elementContext;
 
-    if (this.appContext.mode === "development") {
+    if (isDevEnvironment()) {
       this.node = document.createComment("Outlet");
       this.endNode = document.createComment("/Outlet");
     } else {
@@ -76,7 +73,7 @@ export class Outlet implements DOMHandle {
 
     this.connectedChildren = newChildren;
 
-    if (this.appContext.mode === "development") {
+    if (isDevEnvironment()) {
       this.node.textContent = `Outlet (${newChildren.length} ${newChildren.length === 1 ? "child" : "children"})`;
       this.node.parentElement?.insertBefore(
         this.endNode,

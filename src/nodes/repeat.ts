@@ -1,13 +1,11 @@
-import { type AppContext, type ElementContext } from "../app.js";
-import { type DOMHandle } from "../markup.js";
-import { signal, type Signal, type SignalSetter, type StopFunction } from "../signals.js";
-import { deepEqual } from "../utils.js";
+import { type DOMHandle, type ElementContext } from "../markup.js";
+import { isDevEnvironment } from "../modules/core.js";
+import { createSignal, type Signal, type SignalSetter, type StopFunction } from "../signals.js";
 import { initView, type ViewContext, type ViewResult } from "../view.js";
 
 // ----- Types ----- //
 
 interface RepeatOptions<T> {
-  appContext: AppContext;
   elementContext: ElementContext;
   $items: Signal<T[]>;
   keyFn: (value: T, index: number) => string | number | symbol;
@@ -31,7 +29,6 @@ export class Repeat<T> implements DOMHandle {
   $items: Signal<T[]>;
   stopCallback?: StopFunction;
   connectedItems: ConnectedItem<T>[] = [];
-  appContext;
   elementContext;
   renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
   keyFn: (value: T, index: number) => string | number | symbol;
@@ -40,15 +37,14 @@ export class Repeat<T> implements DOMHandle {
     return this.node.parentNode != null;
   }
 
-  constructor({ appContext, elementContext, $items, renderFn, keyFn }: RepeatOptions<T>) {
-    this.appContext = appContext;
+  constructor({ elementContext, $items, renderFn, keyFn }: RepeatOptions<T>) {
     this.elementContext = elementContext;
 
     this.$items = $items;
     this.renderFn = renderFn;
     this.keyFn = keyFn;
 
-    if (appContext.mode === "development") {
+    if (isDevEnvironment()) {
       this.node = document.createComment("Repeat");
       this.endNode = document.createComment("/Repeat");
     } else {
@@ -130,8 +126,8 @@ export class Repeat<T> implements DOMHandle {
         connected.setIndex(potential.index);
         newItems[potential.index] = connected;
       } else {
-        const [$value, setValue] = signal<T>(potential.value);
-        const [$index, setIndex] = signal(potential.index);
+        const [$value, setValue] = createSignal<T>(potential.value);
+        const [$index, setIndex] = createSignal(potential.index);
 
         newItems[potential.index] = {
           key: potential.key,
@@ -141,7 +137,6 @@ export class Repeat<T> implements DOMHandle {
           setIndex,
           handle: initView({
             view: RepeatItemView,
-            appContext: this.appContext,
             elementContext: this.elementContext,
             props: { $value, $index, renderFn: this.renderFn },
           }),
@@ -158,7 +153,7 @@ export class Repeat<T> implements DOMHandle {
 
     this.connectedItems = newItems;
 
-    if (this.appContext.mode === "development") {
+    if (isDevEnvironment()) {
       this.node.textContent = `Repeat (${newItems.length} item${newItems.length === 1 ? "" : "s"})`;
 
       const lastItem = newItems.at(-1)?.handle.node ?? this.node;

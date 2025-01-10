@@ -55,10 +55,10 @@ export interface Signal<T> {
 }
 
 /** A new value for a signal, or a callback that receives the current value and returns a new one. */
-export type SetSignalAction<I, O = I> = O | ((current: I) => O);
+export type SignalSetAction<I, O = I> = O | ((current: I) => O);
 
 /** Callback that updates the value of a signal. */
-export type SignalSetter<I, O = I> = (value: SetSignalAction<I, O>) => void;
+export type SignalSetter<I, O = I> = (value: SignalSetAction<I, O>) => void;
 
 export type MaybeSignal<T> = Signal<T> | T;
 
@@ -143,7 +143,7 @@ export function signalify<T>(value: MaybeSignal<T>): Signal<T> {
 ||            Signal            ||
 \*==============================*/
 
-export interface signal {
+export interface __createSignal {
   /**
    * Creates a new Signal and setter.
    */
@@ -178,19 +178,9 @@ export interface signal {
   createSetter<I, O = I>(signal: Signal<I>, callback: (next: O, previous: I) => void): SignalSetter<I, O>;
 }
 
-export function signal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>];
-export function signal<T>(
-  initialValue?: T,
-  options?: SignalCreateOptions<T | undefined>,
-): [Signal<T | undefined>, SignalSetter<T | undefined>];
-
-export function signal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>] {
-  return createSignal(initialValue, options);
-}
-
-signal.settable = createSettableSignal;
-signal.toSettable = createSettableSignalFrom;
-signal.createSetter = createSignalSetter;
+// export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>] {
+//   return createSignal(initialValue, options);
+// }
 
 function createSettableSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): SettableSignal<T>;
 function createSettableSignal<T>(
@@ -199,7 +189,7 @@ function createSettableSignal<T>(
 ): SettableSignal<T | undefined>;
 
 function createSettableSignal<T>(initialValue?: T, options?: SignalCreateOptions<T>) {
-  const [$value, setValue] = signal<any>(initialValue, options);
+  const [$value, setValue] = createSignal<any>(initialValue, options);
   return {
     get: $value.get,
     watch: $value.watch,
@@ -249,10 +239,16 @@ function createStaticSignal<T>(value: T): Signal<T> {
   };
 }
 
+export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>];
+export function createSignal<T>(
+  initialValue?: T,
+  options?: SignalCreateOptions<T | undefined>,
+): [Signal<T | undefined>, SignalSetter<T | undefined>];
+
 /**
  * Creates a signal and setter.
  */
-function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>] {
+export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>] {
   let currentValue = initialValue;
   let watchers: ((value: T) => void)[] = [];
 
@@ -290,7 +286,7 @@ function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Si
     },
   };
 
-  function setValue(action: SetSignalAction<T>) {
+  function setValue(action: SignalSetAction<T>) {
     let value: T;
     if (typeof action === "function") {
       value = (action as (next: T) => T)(currentValue);

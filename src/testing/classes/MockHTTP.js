@@ -1,6 +1,6 @@
 import { DebugHub } from "../../classes/classes/DebugHub.js";
 import { Store } from "../../classes/classes/Store.old.js";
-import { HTTPStore } from "../../stores/http.js";
+import { HTTPStore } from "../../modules/http.js";
 import { makeMockFetch } from "../makeMockFetch.js";
 
 export class MockHTTP extends Store {

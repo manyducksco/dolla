@@ -16,13 +16,119 @@ Dolla is a batteries-included JavaScript frontend framework covering the needs o
 
 Let's first get into some examples.
 
+## Signals
+
+### Signals API
+
+```jsx
+import { createSignal, derive } from "@manyducks.co/dolla";
+
+// Create a readable state and setter.
+const [$count, setCount] = createSignal(0);
+
+// Derive a new state from one or more states.
+const $doubled = derive([$$count], (count) => count * 2);
+```
+
+### Basic State
+
+```jsx
+import { createSignal } from "@manyducks.co/dolla";
+
+const [$count, setCount] = createSignal(0);
+
+// Set Style 1: Set value explicitly.
+setCount(1); // $count = 1
+
+// Set Style 2: Set value based on the current value using a callback.
+const increment = () => setCount((current) => current + 1);
+const decrement = () => setCount((current) => current - 1);
+
+increment(); // $count = 2
+increment(); // $count = 3
+decrement(); // $count = 2
+
+console.log($count.get()); // 2
+```
+
+State machine via Robot
+
+```jsx
+import { createSignal, derive } from "@manyducks.co/dolla";
+import { initStateMachine } from "@manyducks.co/dolla-robot";
+import { createMachine, invoke, reduce, state, transition } from "robot3";
+
+const context = () => ({
+  users: [],
+});
+
+async function loadUsers() {
+  return [
+    { id: 1, name: "Wilbur" },
+    { id: 2, name: "Matthew" },
+    { id: 3, name: "Anne" },
+  ];
+}
+
+const machine = createMachine(
+  {
+    idle: state(transition("fetch", "loading")),
+    loading: invoke(
+      loadUsers,
+      transition(
+        "done",
+        "loaded",
+        reduce((ctx, ev) => ({ ...ctx, users: ev.data })),
+      ),
+    ),
+    loaded: state(),
+  },
+  context,
+);
+
+function App() {
+  const [$state, $context, send] = initStateMachine(machine);
+  const $users = derive([$context], (c) => c.users);
+  const $buttonDisabled = derive([$state], (state) => state === "loading" || state === "loaded");
+
+  return (
+    <>
+      {derive([$state], (state) => {
+        if (state === "loading") {
+          return <div>Loading users...</div>;
+        } else if (state === "loaded") {
+          <ul>
+            {users.map((user) => (
+              <li id={`user-${user.id}`}>{user.name}</li>
+            ))}
+          </ul>;
+        }
+      })}
+
+      <button onClick={() => send("fetch")} disabled={$buttonDisabled}>
+        Load users
+      </button>
+    </>
+  );
+}
+```
+
+### Derived State
+
+```jsx
+import { createSignal, derive } from "@manyducks.co/dolla";
+
+const [$count, setCount] = createSignal(0);
+const $doubled = derive([$count], (count) => count * 2);
+```
+
 ## A Basic Component
 
 ```tsx
-import { dolla, signal } from "@manyducks.co/dolla";
+import Dolla from "@manyducks.co/dolla";
 
 function Counter(props, c) {
-  const [$count, setCount] = signal(0);
+  const [$count, setCount] = Dolla.createSignal(0);
 
   function increment() {
     setCount((count) => count + 1);
@@ -34,29 +140,9 @@ function Counter(props, c) {
       <button onClick={increment}>Click Me</button>
     </div>
   );
-
-  // return html`
-  //   <div>
-  //     <p>Clicks: ${$count}</p>
-  //     <button onclick=${increment}>Click Me</button>
-  //   </div>
-  // `;
 }
 
-// Create a new dolla app...
-const app = dolla();
-
-// Mount this counter component at the root...
-app.route("/", Counter);
-
-app.route({
-  path: "/{#projectId}",
-  component: Counter,
-  routes: [{ path: "/", redirect: "../" }],
-});
-
-// And mount the app to the page.
-app.mount("body");
+Dolla.mount(document.body, Counter);
 ```
 
 If you've ever used React before (and chances are you have if you're interested in obscure frameworks like this one) this should look very familiar to you.

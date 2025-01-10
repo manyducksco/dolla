@@ -1,4 +1,3 @@
-import { type AppContext, type ElementContext } from "../app.js";
 import {
   getRenderHandle,
   isDOMHandle,
@@ -7,13 +6,14 @@ import {
   renderMarkupToDOM,
   toMarkup,
   type DOMHandle,
+  type ElementContext,
 } from "../markup.js";
+import { Environment, getEnv } from "../modules/core.js";
 import { watch, type Signal, type StopFunction } from "../signals.js";
 import { typeOf } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
 
 interface ObserverOptions {
-  appContext: AppContext;
   elementContext: ElementContext;
   signals: Signal<any>[];
   renderFn: (...values: any) => Renderable;
@@ -27,7 +27,6 @@ export class Observer implements DOMHandle {
   endNode: Node;
   connectedViews: DOMHandle[] = [];
   renderFn: (...values: any) => Renderable;
-  appContext;
   elementContext;
   observerControls;
 
@@ -35,8 +34,7 @@ export class Observer implements DOMHandle {
     return this.node.parentNode != null;
   }
 
-  constructor({ signals, renderFn, appContext, elementContext }: ObserverOptions) {
-    this.appContext = appContext;
+  constructor({ signals, renderFn, elementContext }: ObserverOptions) {
     this.elementContext = elementContext;
     this.renderFn = renderFn;
 
@@ -112,9 +110,9 @@ export class Observer implements DOMHandle {
       if (isDOMHandle(c)) {
         return c;
       } else if (isMarkup(c)) {
-        return getRenderHandle(renderMarkupToDOM(c, this));
+        return getRenderHandle(renderMarkupToDOM(c, this.elementContext));
       } else {
-        return getRenderHandle(renderMarkupToDOM(toMarkup(c), this));
+        return getRenderHandle(renderMarkupToDOM(toMarkup(c), this.elementContext));
       }
     });
 
@@ -126,7 +124,8 @@ export class Observer implements DOMHandle {
       this.connectedViews.push(handle);
     }
 
-    if (this.appContext.mode === "development") {
+    // Move marker comment node to after last sibling.
+    if (getEnv() === Environment.development) {
       const lastNode = this.connectedViews.at(-1)?.node;
       if (this.endNode.previousSibling !== lastNode) {
         this.node.parentNode!.insertBefore(this.endNode, lastNode?.nextSibling ?? null);

@@ -1,5 +1,5 @@
 import { type DOMHandle } from "../markup.js";
-import { isSignal, MaybeSignal, type StopFunction } from "../signals.js";
+import { isSignal, type MaybeSignal, type StopFunction } from "../signals.js";
 
 interface Stringable {
   toString(): string;

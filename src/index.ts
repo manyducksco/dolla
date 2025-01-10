@@ -1,27 +1,28 @@
-// App
-export { App } from "./app.js";
+import { onMount, mount } from "./modules/core.js";
 
-export * from "./signals.js";
+// signals
+import { createSignal, derive, watch } from "./signals.js";
+export { createSignal, derive, watch };
+
+// module: http
+import http from "./modules/http.js";
+export { http };
+export type { HTTPRequest, HTTPResponse } from "./modules/http.js";
+
+// module: render
+import * as render from "./modules/render.js";
+export { render };
 
 // Markup
-export { type Ref, isRef, ref, m, cond, repeat, portal } from "./markup.js";
+export { type Ref, isRef, createRef as ref, m, cond, repeat, portal } from "./markup.js";
 
 // Views
 export { Fragment } from "./views/fragment.js";
-export { StoreScope, type StoreScopeProps } from "./views/store-scope.js";
-
-// Stores
-export { RouterStore, type RouteMatchContext } from "./stores/router.js";
-export { LanguageStore } from "./stores/language.js";
-export { HTTPStore, type HTTPMiddleware } from "./stores/http.js";
-export { DialogStore, type DialogProps } from "./stores/dialog.js";
 
 // Types
 export type { ViewContext } from "./view.js";
-export type { StoreContext } from "./store.js";
 export type { Markup } from "./markup.js";
 export type { InputType, Renderable } from "./types.js";
-// export "./types.js";
 
 import type { IntrinsicElements as Elements } from "./types";
 
@@ -33,3 +34,17 @@ declare global {
     }
   }
 }
+
+export default {
+  // signals
+  createSignal,
+  derive,
+  watch,
+
+  // modules
+  http,
+  render,
+
+  onMount,
+  mount,
+};

@@ -1,77 +1,66 @@
 import { isObject } from "../typeChecking.js";
-import { type StoreContext } from "../store.js";
-
-interface HTTPStoreOptions {
-  /**
-   * The fetch function to use for requests. Pass this to mock for testing.
-   */
-  fetch?: typeof window.fetch;
-}
 
 /**
  * A simple HTTP client with middleware support. Middleware applies to all requests made through this store,
  * so it's the perfect way to handle things like auth headers and permission checks for API calls.
  */
-export function HTTPStore(ctx: StoreContext<HTTPStoreOptions>) {
-  ctx.name = "dolla/http";
 
-  const fetch = ctx.options.fetch ?? getDefaultFetch();
+const fetch = getDefaultFetch();
 
-  const middleware: HTTPMiddleware[] = [];
+const middleware: HTTPMiddleware[] = [];
 
-  async function request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any>) {
-    return makeRequest<ResBody, ReqBody>({ ...options, method, uri, middleware, fetch });
-  }
-
-  return {
-    /**
-     * Adds a new middleware that will apply to subsequent requests.
-     * Returns a function to remove this middleware.
-     *
-     * @param middleware - A middleware function that will intercept requests.
-     */
-    middleware(fn: HTTPMiddleware) {
-      middleware.push(fn);
-
-      // Call returned function to remove this middleware for subsequent requests.
-      return function remove() {
-        middleware.splice(middleware.indexOf(fn), 1);
-      };
-    },
-
-    async get<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
-      return request<ResBody, never>("get", uri, options);
-    },
-
-    async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-      return request<ResBody, ReqBody>("put", uri, options);
-    },
-
-    async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-      return request<ResBody, ReqBody>("patch", uri, options);
-    },
-
-    async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-      return request<ResBody, ReqBody>("post", uri, options);
-    },
-
-    async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
-      return request<ResBody, never>("delete", uri, options);
-    },
-
-    async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-      return request<ResBody, ReqBody>("head", uri, options);
-    },
-
-    async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-      return request<ResBody, ReqBody>("options", uri, options);
-    },
-
-    async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-      return request<ResBody, ReqBody>("trace", uri, options);
-    },
-  };
+async function request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any>) {
+  return makeRequest<ResBody, ReqBody>({ ...options, method, uri, middleware, fetch });
 }
+
+export default {
+  /**
+   * Adds a new middleware that will apply to subsequent requests.
+   * Returns a function to remove this middleware.
+   *
+   * @param middleware - A middleware function that will intercept requests.
+   */
+  use(fn: HTTPMiddleware) {
+    middleware.push(fn);
+
+    // Call returned function to remove this middleware for subsequent requests.
+    return function remove() {
+      middleware.splice(middleware.indexOf(fn), 1);
+    };
+  },
+
+  async get<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
+    return request<ResBody, never>("get", uri, options);
+  },
+
+  async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+    return request<ResBody, ReqBody>("put", uri, options);
+  },
+
+  async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+    return request<ResBody, ReqBody>("patch", uri, options);
+  },
+
+  async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+    return request<ResBody, ReqBody>("post", uri, options);
+  },
+
+  async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
+    return request<ResBody, never>("delete", uri, options);
+  },
+
+  async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+    return request<ResBody, ReqBody>("head", uri, options);
+  },
+
+  async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+    return request<ResBody, ReqBody>("options", uri, options);
+  },
+
+  async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+    return request<ResBody, ReqBody>("trace", uri, options);
+  },
+};
 
 function getDefaultFetch(): typeof window.fetch {
   if (typeof window !== "undefined" && window.fetch) {
@@ -94,7 +83,7 @@ export type HTTPMiddleware = (
   next: () => Promise<HTTPResponse<unknown>>,
 ) => void | Promise<void>;
 
-interface RequestOptions<ReqBody> {
+export interface RequestOptions<ReqBody> {
   /**
    * Body to send with the request.
    */
@@ -111,7 +100,7 @@ interface RequestOptions<ReqBody> {
   query?: Record<string, any> | URLSearchParams;
 }
 
-interface HTTPRequest<Body> {
+export interface HTTPRequest<Body> {
   method: string;
   uri: string;
   readonly sameOrigin: boolean;
@@ -120,7 +109,7 @@ interface HTTPRequest<Body> {
   body: Body;
 }
 
-interface HTTPResponse<Body> {
+export interface HTTPResponse<Body> {
   method: string;
   uri: string;
   status: number;
@@ -129,7 +118,7 @@ interface HTTPResponse<Body> {
   body: Body;
 }
 
-class HTTPResponseError extends Error {
+export class HTTPResponseError extends Error {
   response;
 
   constructor(response: HTTPResponse<any>) {

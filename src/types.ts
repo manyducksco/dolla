@@ -1,8 +1,5 @@
 import type * as CSS from "csstype";
 import { Ref, type Markup } from "./markup.js";
-import { type Store } from "./store.js";
-import { type DocumentStore } from "./stores/document.js";
-import { type RenderStore } from "./stores/render.js";
 import { SettableSignal, Signal } from "./signals.js";
 
 /**
@@ -18,13 +15,6 @@ export type Renderable =
   | undefined
   | Signal<any>
   | (string | number | Markup | false | null | undefined | Signal<any>)[];
-
-export type StoreExports<T> = T extends Store<any, infer O> ? O : unknown;
-
-export interface BuiltInStores {
-  document: StoreExports<typeof DocumentStore>;
-  render: StoreExports<typeof RenderStore>;
-}
 
 export type Stringable = { toString(): string };
 

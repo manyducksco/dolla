@@ -1,12 +1,13 @@
-import { m } from "../markup.js";
+import { cond, m } from "../markup.js";
 
 type CrashPageProps = {
   message: string;
   error: Error;
-  componentName: string;
+  loggerName: string;
+  uid?: string;
 };
 
-export function DefaultCrashPage({ message, error, componentName }: CrashPageProps) {
+export function DefaultCrashPage(props: CrashPageProps) {
   return m(
     "div",
     {
@@ -23,7 +24,8 @@ export function DefaultCrashPage({ message, error, componentName }: CrashPagePro
     m(
       "p",
       { style: { marginBottom: "0.25rem" } },
-      m("span", { style: { fontFamily: "monospace" } }, componentName),
+      m("span", { style: { fontFamily: "monospace" } }, props.loggerName),
+      cond(props.uid, m("span", { style: { fontFamily: "monospace" } }), [" ", "[uid: ", props.uid, "]"]),
       " says:",
     ),
     m(
@@ -50,9 +52,9 @@ export function DefaultCrashPage({ message, error, componentName }: CrashPagePro
             fontWeight: "bold",
           },
         },
-        error.name,
+        props.error.name,
       ),
-      message,
+      props.message,
     ),
     m("p", {}, "Please see the browser console for details."),
   );

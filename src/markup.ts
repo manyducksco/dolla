@@ -1,4 +1,3 @@
-import { type AppContext, type ElementContext } from "./app.js";
 import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
 import { Observer } from "./nodes/observer.js";
@@ -6,11 +5,18 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
-// import { $, isReadable, type Readable } from "./state.js";
-import { signal, isSignal, type Signal, MaybeSignal, signalify, SettableSignal, isSettableSignal } from "./signals.js";
+import { MaybeSignal, createSignal, isSettableSignal, isSignal, signalify, type Signal } from "./signals.js";
 import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
 import { initView, type View, type ViewContext, type ViewResult } from "./view.js";
+
+/*===========================*\
+||       ElementContext      ||
+\*===========================*/
+
+export interface ElementContext {
+  isSVG?: boolean;
+}
 
 /*===========================*\
 ||           Markup          ||
@@ -198,8 +204,8 @@ export function portal(content: Renderable, parent: Node) {
 /**
  * A special kind of signal exclusively for storing references to DOM nodes.
  */
-export function ref<T extends Node>(): Ref<T> {
-  const [$node, setNode] = signal<T>();
+export function createRef<T extends Node>(): Ref<T> {
+  const [$node, setNode] = createSignal<T>();
 
   return {
     get: $node.get,
@@ -234,11 +240,6 @@ export interface Ref<T extends Node> extends Signal<T | undefined> {
 ||           Render          ||
 \*===========================*/
 
-interface RenderContext {
-  appContext: AppContext;
-  elementContext: ElementContext;
-}
-
 /**
  * Wraps any plain DOM node in a DOMHandle interface.
  */
@@ -266,7 +267,7 @@ class NodeHandle implements DOMHandle {
   async setChildren(children: DOMHandle[]) {}
 }
 
-export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext): DOMHandle[] {
+export function renderMarkupToDOM(markup: Markup | Markup[], elementContext: ElementContext): DOMHandle[] {
   const items = isArray(markup) ? markup : [markup];
 
   return items.map((item) => {
@@ -275,8 +276,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
         view: item.type as View<any>,
         props: item.props,
         children: item.children,
-        appContext: ctx.appContext,
-        elementContext: ctx.elementContext,
+        elementContext,
       });
     } else if (isString(item.type)) {
       switch (item.type) {
@@ -296,8 +296,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
             $predicate: attrs.$predicate,
             thenContent: attrs.thenContent,
             elseContent: attrs.elseContent,
-            appContext: ctx.appContext,
-            elementContext: ctx.elementContext,
+            elementContext,
           });
         }
         case "$repeat": {
@@ -306,8 +305,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
             $items: attrs.$items,
             keyFn: attrs.keyFn,
             renderFn: attrs.renderFn,
-            appContext: ctx.appContext,
-            elementContext: ctx.elementContext,
+            elementContext,
           });
         }
         case "$observer": {
@@ -315,16 +313,14 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
           return new Observer({
             signals: attrs.signals,
             renderFn: attrs.renderFn,
-            appContext: ctx.appContext,
-            elementContext: ctx.elementContext,
+            elementContext,
           });
         }
         case "$outlet": {
           const attrs = item.props! as MarkupAttributes["$outlet"];
           return new Outlet({
             $children: attrs.$children,
-            appContext: ctx.appContext,
-            elementContext: ctx.elementContext,
+            elementContext,
           });
         }
         case "$portal": {
@@ -332,8 +328,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
           return new Portal({
             content: attrs.content,
             parent: attrs.parent,
-            appContext: ctx.appContext,
-            elementContext: ctx.elementContext,
+            elementContext,
           });
         }
         default:
@@ -344,8 +339,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], ctx: RenderContext)
             tag: item.type,
             props: item.props,
             children: item.children,
-            appContext: ctx.appContext,
-            elementContext: ctx.elementContext,
+            elementContext,
           });
       }
     } else {

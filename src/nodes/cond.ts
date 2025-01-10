@@ -1,13 +1,12 @@
-import { type AppContext, type ElementContext } from "../app.js";
-import { renderMarkupToDOM, toMarkup, type DOMHandle, type Markup } from "../markup.js";
-import { watch, type Signal, type StopFunction } from "../signals.js";
+import { renderMarkupToDOM, toMarkup, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
+import { isDevEnvironment } from "../modules/core.js";
+import { type Signal, type StopFunction } from "../signals.js";
 import { type Renderable } from "../types.js";
 
 export interface ConditionalConfig {
   $predicate: Signal<any>;
   thenContent?: Renderable;
   elseContent?: Renderable;
-  appContext: AppContext;
   elementContext: ElementContext;
 }
 
@@ -19,7 +18,6 @@ export class Conditional implements DOMHandle {
   thenContent?: Markup[];
   elseContent?: Markup[];
   connectedContent: DOMHandle[] = [];
-  appContext: AppContext;
   elementContext: ElementContext;
 
   initialUpdateHappened = false;
@@ -29,10 +27,9 @@ export class Conditional implements DOMHandle {
     this.$predicate = config.$predicate;
     this.thenContent = config.thenContent ? toMarkup(config.thenContent) : undefined;
     this.elseContent = config.elseContent ? toMarkup(config.elseContent) : undefined;
-    this.appContext = config.appContext;
     this.elementContext = config.elementContext;
 
-    if (this.appContext.mode === "development") {
+    if (isDevEnvironment()) {
       this.node = document.createComment("Conditional");
       this.endNode = document.createComment("/Conditional");
     } else {
@@ -48,7 +45,7 @@ export class Conditional implements DOMHandle {
   connect(parent: Node, after?: Node | undefined): void {
     if (!this.connected) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
-      if (this.appContext.mode === "development") {
+      if (isDevEnvironment()) {
         parent.insertBefore(this.endNode, this.node.nextSibling);
       }
 
@@ -91,9 +88,9 @@ export class Conditional implements DOMHandle {
     }
 
     if (value && this.thenContent) {
-      this.connectedContent = renderMarkupToDOM(this.thenContent, this);
+      this.connectedContent = renderMarkupToDOM(this.thenContent, this.elementContext);
     } else if (!value && this.elseContent) {
-      this.connectedContent = renderMarkupToDOM(this.elseContent, this);
+      this.connectedContent = renderMarkupToDOM(this.elseContent, this.elementContext);
     }
 
     for (let i = 0; i < this.connectedContent.length; i++) {
@@ -102,7 +99,7 @@ export class Conditional implements DOMHandle {
       handle.connect(this.node.parentNode, previous);
     }
 
-    if (this.appContext.mode === "development") {
+    if (isDevEnvironment()) {
       this.node.textContent = `Conditional (${value ? "truthy" : "falsy"})`;
     }
   }
