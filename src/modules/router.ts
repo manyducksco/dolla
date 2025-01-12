@@ -518,7 +518,7 @@ export class Router {
 
             const parentLayer = this.#activeLayers.at(-1);
             const elementContext: ElementContext = {
-              dolla: this.#dolla,
+              root: this.#dolla,
             };
 
             const rendered = renderMarkupToDOM(matchedLayer.markup, elementContext);

@@ -45,7 +45,7 @@ export class HTML implements DOMHandle {
     }
 
     // Add unique ID to attributes for debugging purposes.
-    if (elementContext.dolla.env === "development") {
+    if (elementContext.root.env === "development") {
       this.node.dataset.uniqueId = this.uniqueId;
     }
 
@@ -138,13 +138,13 @@ export class HTML implements DOMHandle {
       if (isSignal(value)) {
         this.stopCallbacks.push(
           value.watch((current) => {
-            this.elementContext.dolla.render.update(() => {
+            this.elementContext.root.render.update(() => {
               callback(current);
             }, updateKey);
           }),
         );
       } else {
-        this.elementContext.dolla.render.update(() => {
+        this.elementContext.root.render.update(() => {
           callback(value);
         }, updateKey);
       }
@@ -370,7 +370,7 @@ export class HTML implements DOMHandle {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
-        this.elementContext.dolla.render.update(
+        this.elementContext.root.render.update(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -398,7 +398,7 @@ export class HTML implements DOMHandle {
 
         if (isSignal<any>(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.dolla.render.update(
+            this.elementContext.root.render.update(
               () => {
                 if (current != null) {
                   setProperty(key, current);
@@ -439,7 +439,7 @@ export class HTML implements DOMHandle {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
-        this.elementContext.dolla.render.update(
+        this.elementContext.root.render.update(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -461,7 +461,7 @@ export class HTML implements DOMHandle {
 
         if (isSignal(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.dolla.render.update(() => {
+            this.elementContext.root.render.update(() => {
               if (current) {
                 element.classList.add(name);
               } else {

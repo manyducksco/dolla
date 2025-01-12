@@ -126,11 +126,11 @@ export function colorFromString(value: string) {
 export type MatcherFunction = (value: string) => boolean;
 
 /**
- * Parses a filter string into a match function.
+ * Parses a filter string into a matcher function.
  *
- * @param pattern - A string or regular expression that specifies a pattern for names of debug channels you want to display.
+ * @param pattern - A string or regular expression that specifies a pattern for names of loggers whose messages you want to display.
  */
-export function createMatcher(pattern: string | RegExp) {
+export function createMatcher(pattern: string | RegExp): MatcherFunction {
   if (pattern instanceof RegExp) {
     return (value: string) => pattern.test(value);
   }

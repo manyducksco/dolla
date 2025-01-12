@@ -215,7 +215,7 @@ export class Language {
   t(key: string, values?: Record<string, Stringable | Signal<Stringable>>): Signal<string> {
     if (this === undefined) {
       throw new Error(
-        `The 't' function cannot be destructured. If you need a standalone version you can import it from the package like so: 'import { t } from "@manyducks.co/dolla"'`,
+        `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
       );
     }
 

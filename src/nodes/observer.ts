@@ -124,7 +124,7 @@ export class Observer implements DOMHandle {
     }
 
     // Move marker comment node to after last sibling in dev mode.
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       const lastNode = this.connectedViews.at(-1)?.node;
       if (this.endNode.previousSibling !== lastNode) {
         this.node.parentNode!.insertBefore(this.endNode, lastNode?.nextSibling ?? null);

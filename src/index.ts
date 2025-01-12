@@ -1,19 +1,21 @@
 // signals
 
+export type { Environment } from "./modules/dolla.js";
+export type { HTTPRequest, HTTPResponse } from "./modules/http.js";
 export {
-  createSignal,
-  derive,
-  watch,
-  signalify,
-  designalify,
   createSettableSignal,
-  toSettableSignal,
+  createSignal,
   createSignalSetter,
+  derive,
+  designalify,
+  signalify,
+  toSettableSignal,
+  watch,
 } from "./signals.js";
-export type { Signal, MaybeSignal, SettableSignal, StopFunction } from "./signals.js";
+export type { MaybeSignal, SettableSignal, Signal, StopFunction } from "./signals.js";
+export { router };
 
 import { Dolla } from "./modules/dolla.js";
-export type { Environment } from "./modules/dolla.js";
 
 const dolla = new Dolla();
 
@@ -28,7 +30,6 @@ export const unmount = dolla.unmount.bind(dolla);
 
 // module: http
 export const http = dolla.http;
-export type { HTTPRequest, HTTPResponse } from "./modules/http.js";
 
 // module: render
 export const render = dolla.render;
@@ -43,13 +44,17 @@ export const t = dolla.language.t.bind(dolla.language);
 
 // module: router
 import * as router from "./modules/router.js";
-export { router };
 
 // Markup
-import { createRef, isRef } from "./markup.js";
-export { type Ref, createMarkup as m, cond, repeat, portal } from "./markup.js";
-export { createRef, isRef };
-export type { DOMHandle } from "./markup.js";
+import htm from "htm";
+import { createMarkup } from "./markup.js";
+export { cond, createMarkup, portal, repeat, createRef, isRef } from "./markup.js";
+export type { DOMHandle, Ref } from "./markup.js";
+
+/**
+ * Generate markup with HTML in a tagged template literal.
+ */
+export const html = htm.bind(createMarkup);
 
 // Views
 export type { ViewFunction } from "./view.js";
@@ -58,9 +63,9 @@ export { Fragment } from "./views/fragment.js";
 export const constructView = dolla.constructView.bind(dolla);
 
 // Types
-export type { ViewContext } from "./view.js";
 export type { Markup } from "./markup.js";
 export type { InputType, Renderable } from "./types.js";
+export type { ViewContext } from "./view.js";
 
 import type { IntrinsicElements as Elements } from "./types";
 

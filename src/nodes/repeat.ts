@@ -43,7 +43,7 @@ export class Repeat<T> implements DOMHandle {
     this.renderFn = renderFn;
     this.keyFn = keyFn;
 
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       this.node = document.createComment("Repeat");
       this.endNode = document.createComment("/Repeat");
     } else {
@@ -152,7 +152,7 @@ export class Repeat<T> implements DOMHandle {
 
     this.connectedItems = newItems;
 
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       this.node.textContent = `Repeat (${newItems.length} item${newItems.length === 1 ? "" : "s"})`;
 
       const lastItem = newItems.at(-1)?.handle.node ?? this.node;

@@ -99,7 +99,7 @@ export function constructView<P>(
   const uniqueId = nanoid();
 
   const [$loggerName, setLoggerName] = createSignal(view.name);
-  const logger = elementContext.dolla.createLogger($loggerName, { uid: uniqueId });
+  const logger = elementContext.root.createLogger($loggerName, { uid: uniqueId });
 
   const ctx: Pick<ViewContext, Exclude<keyof ViewContext, keyof Logger>> = {
     get uid() {

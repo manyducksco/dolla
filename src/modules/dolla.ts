@@ -1,13 +1,13 @@
-import { type DOMHandle, createMarkup, type Markup, createRef, isRef } from "../markup.js";
+import { createMarkup, createRef, isRef, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
 import {
-  type Signal,
-  signalify,
-  createSignal,
   createSettableSignal,
-  toSettableSignal,
-  designalify,
+  createSignal,
   derive,
+  designalify,
+  signalify,
+  toSettableSignal,
   watch,
+  type Signal,
 } from "../signals.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
@@ -146,8 +146,7 @@ export class Dolla {
     }
 
     // First, initialize the root view. The router store needs this to connect the initial route.
-    const elementContext = { dolla: this };
-    this.#rootView = constructView(elementContext, rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
+    this.#rootView = constructView({ root: this }, rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
 
     // Run beforeMount
     await Promise.all(this.#beforeMountCallbacks.map((callback) => callback()));
@@ -210,7 +209,7 @@ export class Dolla {
   }
 
   /**
-   * Update log level settings. Values that are not passed will remain unchanged.
+   * Update log type toggles. Values that are not passed will remain unchanged.
    */
   setLoggles(options: Partial<Loggles>) {
     for (const key in options) {
@@ -345,7 +344,6 @@ export class Dolla {
   }
 
   constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []) {
-    const elementContext = { dolla: this };
-    return constructView(elementContext, view, props, children);
+    return constructView({ root: this }, view, props, children);
   }
 }

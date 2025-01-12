@@ -21,7 +21,7 @@ export class Outlet implements DOMHandle {
     this.$children = config.$children;
     this.elementContext = config.elementContext;
 
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       this.node = document.createComment("Outlet");
       this.endNode = document.createComment("/Outlet");
     } else {
@@ -72,7 +72,7 @@ export class Outlet implements DOMHandle {
 
     this.connectedChildren = newChildren;
 
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       this.node.textContent = `Outlet (${newChildren.length} ${newChildren.length === 1 ? "child" : "children"})`;
       this.node.parentElement?.insertBefore(
         this.endNode,

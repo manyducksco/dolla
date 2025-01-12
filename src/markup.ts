@@ -16,7 +16,14 @@ import { constructView, type ViewFunction, type ViewContext, type ViewResult } f
 \*===========================*/
 
 export interface ElementContext {
-  dolla: Dolla;
+  /**
+   * The root Dolla instance this element belongs to.
+   */
+  root: Dolla;
+
+  /**
+   * Whether to create DOM nodes in the SVG namespace. An `<svg>` element will set this to true and pass it down to children.
+   */
   isSVG?: boolean;
 }
 

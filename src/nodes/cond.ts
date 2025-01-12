@@ -28,7 +28,7 @@ export class Conditional implements DOMHandle {
     this.elseContent = config.elseContent ? toMarkup(config.elseContent) : undefined;
     this.elementContext = config.elementContext;
 
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       this.node = document.createComment("Conditional");
       this.endNode = document.createComment("/Conditional");
     } else {
@@ -44,7 +44,7 @@ export class Conditional implements DOMHandle {
   connect(parent: Node, after?: Node | undefined): void {
     if (!this.connected) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
-      if (this.elementContext.dolla.env === "development") {
+      if (this.elementContext.root.env === "development") {
         parent.insertBefore(this.endNode, this.node.nextSibling);
       }
 
@@ -98,7 +98,7 @@ export class Conditional implements DOMHandle {
       handle.connect(this.node.parentNode, previous);
     }
 
-    if (this.elementContext.dolla.env === "development") {
+    if (this.elementContext.root.env === "development") {
       this.node.textContent = `Conditional (${value ? "truthy" : "falsy"})`;
     }
   }
