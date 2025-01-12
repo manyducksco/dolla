@@ -1,4 +1,4 @@
-import { cond, m } from "../markup.js";
+import { cond, createMarkup } from "../markup.js";
 
 type CrashPageProps = {
   message: string;
@@ -8,7 +8,7 @@ type CrashPageProps = {
 };
 
 export function DefaultCrashPage(props: CrashPageProps) {
-  return m(
+  return createMarkup(
     "div",
     {
       style: {
@@ -20,15 +20,15 @@ export function DefaultCrashPage(props: CrashPageProps) {
         fontSize: "20px",
       },
     },
-    m("h1", { style: { marginBottom: "0.5rem" } }, "The app has crashed"),
-    m(
+    createMarkup("h1", { style: { marginBottom: "0.5rem" } }, "The app has crashed"),
+    createMarkup(
       "p",
       { style: { marginBottom: "0.25rem" } },
-      m("span", { style: { fontFamily: "monospace" } }, props.loggerName),
-      cond(props.uid, m("span", { style: { fontFamily: "monospace" } }), [" ", "[uid: ", props.uid, "]"]),
+      createMarkup("span", { style: { fontFamily: "monospace" } }, props.loggerName),
+      cond(props.uid, createMarkup("span", { style: { fontFamily: "monospace" } }), [" ", "[uid: ", props.uid, "]"]),
       " says:",
     ),
-    m(
+    createMarkup(
       "blockquote",
       {
         style: {
@@ -39,7 +39,7 @@ export function DefaultCrashPage(props: CrashPageProps) {
           marginBottom: "1rem",
         },
       },
-      m(
+      createMarkup(
         "span",
         {
           style: {
@@ -56,6 +56,6 @@ export function DefaultCrashPage(props: CrashPageProps) {
       ),
       props.message,
     ),
-    m("p", {}, "Please see the browser console for details."),
+    createMarkup("p", {}, "Please see the browser console for details."),
   );
 }

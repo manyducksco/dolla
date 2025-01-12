@@ -1,5 +1,4 @@
 import { renderMarkupToDOM, toMarkup, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
-import { isDevEnvironment } from "../modules/core.js";
 import { type Signal, type StopFunction } from "../signals.js";
 import { type Renderable } from "../types.js";
 
@@ -29,7 +28,7 @@ export class Conditional implements DOMHandle {
     this.elseContent = config.elseContent ? toMarkup(config.elseContent) : undefined;
     this.elementContext = config.elementContext;
 
-    if (isDevEnvironment()) {
+    if (this.elementContext.dolla.env === "development") {
       this.node = document.createComment("Conditional");
       this.endNode = document.createComment("/Conditional");
     } else {
@@ -45,7 +44,7 @@ export class Conditional implements DOMHandle {
   connect(parent: Node, after?: Node | undefined): void {
     if (!this.connected) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
-      if (isDevEnvironment()) {
+      if (this.elementContext.dolla.env === "development") {
         parent.insertBefore(this.endNode, this.node.nextSibling);
       }
 
@@ -99,7 +98,7 @@ export class Conditional implements DOMHandle {
       handle.connect(this.node.parentNode, previous);
     }
 
-    if (isDevEnvironment()) {
+    if (this.elementContext.dolla.env === "development") {
       this.node.textContent = `Conditional (${value ? "truthy" : "falsy"})`;
     }
   }

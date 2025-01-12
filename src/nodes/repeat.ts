@@ -1,7 +1,6 @@
 import { type DOMHandle, type ElementContext } from "../markup.js";
-import { isDevEnvironment } from "../modules/core.js";
 import { createSignal, type Signal, type SignalSetter, type StopFunction } from "../signals.js";
-import { initView, type ViewContext, type ViewResult } from "../view.js";
+import { constructView, type ViewContext, type ViewResult } from "../view.js";
 
 // ----- Types ----- //
 
@@ -44,7 +43,7 @@ export class Repeat<T> implements DOMHandle {
     this.renderFn = renderFn;
     this.keyFn = keyFn;
 
-    if (isDevEnvironment()) {
+    if (this.elementContext.dolla.env === "development") {
       this.node = document.createComment("Repeat");
       this.endNode = document.createComment("/Repeat");
     } else {
@@ -135,10 +134,10 @@ export class Repeat<T> implements DOMHandle {
           setValue,
           $index,
           setIndex,
-          handle: initView({
-            view: RepeatItemView,
-            elementContext: this.elementContext,
-            props: { $value, $index, renderFn: this.renderFn },
+          handle: constructView(this.elementContext, RepeatItemView, {
+            $value,
+            $index,
+            renderFn: this.renderFn,
           }),
         };
       }
@@ -153,7 +152,7 @@ export class Repeat<T> implements DOMHandle {
 
     this.connectedItems = newItems;
 
-    if (isDevEnvironment()) {
+    if (this.elementContext.dolla.env === "development") {
       this.node.textContent = `Repeat (${newItems.length} item${newItems.length === 1 ? "" : "s"})`;
 
       const lastItem = newItems.at(-1)?.handle.node ?? this.node;

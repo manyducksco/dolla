@@ -8,7 +8,6 @@ import {
   type DOMHandle,
   type ElementContext,
 } from "../markup.js";
-import { Environment, getEnv } from "../modules/core.js";
 import { watch, type Signal, type StopFunction } from "../signals.js";
 import { typeOf } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
@@ -124,8 +123,8 @@ export class Observer implements DOMHandle {
       this.connectedViews.push(handle);
     }
 
-    // Move marker comment node to after last sibling.
-    if (getEnv() === Environment.development) {
+    // Move marker comment node to after last sibling in dev mode.
+    if (this.elementContext.dolla.env === "development") {
       const lastNode = this.connectedViews.at(-1)?.node;
       if (this.endNode.previousSibling !== lastNode) {
         this.node.parentNode!.insertBefore(this.endNode, lastNode?.nextSibling ?? null);

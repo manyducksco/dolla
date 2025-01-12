@@ -4,11 +4,11 @@ import {
   type ElementContext,
   getRenderHandle,
   isMarkup,
-  m,
+  createMarkup,
   type Markup,
   renderMarkupToDOM,
 } from "./markup.js";
-import { _CRASH } from "./modules/logging.js";
+import type { Logger } from "./modules/dolla.js";
 import {
   createSignal,
   isSignal,
@@ -29,13 +29,18 @@ import { isArrayOf, typeOf } from "./typeChecking.js";
  */
 export type ViewResult = Node | Signal<any> | Markup | Markup[] | null;
 
-export type View<P> = (props: P, context: ViewContext) => ViewResult;
+export type ViewFunction<P> = (props: P, context: ViewContext) => ViewResult;
 
-export interface ViewContext {
+export interface ViewContext extends Logger {
   /**
    * A string ID unique to this view.
    */
   readonly uid: string;
+
+  /**
+   * Sets the name of the view's built in logger.
+   */
+  setName(name: string): void;
 
   /**
    * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
@@ -73,26 +78,14 @@ export interface ViewContext {
 ||              View Init              ||
 \*=====================================*/
 
-export function view<P>(callback: View<P>) {
-  return callback;
-}
-
-/**
- * Parameters passed to the makeView function.
- */
-interface ViewConfig<P> {
-  view: View<P>;
-  elementContext?: ElementContext;
-  props: P;
-  children?: Markup[];
-}
-
-export function initView<P>(config: ViewConfig<P>): DOMHandle {
-  const elementContext = {
-    ...(config.elementContext ?? {}),
-    parent: config.elementContext,
-  };
-  const [$children, setChildren] = createSignal<DOMHandle[]>(renderMarkupToDOM(config.children ?? [], elementContext));
+export function constructView<P>(
+  elementContext: ElementContext,
+  view: ViewFunction<P>,
+  props: P,
+  children: Markup[] = [],
+): DOMHandle {
+  elementContext = { ...elementContext };
+  const [$children, setChildren] = createSignal<DOMHandle[]>(renderMarkupToDOM(children, elementContext));
 
   let isConnected = false;
 
@@ -105,9 +98,16 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
 
   const uniqueId = nanoid();
 
-  const ctx: ViewContext = {
+  const [$loggerName, setLoggerName] = createSignal(view.name);
+  const logger = elementContext.dolla.createLogger($loggerName, { uid: uniqueId });
+
+  const ctx: Pick<ViewContext, Exclude<keyof ViewContext, keyof Logger>> = {
     get uid() {
       return uniqueId;
+    },
+
+    setName(name) {
+      setLoggerName(name);
     },
 
     beforeMount(callback) {
@@ -154,9 +154,11 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     },
 
     outlet() {
-      return m("$outlet", { $children });
+      return createMarkup("$outlet", { $children });
     },
   };
+
+  Object.assign(ctx, logger);
 
   let rendered: DOMHandle | undefined;
 
@@ -164,10 +166,10 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     let result: unknown;
 
     try {
-      result = config.view(config.props, ctx as ViewContext);
+      result = view(props, ctx as ViewContext);
     } catch (error) {
       if (error instanceof Error) {
-        _CRASH({ error, loggerName: "dolla/view", uid: ctx.uid });
+        logger.crash(error);
       }
       throw error;
     }
@@ -179,21 +181,21 @@ export function initView<P>(config: ViewConfig<P>): DOMHandle {
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      rendered = getRenderHandle(renderMarkupToDOM(m("$node", { value: result }), elementContext));
+      rendered = getRenderHandle(renderMarkupToDOM(createMarkup("$node", { value: result }), elementContext));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
       rendered = getRenderHandle(renderMarkupToDOM(result, elementContext));
     } else if (isSignal(result)) {
       rendered = getRenderHandle(
-        renderMarkupToDOM(m("$observer", { signals: [result], renderFn: (x) => x }), elementContext),
+        renderMarkupToDOM(createMarkup("$observer", { signals: [result], renderFn: (x) => x }), elementContext),
       );
     } else {
       // console.warn(result, config);
       const error = new TypeError(
         `Expected '${
-          config.view.name
+          view.name
         }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
       );
-      _CRASH({ error, loggerName: "dolla/view", uid: ctx.uid });
+      logger.crash(error);
     }
   }
 

@@ -8,7 +8,7 @@ esbuild
     metafile: true,
     sourcemap: true,
     // minify: process.env.NODE_ENV === "production",
-    outdir: "lib",
+    outdir: "dist",
     format: "esm",
   })
   .then((result) => {
@@ -16,19 +16,19 @@ esbuild
   });
 
 esbuild.build({
-  entryPoints: ["src/jsx/jsx-runtime.js"],
+  entryPoints: ["src/jsx-runtime.js"],
   bundle: false,
   minify: false,
   sourcemap: true,
-  outdir: "lib/jsx",
+  outdir: "dist",
   format: "esm",
 });
 
 esbuild.build({
-  entryPoints: ["src/jsx/jsx-dev-runtime.js"],
+  entryPoints: ["src/jsx-dev-runtime.js"],
   bundle: false,
   minify: false,
   sourcemap: true,
-  outdir: "lib/jsx",
+  outdir: "dist",
   format: "esm",
 });

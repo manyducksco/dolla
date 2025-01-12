@@ -1,7 +1,5 @@
 import { nanoid } from "nanoid";
 import { isRef, renderMarkupToDOM, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
-import { Environment, getEnv } from "../modules/core.js";
-import * as render from "../modules/render.js";
 import { isSettableSignal, isSignal, SettableSignal, type Signal, type StopFunction } from "../signals.js";
 import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
@@ -47,7 +45,7 @@ export class HTML implements DOMHandle {
     }
 
     // Add unique ID to attributes for debugging purposes.
-    if (getEnv() === Environment.development) {
+    if (elementContext.dolla.env === "development") {
       this.node.dataset.uniqueId = this.uniqueId;
     }
 
@@ -140,13 +138,13 @@ export class HTML implements DOMHandle {
       if (isSignal(value)) {
         this.stopCallbacks.push(
           value.watch((current) => {
-            render.update(() => {
+            this.elementContext.dolla.render.update(() => {
               callback(current);
             }, updateKey);
           }),
         );
       } else {
-        render.update(() => {
+        this.elementContext.dolla.render.update(() => {
           callback(value);
         }, updateKey);
       }
@@ -372,7 +370,7 @@ export class HTML implements DOMHandle {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
-        render.update(
+        this.elementContext.dolla.render.update(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -400,7 +398,7 @@ export class HTML implements DOMHandle {
 
         if (isSignal<any>(value)) {
           const stop = value.watch((current) => {
-            render.update(
+            this.elementContext.dolla.render.update(
               () => {
                 if (current != null) {
                   setProperty(key, current);
@@ -441,7 +439,7 @@ export class HTML implements DOMHandle {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
-        render.update(
+        this.elementContext.dolla.render.update(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -463,7 +461,7 @@ export class HTML implements DOMHandle {
 
         if (isSignal(value)) {
           const stop = value.watch((current) => {
-            render.update(() => {
+            this.elementContext.dolla.render.update(() => {
               if (current) {
                 element.classList.add(name);
               } else {

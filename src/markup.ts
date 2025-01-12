@@ -1,3 +1,4 @@
+import type { Dolla } from "./modules/dolla.js";
 import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
 import { Observer } from "./nodes/observer.js";
@@ -8,13 +9,14 @@ import { Text } from "./nodes/text.js";
 import { MaybeSignal, createSignal, isSettableSignal, isSignal, signalify, type Signal } from "./signals.js";
 import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
-import { initView, type View, type ViewContext, type ViewResult } from "./view.js";
+import { constructView, type ViewFunction, type ViewContext, type ViewResult } from "./view.js";
 
 /*===========================*\
 ||       ElementContext      ||
 \*===========================*/
 
 export interface ElementContext {
+  dolla: Dolla;
   isSVG?: boolean;
 }
 
@@ -28,7 +30,7 @@ const MARKUP = Symbol("Markup");
  * Markup is a set of element metadata that hasn't been rendered to a DOMHandle yet.
  */
 export interface Markup {
-  type: string | View<any>;
+  type: string | ViewFunction<any>;
   props?: Record<string, any>;
   children?: Markup[];
 }
@@ -65,7 +67,7 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
     .filter((x) => x !== null && x !== undefined && x !== false)
     .map((x) => {
       if (x instanceof Node) {
-        return m("$node", { value: x });
+        return createMarkup("$node", { value: x });
       }
 
       if (isMarkup(x)) {
@@ -73,11 +75,11 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
       }
 
       if (isString(x) || isNumber(x)) {
-        return m("$text", { value: x });
+        return createMarkup("$text", { value: x });
       }
 
       if (isSignal(x)) {
-        return m("$observer", {
+        return createMarkup("$observer", {
           signals: [x],
           renderFn: (x) => x,
         });
@@ -114,15 +116,15 @@ export interface MarkupAttributes {
   [tag: string]: Record<string, any>;
 }
 
-export function m<T extends keyof MarkupAttributes>(
+export function createMarkup<T extends keyof MarkupAttributes>(
   type: T,
   attributes: MarkupAttributes[T],
   ...children: Renderable[]
 ): Markup;
 
-export function m<I>(type: View<I>, attributes?: I, ...children: Renderable[]): Markup;
+export function createMarkup<I>(type: ViewFunction<I>, attributes?: I, ...children: Renderable[]): Markup;
 
-export function m<P>(type: string | View<P>, props?: P, ...children: Renderable[]) {
+export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
   if (props != null) {
     _assertPropTypes(props as Record<string, any>);
   }
@@ -169,7 +171,7 @@ function _assertPropTypes(props: Record<string, any>) {
 export function cond(predicate: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   const $predicate = signalify(predicate);
 
-  return m("$cond", {
+  return createMarkup("$cond", {
     $predicate,
     thenContent,
     elseContent,
@@ -187,14 +189,14 @@ export function repeat<T>(
 ): Markup {
   const $items = signalify(items);
 
-  return m("$repeat", { $items, keyFn, renderFn });
+  return createMarkup("$repeat", { $items, keyFn, renderFn });
 }
 
 /**
  * Render `content` into a `parent` node anywhere in the page, rather than at its position in the view.
  */
 export function portal(content: Renderable, parent: Node) {
-  return m("$portal", { content, parent });
+  return createMarkup("$portal", { content, parent });
 }
 
 /*===========================*\
@@ -272,12 +274,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], elementContext: Ele
 
   return items.map((item) => {
     if (isFunction(item.type)) {
-      return initView({
-        view: item.type as View<any>,
-        props: item.props,
-        children: item.children,
-        elementContext,
-      });
+      return constructView(elementContext, item.type as ViewFunction<any>, item.props, item.children);
     } else if (isString(item.type)) {
       switch (item.type) {
         case "$node": {

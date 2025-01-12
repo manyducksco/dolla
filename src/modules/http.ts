@@ -4,16 +4,10 @@ import { isObject } from "../typeChecking.js";
  * A simple HTTP client with middleware support. Middleware applies to all requests made through this store,
  * so it's the perfect way to handle things like auth headers and permission checks for API calls.
  */
+export class HTTP {
+  #middleware: HTTPMiddleware[] = [];
+  #fetch = getDefaultFetch();
 
-const fetch = getDefaultFetch();
-
-const middleware: HTTPMiddleware[] = [];
-
-async function request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any>) {
-  return makeRequest<ResBody, ReqBody>({ ...options, method, uri, middleware, fetch });
-}
-
-export default {
   /**
    * Adds a new middleware that will apply to subsequent requests.
    * Returns a function to remove this middleware.
@@ -21,46 +15,56 @@ export default {
    * @param middleware - A middleware function that will intercept requests.
    */
   use(fn: HTTPMiddleware) {
-    middleware.push(fn);
+    this.#middleware.push(fn);
 
     // Call returned function to remove this middleware for subsequent requests.
-    return function remove() {
-      middleware.splice(middleware.indexOf(fn), 1);
+    return () => {
+      this.#middleware.splice(this.#middleware.indexOf(fn), 1);
     };
-  },
+  }
 
   async get<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
-    return request<ResBody, never>("get", uri, options);
-  },
+    return this.#request<ResBody, never>("get", uri, options);
+  }
 
   async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-    return request<ResBody, ReqBody>("put", uri, options);
-  },
+    return this.#request<ResBody, ReqBody>("put", uri, options);
+  }
 
   async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-    return request<ResBody, ReqBody>("patch", uri, options);
-  },
+    return this.#request<ResBody, ReqBody>("patch", uri, options);
+  }
 
   async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-    return request<ResBody, ReqBody>("post", uri, options);
-  },
+    return this.#request<ResBody, ReqBody>("post", uri, options);
+  }
 
   async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
-    return request<ResBody, never>("delete", uri, options);
-  },
+    return this.#request<ResBody, never>("delete", uri, options);
+  }
 
   async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-    return request<ResBody, ReqBody>("head", uri, options);
-  },
+    return this.#request<ResBody, ReqBody>("head", uri, options);
+  }
 
   async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-    return request<ResBody, ReqBody>("options", uri, options);
-  },
+    return this.#request<ResBody, ReqBody>("options", uri, options);
+  }
 
   async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
-    return request<ResBody, ReqBody>("trace", uri, options);
-  },
-};
+    return this.#request<ResBody, ReqBody>("trace", uri, options);
+  }
+
+  async #request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any>) {
+    return makeRequest<ResBody, ReqBody>({
+      ...options,
+      method,
+      uri,
+      middleware: this.#middleware,
+      fetch: this.#fetch,
+    });
+  }
+}
 
 function getDefaultFetch(): typeof window.fetch {
   if (typeof window !== "undefined" && window.fetch) {

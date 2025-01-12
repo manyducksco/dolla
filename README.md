@@ -51,68 +51,6 @@ decrement(); // $count = 2
 console.log($count.get()); // 2
 ```
 
-State machine via Robot
-
-```jsx
-import { createSignal, derive } from "@manyducks.co/dolla";
-import { initStateMachine } from "@manyducks.co/dolla-robot";
-import { createMachine, invoke, reduce, state, transition } from "robot3";
-
-const context = () => ({
-  users: [],
-});
-
-async function loadUsers() {
-  return [
-    { id: 1, name: "Wilbur" },
-    { id: 2, name: "Matthew" },
-    { id: 3, name: "Anne" },
-  ];
-}
-
-const machine = createMachine(
-  {
-    idle: state(transition("fetch", "loading")),
-    loading: invoke(
-      loadUsers,
-      transition(
-        "done",
-        "loaded",
-        reduce((ctx, ev) => ({ ...ctx, users: ev.data })),
-      ),
-    ),
-    loaded: state(),
-  },
-  context,
-);
-
-function App() {
-  const [$state, $context, send] = initStateMachine(machine);
-  const $users = derive([$context], (c) => c.users);
-  const $buttonDisabled = derive([$state], (state) => state === "loading" || state === "loaded");
-
-  return (
-    <>
-      {derive([$state], (state) => {
-        if (state === "loading") {
-          return <div>Loading users...</div>;
-        } else if (state === "loaded") {
-          <ul>
-            {users.map((user) => (
-              <li id={`user-${user.id}`}>{user.name}</li>
-            ))}
-          </ul>;
-        }
-      })}
-
-      <button onClick={() => send("fetch")} disabled={$buttonDisabled}>
-        Load users
-      </button>
-    </>
-  );
-}
-```
-
 ### Derived State
 
 ```jsx

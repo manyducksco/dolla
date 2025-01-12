@@ -1,5 +1,12 @@
-import { createBrowserHistory, createHashHistory, type History, type Listener } from "history";
-import { getRenderHandle, m, renderMarkupToDOM, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
+import { createBrowserHistory, createHashHistory, Update, type History, type Listener } from "history";
+import {
+  getRenderHandle,
+  createMarkup,
+  renderMarkupToDOM,
+  type DOMHandle,
+  type ElementContext,
+  type Markup,
+} from "../markup.js";
 import {
   joinPath,
   matchRoutes,
@@ -13,10 +20,9 @@ import {
 import { createSignal, StopFunction, watch } from "../signals.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
-import { type View } from "../view.js";
+import { type ViewFunction } from "../view.js";
 import { DefaultView } from "../views/default-view.js";
-import { beforeMount, onUnmount, rootElement, rootView } from "./core.js";
-import { createLogger } from "./logging.js";
+import type { Dolla, Logger } from "./dolla.js";
 
 // ----- Types ----- //
 
@@ -41,7 +47,7 @@ export interface Route {
   /**
    * View to display when this route is matched.
    */
-  view?: View<any>;
+  view?: ViewFunction<any>;
 
   /**
    * Subroutes.
@@ -144,360 +150,399 @@ export interface RouterSetupOptions {
   style?: RoutingStyle;
 }
 
+export interface RouterElements {
+  readonly rootElement?: HTMLElement;
+  readonly rootView?: DOMHandle;
+}
+
 // ----- Code ----- //
 
-const debug = createLogger("dolla/router");
+export class Router {
+  #dolla: Dolla;
+  #logger: Logger;
+  #elements: RouterElements;
 
-let history = createBrowserHistory();
-let layerId = 0;
-let activeLayers: ActiveLayer[] = [];
-let lastQuery: string;
-let routes: ParsedRoute<RouteConfig["meta"]>[] = [];
+  #history = createBrowserHistory();
+  #layerId = 0;
+  #activeLayers: ActiveLayer[] = [];
+  #lastQuery?: string;
+  #routes: ParsedRoute<RouteConfig["meta"]>[] = [];
+  #stopWatchingQuery?: StopFunction;
 
-const [$pattern, setPattern] = createSignal<string | null>(null);
-const [$path, setPath] = createSignal("");
-const [$params, setParams] = createSignal<ParsedParams>({});
-const [$query, setQuery] = createSignal<ParsedQuery>(parseQueryParams(window.location.search));
-
-export {
-  /**
-   * The current named path params.
-   */
-  $params,
-  /**
-   * The current URL path.
-   */
-  $path,
   /**
    * The currently matched route pattern, if any.
    */
-  $pattern,
+  $pattern;
+  #setPattern;
+
+  /**
+   * The current URL path.
+   */
+  $path;
+  #setPath;
+
+  /**
+   * The current named path params.
+   */
+  $params;
+  #setParams;
+
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  $query,
-};
+  $query;
+  #setQuery;
 
-let stopWatchingQuery: StopFunction | undefined;
+  constructor(dolla: Dolla, elements: RouterElements) {
+    this.#dolla = dolla;
+    this.#logger = dolla.createLogger("dolla/router");
+    this.#elements = elements;
 
-beforeMount(() => {
-  // Update URL when query changes
-  stopWatchingQuery = watch([$query], (current) => {
-    const params = new URLSearchParams();
+    const [$pattern, setPattern] = createSignal<string | null>(null);
+    const [$path, setPath] = createSignal("");
+    const [$params, setParams] = createSignal<ParsedParams>({});
+    const [$query, setQuery] = createSignal<ParsedQuery>(parseQueryParams(window.location.search));
 
-    for (const key in current) {
-      params.set(key, String(current[key]));
+    this.$pattern = $pattern;
+    this.#setPattern = setPattern;
+
+    this.$path = $path;
+    this.#setPath = setPath;
+
+    this.$params = $params;
+    this.#setParams = setParams;
+
+    this.$query = $query;
+    this.#setQuery = setQuery;
+
+    dolla.beforeMount(() => {
+      // Update URL when query changes
+      this.#stopWatchingQuery = watch([$query], (current) => {
+        const params = new URLSearchParams();
+
+        for (const key in current) {
+          params.set(key, String(current[key]));
+        }
+
+        const search = "?" + params.toString();
+
+        if (search != this.#history.location.search) {
+          this.#history.replace({
+            pathname: this.#history.location.pathname,
+            search,
+          });
+        }
+      });
+
+      const historyListener: Listener = (update) => {
+        this.#onRouteChange(update);
+      };
+
+      this.#history.listen(historyListener);
+      this.#onRouteChange(this.#history);
+
+      this.#logger.info("Intercepting <a> clicks within root element:", this.#elements.rootElement!);
+      catchLinks(this.#elements.rootElement!, (anchor) => {
+        let href = anchor.getAttribute("href")!;
+
+        this.#logger.info("Intercepted link click", anchor, href);
+
+        if (!/^https?:\/\/|^\//.test(href)) {
+          href = joinPath([this.#history.location.pathname, href]);
+        }
+
+        this.#history.push(href);
+      });
+    });
+
+    dolla.onUnmount(() => {
+      if (this.#stopWatchingQuery) {
+        this.#stopWatchingQuery();
+        this.#stopWatchingQuery = undefined;
+      }
+
+      // TODO: Stop listening to history
+      // TODO: Stop catching links
+    });
+  }
+
+  setup(options: RouterSetupOptions) {
+    if (options.style === RoutingStyle.hash) {
+      this.#history = createHashHistory();
     }
 
-    const search = "?" + params.toString();
+    this.#routes = sortRoutes(
+      options.routes
+        .flatMap((route) => this.#prepareRoute(route))
+        .map((route) => ({
+          pattern: route.pattern,
+          meta: route.meta,
+          fragments: patternToFragments(route.pattern),
+        })),
+    );
 
-    if (search != history.location.search) {
-      history.replace({
-        pathname: history.location.pathname,
-        search,
+    // Test redirects to make sure all possible redirect targets actually exist.
+    for (const route of this.#routes) {
+      if (route.meta.redirect) {
+        let redirectPath: string;
+
+        if (isFunction(route.meta.redirect)) {
+          // throw new Error(`Redirect functions are not yet supported.`);
+          // Just allow, though it could fail later. Best not to call the function and cause potential side effects.
+        } else if (isString(route.meta.redirect)) {
+          redirectPath = route.meta.redirect;
+
+          const match = matchRoutes(this.#routes, redirectPath, {
+            willMatch(r) {
+              return r !== route;
+            },
+          });
+
+          if (!match) {
+            throw new Error(
+              `Found a redirect to an undefined URL. From '${route.pattern}' to '${route.meta.redirect}'`,
+            );
+          }
+        } else {
+          throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Navigates to another route.
+   *
+   * @example
+   * navigate("/login"); // navigate to `/login`
+   * navigate(["/users", 215], { replace: true }); // replace current history entry with `/users/215`
+   */
+  go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
+    let joined: string;
+
+    if (Array.isArray(path)) {
+      joined = joinPath(path);
+    } else {
+      joined = path.toString();
+    }
+
+    joined = resolvePath(this.#history.location.pathname, joined);
+
+    if (options.preserveQuery) {
+      joined += this.#history.location.search;
+    }
+
+    if (options.replace) {
+      this.#history.replace(joined);
+    } else {
+      this.#history.push(joined);
+    }
+  }
+
+  /**
+   * Navigate backward. Pass a number of steps to hit the back button that many times.
+   */
+  back(steps = 1) {
+    this.#history.go(-steps);
+  }
+
+  /**
+   * Navigate forward. Pass a number of steps to hit the forward button that many times.
+   */
+  forward(steps = 1) {
+    this.#history.go(steps);
+  }
+
+  /**
+   * Parses a route definition object into a set of matchable routes.
+   *
+   * @param route - Route config object.
+   * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
+   */
+  #prepareRoute(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
+    if (!(typeof route === "object" && !Array.isArray(route)) || !(typeof route.path === "string")) {
+      throw new TypeError(`Route configs must be objects with a 'path' string property. Got: ${route}`);
+    }
+
+    if (route.redirect && route.routes) {
+      throw new Error(`Route cannot have both a 'redirect' and nested 'routes'.`);
+    } else if (route.redirect && route.view) {
+      throw new Error(`Route cannot have both a 'redirect' and a 'view'.`);
+    } else if (!route.view && !route.routes && !route.redirect) {
+      throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
+    }
+
+    let parts: string[] = [];
+
+    for (const parent of parents) {
+      parts.push(...splitPath(parent.path));
+    }
+
+    parts.push(...splitPath(route.path));
+
+    // Remove trailing wildcard for joining with nested routes.
+    if (parts[parts.length - 1] === "*") {
+      parts.pop();
+    }
+
+    const routes: RouteConfig[] = [];
+
+    if (route.redirect) {
+      let redirect = route.redirect;
+
+      if (isString(redirect)) {
+        redirect = resolvePath(joinPath(parts), redirect);
+
+        if (!redirect.startsWith("/")) {
+          redirect = "/" + redirect;
+        }
+      }
+
+      routes.push({
+        pattern: "/" + joinPath([...parts, ...splitPath(route.path)]),
+        meta: {
+          redirect,
+        },
+      });
+
+      return routes;
+    }
+
+    let view: ViewFunction<any> = DefaultView;
+
+    if (typeof route.view === "function") {
+      view = route.view;
+    } else if (route.view) {
+      throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
+    }
+
+    const markup = createMarkup(view);
+    const layer: RouteLayer = { id: this.#layerId++, markup };
+
+    // Parse nested routes if they exist.
+    if (route.routes) {
+      for (const subroute of route.routes) {
+        routes.push(...this.#prepareRoute(subroute, [...parents, route], [...layers, layer]));
+      }
+    } else {
+      routes.push({
+        pattern: parent ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
+        meta: {
+          pattern: route.path,
+          layers: [...layers, layer],
+          beforeMatch: route.beforeMatch,
+        },
       });
     }
-  });
-
-  history.listen(onRouteChange);
-  onRouteChange(history);
-
-  debug.info("Intercepting <a> clicks within root element:", rootElement);
-  catchLinks(rootElement, (anchor) => {
-    let href = anchor.getAttribute("href")!;
-
-    debug.info("Intercepted link click", anchor, href);
-
-    if (!/^https?:\/\/|^\//.test(href)) {
-      href = joinPath([history.location.pathname, href]);
-    }
-
-    history.push(href);
-  });
-});
-
-onUnmount(() => {
-  if (stopWatchingQuery) {
-    stopWatchingQuery();
-    stopWatchingQuery = undefined;
-  }
-
-  // TODO: Stop listening to history
-  // TODO: Stop catching links
-});
-
-export function setup(options: RouterSetupOptions) {
-  if (options.style === RoutingStyle.hash) {
-    history = createHashHistory();
-  }
-
-  routes = sortRoutes(
-    options.routes
-      .flatMap((route) => prepareRoute(route))
-      .map((route) => ({
-        pattern: route.pattern,
-        meta: route.meta,
-        fragments: patternToFragments(route.pattern),
-      })),
-  );
-
-  // Test redirects to make sure all possible redirect targets actually exist.
-  for (const route of routes) {
-    if (route.meta.redirect) {
-      let redirectPath: string;
-
-      if (isFunction(route.meta.redirect)) {
-        // throw new Error(`Redirect functions are not yet supported.`);
-        // Just allow, though it could fail later. Best not to call the function and cause potential side effects.
-      } else if (isString(route.meta.redirect)) {
-        redirectPath = route.meta.redirect;
-
-        const match = matchRoutes(routes, redirectPath, {
-          willMatch(r) {
-            return r !== route;
-          },
-        });
-
-        if (!match) {
-          throw new Error(`Found a redirect to an undefined URL. From '${route.pattern}' to '${route.meta.redirect}'`);
-        }
-      } else {
-        throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
-      }
-    }
-  }
-}
-
-/**
- * Navigates to another route.
- *
- * @example
- * navigate("/login"); // navigate to `/login`
- * navigate(["/users", 215], { replace: true }); // replace current history entry with `/users/215`
- */
-export function go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
-  let joined: string;
-
-  if (Array.isArray(path)) {
-    joined = joinPath(path);
-  } else {
-    joined = path.toString();
-  }
-
-  joined = resolvePath(history.location.pathname, joined);
-
-  if (options.preserveQuery) {
-    joined += history.location.search;
-  }
-
-  if (options.replace) {
-    history.replace(joined);
-  } else {
-    history.push(joined);
-  }
-}
-
-/**
- * Navigate backward. Pass a number of steps to hit the back button that many times.
- */
-export function back(steps = 1) {
-  history.go(-steps);
-}
-
-/**
- * Navigate forward. Pass a number of steps to hit the forward button that many times.
- */
-export function forward(steps = 1) {
-  history.go(steps);
-}
-
-/**
- * Parses a route definition object into a set of matchable routes.
- *
- * @param route - Route config object.
- * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
- */
-function prepareRoute(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
-  if (!(typeof route === "object" && !Array.isArray(route)) || !(typeof route.path === "string")) {
-    throw new TypeError(`Route configs must be objects with a 'path' string property. Got: ${route}`);
-  }
-
-  if (route.redirect && route.routes) {
-    throw new Error(`Route cannot have both a 'redirect' and nested 'routes'.`);
-  } else if (route.redirect && route.view) {
-    throw new Error(`Route cannot have both a 'redirect' and a 'view'.`);
-  } else if (!route.view && !route.routes && !route.redirect) {
-    throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
-  }
-
-  let parts: string[] = [];
-
-  for (const parent of parents) {
-    parts.push(...splitPath(parent.path));
-  }
-
-  parts.push(...splitPath(route.path));
-
-  // Remove trailing wildcard for joining with nested routes.
-  if (parts[parts.length - 1] === "*") {
-    parts.pop();
-  }
-
-  const routes: RouteConfig[] = [];
-
-  if (route.redirect) {
-    let redirect = route.redirect;
-
-    if (isString(redirect)) {
-      redirect = resolvePath(joinPath(parts), redirect);
-
-      if (!redirect.startsWith("/")) {
-        redirect = "/" + redirect;
-      }
-    }
-
-    routes.push({
-      pattern: "/" + joinPath([...parts, ...splitPath(route.path)]),
-      meta: {
-        redirect,
-      },
-    });
 
     return routes;
   }
 
-  let view: View<any> = DefaultView;
+  /**
+   * Run when the location changes. Diffs and mounts new routes and updates
+   * the $path, $route, $params and $query states accordingly.
+   */
+  async #onRouteChange({ location }: History | Update) {
+    // Update query params if they've changed.
+    if (location.search !== this.#lastQuery) {
+      this.#lastQuery = location.search;
 
-  if (typeof route.view === "function") {
-    view = route.view;
-  } else if (route.view) {
-    throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
-  }
-
-  const markup = m(view);
-  const layer: RouteLayer = { id: layerId++, markup };
-
-  // Parse nested routes if they exist.
-  if (route.routes) {
-    for (const subroute of route.routes) {
-      routes.push(...prepareRoute(subroute, [...parents, route], [...layers, layer]));
+      this.#setQuery(parseQueryParams(location.search));
     }
-  } else {
-    routes.push({
-      pattern: parent ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
-      meta: {
-        pattern: route.path,
-        layers: [...layers, layer],
-        beforeMatch: route.beforeMatch,
-      },
-    });
-  }
 
-  return routes;
-}
+    const matched = matchRoutes(this.#routes, location.pathname);
 
-/**
- * Run when the location changes. Diffs and mounts new routes and updates
- * the $path, $route, $params and $query states accordingly.
- */
-const onRouteChange: Listener = async ({ location }) => {
-  // Update query params if they've changed.
-  if (location.search !== lastQuery) {
-    lastQuery = location.search;
+    if (!matched) {
+      this.#setPattern(null);
+      this.#setPath(location.pathname);
+      this.#setParams({
+        wildcard: location.pathname,
+      });
+      return;
+    }
 
-    setQuery(parseQueryParams(location.search));
-  }
+    if (matched.meta.beforeMatch) {
+      await matched.meta.beforeMatch({
+        redirect: (path) => {
+          // TODO: Implement
+          throw new Error(`Redirect not yet implemented.`);
+        },
+      });
+    }
 
-  const matched = matchRoutes(routes, location.pathname);
+    this.#logger.info(`Matched route: '${matched.pattern}' ('${matched.path}')`);
 
-  if (!matched) {
-    setPattern(null);
-    setPath(location.pathname);
-    setParams({
-      wildcard: location.pathname,
-    });
-    return;
-  }
-
-  if (matched.meta.beforeMatch) {
-    await matched.meta.beforeMatch({
-      redirect: (path) => {
-        // TODO: Implement
-        throw new Error(`Redirect not yet implemented.`);
-      },
-    });
-  }
-
-  debug.info(`Matched route: '${matched.pattern}' ('${matched.path}')`);
-
-  if (matched.meta.redirect != null) {
-    if (typeof matched.meta.redirect === "string") {
-      const path = replaceParams(matched.meta.redirect, matched.params);
-      debug.info(`Redirecting to: '${path}'`);
-      history.replace(path);
-    } else if (typeof matched.meta.redirect === "function") {
-      const redirectContext: RouteRedirectContext = {
-        path: matched.path,
-        pattern: matched.pattern,
-        params: matched.params,
-        query: matched.query,
-      };
-      let path = await matched.meta.redirect(redirectContext);
-      if (typeof path !== "string") {
-        throw new Error(`Redirect function must return a path to redirect to.`);
+    if (matched.meta.redirect != null) {
+      if (typeof matched.meta.redirect === "string") {
+        const path = replaceParams(matched.meta.redirect, matched.params);
+        this.#logger.info(`Redirecting to: '${path}'`);
+        this.#history.replace(path);
+      } else if (typeof matched.meta.redirect === "function") {
+        const redirectContext: RouteRedirectContext = {
+          path: matched.path,
+          pattern: matched.pattern,
+          params: matched.params,
+          query: matched.query,
+        };
+        let path = await matched.meta.redirect(redirectContext);
+        if (typeof path !== "string") {
+          throw new Error(`Redirect function must return a path to redirect to.`);
+        }
+        if (!path.startsWith("/")) {
+          // Not absolute. Resolve against matched path.
+          path = resolvePath(matched.path, path);
+        }
+        this.#logger.info(`Redirecting to: '${path}'`);
+        this.#history.replace(path);
+      } else {
+        throw new TypeError(`Redirect must either be a path string or a function.`);
       }
-      if (!path.startsWith("/")) {
-        // Not absolute. Resolve against matched path.
-        path = resolvePath(matched.path, path);
-      }
-      debug.info(`Redirecting to: '${path}'`);
-      history.replace(path);
     } else {
-      throw new TypeError(`Redirect must either be a path string or a function.`);
-    }
-  } else {
-    setPath(matched.path);
-    setParams(matched.params);
+      this.#setPath(matched.path);
+      this.#setParams(matched.params);
 
-    if (matched.pattern !== $pattern.get()) {
-      setPattern(matched.pattern);
+      if (matched.pattern !== this.$pattern.get()) {
+        this.#setPattern(matched.pattern);
 
-      const layers = matched.meta.layers!;
+        const layers = matched.meta.layers!;
 
-      // Diff and update route layers.
-      for (let i = 0; i < layers.length; i++) {
-        const matchedLayer = layers[i];
-        const activeLayer = activeLayers[i];
+        // Diff and update route layers.
+        for (let i = 0; i < layers.length; i++) {
+          const matchedLayer = layers[i];
+          const activeLayer = this.#activeLayers[i];
 
-        if (activeLayer?.id !== matchedLayer.id) {
-          debug.info(`Replacing layer @${i} (active ID: ${activeLayer?.id}, matched ID: ${matchedLayer.id})`);
+          if (activeLayer?.id !== matchedLayer.id) {
+            this.#logger.info(`Replacing layer @${i} (active ID: ${activeLayer?.id}, matched ID: ${matchedLayer.id})`);
 
-          activeLayers = activeLayers.slice(0, i);
+            this.#activeLayers = this.#activeLayers.slice(0, i);
 
-          const parentLayer = activeLayers[activeLayers.length - 1];
-          const elementContext: ElementContext = {};
+            const parentLayer = this.#activeLayers.at(-1);
+            const elementContext: ElementContext = {
+              dolla: this.#dolla,
+            };
 
-          const rendered = renderMarkupToDOM(matchedLayer.markup, elementContext);
-          const handle = getRenderHandle(rendered);
+            const rendered = renderMarkupToDOM(matchedLayer.markup, elementContext);
+            const handle = getRenderHandle(rendered);
 
-          if (activeLayer && activeLayer.handle.connected) {
-            // Disconnect first mismatched active layer.
-            activeLayer.handle.disconnect();
+            if (activeLayer && activeLayer.handle.connected) {
+              // Disconnect first mismatched active layer.
+              activeLayer.handle.disconnect();
+            }
+
+            if (parentLayer) {
+              parentLayer.handle.setChildren(rendered);
+            } else {
+              this.#elements.rootView!.setChildren(rendered);
+            }
+
+            // Push and connect new active layer.
+            this.#activeLayers.push({ id: matchedLayer.id, handle });
           }
-
-          if (parentLayer) {
-            parentLayer.handle.setChildren(rendered);
-          } else {
-            rootView.setChildren(rendered);
-          }
-
-          // Push and connect new active layer.
-          activeLayers.push({ id: matchedLayer.id, handle });
         }
       }
     }
   }
-};
+}
 
 const safeExternalLink = /(noopener|noreferrer) (noopener|noreferrer)/;
 const protocolLink = /^[\w-_]+:/;

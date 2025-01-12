@@ -1,5 +1,4 @@
 import { type DOMHandle, type ElementContext } from "../markup.js";
-import { isDevEnvironment } from "../modules/core.js";
 import { type Signal, type StopFunction } from "../signals.js";
 
 export interface OutletConfig {
@@ -22,7 +21,7 @@ export class Outlet implements DOMHandle {
     this.$children = config.$children;
     this.elementContext = config.elementContext;
 
-    if (isDevEnvironment()) {
+    if (this.elementContext.dolla.env === "development") {
       this.node = document.createComment("Outlet");
       this.endNode = document.createComment("/Outlet");
     } else {
@@ -73,7 +72,7 @@ export class Outlet implements DOMHandle {
 
     this.connectedChildren = newChildren;
 
-    if (isDevEnvironment()) {
+    if (this.elementContext.dolla.env === "development") {
       this.node.textContent = `Outlet (${newChildren.length} ${newChildren.length === 1 ? "child" : "children"})`;
       this.node.parentElement?.insertBefore(
         this.endNode,

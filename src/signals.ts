@@ -18,16 +18,16 @@ export type SignalValues<T extends MaybeSignal<any>[]> = {
   [K in keyof T]: Unwrapped<T[K]>;
 };
 
-export interface SignalCreateOptions<T> {
+export interface CreateSignalOptions<T> {
   /**
-   * Determines if the `next` value is equal to the `previous` value.
+   * Determines if the `next` value is equal to the `current` value.
    * If this function returns true, watchers will be notified of changes. If it returns false, watchers will not be notified.
    * By default equality is defined as deep equality.
    *
    * @param next - The new value being set.
-   * @param previous - The previous value being replaced.
+   * @param current - The current value being replaced.
    */
-  equality?: (next: T, previous: T) => boolean;
+  equality?: (next: T, current: T) => boolean;
 }
 
 export interface SignalWatchOptions<T> {
@@ -46,7 +46,7 @@ export interface Signal<T> {
 
   /**
    * Watch this signal's value with a `callback` function.
-   * The `callback` is only called if the value is not equal to the previous value.
+   * The `callback` is only called if the value is not equal to the current value.
    *
    * > NOTE: If watching a signal inside a view, use the `.watch` method on the `ViewContext`. That method will automatically
    * clean up all watchers when the view is disconnected. Watchers created here must be cleaned up manually.
@@ -74,7 +74,7 @@ export interface SettableSignal<I, O = I> extends Signal<I> {
   /**
    * Takes a callback that recieves the signal's current value and returns a new one.
    */
-  set(callback: (previous: I) => O): void;
+  set(callback: (current: I) => O): void;
 }
 
 /*==============================*\
@@ -143,52 +143,20 @@ export function signalify<T>(value: MaybeSignal<T>): Signal<T> {
 ||            Signal            ||
 \*==============================*/
 
-export interface __createSignal {
-  /**
-   * Creates a new Signal and setter.
-   */
-  // <T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>];
+/**
+ * Creates a SettableSignal.
+ */
+export function createSettableSignal<T>(initialValue: T, options?: CreateSignalOptions<T>): SettableSignal<T>;
 
-  /**
-   * Creates a new Signal and setter.
-   */
-  // <T>(
-  //   initialValue?: T,
-  //   options?: SignalCreateOptions<T | undefined>,
-  // ): [Signal<T | undefined>, SignalSetter<T | undefined>];
-
-  /**
-   * Creates a SettableSignal with an initial value.
-   */
-  settable<T>(initialValue: T, options?: SignalCreateOptions<T>): SettableSignal<T>;
-
-  /**
-   * Creates a SettableSignal.
-   */
-  settable<T>(initialValue?: T, options?: SignalCreateOptions<T | undefined>): SettableSignal<T | undefined>;
-
-  /**
-   * Combines a Signal and setter into a SettableSignal.
-   */
-  toSettable<I, O = I>(signal: Signal<I>, setter: SignalSetter<I, O>): SettableSignal<I>;
-
-  /**
-   * Creates a SignalSetter with custom logic provided by `callback`.
-   */
-  createSetter<I, O = I>(signal: Signal<I>, callback: (next: O, previous: I) => void): SignalSetter<I, O>;
-}
-
-// export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>] {
-//   return createSignal(initialValue, options);
-// }
-
-function createSettableSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): SettableSignal<T>;
-function createSettableSignal<T>(
+/**
+ * Creates a SettableSignal.
+ */
+export function createSettableSignal<T>(
   initialValue?: T,
-  options?: SignalCreateOptions<T | undefined>,
+  options?: CreateSignalOptions<T | undefined>,
 ): SettableSignal<T | undefined>;
 
-function createSettableSignal<T>(initialValue?: T, options?: SignalCreateOptions<T>) {
+export function createSettableSignal<T>(initialValue?: T, options?: CreateSignalOptions<T>) {
   const [$value, setValue] = createSignal<any>(initialValue, options);
   return {
     get: $value.get,
@@ -197,7 +165,10 @@ function createSettableSignal<T>(initialValue?: T, options?: SignalCreateOptions
   };
 }
 
-function createSettableSignalFrom<I, O = I>(signal: Signal<I>, setter: SignalSetter<I, O>): SettableSignal<I, O> {
+/**
+ * Join a signal and its setter into a single SettableSignal object.
+ */
+export function toSettableSignal<I, O = I>(signal: Signal<I>, setter: SignalSetter<I, O>): SettableSignal<I, O> {
   return {
     get: signal.get,
     watch: signal.watch,
@@ -205,18 +176,24 @@ function createSettableSignalFrom<I, O = I>(signal: Signal<I>, setter: SignalSet
   };
 }
 
-function createSignalSetter<I, O = I>(signal: Signal<I>, callback: (next: O, previous: I) => void): SignalSetter<I, O> {
+/**
+ * Creates a SignalSetter with custom logic provided by `callback`.
+ */
+export function createSignalSetter<I, O = I>(
+  signal: Signal<I>,
+  callback: (next: O, current: I) => void,
+): SignalSetter<I, O> {
   return function setValue(nextOrCallback) {
-    const previous = signal.get();
+    const current = signal.get();
     let next: O;
 
     if (typeof nextOrCallback === "function") {
-      next = (nextOrCallback as (previous: I) => O)(previous);
+      next = (nextOrCallback as (current: I) => O)(current);
     } else {
       next = nextOrCallback;
     }
 
-    callback(next, previous);
+    callback(next, current);
   };
 }
 
@@ -239,16 +216,23 @@ function createStaticSignal<T>(value: T): Signal<T> {
   };
 }
 
-export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>];
+/**
+ * Creates a signal and setter.
+ */
+export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T>): [Signal<T>, SignalSetter<T>];
+
+/**
+ * Creates a signal and setter.
+ */
 export function createSignal<T>(
   initialValue?: T,
-  options?: SignalCreateOptions<T | undefined>,
+  options?: CreateSignalOptions<T | undefined>,
 ): [Signal<T | undefined>, SignalSetter<T | undefined>];
 
 /**
  * Creates a signal and setter.
  */
-export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T>): [Signal<T>, SignalSetter<T>] {
+export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T>): [Signal<T>, SignalSetter<T>] {
   let currentValue = initialValue;
   let watchers: ((value: T) => void)[] = [];
 
@@ -258,11 +242,11 @@ export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T
     }
   }
 
-  function equal(next: T, previous: T): boolean {
+  function equal(next: T, current: T): boolean {
     if (options?.equality) {
-      return options.equality(next, previous);
+      return options.equality(next, current);
     } else {
-      return deepEqual(next, previous);
+      return deepEqual(next, current);
     }
   }
 
@@ -286,18 +270,25 @@ export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T
     },
   };
 
-  function setValue(action: SignalSetAction<T>) {
-    let value: T;
-    if (typeof action === "function") {
-      value = (action as (next: T) => T)(currentValue);
-    } else {
-      value = action as T;
-    }
-    if (!equal(value, currentValue)) {
-      currentValue = value;
+  // function setValue(action: SignalSetAction<T>) {
+  //   let value: T;
+  //   if (typeof action === "function") {
+  //     value = (action as (next: T) => T)(currentValue);
+  //   } else {
+  //     value = action as T;
+  //   }
+  //   if (!equal(value, currentValue)) {
+  //     currentValue = value;
+  //     notify();
+  //   }
+  // }
+
+  const setValue = createSignalSetter($value, (next, current) => {
+    if (!equal(next, current)) {
+      currentValue = next;
       notify();
     }
-  }
+  });
 
   return [$value, setValue];
 }
@@ -306,8 +297,8 @@ export function createSignal<T>(initialValue: T, options?: SignalCreateOptions<T
 ||        Derived Signal        ||
 \*==============================*/
 
-export interface SignalDeriveOptions {
-  equality?: (next: unknown, previous: unknown) => boolean;
+export interface DeriveSignalOptions {
+  equality?: (next: unknown, current: unknown) => boolean;
 }
 
 const EMPTY = Symbol("EMPTY");
@@ -315,7 +306,7 @@ const EMPTY = Symbol("EMPTY");
 export function derive<Inputs extends MaybeSignal<any>[], T>(
   signals: [...Inputs],
   fn: (...currentValues: SignalValues<Inputs>) => T | Signal<T>,
-  options?: SignalDeriveOptions,
+  options?: DeriveSignalOptions,
 ): Signal<T> {
   // Wrap any plain values in a static signal.
   signals = signals.map((s) => {
@@ -357,11 +348,11 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
     }
   }
 
-  function equal(next: unknown, previous: unknown): boolean {
+  function equal(next: unknown, current: unknown): boolean {
     if (options?.equality) {
-      return options.equality(next, previous);
+      return options.equality(next, current);
     } else {
-      return deepEqual(next, previous);
+      return deepEqual(next, current);
     }
   }
 
