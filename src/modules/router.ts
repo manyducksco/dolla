@@ -1,13 +1,5 @@
 import { createBrowserHistory, createHashHistory, Update, type History } from "history";
 import {
-  createMarkup,
-  constructMarkup,
-  mergeNodes,
-  type MarkupNode,
-  type ElementContext,
-  type Markup,
-} from "../markup.js";
-import {
   joinPath,
   matchRoutes,
   ParsedRoute,
@@ -238,7 +230,7 @@ export class Router {
         }),
       );
 
-      this.#cleanupCallbacks.push(this.#history.listen(this.#onRouteChange));
+      this.#cleanupCallbacks.push(this.#history.listen(this.#onRouteChange.bind(this)));
       this.#onRouteChange(this.#history);
 
       this.#cleanupCallbacks.push(
@@ -444,7 +436,6 @@ export class Router {
     // Update query params if they've changed.
     if (location.search !== this.#lastQuery) {
       this.#lastQuery = location.search;
-
       this.#setQuery(parseQueryParams(location.search));
     }
 
