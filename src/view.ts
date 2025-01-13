@@ -1,12 +1,12 @@
 import { nanoid } from "nanoid";
 import {
-  type DOMHandle,
+  type MarkupNode,
   type ElementContext,
-  getRenderHandle,
+  mergeNodes,
   isMarkup,
   createMarkup,
   type Markup,
-  renderMarkupToDOM,
+  constructMarkup,
 } from "./markup.js";
 import type { Logger } from "./modules/dolla.js";
 import {
@@ -30,6 +30,13 @@ import { isArrayOf, typeOf } from "./typeChecking.js";
 export type ViewResult = Node | Signal<any> | Markup | Markup[] | null;
 
 export type ViewFunction<P> = (props: P, context: ViewContext) => ViewResult;
+
+/**
+ * A view that has been constructed into DOM nodes.
+ */
+export interface ViewNode extends MarkupNode {
+  setChildren(children: MarkupNode[]): void;
+}
 
 export interface ViewContext extends Logger {
   /**
@@ -64,7 +71,7 @@ export interface ViewContext extends Logger {
 
   /**
    * Watch a set of signals. The callback is called when any of the signals receive a new value.
-   * Watchers will be stopped when this view is unmounted. Returns a function to stop watching early.
+   * Watchers will be automatically stopped when this view is unmounted.
    */
   watch<T extends MaybeSignal<any>[]>(signals: [...T], callback: (...values: SignalValues<T>) => void): StopFunction;
 
@@ -83,23 +90,23 @@ export function constructView<P>(
   view: ViewFunction<P>,
   props: P,
   children: Markup[] = [],
-): DOMHandle {
+): ViewNode {
   elementContext = { ...elementContext };
-  const [$children, setChildren] = createSignal<DOMHandle[]>(renderMarkupToDOM(children, elementContext));
+  const [$children, setChildren] = createSignal<MarkupNode[]>(constructMarkup(elementContext, children));
 
-  let isConnected = false;
+  let isMounted = false;
 
   // Lifecycle and observers
   const stopObserverCallbacks: (() => void)[] = [];
-  const connectedCallbacks: (() => any)[] = [];
-  const disconnectedCallbacks: (() => any)[] = [];
-  const beforeConnectCallbacks: (() => void | Promise<void>)[] = [];
-  const beforeDisconnectCallbacks: (() => void | Promise<void>)[] = [];
+  const beforeMountCallbacks: (() => void | Promise<void>)[] = [];
+  const onMountCallbacks: (() => any)[] = [];
+  const beforeUnmountCallbacks: (() => void | Promise<void>)[] = [];
+  const onUnmountCallbacks: (() => any)[] = [];
 
   const uniqueId = nanoid();
 
-  const [$loggerName, setLoggerName] = createSignal(view.name);
-  const logger = elementContext.root.createLogger($loggerName, { uid: uniqueId });
+  const [$name, setName] = createSignal(view.name);
+  const logger = elementContext.root.createLogger($name, { uid: uniqueId });
 
   const ctx: Pick<ViewContext, Exclude<keyof ViewContext, keyof Logger>> = {
     get uid() {
@@ -107,27 +114,27 @@ export function constructView<P>(
     },
 
     setName(name) {
-      setLoggerName(name);
+      setName(name);
     },
 
     beforeMount(callback) {
-      beforeConnectCallbacks.push(callback);
+      beforeMountCallbacks.push(callback);
     },
 
     onMount(callback) {
-      connectedCallbacks.push(callback);
+      onMountCallbacks.push(callback);
     },
 
     beforeUnmount(callback) {
-      beforeDisconnectCallbacks.push(callback);
+      beforeUnmountCallbacks.push(callback);
     },
 
     onUnmount(callback) {
-      disconnectedCallbacks.push(callback);
+      onUnmountCallbacks.push(callback);
     },
 
     watch(signals, callback) {
-      if (isConnected) {
+      if (isMounted) {
         // If called when the component is connected, we assume this code is in a lifecycle hook
         // where it will be triggered at some point again after the component is reconnected.
         const stop = watch(signals, callback);
@@ -135,18 +142,18 @@ export function constructView<P>(
         return stop;
       } else {
         // This should only happen if called in the body of the component function.
-        // This code is not always re-run between when a component is disconnected and reconnected.
+        // This code is not always re-run between when a component is unmounted and remounted.
         let stop: StopFunction | undefined;
-        let stopped = false;
-        connectedCallbacks.push(() => {
-          if (!stopped) {
+        let isStopped = false;
+        onMountCallbacks.push(() => {
+          if (!isStopped) {
             stop = watch(signals, callback);
             stopObserverCallbacks.push(stop);
           }
         });
         return function stop() {
           if (stop != null) {
-            stopped = true;
+            isStopped = true;
             stop();
           }
         };
@@ -160,7 +167,7 @@ export function constructView<P>(
 
   Object.assign(ctx, logger);
 
-  let rendered: DOMHandle | undefined;
+  let rendered: MarkupNode | undefined;
 
   function initialize() {
     let result: unknown;
@@ -181,15 +188,14 @@ export function constructView<P>(
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      rendered = getRenderHandle(renderMarkupToDOM(createMarkup("$node", { value: result }), elementContext));
+      rendered = mergeNodes(constructMarkup(elementContext, createMarkup("$node", { value: result })));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      rendered = getRenderHandle(renderMarkupToDOM(result, elementContext));
+      rendered = mergeNodes(constructMarkup(elementContext, result));
     } else if (isSignal(result)) {
-      rendered = getRenderHandle(
-        renderMarkupToDOM(createMarkup("$observer", { signals: [result], renderFn: (x) => x }), elementContext),
+      rendered = mergeNodes(
+        constructMarkup(elementContext, createMarkup("$observer", { signals: [result], renderFn: (x) => x })),
       );
     } else {
-      // console.warn(result, config);
       const error = new TypeError(
         `Expected '${
           view.name
@@ -199,58 +205,58 @@ export function constructView<P>(
     }
   }
 
-  const handle: DOMHandle = {
+  return {
     get node() {
       return rendered?.node!;
     },
 
-    get connected() {
-      return isConnected;
+    get isMounted() {
+      return isMounted;
     },
 
-    connect(parent: Node, after?: Node) {
+    mount(parent: Node, after?: Node) {
       // Don't run lifecycle hooks or initialize if already connected.
       // Calling connect again can be used to re-order elements that are already connected to the DOM.
-      const wasConnected = isConnected;
+      const wasConnected = isMounted;
 
       if (!wasConnected) {
         initialize();
-        while (beforeConnectCallbacks.length > 0) {
-          const callback = beforeConnectCallbacks.shift()!;
+        while (beforeMountCallbacks.length > 0) {
+          const callback = beforeMountCallbacks.shift()!;
           callback();
         }
       }
 
       if (rendered) {
-        rendered.connect(parent, after);
+        rendered.mount(parent, after);
       }
 
       if (!wasConnected) {
-        isConnected = true;
+        isMounted = true;
 
         requestAnimationFrame(() => {
-          while (connectedCallbacks.length > 0) {
-            const callback = connectedCallbacks.shift()!;
+          while (onMountCallbacks.length > 0) {
+            const callback = onMountCallbacks.shift()!;
             callback();
           }
         });
       }
     },
 
-    disconnect() {
-      while (beforeDisconnectCallbacks.length > 0) {
-        const callback = beforeDisconnectCallbacks.shift()!;
+    unmount() {
+      while (beforeUnmountCallbacks.length > 0) {
+        const callback = beforeUnmountCallbacks.shift()!;
         callback();
       }
 
       if (rendered) {
-        rendered.disconnect();
+        rendered.unmount();
       }
 
-      isConnected = false;
+      isMounted = false;
 
-      while (disconnectedCallbacks.length > 0) {
-        const callback = disconnectedCallbacks.shift()!;
+      while (onUnmountCallbacks.length > 0) {
+        const callback = onUnmountCallbacks.shift()!;
         callback();
       }
 
@@ -260,10 +266,8 @@ export function constructView<P>(
       }
     },
 
-    async setChildren(children) {
+    setChildren(children) {
       setChildren(children);
     },
   };
-
-  return handle;
 }

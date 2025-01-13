@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { isRef, renderMarkupToDOM, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
+import { isRef, constructMarkup, type MarkupNode, type ElementContext, type Markup } from "../markup.js";
 import { isSettableSignal, isSignal, SettableSignal, type Signal, type StopFunction } from "../signals.js";
 import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
@@ -10,14 +10,14 @@ const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 type HTMLOptions = {
   elementContext: ElementContext;
   tag: string;
-  props?: any;
+  props: Record<string, any>;
   children?: Markup[];
 };
 
-export class HTML implements DOMHandle {
+export class HTML implements MarkupNode {
   node;
   props: Record<string, any>;
-  children: DOMHandle[];
+  children: MarkupNode[];
   stopCallbacks: StopFunction[] = [];
   elementContext;
   uniqueId = nanoid();
@@ -25,7 +25,7 @@ export class HTML implements DOMHandle {
   // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
   canClickAway = false;
 
-  get connected() {
+  get isMounted() {
     return this.node.parentNode != null;
   }
 
@@ -45,7 +45,7 @@ export class HTML implements DOMHandle {
     }
 
     // Add unique ID to attributes for debugging purposes.
-    if (elementContext.root.env === "development") {
+    if (elementContext.root.getEnv() === "development") {
       this.node.dataset.uniqueId = this.uniqueId;
     }
 
@@ -62,18 +62,18 @@ export class HTML implements DOMHandle {
       ...omit(["ref", "class", "className"], props),
       class: props.className ?? props.class,
     };
-    this.children = children ? renderMarkupToDOM(children, elementContext) : [];
+    this.children = children ? constructMarkup(elementContext, children) : [];
     this.elementContext = elementContext;
   }
 
-  connect(parent: Node, after?: Node) {
+  mount(parent: Node, after?: Node) {
     if (parent == null) {
       throw new Error(`HTML element requires a parent element as the first argument to connect. Got: ${parent}`);
     }
 
-    if (!this.connected) {
+    if (!this.isMounted) {
       for (const child of this.children) {
-        child.connect(this.node);
+        child.mount(this.node);
       }
 
       this.applyProps(this.node, this.props);
@@ -88,10 +88,10 @@ export class HTML implements DOMHandle {
     }, 0);
   }
 
-  disconnect() {
-    if (this.connected) {
+  unmount() {
+    if (this.isMounted) {
       for (const child of this.children) {
-        child.disconnect();
+        child.unmount();
       }
 
       this.node.parentNode?.removeChild(this.node);
@@ -103,30 +103,6 @@ export class HTML implements DOMHandle {
       }
       this.stopCallbacks = [];
     }
-  }
-
-  setChildren(next: DOMHandle[]) {
-    const current = this.children;
-    const patched: DOMHandle[] = [];
-    const length = Math.max(current.length, next.length);
-
-    for (let i = 0; i < length; i++) {
-      if (!current[i] && next[i]) {
-        // item was added
-        patched[i] = next[i];
-        patched[i].connect(this.node, patched[i - 1]?.node);
-      } else if (current[i] && !next[i]) {
-        // item was removed
-        current[i].disconnect();
-      } else if (current[i] != next[i]) {
-        // item was replaced
-        patched[i] = next[i];
-        current[i].disconnect();
-        patched[i].connect(this.node, patched[i - 1]?.node);
-      }
-    }
-
-    this.children = patched;
   }
 
   getUpdateKey(type: string, value: string | number) {

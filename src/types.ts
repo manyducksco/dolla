@@ -1361,7 +1361,7 @@ export interface HTMLGlobalAttributes {
   /**
    * @see https://html.spec.whatwg.org/multipage/interaction.html#the-inert-attribute
    */
-  inert: unknown; // TODO: Use actual type
+  inert: boolean;
 
   /**
    * The `inputmode` content attribute is an enumerated attribute that specifies what kind of input mechanism would be most helpful for users entering content.

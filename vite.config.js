@@ -6,6 +6,7 @@ export default defineConfig({
     // minify: "terser",
     // minify: false,
     sourcemap: true,
+
     lib: {
       entry: {
         index: resolve(__dirname, "src/index.ts"),

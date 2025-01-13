@@ -270,25 +270,18 @@ export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T
     },
   };
 
-  // function setValue(action: SignalSetAction<T>) {
-  //   let value: T;
-  //   if (typeof action === "function") {
-  //     value = (action as (next: T) => T)(currentValue);
-  //   } else {
-  //     value = action as T;
-  //   }
-  //   if (!equal(value, currentValue)) {
-  //     currentValue = value;
-  //     notify();
-  //   }
-  // }
-
-  const setValue = createSignalSetter($value, (next, current) => {
-    if (!equal(next, current)) {
-      currentValue = next;
+  function setValue(action: SignalSetAction<T>) {
+    let value: T;
+    if (typeof action === "function") {
+      value = (action as (next: T) => T)(currentValue);
+    } else {
+      value = action as T;
+    }
+    if (!equal(value, currentValue)) {
+      currentValue = value;
       notify();
     }
-  });
+  }
 
   return [$value, setValue];
 }
@@ -297,7 +290,7 @@ export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T
 ||        Derived Signal        ||
 \*==============================*/
 
-export interface DeriveSignalOptions {
+export interface DeriveOptions {
   equality?: (next: unknown, current: unknown) => boolean;
 }
 
@@ -306,7 +299,7 @@ const EMPTY = Symbol("EMPTY");
 export function derive<Inputs extends MaybeSignal<any>[], T>(
   signals: [...Inputs],
   fn: (...currentValues: SignalValues<Inputs>) => T | Signal<T>,
-  options?: DeriveSignalOptions,
+  options?: DeriveOptions,
 ): Signal<T> {
   // Wrap any plain values in a static signal.
   signals = signals.map((s) => {

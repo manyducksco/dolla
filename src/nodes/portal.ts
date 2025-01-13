@@ -1,10 +1,10 @@
 import {
-  getRenderHandle,
-  isDOMHandle,
+  mergeNodes,
+  isNode,
   isMarkup,
-  renderMarkupToDOM,
+  constructMarkup,
   toMarkup,
-  type DOMHandle,
+  type MarkupNode,
   type ElementContext,
 } from "../markup.js";
 import { type Renderable } from "../types.js";
@@ -18,42 +18,38 @@ interface PortalConfig {
 /**
  * Renders content into a specified parent node.
  */
-export class Portal implements DOMHandle {
+export class Portal implements MarkupNode {
   config: PortalConfig;
-  handle?: DOMHandle;
+  handle?: MarkupNode;
 
-  get connected() {
+  get isMounted() {
     if (!this.handle) {
       return false;
     }
-    return this.handle.connected;
+    return this.handle.isMounted;
   }
 
   constructor(config: PortalConfig) {
     this.config = config;
   }
 
-  connect(_parent: Node, _after?: Node) {
+  mount(_parent: Node, _after?: Node) {
     const { content, parent } = this.config;
 
-    if (isDOMHandle(content)) {
+    if (isNode(content)) {
       this.handle = content;
     } else if (isMarkup(content)) {
-      this.handle = getRenderHandle(renderMarkupToDOM(content, this.config.elementContext));
+      this.handle = mergeNodes(constructMarkup(this.config.elementContext, content));
     } else {
-      this.handle = getRenderHandle(renderMarkupToDOM(toMarkup(content), this.config.elementContext));
+      this.handle = mergeNodes(constructMarkup(this.config.elementContext, toMarkup(content)));
     }
 
-    this.handle.connect(parent);
+    this.handle.mount(parent);
   }
 
-  disconnect() {
-    if (this.handle?.connected) {
-      this.handle.disconnect();
+  unmount() {
+    if (this.handle?.isMounted) {
+      this.handle.unmount();
     }
-  }
-
-  setChildren(children: DOMHandle[]) {
-    this.handle?.setChildren(children);
   }
 }

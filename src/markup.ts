@@ -1,3 +1,5 @@
+import htm from "htm/mini";
+
 import type { Dolla } from "./modules/dolla.js";
 import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
@@ -34,7 +36,7 @@ export interface ElementContext {
 const MARKUP = Symbol("Markup");
 
 /**
- * Markup is a set of element metadata that hasn't been rendered to a DOMHandle yet.
+ * Markup is a set of element metadata that hasn't been constructed into a MarkupNode yet.
  */
 export interface Markup {
   type: string | ViewFunction<any>;
@@ -43,24 +45,23 @@ export interface Markup {
 }
 
 /**
- * DOMHandle is the generic interface for an element that can be manipulated by the framework.
+ * A DOM node that has been constructed from a Markup object.
  */
-export interface DOMHandle {
+export interface MarkupNode {
   readonly node?: Node;
-  readonly connected: boolean;
 
-  connect(parent: Node, after?: Node): void;
+  readonly isMounted: boolean;
 
-  disconnect(): void;
+  mount(parent: Node, after?: Node): void;
 
-  setChildren(children: DOMHandle[]): void;
+  unmount(): void;
 }
 
 export function isMarkup(value: unknown): value is Markup {
   return isObject(value) && value[MARKUP] === true;
 }
 
-export function isDOMHandle(value: unknown): value is DOMHandle {
+export function isNode(value: unknown): value is MarkupNode {
   return isObject(value) && isFunction(value.connect) && isFunction(value.disconnect);
 }
 
@@ -75,6 +76,10 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
     .map((x) => {
       if (x instanceof Node) {
         return createMarkup("$node", { value: x });
+      }
+
+      if (x instanceof DOMNode) {
+        return createMarkup("$node", { value: x.node });
       }
 
       if (isMarkup(x)) {
@@ -110,7 +115,7 @@ export interface MarkupAttributes {
     renderFn: (...items: any) => Renderable;
   };
   $outlet: {
-    $children: Signal<DOMHandle[]>;
+    $children: Signal<MarkupNode[]>;
   };
   $node: {
     value: Node;
@@ -169,8 +174,13 @@ function _assertPropTypes(props: Record<string, any>) {
 }
 
 /*===========================*\
-||        Markup Utils       ||
+||        View Helpers       ||
 \*===========================*/
+
+/**
+ * Generate markup with HTML in a tagged template literal.
+ */
+export const html = htm.bind(createMarkup);
 
 /**
  * Displays content conditionally. When `predicate` holds a truthy value, `thenContent` is displayed; when `predicate` holds a falsy value, `elseContent` is displayed.
@@ -202,8 +212,8 @@ export function repeat<T>(
 /**
  * Render `content` into a `parent` node anywhere in the page, rather than at its position in the view.
  */
-export function portal(content: Renderable, parent: Node) {
-  return createMarkup("$portal", { content, parent });
+export function portal(parent: Node, content: Renderable) {
+  return createMarkup("$portal", { parent, content });
 }
 
 /*===========================*\
@@ -250,12 +260,12 @@ export interface Ref<T extends Node> extends Signal<T | undefined> {
 \*===========================*/
 
 /**
- * Wraps any plain DOM node in a DOMHandle interface.
+ * Wraps any plain DOM node in a MarkupNode interface.
  */
-class NodeHandle implements DOMHandle {
+class DOMNode implements MarkupNode {
   node: Node;
 
-  get connected() {
+  get isMounted() {
     return this.node.parentNode != null;
   }
 
@@ -263,20 +273,21 @@ class NodeHandle implements DOMHandle {
     this.node = node;
   }
 
-  async connect(parent: Node, after?: Node) {
+  async mount(parent: Node, after?: Node) {
     parent.insertBefore(this.node, after?.nextSibling ?? null);
   }
 
-  async disconnect() {
+  async unmount() {
     if (this.node.parentNode) {
       this.node.parentNode.removeChild(this.node);
     }
   }
-
-  async setChildren(children: DOMHandle[]) {}
 }
 
-export function renderMarkupToDOM(markup: Markup | Markup[], elementContext: ElementContext): DOMHandle[] {
+/**
+ * Construct Markup metadata into a set of MarkupNodes.
+ */
+export function constructMarkup(elementContext: ElementContext, markup: Markup | Markup[]): MarkupNode[] {
   const items = isArray(markup) ? markup : [markup];
 
   return items.map((item) => {
@@ -286,7 +297,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], elementContext: Ele
       switch (item.type) {
         case "$node": {
           const attrs = item.props! as MarkupAttributes["$node"];
-          return new NodeHandle(attrs.value);
+          return new DOMNode(attrs.value);
         }
         case "$text": {
           const attrs = item.props! as MarkupAttributes["$text"];
@@ -341,7 +352,7 @@ export function renderMarkupToDOM(markup: Markup | Markup[], elementContext: Ele
           }
           return new HTML({
             tag: item.type,
-            props: item.props,
+            props: item.props ?? {},
             children: item.children,
             elementContext,
           });
@@ -353,14 +364,14 @@ export function renderMarkupToDOM(markup: Markup | Markup[], elementContext: Ele
 }
 
 /**
- * Combines one or more DOMHandles into a single DOMHandle.
+ * Combines one or more MarkupNodes into a single MarkupNode.
  */
-export function getRenderHandle(handles: DOMHandle[]): DOMHandle {
-  if (handles.length === 1) {
-    return handles[0];
+export function mergeNodes(nodes: MarkupNode[]): MarkupNode {
+  if (nodes.length === 1) {
+    return nodes[0];
   }
 
-  const node = document.createComment("renderHandle");
+  const node = document.createComment("Fragment");
 
   let isConnected = false;
 
@@ -368,32 +379,29 @@ export function getRenderHandle(handles: DOMHandle[]): DOMHandle {
     get node() {
       return node;
     },
-    get connected() {
+    get isMounted() {
       return isConnected;
     },
-    connect(parent: Node, after?: Node) {
+    mount(parent: Node, after?: Node) {
       parent.insertBefore(node, after ? after : null);
 
-      for (const handle of handles) {
-        const previous = handles[handles.length - 1]?.node ?? node;
-        handle.connect(parent, previous);
+      for (const handle of nodes) {
+        const previous = nodes[nodes.length - 1]?.node ?? node;
+        handle.mount(parent, previous);
       }
 
       isConnected = true;
     },
-    disconnect() {
+    unmount() {
       if (isConnected) {
-        for (const handle of handles) {
-          handle.disconnect();
+        for (const handle of nodes) {
+          handle.unmount();
         }
 
         node.remove();
       }
 
       isConnected = false;
-    },
-    setChildren() {
-      throw new Error(`setChildren not supported on renderHandle`);
     },
   };
 }

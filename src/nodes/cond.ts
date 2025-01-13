@@ -1,4 +1,4 @@
-import { renderMarkupToDOM, toMarkup, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
+import { constructMarkup, toMarkup, type MarkupNode, type ElementContext, type Markup } from "../markup.js";
 import { type Signal, type StopFunction } from "../signals.js";
 import { type Renderable } from "../types.js";
 
@@ -9,14 +9,14 @@ export interface ConditionalConfig {
   elementContext: ElementContext;
 }
 
-export class Conditional implements DOMHandle {
+export class Conditional implements MarkupNode {
   node: Node;
   endNode: Node;
   $predicate: Signal<any>;
   stopCallback?: StopFunction;
   thenContent?: Markup[];
   elseContent?: Markup[];
-  connectedContent: DOMHandle[] = [];
+  connectedContent: MarkupNode[] = [];
   elementContext: ElementContext;
 
   initialUpdateHappened = false;
@@ -28,7 +28,7 @@ export class Conditional implements DOMHandle {
     this.elseContent = config.elseContent ? toMarkup(config.elseContent) : undefined;
     this.elementContext = config.elementContext;
 
-    if (this.elementContext.root.env === "development") {
+    if (this.elementContext.root.getEnv() === "development") {
       this.node = document.createComment("Conditional");
       this.endNode = document.createComment("/Conditional");
     } else {
@@ -37,14 +37,14 @@ export class Conditional implements DOMHandle {
     }
   }
 
-  get connected() {
+  get isMounted() {
     return this.node.parentNode != null;
   }
 
-  connect(parent: Node, after?: Node | undefined): void {
-    if (!this.connected) {
+  mount(parent: Node, after?: Node | undefined): void {
+    if (!this.isMounted) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
-      if (this.elementContext.root.env === "development") {
+      if (this.elementContext.root.getEnv() === "development") {
         parent.insertBefore(this.endNode, this.node.nextSibling);
       }
 
@@ -59,18 +59,18 @@ export class Conditional implements DOMHandle {
     }
   }
 
-  disconnect(): void {
+  unmount(): void {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;
     }
 
     for (const handle of this.connectedContent) {
-      handle.disconnect();
+      handle.unmount();
     }
     this.connectedContent = [];
 
-    if (this.connected) {
+    if (this.isMounted) {
       this.node.parentNode?.removeChild(this.node);
       this.endNode.parentNode?.removeChild(this.endNode);
     }
@@ -78,7 +78,7 @@ export class Conditional implements DOMHandle {
 
   update(value: any) {
     for (const handle of this.connectedContent) {
-      handle.disconnect();
+      handle.unmount();
     }
     this.connectedContent = [];
 
@@ -87,21 +87,19 @@ export class Conditional implements DOMHandle {
     }
 
     if (value && this.thenContent) {
-      this.connectedContent = renderMarkupToDOM(this.thenContent, this.elementContext);
+      this.connectedContent = constructMarkup(this.elementContext, this.thenContent);
     } else if (!value && this.elseContent) {
-      this.connectedContent = renderMarkupToDOM(this.elseContent, this.elementContext);
+      this.connectedContent = constructMarkup(this.elementContext, this.elseContent);
     }
 
     for (let i = 0; i < this.connectedContent.length; i++) {
       const handle = this.connectedContent[i];
       const previous = this.connectedContent[i - 1]?.node ?? this.node;
-      handle.connect(this.node.parentNode, previous);
+      handle.mount(this.node.parentNode, previous);
     }
 
-    if (this.elementContext.root.env === "development") {
+    if (this.elementContext.root.getEnv() === "development") {
       this.node.textContent = `Conditional (${value ? "truthy" : "falsy"})`;
     }
   }
-
-  async setChildren(children: DOMHandle[]): Promise<void> {}
 }

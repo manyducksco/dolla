@@ -3,16 +3,15 @@
 ![bundle size](https://img.shields.io/bundlephobia/min/@manyducks.co/dolla)
 ![bundle size](https://img.shields.io/bundlephobia/minzip/@manyducks.co/dolla)
 
-> WARNING: This package is pre-1.0 and therefore may contain serious bugs and releases may introduce breaking changes without notice.
+> WARNING: This package is in active development. It may contain serious bugs and releases may introduce breaking changes without notice.
 
-Dolla is a batteries-included JavaScript frontend framework covering the needs of complex modern single page apps (SPA). Dolla provides:
+Dolla is a batteries-included JavaScript frontend framework covering the needs of moderate-to-complex single page apps:
 
-- Components
+- Reactive DOM updates (Signals)
+- Reusable components (Views)
 - Routing
-- State management
-  - Declarative templating and DOM updates via signals
-- An HTTP client
--
+- HTTP client
+- Localization (translations as JSON files and a `t` function to get strings)
 
 Let's first get into some examples.
 
@@ -58,27 +57,85 @@ import { createSignal, derive } from "@manyducks.co/dolla";
 
 const [$count, setCount] = createSignal(0);
 const $doubled = derive([$count], (count) => count * 2);
+
+setCount(1); // $count = 1, $doubled = 2
+setCount(256); // $count = 256, $doubled = 512
+setCount(-37); // $count = -37, $doubled = -74
 ```
 
-## A Basic Component
+## A Basic View
 
-```tsx
-import Dolla from "@manyducks.co/dolla";
+```js
+import Dolla, { html } from "@manyducks.co/dolla";
 
-function Counter(props, c) {
+function Counter(props, ctx) {
   const [$count, setCount] = Dolla.createSignal(0);
 
   function increment() {
     setCount((count) => count + 1);
   }
 
-  return (
+  return html`
     <div>
-      <p>Clicks: {$count}</p>
-      <button onClick={increment}>Click Me</button>
+      <p>Clicks: ${$count}</p>
+      <button onclick=${increment}>Click here to increment</button>
     </div>
-  );
+  `;
 }
+
+Dolla.mount(document.body, Counter);
+```
+
+The above example, annotated:
+
+```js
+import Dolla, { html } from "@manyducks.co/dolla";
+
+function Counter(props, ctx) {
+  const [$count, setCount] = Dolla.createSignal(0);
+
+  function increment() {
+    setCount((count) => count + 1);
+  }
+
+  return html`
+    <div>
+      <p>Clicks: ${$count}</p>
+      <button onclick=${increment}>Click here to increment</button>
+    </div>
+  `;
+}
+
+Dolla.mount(document.body, Counter);
+```
+
+Localized:
+
+```js
+import Dolla, { html, t } from "@manyducks.co/dolla";
+
+function Counter(props, ctx) {
+  const [$count, setCount] = Dolla.createSignal(0);
+
+  function increment() {
+    setCount((count) => count + 1);
+  }
+
+  return html`
+    <div>
+      <p>Clicks: ${$count}</p>
+      <button onclick=${increment}>${t("buttonLabel")}</button>
+    </div>
+  `;
+}
+
+Dolla.language.setup({
+  initialLanguage: "en",
+  languages: [
+    { name: "en", strings: { buttonLabel: "Click here to increment" } },
+    { name: "ja", strings: { buttonLabel: "ここに押して増加する" } },
+  ],
+});
 
 Dolla.mount(document.body, Counter);
 ```
@@ -86,8 +143,6 @@ Dolla.mount(document.body, Counter);
 If you've ever used React before (and chances are you have if you're interested in obscure frameworks like this one) this should look very familiar to you.
 
 The biggest difference is that the Counter function runs only once when the component is mounted. All updates after that point are a direct result of the `$count` signal being updated.
-
-You'll notice that signals are typically named with a `$` at the beginning to indicate that they contain special values that may change over time.
 
 ## Advanced Componentry
 
@@ -404,6 +459,24 @@ function ExampleView() {
 #### View Props
 
 A view function takes a `props` object as its first argument. This object contains all properties passed to the view when it's invoked.
+
+```js
+import { html } from "@manyducks.co/dolla";
+
+function ListView(props, ctx) {
+  return html`
+    <ul>
+      <${ListItemView} label="Squirrel" />
+      <${ListItemView} label="Chipmunk" />
+      <${ListItemView} label="Groundhog" />
+    </ul>
+  `;
+}
+
+function ListItemView(props, ctx) {
+  return html`<li>${props.label}</li>`;
+}
+```
 
 ```jsx
 function ListView() {

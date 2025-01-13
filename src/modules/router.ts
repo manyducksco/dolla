@@ -1,9 +1,9 @@
-import { createBrowserHistory, createHashHistory, Update, type History, type Listener } from "history";
+import { createBrowserHistory, createHashHistory, Update, type History } from "history";
 import {
-  getRenderHandle,
   createMarkup,
-  renderMarkupToDOM,
-  type DOMHandle,
+  constructMarkup,
+  mergeNodes,
+  type MarkupNode,
   type ElementContext,
   type Markup,
 } from "../markup.js";
@@ -20,8 +20,8 @@ import {
 import { createSignal, StopFunction, watch } from "../signals.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
-import { type ViewFunction } from "../view.js";
-import { DefaultView } from "../views/default-view.js";
+import { ViewNode, type ViewFunction } from "../view.js";
+import { Passthrough } from "../views/passthrough.js";
 import type { Dolla, Logger } from "./dolla.js";
 
 // ----- Types ----- //
@@ -72,7 +72,15 @@ export interface RouteConfig {
 
 export interface RouteLayer {
   id: number;
-  markup: Markup;
+  view: ViewFunction<{}>;
+}
+
+/**
+ * An active route layer whose markup has been initialized into a view.
+ */
+interface ActiveLayer {
+  id: number;
+  node: ViewNode;
 }
 
 /**
@@ -98,14 +106,6 @@ export interface RouteRedirectContext {
    * Query params parsed from `path`.
    */
   query: Record<string, string | number | boolean | undefined>;
-}
-
-/**
- * An active route layer whose markup has been initialized into a view.
- */
-interface ActiveLayer {
-  id: number;
-  handle: DOMHandle;
 }
 
 interface ParsedParams {
@@ -152,7 +152,7 @@ export interface RouterSetupOptions {
 
 export interface RouterElements {
   readonly rootElement?: HTMLElement;
-  readonly rootView?: DOMHandle;
+  readonly rootView?: ViewNode;
 }
 
 // ----- Code ----- //
@@ -167,7 +167,9 @@ export class Router {
   #activeLayers: ActiveLayer[] = [];
   #lastQuery?: string;
   #routes: ParsedRoute<RouteConfig["meta"]>[] = [];
-  #stopWatchingQuery?: StopFunction;
+
+  // Callbacks that need to be called on unmount.
+  #cleanupCallbacks: StopFunction[] = [];
 
   /**
    * The currently matched route pattern, if any.
@@ -217,52 +219,49 @@ export class Router {
 
     dolla.beforeMount(() => {
       // Update URL when query changes
-      this.#stopWatchingQuery = watch([$query], (current) => {
-        const params = new URLSearchParams();
+      this.#cleanupCallbacks.push(
+        watch([$query], (current) => {
+          const params = new URLSearchParams();
 
-        for (const key in current) {
-          params.set(key, String(current[key]));
-        }
+          for (const key in current) {
+            params.set(key, String(current[key]));
+          }
 
-        const search = "?" + params.toString();
+          const search = "?" + params.toString();
 
-        if (search != this.#history.location.search) {
-          this.#history.replace({
-            pathname: this.#history.location.pathname,
-            search,
-          });
-        }
-      });
+          if (search != this.#history.location.search) {
+            this.#history.replace({
+              pathname: this.#history.location.pathname,
+              search,
+            });
+          }
+        }),
+      );
 
-      const historyListener: Listener = (update) => {
-        this.#onRouteChange(update);
-      };
-
-      this.#history.listen(historyListener);
+      this.#cleanupCallbacks.push(this.#history.listen(this.#onRouteChange));
       this.#onRouteChange(this.#history);
 
+      this.#cleanupCallbacks.push(
+        catchLinks(this.#elements.rootElement!, (anchor) => {
+          let href = anchor.getAttribute("href")!;
+
+          this.#logger.info("Intercepted link click", anchor, href);
+
+          if (!/^https?:\/\/|^\//.test(href)) {
+            href = joinPath([this.#history.location.pathname, href]);
+          }
+
+          this.#history.push(href);
+        }),
+      );
       this.#logger.info("Intercepting <a> clicks within root element:", this.#elements.rootElement!);
-      catchLinks(this.#elements.rootElement!, (anchor) => {
-        let href = anchor.getAttribute("href")!;
-
-        this.#logger.info("Intercepted link click", anchor, href);
-
-        if (!/^https?:\/\/|^\//.test(href)) {
-          href = joinPath([this.#history.location.pathname, href]);
-        }
-
-        this.#history.push(href);
-      });
     });
 
     dolla.onUnmount(() => {
-      if (this.#stopWatchingQuery) {
-        this.#stopWatchingQuery();
-        this.#stopWatchingQuery = undefined;
+      while (this.#cleanupCallbacks.length > 0) {
+        const callback = this.#cleanupCallbacks.pop()!;
+        callback();
       }
-
-      // TODO: Stop listening to history
-      // TODO: Stop catching links
     });
   }
 
@@ -408,7 +407,7 @@ export class Router {
       return routes;
     }
 
-    let view: ViewFunction<any> = DefaultView;
+    let view: ViewFunction<any> = Passthrough;
 
     if (typeof route.view === "function") {
       view = route.view;
@@ -416,8 +415,7 @@ export class Router {
       throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
     }
 
-    const markup = createMarkup(view);
-    const layer: RouteLayer = { id: this.#layerId++, markup };
+    const layer: RouteLayer = { id: this.#layerId++, view };
 
     // Parse nested routes if they exist.
     if (route.routes) {
@@ -514,29 +512,26 @@ export class Router {
           if (activeLayer?.id !== matchedLayer.id) {
             this.#logger.info(`Replacing layer @${i} (active ID: ${activeLayer?.id}, matched ID: ${matchedLayer.id})`);
 
+            // Remove any previously active layers at this depth or deeper.
             this.#activeLayers = this.#activeLayers.slice(0, i);
 
             const parentLayer = this.#activeLayers.at(-1);
-            const elementContext: ElementContext = {
-              root: this.#dolla,
-            };
+            const node = this.#dolla.constructView(matchedLayer.view, {});
 
-            const rendered = renderMarkupToDOM(matchedLayer.markup, elementContext);
-            const handle = getRenderHandle(rendered);
-
-            if (activeLayer && activeLayer.handle.connected) {
+            if (activeLayer && activeLayer.node.isMounted) {
               // Disconnect first mismatched active layer.
-              activeLayer.handle.disconnect();
+              activeLayer.node.unmount();
             }
 
+            // Replace parentLayer's previous children with the new layer.
             if (parentLayer) {
-              parentLayer.handle.setChildren(rendered);
+              parentLayer.node.setChildren([node]);
             } else {
-              this.#elements.rootView!.setChildren(rendered);
+              this.#elements.rootView!.setChildren([node]);
             }
 
-            // Push and connect new active layer.
-            this.#activeLayers.push({ id: matchedLayer.id, handle });
+            // Store the new active layer.
+            this.#activeLayers.push({ id: matchedLayer.id, node });
           }
         }
       }

@@ -1,11 +1,11 @@
 import {
-  getRenderHandle,
-  isDOMHandle,
+  mergeNodes,
+  isNode,
   isMarkup,
   isRenderable,
-  renderMarkupToDOM,
+  constructMarkup,
   toMarkup,
-  type DOMHandle,
+  type MarkupNode,
   type ElementContext,
 } from "../markup.js";
 import { watch, type Signal, type StopFunction } from "../signals.js";
@@ -21,15 +21,15 @@ interface ObserverOptions {
 /**
  * Displays dynamic children without a parent element.
  */
-export class Observer implements DOMHandle {
+export class Observer implements MarkupNode {
   node: Node;
   endNode: Node;
-  connectedViews: DOMHandle[] = [];
+  connectedViews: MarkupNode[] = [];
   renderFn: (...values: any) => Renderable;
   elementContext;
   observerControls;
 
-  get connected() {
+  get isMounted() {
     return this.node.parentNode != null;
   }
 
@@ -72,59 +72,55 @@ export class Observer implements DOMHandle {
     };
   }
 
-  connect(parent: Node, after?: Node) {
-    if (!this.connected) {
+  mount(parent: Node, after?: Node) {
+    if (!this.isMounted) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
       this.observerControls.start();
     }
   }
 
-  disconnect() {
+  unmount() {
     this.observerControls.stop();
 
-    if (this.connected) {
+    if (this.isMounted) {
       this.cleanup();
       this.node.parentNode?.removeChild(this.node);
     }
   }
 
-  async setChildren() {
-    console.warn("setChildren is not implemented for Dynamic");
-  }
-
   cleanup() {
     while (this.connectedViews.length > 0) {
-      this.connectedViews.pop()?.disconnect();
+      this.connectedViews.pop()?.unmount();
     }
   }
 
   update(...children: Renderable[]) {
     this.cleanup();
 
-    if (children == null || !this.connected) {
+    if (children == null || !this.isMounted) {
       return;
     }
 
-    const handles: DOMHandle[] = children.map((c) => {
-      if (isDOMHandle(c)) {
+    const nodes: MarkupNode[] = children.map((c) => {
+      if (isNode(c)) {
         return c;
       } else if (isMarkup(c)) {
-        return getRenderHandle(renderMarkupToDOM(c, this.elementContext));
+        return mergeNodes(constructMarkup(this.elementContext, c));
       } else {
-        return getRenderHandle(renderMarkupToDOM(toMarkup(c), this.elementContext));
+        return mergeNodes(constructMarkup(this.elementContext, toMarkup(c)));
       }
     });
 
-    for (const handle of handles) {
+    for (const node of nodes) {
       const previous = this.connectedViews.at(-1)?.node || this.node;
 
-      handle.connect(this.node.parentNode!, previous);
+      node.mount(this.node.parentNode!, previous);
 
-      this.connectedViews.push(handle);
+      this.connectedViews.push(node);
     }
 
     // Move marker comment node to after last sibling in dev mode.
-    if (this.elementContext.root.env === "development") {
+    if (this.elementContext.root.getEnv() === "development") {
       const lastNode = this.connectedViews.at(-1)?.node;
       if (this.endNode.previousSibling !== lastNode) {
         this.node.parentNode!.insertBefore(this.endNode, lastNode?.nextSibling ?? null);

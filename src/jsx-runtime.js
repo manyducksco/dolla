@@ -1,5 +1,5 @@
 import { createMarkup } from "./markup.ts";
-export { Fragment } from "./views/fragment.ts";
+export { Passthrough as Fragment } from "./views/passthrough.ts";
 
 /**
  * JSX function for elements with dynamic children.

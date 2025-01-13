@@ -1,4 +1,4 @@
-import { createMarkup, createRef, isRef, type DOMHandle, type ElementContext, type Markup } from "../markup.js";
+import { constructMarkup, createMarkup, createRef, isRef, MarkupNode, mergeNodes, type Markup } from "../markup.js";
 import {
   createSettableSignal,
   createSignal,
@@ -11,14 +11,16 @@ import {
 } from "../signals.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
-import { constructView, type ViewFunction } from "../view.js";
-import { DefaultView } from "../views/default-view.js";
+import { constructView, type ViewFunction, type ViewNode } from "../view.js";
+import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
+import { Passthrough } from "../views/passthrough.js";
 
 import { HTTP } from "./http.js";
 import { Language } from "./language.js";
 import { Render } from "./render.js";
 import { Router } from "./router.js";
 
+// Affects which log messages will print and how much debugging info is included in the DOM.
 export type Environment = "development" | "production";
 
 /**
@@ -58,15 +60,16 @@ export type LoggerOptions = {
 };
 
 export class Dolla {
+  readonly http: HTTP;
+  readonly language: Language;
+  readonly render: Render;
+  readonly router: Router;
+
   #isMounted = false;
   #env: Environment = "production";
   #rootElement?: HTMLElement;
-  #rootView?: DOMHandle;
-
-  http: HTTP;
-  language: Language;
-  render: Render;
-  router: Router;
+  #rootView?: ViewNode;
+  #crashView: ViewFunction<CrashViewProps> = DefaultCrashView;
 
   #beforeMountCallbacks: Array<() => void | Promise<void>> = [];
   #onMountCallbacks: Array<() => void> = [];
@@ -108,16 +111,35 @@ export class Dolla {
   createRef = createRef;
   isRef = isRef;
 
+  /**
+   * True when the app is connected to a DOM node and displayed to the user.
+   */
   get isMounted() {
     return this.#isMounted;
   }
 
-  get env() {
+  /**
+   * Get the current environment that this app is running in.
+   * Environment affects which log messages will print and how much debugging info is included in the DOM.
+   */
+  getEnv() {
     return this.#env;
   }
 
-  set env(value: Environment) {
+  /**
+   * Sets the environment that this app is running in.
+   * Environment affects which log messages will print and how much debugging info is included in the DOM.
+   */
+  setEnv(value: Environment) {
     this.#env = value;
+  }
+
+  /**
+   * Sets the view that will be shown when the `crash` method is called on any logger.
+   * When a crash is reported the app will be unmounted and replaced with this crash page.
+   */
+  setCrashView(view: ViewFunction<CrashViewProps>) {
+    this.#crashView = view;
   }
 
   async mount(selector: string, view?: ViewFunction<any>): Promise<void>;
@@ -142,16 +164,16 @@ export class Dolla {
     if (view) {
       rootViewMarkup = createMarkup(view);
     } else {
-      rootViewMarkup = createMarkup(DefaultView);
+      rootViewMarkup = createMarkup(Passthrough);
     }
 
     // First, initialize the root view. The router store needs this to connect the initial route.
-    this.#rootView = constructView({ root: this }, rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
+    this.#rootView = this.constructView(rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
 
     // Run beforeMount
     await Promise.all(this.#beforeMountCallbacks.map((callback) => callback()));
 
-    this.#rootView.connect(this.#rootElement);
+    this.#rootView.mount(this.#rootElement);
 
     // App is now fully mounted.
     this.#isMounted = true;
@@ -168,7 +190,7 @@ export class Dolla {
     // Run beforeUnmount
     await Promise.all(this.#beforeUnmountCallbacks.map((callback) => callback()));
 
-    this.#rootView?.disconnect();
+    this.#rootView?.unmount();
 
     this.#isMounted = false;
 
@@ -236,7 +258,7 @@ export class Dolla {
         const name = $name.get();
         if (
           self.#loggles.info === false ||
-          (isString(self.#loggles.info) && self.#loggles.info !== self.env) ||
+          (isString(self.#loggles.info) && self.#loggles.info !== self.getEnv()) ||
           !self.#match(name)
         ) {
           return noOp;
@@ -262,7 +284,7 @@ export class Dolla {
         const name = $name.get();
         if (
           self.#loggles.log === false ||
-          (isString(self.#loggles.log) && self.#loggles.log !== self.env) ||
+          (isString(self.#loggles.log) && self.#loggles.log !== self.getEnv()) ||
           !self.#match(name)
         ) {
           return noOp;
@@ -288,7 +310,7 @@ export class Dolla {
         const name = $name.get();
         if (
           self.#loggles.warn === false ||
-          (isString(self.#loggles.warn) && self.#loggles.warn !== self.env) ||
+          (isString(self.#loggles.warn) && self.#loggles.warn !== self.getEnv()) ||
           !self.#match(name)
         ) {
           return noOp;
@@ -314,7 +336,7 @@ export class Dolla {
         const name = $name.get();
         if (
           self.#loggles.error === false ||
-          (isString(self.#loggles.error) && self.#loggles.error !== self.env) ||
+          (isString(self.#loggles.error) && self.#loggles.error !== self.getEnv()) ||
           !self.#match(name)
         ) {
           return noOp;
@@ -337,13 +359,35 @@ export class Dolla {
       },
 
       crash(error: Error) {
-        // TODO: Handle crash
-        // _CRASH({ error, loggerName: $name.get(), uid: options?.uid });
+        if (self.isMounted) {
+          // Unmount the app.
+          self.unmount();
+
+          // Mount the crash page
+          const crashPage = self.constructView(self.#crashView, {
+            error,
+            loggerName: $name.get(),
+            uid: options?.uid,
+          });
+          crashPage.mount(self.#rootElement!);
+        }
+
+        throw error;
       },
     };
   }
 
-  constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []) {
+  /**
+   *
+   */
+  constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []): ViewNode {
     return constructView({ root: this }, view, props, children);
+  }
+
+  /**
+   *
+   */
+  constructMarkup(markup: Markup | Markup[]): MarkupNode {
+    return mergeNodes(constructMarkup({ root: this }, markup));
   }
 }

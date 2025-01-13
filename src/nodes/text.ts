@@ -1,4 +1,4 @@
-import { type DOMHandle } from "../markup.js";
+import { type MarkupNode } from "../markup.js";
 import { isSignal, type MaybeSignal, type StopFunction } from "../signals.js";
 
 interface Stringable {
@@ -9,12 +9,12 @@ interface TextOptions {
   value: MaybeSignal<Stringable>;
 }
 
-export class Text implements DOMHandle {
+export class Text implements MarkupNode {
   node = document.createTextNode("");
   value: MaybeSignal<Stringable> = "";
   stopCallback?: StopFunction;
 
-  get connected() {
+  get isMounted() {
     return this.node.parentNode != null;
   }
 
@@ -22,8 +22,8 @@ export class Text implements DOMHandle {
     this.value = value;
   }
 
-  async connect(parent: Node, after: Node | null = null) {
-    if (!this.connected) {
+  async mount(parent: Node, after: Node | null = null) {
+    if (!this.isMounted) {
       if (isSignal<Stringable>(this.value)) {
         this.stopCallback = this.value.watch((value) => {
           this.update(value);
@@ -36,8 +36,8 @@ export class Text implements DOMHandle {
     parent.insertBefore(this.node, after?.nextSibling ?? null);
   }
 
-  async disconnect() {
-    if (this.connected) {
+  async unmount() {
+    if (this.isMounted) {
       if (this.stopCallback) {
         this.stopCallback();
         this.stopCallback = undefined;
@@ -54,6 +54,4 @@ export class Text implements DOMHandle {
       this.node.textContent = "";
     }
   }
-
-  async setChildren() {}
 }

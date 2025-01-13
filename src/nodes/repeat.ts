@@ -1,4 +1,4 @@
-import { type DOMHandle, type ElementContext } from "../markup.js";
+import { type MarkupNode, type ElementContext } from "../markup.js";
 import { createSignal, type Signal, type SignalSetter, type StopFunction } from "../signals.js";
 import { constructView, type ViewContext, type ViewResult } from "../view.js";
 
@@ -17,12 +17,12 @@ type ConnectedItem<T> = {
   setValue: SignalSetter<T>;
   $index: Signal<number>;
   setIndex: SignalSetter<number>;
-  handle: DOMHandle;
+  handle: MarkupNode;
 };
 
 // ----- Code ----- //
 
-export class Repeat<T> implements DOMHandle {
+export class Repeat<T> implements MarkupNode {
   node: Node;
   endNode: Node;
   $items: Signal<T[]>;
@@ -32,7 +32,7 @@ export class Repeat<T> implements DOMHandle {
   renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
   keyFn: (value: T, index: number) => string | number | symbol;
 
-  get connected() {
+  get isMounted() {
     return this.node.parentNode != null;
   }
 
@@ -43,7 +43,7 @@ export class Repeat<T> implements DOMHandle {
     this.renderFn = renderFn;
     this.keyFn = keyFn;
 
-    if (this.elementContext.root.env === "development") {
+    if (this.elementContext.root.getEnv() === "development") {
       this.node = document.createComment("Repeat");
       this.endNode = document.createComment("/Repeat");
     } else {
@@ -52,8 +52,8 @@ export class Repeat<T> implements DOMHandle {
     }
   }
 
-  connect(parent: Node, after?: Node) {
-    if (!this.connected) {
+  mount(parent: Node, after?: Node) {
+    if (!this.isMounted) {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
       this.stopCallback = this.$items.watch((value) => {
@@ -62,13 +62,13 @@ export class Repeat<T> implements DOMHandle {
     }
   }
 
-  disconnect() {
+  unmount() {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;
     }
 
-    if (this.connected) {
+    if (this.isMounted) {
       this.node.parentNode?.removeChild(this.node);
       this.endNode.parentNode?.removeChild(this.endNode);
     }
@@ -76,19 +76,15 @@ export class Repeat<T> implements DOMHandle {
     this._cleanup();
   }
 
-  setChildren() {
-    console.warn("setChildren is not implemented for repeat()");
-  }
-
   _cleanup() {
     for (const item of this.connectedItems) {
-      item.handle.disconnect();
+      item.handle.unmount();
     }
     this.connectedItems = [];
   }
 
   _update(value: T[]) {
-    if (value.length === 0 || !this.connected) {
+    if (value.length === 0 || !this.isMounted) {
       return this._cleanup();
     }
 
@@ -112,7 +108,7 @@ export class Repeat<T> implements DOMHandle {
       const potentialItem = potentialItems.find((p) => p.key === connected.key);
 
       if (!potentialItem) {
-        connected.handle.disconnect();
+        connected.handle.unmount();
       }
     }
 
@@ -147,12 +143,12 @@ export class Repeat<T> implements DOMHandle {
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
       const previous = newItems[i - 1]?.handle.node ?? this.node;
-      item.handle.connect(this.node.parentNode!, previous);
+      item.handle.mount(this.node.parentNode!, previous);
     }
 
     this.connectedItems = newItems;
 
-    if (this.elementContext.root.env === "development") {
+    if (this.elementContext.root.getEnv() === "development") {
       this.node.textContent = `Repeat (${newItems.length} item${newItems.length === 1 ? "" : "s"})`;
 
       const lastItem = newItems.at(-1)?.handle.node ?? this.node;
