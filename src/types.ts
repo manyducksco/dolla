@@ -18,9 +18,6 @@ export type Renderable =
 
 export type Stringable = { toString(): string };
 
-// export type MaybeReadable<T> = T extends Readable<any> ? T : T | Readable<T> | Readable<Exclude<T, undefined>>;
-// export type MaybeReadable<T> = T | Readable<T> | Readable<T | undefined>;
-
 type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined>;
 
 type OptionalProperty<T> = T | Signal<T> | Signal<T | undefined>;

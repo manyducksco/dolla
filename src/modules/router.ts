@@ -154,7 +154,7 @@ export class Router {
   #logger: Logger;
   #elements: RouterElements;
 
-  #history = createBrowserHistory();
+  #history!: History;
   #layerId = 0;
   #activeLayers: ActiveLayer[] = [];
   #lastQuery?: string;
@@ -195,7 +195,9 @@ export class Router {
     const [$pattern, setPattern] = createSignal<string | null>(null);
     const [$path, setPath] = createSignal("");
     const [$params, setParams] = createSignal<ParsedParams>({});
-    const [$query, setQuery] = createSignal<ParsedQuery>(parseQueryParams(window.location.search));
+    const [$query, setQuery] = createSignal<ParsedQuery>(
+      parseQueryParams(typeof window === "undefined" ? "" : window.location.search ?? ""),
+    );
 
     this.$pattern = $pattern;
     this.#setPattern = setPattern;
@@ -210,6 +212,9 @@ export class Router {
     this.#setQuery = setQuery;
 
     dolla.beforeMount(() => {
+      // If router setup has not run, we don't need to do anything.
+      if (this.#history == null) return;
+
       // Update URL when query changes
       this.#cleanupCallbacks.push(
         watch([$query], (current) => {
@@ -258,8 +263,17 @@ export class Router {
   }
 
   setup(options: RouterSetupOptions) {
+    if (this.#dolla.isMounted) {
+      this.#logger.crash(
+        new Error(`Dolla is already mounted. Router setup must be called before Dolla.mount is called.`),
+      );
+      return;
+    }
+
     if (options.style === RoutingStyle.hash) {
       this.#history = createHashHistory();
+    } else {
+      this.#history = createBrowserHistory();
     }
 
     this.#routes = sortRoutes(
@@ -309,6 +323,15 @@ export class Router {
    * navigate(["/users", 215], { replace: true }); // replace current history entry with `/users/215`
    */
   go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
+    if (this.#history == null) {
+      this.#logger.crash(
+        new Error(
+          `Router.go was called, but the router was never configured! Run 'Dolla.router.setup' before 'Dolla.mount' to configure routes.`,
+        ),
+      );
+      return;
+    }
+
     let joined: string;
 
     if (Array.isArray(path)) {
@@ -334,6 +357,15 @@ export class Router {
    * Navigate backward. Pass a number of steps to hit the back button that many times.
    */
   back(steps = 1) {
+    if (this.#history == null) {
+      this.#logger.crash(
+        new Error(
+          `Router.back was called, but the router was never configured! Run 'Dolla.router.setup' before 'Dolla.mount' to configure routes.`,
+        ),
+      );
+      return;
+    }
+
     this.#history.go(-steps);
   }
 
@@ -341,6 +373,15 @@ export class Router {
    * Navigate forward. Pass a number of steps to hit the forward button that many times.
    */
   forward(steps = 1) {
+    if (this.#history == null) {
+      this.#logger.crash(
+        new Error(
+          `Router.forward was called, but the router was never configured! Run 'Dolla.router.setup' before 'Dolla.mount' to configure routes.`,
+        ),
+      );
+      return;
+    }
+
     this.#history.go(steps);
   }
 

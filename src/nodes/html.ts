@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { isRef, constructMarkup, type MarkupNode, type ElementContext, type Markup } from "../markup.js";
+import { isRef, constructMarkup, type MarkupNode, type ElementContext, type Markup, type Ref } from "../markup.js";
 import { isSettableSignal, isSignal, SettableSignal, type Signal, type StopFunction } from "../signals.js";
 import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
@@ -21,6 +21,9 @@ export class HTML implements MarkupNode {
   stopCallbacks: StopFunction[] = [];
   elementContext;
   uniqueId = nanoid();
+
+  // Track the ref so we can nullify it on unmount.
+  ref?: Ref<any>;
 
   // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
   canClickAway = false;
@@ -49,10 +52,10 @@ export class HTML implements MarkupNode {
       this.node.dataset.uniqueId = this.uniqueId;
     }
 
-    // Set ref if present. Refs can be a Ref object or a function that receives the node.
+    // Store ref if present. Refs are set on mount.
     if (props.ref) {
       if (isRef(props.ref)) {
-        props.ref.node = this.node;
+        this.ref = props.ref;
       } else {
         throw new Error("Expected ref to be a Ref object. Got: " + props.ref);
       }
@@ -83,6 +86,10 @@ export class HTML implements MarkupNode {
 
     parent.insertBefore(this.node, after?.nextSibling ?? null);
 
+    if (this.ref) {
+      this.ref.node = this.node;
+    }
+
     setTimeout(() => {
       this.canClickAway = true;
     }, 0);
@@ -92,6 +99,10 @@ export class HTML implements MarkupNode {
     if (this.isMounted) {
       for (const child of this.children) {
         child.unmount();
+      }
+
+      if (this.ref) {
+        this.ref.node = undefined;
       }
 
       this.node.parentNode?.removeChild(this.node);
@@ -335,14 +346,10 @@ export class HTML implements MarkupNode {
     }
   }
 
-  applyStyles(element: HTMLElement | SVGElement, styles: string | Record<string, any>, stopCallbacks: StopFunction[]) {
+  applyStyles(element: HTMLElement | SVGElement, styles: unknown, stopCallbacks: StopFunction[]) {
     const propStopCallbacks: StopFunction[] = [];
 
-    if (styles == undefined) {
-      element.style.cssText = "";
-    } else if (typeof styles === "string") {
-      element.style.cssText = styles;
-    } else if (isSignal<object>(styles)) {
+    if (isSignal(styles)) {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
@@ -360,44 +367,29 @@ export class HTML implements MarkupNode {
 
       stopCallbacks.push(stop);
       propStopCallbacks.push(stop);
-    } else if (isObject(styles)) {
-      styles = styles as Record<string, any>;
+    } else {
+      const mapped = getStyleMap(styles);
 
-      for (const key in styles) {
-        const value = styles[key];
+      for (const name in mapped) {
+        const { value, priority } = mapped[name];
 
-        // Set style property or attribute.
-        const setProperty = key.startsWith("--")
-          ? (key: string, value: string | null) =>
-              value == null ? element.style.removeProperty(key) : element.style.setProperty(key, value)
-          : (key: string, value: string | null) => (element.style[key as any] = value ?? "");
-
-        if (isSignal<any>(value)) {
+        if (isSignal(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.render.update(
-              () => {
-                if (current != null) {
-                  setProperty(key, current);
-                } else {
-                  element.style.removeProperty(key);
-                }
-              },
-              this.getUpdateKey("style", key),
-            );
+            this.elementContext.root.render.update(() => {
+              if (current) {
+                element.style.setProperty(name, String(current), priority);
+              } else {
+                element.style.removeProperty(name);
+              }
+            }); // NOTE: Not keyed; all update callbacks must run to apply all properties.
           });
 
           stopCallbacks.push(stop);
           propStopCallbacks.push(stop);
-        } else if (isString(value)) {
-          setProperty(key, value);
-        } else if (isNumber(value)) {
-          setProperty(key, String(value));
-        } else {
-          throw new TypeError(`Style properties should be strings, $states or numbers. Got (${key}: ${value})`);
+        } else if (value) {
+          element.style.setProperty(name, String(value));
         }
       }
-    } else {
-      throw new TypeError(`Expected style property to be a string, $state, or object. Got: ${styles}`);
     }
 
     return function unapply() {
@@ -463,6 +455,9 @@ export class HTML implements MarkupNode {
   }
 }
 
+/**
+ * Parse classes into a single object. Classes can be passed as a string, an object with class keys can boolean values, or an array with a mix of both.
+ */
 function getClassMap(classes: unknown) {
   let mapped: Record<string, boolean> = {};
 
@@ -483,6 +478,50 @@ function getClassMap(classes: unknown) {
   }
 
   return mapped;
+}
+
+/**
+ * Parse styles into a single object.
+ */
+function getStyleMap(styles: unknown) {
+  let mapped: Record<string, { value: unknown; priority?: string }> = {};
+
+  if (isString(styles)) {
+    const lines = styles.split(";").filter((line) => line.trim() !== "");
+    for (const line of lines) {
+      const [key, _value] = line.split(":");
+      const entry: { value: unknown; priority?: string } = {
+        value: _value,
+      };
+      if (_value.includes("!important")) {
+        entry.priority = "important";
+        entry.value = _value.replace("!important", "").trim();
+      } else {
+        entry.value = _value.trim();
+      }
+      mapped[camelToKebab(key.trim())] = entry;
+    }
+  }
+  if (isObject(styles)) {
+    for (const key in styles) {
+      mapped[camelToKebab(key)] = { value: styles[key] };
+    }
+  } else if (Array.isArray(styles)) {
+    Array.from(styles)
+      .filter((item) => item != null)
+      .forEach((item) => {
+        Object.assign(mapped, getStyleMap(item));
+      });
+  }
+
+  return mapped;
+}
+
+/**
+ * Converts a camelCase string to kebab-case.
+ */
+export function camelToKebab(value: string): string {
+  return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
 }
 
 /**
