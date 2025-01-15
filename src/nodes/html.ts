@@ -386,7 +386,7 @@ export class HTML implements MarkupNode {
 
           stopCallbacks.push(stop);
           propStopCallbacks.push(stop);
-        } else if (value) {
+        } else if (value != undefined) {
           element.style.setProperty(name, String(value));
         }
       }
@@ -504,7 +504,12 @@ function getStyleMap(styles: unknown) {
   }
   if (isObject(styles)) {
     for (const key in styles) {
-      mapped[camelToKebab(key)] = { value: styles[key] };
+      if (key.startsWith("--")) {
+        // Pass through variable names without processing.
+        mapped[key] = { value: styles[key] };
+      } else {
+        mapped[camelToKebab(key)] = { value: styles[key] };
+      }
     }
   } else if (Array.isArray(styles)) {
     Array.from(styles)
