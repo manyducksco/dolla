@@ -1,5 +1,5 @@
 import colorHash from "simple-color-hash";
-import { isSignal } from "./signals.js";
+import { isState } from "./state.js";
 import { isObject } from "./typeChecking.js";
 
 export const noOp = () => {};
@@ -18,7 +18,7 @@ export function deepEqual(one: any, two: any) {
     return true;
   }
 
-  if (isSignal(one) || isSignal(two)) {
+  if (isState(one) || isState(two)) {
     return false;
   }
 

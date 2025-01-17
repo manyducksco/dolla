@@ -8,7 +8,7 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
-import { MaybeSignal, createSignal, isSettableSignal, isSignal, signalify, type Signal } from "./signals.js";
+import { MaybeState, createState, isSettableState, isState, toState, type State } from "./state.js";
 import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
 import { constructView, type ViewFunction, type ViewContext, type ViewResult } from "./view.js";
@@ -90,9 +90,9 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
         return createMarkup("$text", { value: x });
       }
 
-      if (isSignal(x)) {
+      if (isState(x)) {
         return createMarkup("$observer", {
-          signals: [x],
+          states: [x],
           renderFn: (x) => x,
         });
       }
@@ -103,19 +103,19 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
 }
 
 export interface MarkupAttributes {
-  $text: { value: MaybeSignal<Stringable> };
-  $cond: { $predicate: Signal<any>; thenContent?: Renderable; elseContent?: Renderable };
+  $text: { value: MaybeState<Stringable> };
+  $cond: { $predicate: State<any>; thenContent?: Renderable; elseContent?: Renderable };
   $repeat: {
-    $items: Signal<any[]>;
+    $items: State<any[]>;
     keyFn: (value: any, index: number) => string | number | symbol;
-    renderFn: ($item: Signal<any>, $index: Signal<number>, c: ViewContext) => ViewResult;
+    renderFn: ($item: State<any>, $index: State<number>, c: ViewContext) => ViewResult;
   };
   $observer: {
-    signals: Signal<any>[];
+    states: State<any>[];
     renderFn: (...items: any) => Renderable;
   };
   $outlet: {
-    $children: Signal<MarkupNode[]>;
+    $children: State<MarkupNode[]>;
   };
   $node: {
     value: Node;
@@ -162,12 +162,12 @@ function _assertPropTypes(props: Record<string, any>) {
 
   for (const key in props) {
     if (key.startsWith("$$") && props[key] !== undefined) {
-      if (!isSettableSignal(props[key])) {
-        throw new TypeError(`Prop '${key}' is named as a SettableSignal but value is not. Got: ${props[key]}`);
+      if (!isSettableState(props[key])) {
+        throw new TypeError(`Prop '${key}' is named as a SettableState but value is not. Got: ${props[key]}`);
       }
     } else if (key.startsWith("$") && props[key] !== undefined) {
-      if (!isSignal(props[key])) {
-        throw new TypeError(`Prop '${key}' is named as a Signal but value is not. Got: ${props[key]}`);
+      if (!isState(props[key])) {
+        throw new TypeError(`Prop '${key}' is named as a State but value is not. Got: ${props[key]}`);
       }
     }
   }
@@ -185,8 +185,8 @@ export const html = htm.bind(createMarkup);
 /**
  * Displays content conditionally. When `predicate` holds a truthy value, `thenContent` is displayed; when `predicate` holds a falsy value, `elseContent` is displayed.
  */
-export function cond(predicate: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  const $predicate = signalify(predicate);
+export function cond(predicate: MaybeState<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
+  const $predicate = toState(predicate);
 
   return createMarkup("$cond", {
     $predicate,
@@ -200,11 +200,11 @@ export function cond(predicate: MaybeSignal<any>, thenContent?: Renderable, else
  * The result of `keyFn` is used to compare items and decide if item was added, removed or updated.
  */
 export function repeat<T>(
-  items: MaybeSignal<T[]>,
+  items: MaybeState<T[]>,
   keyFn: (value: T, index: number) => string | number | symbol,
-  renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult,
+  renderFn: ($value: State<T>, $index: State<number>, ctx: ViewContext) => ViewResult,
 ): Markup {
-  const $items = signalify(items);
+  const $items = toState(items);
 
   return createMarkup("$repeat", { $items, keyFn, renderFn });
 }
@@ -221,10 +221,10 @@ export function portal(parent: Node, content: Renderable) {
 \*===========================*/
 
 /**
- * A special kind of signal exclusively for storing references to DOM nodes.
+ * A special kind of State exclusively for storing references to DOM nodes.
  */
 export function createRef<T extends Node>(): Ref<T> {
-  const [$node, setNode] = createSignal<T>();
+  const [$node, setNode] = createState<T>();
 
   return {
     get: $node.get,
@@ -251,7 +251,7 @@ export function isRef<T extends Node>(value: any): value is Ref<T> {
   return true;
 }
 
-export interface Ref<T extends Node> extends Signal<T | undefined> {
+export interface Ref<T extends Node> extends State<T | undefined> {
   node: T | undefined;
 }
 
@@ -326,7 +326,7 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
         case "$observer": {
           const attrs = item.props! as MarkupAttributes["$observer"];
           return new Observer({
-            signals: attrs.signals,
+            states: attrs.states,
             renderFn: attrs.renderFn,
             elementContext,
           });
@@ -413,7 +413,7 @@ export function isRenderable(value: unknown): value is Renderable {
     typeof value === "string" ||
     typeof value === "number" ||
     isMarkup(value) ||
-    isSignal(value) ||
+    isState(value) ||
     isArrayOf(isRenderable, value)
   );
 }

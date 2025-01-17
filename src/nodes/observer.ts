@@ -1,20 +1,20 @@
 import {
-  mergeNodes,
-  isNode,
-  isMarkup,
-  isRenderable,
   constructMarkup,
+  isMarkup,
+  isNode,
+  isRenderable,
+  mergeNodes,
   toMarkup,
-  type MarkupNode,
   type ElementContext,
+  type MarkupNode,
 } from "../markup.js";
-import { watch, type Signal, type StopFunction } from "../signals.js";
+import { watch, type State, type StopFunction } from "../state.js";
 import { typeOf } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
 
 interface ObserverOptions {
   elementContext: ElementContext;
-  signals: Signal<any>[];
+  states: State<any>[];
   renderFn: (...values: any) => Renderable;
 }
 
@@ -33,7 +33,7 @@ export class Observer implements MarkupNode {
     return this.node.parentNode != null;
   }
 
-  constructor({ signals, renderFn, elementContext }: ObserverOptions) {
+  constructor({ states, renderFn, elementContext }: ObserverOptions) {
     this.elementContext = elementContext;
     this.renderFn = renderFn;
 
@@ -46,7 +46,7 @@ export class Observer implements MarkupNode {
       start: () => {
         if (_stop != null) return;
 
-        _stop = watch(signals, (...values) => {
+        _stop = watch(states, (...values) => {
           const rendered = this.renderFn(...values);
 
           if (!isRenderable(rendered)) {

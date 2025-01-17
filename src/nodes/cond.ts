@@ -1,9 +1,9 @@
 import { constructMarkup, toMarkup, type MarkupNode, type ElementContext, type Markup } from "../markup.js";
-import { type Signal, type StopFunction } from "../signals.js";
+import { type State, type StopFunction } from "../state.js";
 import { type Renderable } from "../types.js";
 
 export interface ConditionalConfig {
-  $predicate: Signal<any>;
+  $predicate: State<any>;
   thenContent?: Renderable;
   elseContent?: Renderable;
   elementContext: ElementContext;
@@ -12,7 +12,7 @@ export interface ConditionalConfig {
 export class Conditional implements MarkupNode {
   node: Node;
   endNode: Node;
-  $predicate: Signal<any>;
+  $predicate: State<any>;
   stopCallback?: StopFunction;
   thenContent?: Markup[];
   elseContent?: Markup[];

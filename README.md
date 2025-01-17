@@ -7,142 +7,126 @@
 
 Dolla is a batteries-included JavaScript frontend framework covering the needs of moderate-to-complex single page apps:
 
-- Reactive DOM updates (Signals)
-- Reusable components (Views)
-- Routing
-- HTTP client
-- Localization (translations as JSON files and a `t` function to get strings)
+- ⚡ Reactive DOM updates with [State](). A similar concept to Signals without behind the scenes magic.
+- 📦 Reusable components with [Views](#section-views).
+- 🗺️ Built in [router]() supporting nested routes and preloading.
+- Built in [HTTP]() client with middleware support.
+- Built in [Localization] (translations as JSON files and a `t` function to get strings)
 
 Let's first get into some examples.
 
-## Signals
+## State
 
-### Signals API
-
-```jsx
-import { createSignal, derive } from "@manyducks.co/dolla";
-
-// Create a readable state and setter.
-const [$count, setCount] = createSignal(0);
-
-// Derive a new state from one or more states.
-const $doubled = derive([$$count], (count) => count * 2);
-```
-
-### Basic State
+### Basic State API
 
 ```jsx
-import { createSignal } from "@manyducks.co/dolla";
+import { createState, toState, valueOf, derive } from "@manyducks.co/dolla";
 
-const [$count, setCount] = createSignal(0);
+const [$count, setCount] = createState(72);
 
-// Set Style 1: Set value explicitly.
-setCount(1); // $count = 1
+// Get value
+$count.get(): // 72
 
-// Set Style 2: Set value based on the current value using a callback.
-const increment = () => setCount((current) => current + 1);
-const decrement = () => setCount((current) => current - 1);
+// Replace the stored value with something else
+setCount(300);
+$count.get(); // 300
 
-increment(); // $count = 2
-increment(); // $count = 3
-decrement(); // $count = 2
+// You can also pass a function that takes the current value and returns a new one
+setCount((current) => current + 1);
+$count.get(); // 301
 
-console.log($count.get()); // 2
-```
-
-### Derived State
-
-```jsx
-import { createSignal, derive } from "@manyducks.co/dolla";
-
-const [$count, setCount] = createSignal(0);
-const $doubled = derive([$count], (count) => count * 2);
-
-setCount(1); // $count = 1, $doubled = 2
-setCount(256); // $count = 256, $doubled = 512
-setCount(-37); // $count = -37, $doubled = -74
-```
-
-## A Basic View
-
-```js
-import Dolla, { html } from "@manyducks.co/dolla";
-
-function Counter(props, ctx) {
-  const [$count, setCount] = Dolla.createSignal(0);
-
-  function increment() {
-    setCount((count) => count + 1);
-  }
-
-  return html`
-    <div>
-      <p>Clicks: ${$count}</p>
-      <button onclick=${increment}>Click here to increment</button>
-    </div>
-  `;
-}
-
-Dolla.mount(document.body, Counter);
-```
-
-The above example, annotated:
-
-```js
-import Dolla, { html } from "@manyducks.co/dolla";
-
-function Counter(props, ctx) {
-  const [$count, setCount] = Dolla.createSignal(0);
-
-  function increment() {
-    setCount((count) => count + 1);
-  }
-
-  return html`
-    <div>
-      <p>Clicks: ${$count}</p>
-      <button onclick=${increment}>Click here to increment</button>
-    </div>
-  `;
-}
-
-Dolla.mount(document.body, Counter);
-```
-
-Localized:
-
-```js
-import Dolla, { html, t } from "@manyducks.co/dolla";
-
-function Counter(props, ctx) {
-  const [$count, setCount] = Dolla.createSignal(0);
-
-  function increment() {
-    setCount((count) => count + 1);
-  }
-
-  return html`
-    <div>
-      <p>Clicks: ${$count}</p>
-      <button onclick=${increment}>${t("buttonLabel")}</button>
-    </div>
-  `;
-}
-
-Dolla.language.setup({
-  initialLanguage: "en",
-  languages: [
-    { name: "en", strings: { buttonLabel: "Click here to increment" } },
-    { name: "ja", strings: { buttonLabel: "ここに押して増加する" } },
-  ],
+// Watch for changes to the value
+const unwatch = $count.watch((value) => {
+  // This function is called immediately with the current value, then again each time the value changes.
 });
+unwatch(); // Stop watching for changes
+
+// Returns the value of a state. If the value is not a state it is returned as is.
+const count = valueOf($count);
+const bool = valueOf(true);
+
+// Creates a state from a value. If the value is already a state it is returned as is.
+const $bool = toState(true);
+const $anotherCount = toState($count);
+
+// Derive a new state from one or more other states. Whenever $count changes, $doubled will follow.
+const $doubled = derive([$count], (count) => count * 2);
+const $sum = derive([$count, $doubled], (count, doubled) => count + doubled);
+```
+
+States also come in a settable variety that includes the setter on the same object. Sometimes you want to pass around a two-way binding and this is what SettableState is for.
+
+```jsx
+import { createSettableState, fromSettable, toSettable } from "@manyducks.co/dolla";
+
+// Settable states have their setter included.
+const $$value = createSettableState("Test");
+$$value.set("New Value");
+
+// They can also be split into a State and Setter
+const [$value, setValue] = fromSettableState($$value);
+
+// And a State and Setter can be combined into a SettableState.
+const $$otherValue = toSettableState($value, setValue);
+
+// Or discard the setter and make it read-only using the good old toState function:
+const $value = toState($$value);
+```
+
+You can also do weird proxy things like this:
+
+```jsx
+// Create an original place for the state to live
+const [$value, setValue] = createState(5);
+
+// Derive a state that doubles the value
+const $doubled = derive([$value], (value) => value * 2);
+
+// Create a setter that takes the doubled value and sets the original $value accordingly.
+const setDoubled = createSetter($doubled, (next, current) => {
+  setValue(next / 2);
+});
+
+// Bundle the derived state and setter into a SettableState to pass around.
+const $$doubled = toSettableState($doubled, setDoubled);
+
+// Setting the doubled state...
+$$doubled.set(100);
+
+// ... will be reflected everywhere.
+$$doubled.get(); // 100
+$doubled.get(); // 100
+$value.get(); // 50
+```
+
+## Views [id="section-views"]
+
+A basic view:
+
+```js
+import Dolla, { html } from "@manyducks.co/dolla";
+
+function Counter(props, ctx) {
+  const [$count, setCount] = Dolla.createState(0);
+
+  function increment() {
+    setCount((count) => count + 1);
+  }
+
+  return html`
+    <div>
+      <p>Clicks: ${$count}</p>
+      <button onclick=${increment}>+1</button>
+    </div>
+  `;
+}
 
 Dolla.mount(document.body, Counter);
 ```
 
 If you've ever used React before (and chances are you have if you're interested in obscure frameworks like this one) this should look very familiar to you.
 
-The biggest difference is that the Counter function runs only once when the component is mounted. All updates after that point are a direct result of the `$count` signal being updated.
+The biggest difference is that the Counter function runs only once when the component is mounted. All updates after that point are a direct result of `$count` being updated.
 
 ## Advanced Componentry
 
@@ -155,10 +139,10 @@ Component functions take two arguments; props and a `Context` object. Props are 
 Props are values passed down from parent components. These can be static values, signals, callbacks and anything else the child component needs to do its job.
 
 ```tsx
-import { type Signal, type Context, html } from "@manyducks.co/dolla";
+import { type State, type Context, html } from "@manyducks.co/dolla";
 
 type HeadingProps = {
-  $text: Signal<string>;
+  $text: State<string>;
 };
 
 function Heading(props: HeadingProps, c: Context) {
@@ -179,10 +163,10 @@ function Layout() {
 ### Context
 
 ```tsx
-import { type Signal, type Context, html } from "@manyducks.co/dolla";
+import { type State, type Context, html } from "@manyducks.co/dolla";
 
 type HeadingProps = {
-  $text: Signal<string>;
+  $text: State<string>;
 };
 
 function Heading(props: HeadingProps, c: Context) {
@@ -216,7 +200,7 @@ function Heading(props: HeadingProps, c: Context) {
     c.info("Heading has just been unmounted. Good time to finalize teardown.");
   });
 
-  // Signals can be watched by the component context.
+  // States can be watched by the component context.
   // Watchers created this way are cleaned up automatically when the component unmounts.
 
   c.watch(props.$text, (value) => {
@@ -284,17 +268,17 @@ $selected.get(); // "Bon"
 Proxy
 
 ```jsx
-import { signal, proxy } from "@manyducks.co/dolla";
+import { createState, createProxyState } from "@manyducks.co/dolla";
 
-const [$names, setNames] = signal(["Morg", "Ton", "Bon"]);
-const [$index, setIndex] = signal(0);
+const [$names, setNames] = createState(["Morg", "Ton", "Bon"]);
+const [$index, setIndex] = createState(0);
 
-const [$selected, setSelected] = proxy([$names, $index], {
+const [$selected, setSelected] = createProxyState([$names, $index], {
   get(names, index) {
     return names[index];
   },
-  set(next) {
-    const index = $names.get().indexOf(next);
+  set(next, names, _) {
+    const index = names.indexOf(next);
     if (index === -1) {
       throw new Error("Name is not in the list!");
     }
@@ -312,137 +296,6 @@ setSelected("Ton");
 $selected.get(); // "Ton"
 $index.get(); // 1
 ```
-
-##
-
-States come in two varieties, each with a constructor function and a TypeScript type to match. These are:
-
-- `Readable<T>`, which has only a `.get()` method that returns the current value.
-- `Writable<T>`, which extends `Readable<T>` and adds a couple methods:
-  - `.set(value: T)` to replace the stored value.
-  - `.update(callback: (current: T) => T)` which takes a function that receives the current value and returns a new one.
-
-The constructor functions are `$` for `Readable` and `$$` for `Writable`. By convention, the names of each are prefixed with `$` or `$$` to indicate its type, making the data flow a lot easier to understand at a glance.
-
-```js
-import { signal } from "@manyducks.co/dolla";
-
-// By convention, Writable names are prefixed with two dollar signs and Readable with one.
-const [$number, setNumber] = signal(5);
-
-// Returns the current value held by the Writable.
-$number.get();
-// Stores a new value to the Writable.
-setNumber(12);
-// Uses a callback to update the value. Takes the current value and returns the next.
-setNumber((current) => current + 1);
-
-// Derive a new state from an existing one.
-const $doubled = derive([$number], (value) => value * 2);
-$doubled.get(); // 26 ($number is 13)
-
-// Derive one new state from the latest values of many other states.
-const $many = derive([$number, $doubled], (num, doubled) => num + doubled);
-```
-
-Now how do we use it? For a real example, a simple greeter app. The user types their name into a text input and that value is reflected in a heading above the input. For this we will use the `writable` function to create a state container. That container can be slotted into our JSX as a text node or DOM property. Any changes to the value will now be reflected in the DOM.
-
-```jsx
-import { signal } from "@manyducks.co/dolla";
-
-function Greeter() {
-  const [$name, setName] = signal("Valued Customer");
-
-  return (
-    <section>
-      <header>
-        <h1>Hello, {$name}!</h1>
-      </header>
-
-      <input
-        value={$name}
-        onChange={(e) => {
-          setName(e.target.value);
-        }}
-      />
-    </section>
-  );
-}
-```
-
-### Computed
-
-Computed states take one or more Readables or Writables and produce a new value _computed_ from those.
-
-```js
-import { $, $$ } from "@manyducks.co/dolla";
-
-const $$count = $$(100);
-
-const $double = $($$count, (value) => value * 2);
-```
-
-In that example, `$$double` will always have a value derived from that of `$$count`.
-
-Let's look at a more typical example where we're basically joining two pieces of data; a list of users and the ID of the selected user.
-
-```js
-import { $, $$ } from "@manyducks.co/dolla";
-
-// Let's assume this list of users was fetched from an API somewhere.
-const $$people = $$([
-  {
-    id: 1,
-    name: "Borb",
-  },
-  {
-    id: 2,
-    name: "Bex",
-  },
-  {
-    id: 3,
-    name: "Bleeblop",
-  },
-]);
-
-// Let's assume this ID was chosen from an input where the above users were displayed.
-const $$selectedId = $$(2);
-
-// Now we get the object of the person who is selected.
-const $selectedPerson = $($$people, $$selectedId, (people, selectedId) => {
-  return people.find((person) => person.id === selectedId);
-});
-
-// Now we get a Readable of just that person's name. Say we're going to display it on the page somewhere.
-const $personName = $($selectedPerson, (person) => person.name);
-
-console.log($personName.get()); // "Bex"
-```
-
-Notice that the structure above composes a data pipeline; if any of the data changes, so do the computed values, but the relationship between the data remains the same. Now that we've defined these relationships, `$selectedPerson` is always the person pointed to by `$$selectedId`. `$personName` is always the name of `$selectedPerson`, etc.
-
-### Unwrap
-
-The `unwrap` function returns the current value of a Readable or Writable, or if passed a non-Readable value returns that exact value. This function is used to guarantee you have a plain value when you may be dealing with either a container or a plain value.
-
-```js
-import { $, $$, unwrap } from "@manyducks.co/dolla";
-
-const $$number = $$(5);
-
-unwrap($$number); // 5
-unwrap($(5)); // 5
-unwrap(5); // 5
-```
-
-### Advanced Use Cases
-
-<details>
-  <summary><code>observe</code> and <code>proxy</code></summary>
-
-> TO DO
-
-</details>
 
 ## Views
 
@@ -530,7 +383,7 @@ The `repeat` helper repeats a render function for each item in a list. The `keyF
 
 ```jsx
 function RepeatedListView() {
-  const $items = $(["Squirrel", "Chipmunk", "Groundhog"]);
+  const $items = Dolla.toState(["Squirrel", "Chipmunk", "Groundhog"]);
 
   return (
     <ul>
@@ -559,7 +412,7 @@ function PortalView() {
   );
 
   // Content will be appended to `document.body` while this view is connected.
-  return portal(content, document.body);
+  return portal(document.body, content);
 }
 ```
 
@@ -637,18 +490,6 @@ function ExampleView() {
 }
 ```
 
-#### Using Stores
-
-```jsx
-import { UserStore } from "../stores/UserStore.js";
-
-function ExampleView(props, ctx) {
-  const { $name } = ctx.getStore(UserStore);
-
-  return <h1>Hello {$name}!</h1>;
-}
-```
-
 #### Observing States
 
 The `observe` function starts observing when the view is connected and stops when disconnected. This takes care of cleaning up observers so you don't have to worry about memory leaks.
@@ -663,239 +504,6 @@ function ExampleView(props, ctx) {
 
   return <h1>Hello World!</h1>;
 }
-```
-
-#### Example: Counter View
-
-Putting it all together, we have a view that maintains a counter. The user sees the current count displayed, and below it three buttons; one to increment by 1, one to decrement by 1, and one to reset the value to 0.
-
-```jsx
-import { $$ } from "@manyducks.co/dolla";
-
-function CounterView(props, ctx) {
-  const $$count = $$(0);
-
-  function increment() {
-    $$count.update((n) => n + 1);
-  }
-
-  function decrement() {
-    $$count.update((n) => n - 1);
-  }
-
-  function reset() {
-    $$count.set(0);
-  }
-
-  return (
-    <div>
-      <p>The count is {$$count}</p>
-      <div>
-        <button onClick={increment}>+1</button>
-        <button onClick={decrement}>-1</button>
-        <button onClick={reset}>Reset</button>
-      </div>
-    </div>
-  );
-}
-```
-
-## Stores
-
-A store is a function that returns a plain JavaScript object. If this store is registered on the app, a single instance of the store is shared across all views and stores in the app. If the store is registered using a `StoreScope`, a single instance of the store is shared amongst all child elements of that `StoreScope`.
-
-Stores are accessed with the `getStore` function available on the context object in views and other stores.
-
-Stores are helpful for managing persistent state that needs to be accessed in many places.
-
-```js
-import { App } from "@manyducks.co/dolla";
-
-const app = App({
-  view: LayoutView,
-  stores: [MessageStore],
-});
-
-// We define a store that just exports a message.
-function MessageStore() {
-  return {
-    message: "Hello from the message store!",
-  };
-}
-
-// All instances of MessageView will share just one instance of MessageStore.
-function MessageView(props, ctx) {
-  const store = ctx.getStore(MessageStore);
-
-  return <p>{store.message}</p>;
-}
-
-// And a layout view with five MessageViews inside.
-function LayoutView() {
-  return (
-    <div>
-      <h1>Title</h1>
-      <MessageView />
-      <MessageView />
-      <MessageView />
-      <MessageView />
-      <MessageView />
-    </div>
-  );
-}
-
-// Connect the app.
-app.connect("#app");
-```
-
-The output:
-
-```html
-<div id="app">
-  <div>
-    <h1>Title</h1>
-    <p>Hello from the message store!</p>
-    <p>Hello from the message store!</p>
-    <p>Hello from the message store!</p>
-    <p>Hello from the message store!</p>
-    <p>Hello from the message store!</p>
-  </div>
-</div>
-```
-
-### StoreScope
-
-Stores relevant to only a part of the view tree can be scoped using a `StoreScope`.
-
-```jsx
-function ExampleStore() {
-  return { value: 5 };
-}
-
-function ExampleView(props, ctx) {
-  const store = ctx.getStore(ExampleStore);
-
-  return <div>{store.value}</div>;
-}
-
-function LayoutView() {
-  return (
-    <StoreScope stores={[ExampleStore]}>
-      <ExampleView />
-    </StoreScope>
-  );
-}
-```
-
-## Apps and Routing
-
-```jsx
-import { App } from "@manyducks.co/dolla";
-
-const app = App({
-  // Debug options control what gets printed from messages logged through view and store contexts.
-  debug: {
-    // A comma-separated list of filters. '*' means allow everything and '-dolla/*' means suppress messages with labels beginning with 'dolla/'.
-    filter: "*,-dolla/*",
-
-    // Never print ctx.info() messages
-    info: false,
-
-    // Only print ctx.log() and ctx.warn() messages in development mode
-    log: "development",
-    warn: "development",
-
-    // Always print ctx.error() messages
-    error: true,
-  },
-
-  mode: "development", // or "production" (enables additional debug features and logging in "development")
-
-  view: (_, ctx) => {
-    // Define a custom root view. By default this just renders any routes like so:
-    return ctx.outlet();
-  },
-});
-```
-
-#### Routes and Outlets
-
-The main view (defined with the app's `main` method) is the top-level view that will always be displayed while the app is connected.
-
-```jsx
-// Here is an app with a hypothetical main view with a layout and navigation:
-const app = App({
-  view: (_, ctx) => {
-    return (
-      <div class="todo-layout">
-        <nav>
-          <ul>
-            <li>
-              <a href="/tasks">Tasks</a>
-            </li>
-            <li>
-              <a href="/completed">Completed</a>
-            </li>
-          </ul>
-        </nav>
-        {/*
-         * An outlet is where children of a view are shown.
-         * Because this is a main view, children in this case
-         * are the views that correspond to matched routes.
-         */}
-        {ctx.outlet()}
-      </div>
-    );
-  },
-
-  stores: [
-    {
-      store: RouterStore,
-      options: {
-        hash: true, // Use hash-based routing (default false)
-
-        // Here are a couple of routes to be rendered into our layout:
-        routes: [
-          { path: "/tasks", view: TasksView },
-          { path: "/completed", view: CompletedView },
-        ],
-      },
-    },
-  ],
-});
-```
-
-Routes can also be nested. Just like the main view and its routes, subroutes will be displayed in the outlet of their parent view.
-
-```jsx
-const app = App({
-  stores: [
-    {
-      store: RouterStore,
-      options: {
-        routes: [
-          {
-            path: "/tasks",
-            view: TasksView,
-            routes: [
-              { path: "/", view: TaskListView },
-
-              // In routes, `{value}` is a dynamic value that matches anything,
-              // and `{#value}` is a dynamic value that matches a number.
-              { path: "/{#id}", view: TaskDetailsView },
-              { path: "/{#id}/edit", view: TaskEditView },
-
-              // If the route is any other than the ones defined above, redirect to the list.
-              // Redirects support './' and '../' style relative paths.
-              { path: "*", redirect: "./" },
-            ],
-          },
-          { path: "/completed", view: CompletedView },
-        ],
-      },
-    },
-  ],
-});
 ```
 
 #### Routing
@@ -925,30 +533,23 @@ to your code (`router` store, `$params` readable). Below are some examples of pa
 Now, here are some route examples in the context of an app:
 
 ```js
-import { App, RouterStore } from "@manyducks.co/dolla";
-import { PersonDetails, ThingIndex, ThingDetails, ThingEdit, ThingDelete } from "./components.js";
+import Dolla from "@manyducks.co/dolla";
+import { PersonDetails, ThingIndex, ThingDetails, ThingEdit, ThingDelete } from "./views.js";
 
-const app = App({
-  stores: [
+Dolla.router.setup({
+  routes: [
+    { path: "/people/{name}", view: PersonDetails },
     {
-      store: RouterStore,
-      options: {
-        routes: [
-          { path: "/people/{name}", view: PersonDetails },
-          {
-            // A `null` component with subroutes acts as a namespace for those subroutes.
-            // Passing a view instead of `null` results in subroutes being rendered inside that view wherever `ctx.outlet()` is called.
-            path: "/things",
-            view: null,
-            routes: [
-              { path: "/", view: ThingIndex }, // matches `/things`
-              { path: "/{#id}", view: ThingDetails }, // matches `/things/{#id}`
-              { path: "/{#id}/edit", view: ThingEdit }, // matches `/things/{#id}/edit`
-              { path: "/{#id}/delete", view: ThingDelete }, // matches `/things/{#id}/delete`
-            ],
-          },
-        ],
-      },
+      // A `null` component with subroutes acts as a namespace for those subroutes.
+      // Passing a view instead of `null` results in subroutes being rendered inside that view wherever `ctx.outlet()` is called.
+      path: "/things",
+      view: null,
+      routes: [
+        { path: "/", view: ThingIndex }, // matches `/things`
+        { path: "/{#id}", view: ThingDetails }, // matches `/things/{#id}`
+        { path: "/{#id}/edit", view: ThingEdit }, // matches `/things/{#id}/edit`
+        { path: "/{#id}/delete", view: ThingDelete }, // matches `/things/{#id}/delete`
+      ],
     },
   ],
 });
@@ -956,39 +557,87 @@ const app = App({
 
 As you may have inferred from the code above, when the URL matches a pattern the corresponding view is displayed. If we
 visit `/people/john`, we will see the `PersonDetails` view and the params will be `{ name: "john" }`. Params can be
-accessed inside those views through `RouterStore`.
+accessed anywhere through `Dolla.router`.
 
 ```js
 function PersonDetails(props, ctx) {
-  // `router` store allows you to work with the router from inside the app.
-  const router = ctx.getStore(RouterStore);
-
   // Info about the current route is exported as a set of Readables. Query params are also Writable through $$query:
-  const { $path, $pattern, $params, $$query } = router;
+  const { $path, $pattern, $params, $query } = Dolla.router;
 
-  // Functions are exported for navigation:
-  const { back, forward, navigate } = router;
+  Dolla.router.back(); // Step back in the history to the previous route, if any.
+  Dolla.router.back(2); // Hit the back button twice.
 
-  back(); // Step back in the history to the previous route, if any.
-  back(2); // Hit the back button twice.
+  Dolla.router.forward(); // Step forward in the history to the next route, if any.
+  Dolla.router.forward(4); // Hit the forward button 4 times.
 
-  forward(); // Step forward in the history to the next route, if any.
-  forward(4); // Hit the forward button 4 times.
-
-  navigate("/things/152"); // Navigate to another path within the same app.
-  navigate("https://www.example.com/another/site"); // Navigate to another domain entirely.
+  Dolla.router.go("/things/152"); // Navigate to another path within the same app.
+  Dolla.router.go("https://www.example.com/another/site"); // Navigate to another domain entirely.
 
   // Three ways to confirm with the user that they wish to navigate before actually doing it.
-  navigate("/another/page", { prompt: true });
-  navigate("/another/page", { prompt: "Are you sure you want to leave and go to /another/page?" });
-  navigate("/another/page", { prompt: PromptView });
+  Dolla.router.go("/another/page", { prompt: true });
+  Dolla.router.go("/another/page", { prompt: "Are you sure you want to leave and go to /another/page?" });
+  Dolla.router.go("/another/page", { prompt: PromptView });
 
   // Get the live value of `{name}` from the current path.
-  const $name = computed($params, (p) => p.name);
+  const $name = Dolla.derive([$params], (p) => p.name);
 
   // Render it into a <p> tag. The name portion will update if the URL changes.
   return <p>The person is: {$name}</p>;
 }
+```
+
+## HTTP Client
+
+```js
+// Middleware!
+Dolla.http.use((request, next) => {
+  // Add auth header for all requests going to the API.
+  if (request.url.pathname.startsWith("/api")) {
+    request.headers.set("authorization", `Bearer ${authToken}`);
+  }
+
+  const response = await next();
+
+  // Could do something with the response here.
+
+  return response;
+});
+
+const exampleResponse = await Dolla.http.get("/api/example");
+
+// Body is already parsed from JSON into an object.
+exampleResponse.body.someValue;
+```
+
+## Localization
+
+```js
+import Dolla, { html, t } from "@manyducks.co/dolla";
+
+function Counter(props, ctx) {
+  const [$count, setCount] = Dolla.createState(0);
+
+  function increment() {
+    setCount((count) => count + 1);
+  }
+
+  return html`
+    <div>
+      <p>Clicks: ${$count}</p>
+      <button onclick=${increment}>${t("buttonLabel")}</button>
+    </div>
+  `;
+}
+
+Dolla.language.setup({
+  initialLanguage: "en",
+  languages: [
+    { name: "en", strings: { buttonLabel: "Click here to increment" } },
+    { name: "ja", strings: { buttonLabel: "ここに押して増加する" } },
+  ],
+});
+
+Dolla.mount(document.body, Counter);
 ```
 
 ---

@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import { Ref, type Markup } from "./markup.js";
-import { SettableSignal, Signal } from "./signals.js";
+import { SettableState, State } from "./state.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -13,15 +13,15 @@ export type Renderable =
   | false
   | null
   | undefined
-  | Signal<any>
-  | (string | number | Markup | false | null | undefined | Signal<any>)[];
+  | State<any>
+  | (string | number | Markup | false | null | undefined | State<any>)[];
 
 export type Stringable = { toString(): string };
 
-type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined>;
+type MaybeState<T> = T | State<T> | State<T | undefined>;
 
-type OptionalProperty<T> = T | Signal<T> | Signal<T | undefined>;
-type RequiredProperty<T> = T | Signal<T>;
+type OptionalProperty<T> = T | State<T> | State<T | undefined>;
+type RequiredProperty<T> = T | State<T>;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -144,12 +144,12 @@ export interface ElementProps {
   style?:
     | string
     | CSSProperties
-    | Signal<string>
-    | Signal<CSSProperties>
-    | Signal<string | CSSProperties>
-    | Signal<string | undefined>
-    | Signal<CSSProperties | undefined>
-    | Signal<string | CSSProperties | undefined>;
+    | State<string>
+    | State<CSSProperties>
+    | State<string | CSSProperties>
+    | State<string | undefined>
+    | State<CSSProperties | undefined>
+    | State<string | CSSProperties | undefined>;
 
   /*=================================*\
   ||              Events             ||
@@ -1462,7 +1462,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeSignal<any>;
+  [className: string]: MaybeState<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -1474,7 +1474,7 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
   children?: any;
 
   /**
-   * A settable signal or callback that receives the DOM node when rendered.
+   * Receives a reference to the DOM node when rendered.
    */
   ref?: Ref<E> | Ref<HTMLElement> | Ref<Element> | Ref<Node>;
 }
@@ -2493,14 +2493,14 @@ interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementP
     | MediaSource
     | Blob
     | File
-    | Signal<MediaStream>
-    | Signal<MediaStream | undefined>
-    | Signal<MediaSource>
-    | Signal<MediaSource | undefined>
-    | Signal<Blob>
-    | Signal<Blob | undefined>
-    | Signal<File>
-    | Signal<File | undefined>;
+    | State<MediaStream>
+    | State<MediaStream | undefined>
+    | State<MediaSource>
+    | State<MediaSource | undefined>
+    | State<Blob>
+    | State<Blob | undefined>
+    | State<File>
+    | State<File | undefined>;
 
   /**
    * The current audio volume of the media element. Must be a number between 0 and 1.
@@ -3084,7 +3084,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeSignal<string>;
+  sizes?: MaybeState<string>;
 
   /**
    * The image URL.
@@ -3777,7 +3777,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
   value?: OptionalProperty<string>;
-  $$value?: SettableSignal<any>;
+  $$value?: SettableState<any>;
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 

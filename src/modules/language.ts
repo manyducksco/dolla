@@ -1,4 +1,4 @@
-import { createSignal, derive, isSignal, signalify, type Signal } from "../signals.js";
+import { createState, derive, isState, toState, type State } from "../state.js";
 import { isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { deepEqual } from "../utils.js";
@@ -87,15 +87,12 @@ export class Language {
   #dolla: Dolla;
   #logger: Logger;
   #localizations = new Map<string, Localization>();
-  #cache: [
-    key: string,
-    values: Record<string, Stringable | Signal<Stringable>> | undefined,
-    readable: Signal<string>,
-  ][] = [];
+  #cache: [key: string, values: Record<string, Stringable | State<Stringable>> | undefined, readable: State<string>][] =
+    [];
 
   #initialLanguage = "auto";
 
-  $current: Signal<string | undefined>;
+  $current: State<string | undefined>;
   #setCurrent;
   #$strings;
   #setStrings;
@@ -104,8 +101,8 @@ export class Language {
     this.#dolla = dolla;
     this.#logger = dolla.createLogger("dolla/language");
 
-    const [$current, setCurrent] = createSignal<string>();
-    const [$strings, setStrings] = createSignal<LocalizedStrings>();
+    const [$current, setCurrent] = createState<string>();
+    const [$strings, setStrings] = createState<LocalizedStrings>();
 
     this.$current = $current;
     this.#setCurrent = setCurrent;
@@ -207,12 +204,12 @@ export class Language {
   }
 
   /**
-   * Returns a Signal containing the value at `key`.
+   * Returns a State containing the value at `key`.
   
    * @param key - Key to the translated value.
    * @param values - A map of {{placeholder}} names and the values to replace them with.
    */
-  t(key: string, values?: Record<string, Stringable | Signal<Stringable>>): Signal<string> {
+  t(key: string, values?: Record<string, Stringable | State<Stringable>>): State<string> {
     if (this === undefined) {
       throw new Error(
         `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
@@ -229,17 +226,17 @@ export class Language {
     }
 
     if (values) {
-      const signalValues: Record<string, Signal<any>> = {};
+      const stateValues: Record<string, State<any>> = {};
 
       for (const [key, value] of Object.entries<any>(values)) {
-        if (isSignal(value)) {
-          signalValues[key] = value;
+        if (isState(value)) {
+          stateValues[key] = value;
         }
       }
 
       // This looks extremely weird, but it creates a joined state
       // that contains the translation with interpolated observable values.
-      const readableEntries = Object.entries(signalValues);
+      const readableEntries = Object.entries(stateValues);
       if (readableEntries.length > 0) {
         const readables = readableEntries.map((x) => x[1]);
         const $merged = derive([this.#$strings, ...readables], (t, ...entryValues) => {
@@ -278,7 +275,7 @@ export class Language {
     return $replaced;
   }
 
-  #getCached(key: string, values?: Record<string, Stringable | Signal<Stringable>>): Signal<string> | undefined {
+  #getCached(key: string, values?: Record<string, Stringable | State<Stringable>>): State<string> | undefined {
     for (const entry of this.#cache) {
       if (entry[0] === key && deepEqual(entry[1], values)) {
         return entry[2];
@@ -288,7 +285,7 @@ export class Language {
 }
 
 // Fallback labels for missing state and data.
-const $noLanguageValue = signalify("[NO LANGUAGE SET]");
+const $noLanguageValue = toState("[NO LANGUAGE SET]");
 
 /**
  * Replaces {{placeholders}} with values in translated strings.

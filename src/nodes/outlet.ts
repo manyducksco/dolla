@@ -1,8 +1,8 @@
 import { type MarkupNode, type ElementContext } from "../markup.js";
-import { type Signal, type StopFunction } from "../signals.js";
+import { type State, type StopFunction } from "../state.js";
 
 export interface OutletConfig {
-  $children: Signal<MarkupNode[]>;
+  $children: State<MarkupNode[]>;
   elementContext: ElementContext;
 }
 
@@ -12,7 +12,7 @@ export interface OutletConfig {
 export class Outlet implements MarkupNode {
   node: Node;
   endNode: Node;
-  $children: Signal<MarkupNode[]>;
+  $children: State<MarkupNode[]>;
   stopCallback?: StopFunction;
   connectedChildren: MarkupNode[] = [];
   elementContext: ElementContext;

@@ -1,22 +1,22 @@
 import { type MarkupNode, type ElementContext } from "../markup.js";
-import { createSignal, type Signal, type SignalSetter, type StopFunction } from "../signals.js";
+import { createState, type State, type Setter, type StopFunction } from "../state.js";
 import { constructView, type ViewContext, type ViewResult } from "../view.js";
 
 // ----- Types ----- //
 
 interface RepeatOptions<T> {
   elementContext: ElementContext;
-  $items: Signal<T[]>;
+  $items: State<T[]>;
   keyFn: (value: T, index: number) => string | number | symbol;
-  renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
+  renderFn: ($value: State<T>, $index: State<number>, ctx: ViewContext) => ViewResult;
 }
 
 type ConnectedItem<T> = {
   key: any;
-  $value: Signal<T>;
-  setValue: SignalSetter<T>;
-  $index: Signal<number>;
-  setIndex: SignalSetter<number>;
+  $value: State<T>;
+  setValue: Setter<T>;
+  $index: State<number>;
+  setIndex: Setter<number>;
   handle: MarkupNode;
 };
 
@@ -25,11 +25,11 @@ type ConnectedItem<T> = {
 export class Repeat<T> implements MarkupNode {
   node: Node;
   endNode: Node;
-  $items: Signal<T[]>;
+  $items: State<T[]>;
   stopCallback?: StopFunction;
   connectedItems: ConnectedItem<T>[] = [];
   elementContext;
-  renderFn: ($value: Signal<T>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
+  renderFn: ($value: State<T>, $index: State<number>, ctx: ViewContext) => ViewResult;
   keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
@@ -121,8 +121,8 @@ export class Repeat<T> implements MarkupNode {
         connected.setIndex(potential.index);
         newItems[potential.index] = connected;
       } else {
-        const [$value, setValue] = createSignal<T>(potential.value);
-        const [$index, setIndex] = createSignal(potential.index);
+        const [$value, setValue] = createState<T>(potential.value);
+        const [$index, setIndex] = createState(potential.index);
 
         newItems[potential.index] = {
           key: potential.key,
@@ -158,9 +158,9 @@ export class Repeat<T> implements MarkupNode {
 }
 
 interface RepeatItemProps {
-  $value: Signal<any>;
-  $index: Signal<number>;
-  renderFn: ($value: Signal<any>, $index: Signal<number>, ctx: ViewContext) => ViewResult;
+  $value: State<any>;
+  $index: State<number>;
+  renderFn: ($value: State<any>, $index: State<number>, ctx: ViewContext) => ViewResult;
 }
 
 function RepeatItemView({ $value, $index, renderFn }: RepeatItemProps, ctx: ViewContext) {

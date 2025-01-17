@@ -1,15 +1,6 @@
-// Signals
-export {
-  createSettableSignal,
-  createSignal,
-  createSignalSetter,
-  derive,
-  designalify,
-  signalify,
-  toSettableSignal,
-  // watch, // don't export as standalone function to discourage accidentally using it in a view?
-} from "./signals.js";
-export type { MaybeSignal, SettableSignal, Signal, StopFunction } from "./signals.js";
+// States
+export { createSettableState, createSetter, createState, derive, toSettableState, toState, valueOf } from "./state.js";
+export type { MaybeState, SettableState, State, StopFunction } from "./state.js";
 
 // Markup
 export { cond, createMarkup, createRef, html, isRef, portal, repeat } from "./markup.js";

@@ -93,7 +93,7 @@ function SomeView (props: SomeViewProps, ctx: Dolla.ViewContext) {
   const debug = Dolla.createLogger("SomeView");
 
   // returns a signal and a setter function
-  const [$someValue, setSomeValue] = Dolla.createSignal(4);
+  const [$someValue, setSomeValue] = Dolla.createState(4);
 
   // Router is now a part of the Dolla object
   Dolla.router.$path;

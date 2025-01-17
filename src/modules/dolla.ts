@@ -1,14 +1,14 @@
 import { constructMarkup, createMarkup, createRef, isRef, MarkupNode, mergeNodes, type Markup } from "../markup.js";
 import {
-  createSettableSignal,
-  createSignal,
+  createSettableState,
+  createState,
   derive,
-  designalify,
-  signalify,
-  toSettableSignal,
+  toSettableState,
+  toState,
+  valueOf,
   watch,
-  type Signal,
-} from "../signals.js";
+  type State,
+} from "../state.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
 import { constructView, type ViewFunction, type ViewNode } from "../view.js";
@@ -100,11 +100,11 @@ export class Dolla {
     });
   }
 
-  createSignal = createSignal;
-  createSettableSignal = createSettableSignal;
-  toSettableSignal = toSettableSignal;
-  signalify = signalify;
-  designalify = designalify;
+  createState = createState;
+  createSettableState = createSettableState;
+  toSettableState = toSettableState;
+  toState = toState;
+  valueOf = valueOf;
   derive = derive;
   watch = watch;
 
@@ -246,8 +246,8 @@ export class Dolla {
     this.#match = createMatcher(filter);
   }
 
-  createLogger(name: string | Signal<string>, options?: LoggerOptions): Logger {
-    const $name = signalify(name);
+  createLogger(name: string | State<string>, options?: LoggerOptions): Logger {
+    const $name = toState(name);
 
     const _console = options?.console ?? getDefaultConsole();
 

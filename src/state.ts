@@ -1,4 +1,4 @@
-import { deepEqual } from "./utils";
+import { deepEqual, noOp } from "./utils";
 
 /*==============================*\
 ||            Types             ||
@@ -9,16 +9,16 @@ import { deepEqual } from "./utils";
  */
 export type StopFunction = () => void;
 
-type Unwrapped<T> = T extends Signal<infer V> ? V : T;
+type Unwrapped<T> = T extends State<infer V> ? V : T;
 
 /**
- * Extracts value types from an array of signals.
+ * Extracts value types from an array of states.
  */
-export type SignalValues<T extends MaybeSignal<any>[]> = {
+export type StateValues<T extends MaybeState<any>[]> = {
   [K in keyof T]: Unwrapped<T[K]>;
 };
 
-export interface CreateSignalOptions<T> {
+export interface CreateStateOptions<T> {
   /**
    * Determines if the `next` value is equal to the `current` value.
    * If this function returns true, watchers will be notified of changes. If it returns false, watchers will not be notified.
@@ -30,49 +30,49 @@ export interface CreateSignalOptions<T> {
   equality?: (next: T, current: T) => boolean;
 }
 
-export interface SignalWatchOptions<T> {
+export interface WatchOptions<T> {
   /**
    * If true the watch callback will be called for the first time on the next change.
-   * By default the callback is called immediately with the signal's current value.
+   * By default the callback is called immediately with the state's current value.
    */
   lazy?: boolean;
 }
 
-export interface Signal<T> {
+export interface State<T> {
   /**
    * Returns the current value.
    */
   get(): T;
 
   /**
-   * Watch this signal's value with a `callback` function.
+   * Watch this state's value with a `callback` function.
    * The `callback` is only called if the value is not equal to the current value.
    *
-   * > NOTE: If watching a signal inside a view, use the `.watch` method on the `ViewContext`. That method will automatically
+   * > NOTE: If watching a state inside a view, use the `.watch` method on the `ViewContext`. That method will automatically
    * clean up all watchers when the view is disconnected. Watchers created here must be cleaned up manually.
    */
-  watch(callback: (value: T) => void, options?: SignalWatchOptions<T>): StopFunction;
+  watch(callback: (value: T) => void, options?: WatchOptions<T>): StopFunction;
 }
 
-/** A new value for a signal, or a callback that receives the current value and returns a new one. */
-export type SignalSetAction<I, O = I> = O | ((current: I) => O);
+/** A new value for a state, or a callback that receives the current value and returns a new one. */
+export type SetAction<I, O = I> = O | ((current: I) => O);
 
-/** Callback that updates the value of a signal. */
-export type SignalSetter<I, O = I> = (value: SignalSetAction<I, O>) => void;
+/** Callback that updates the value of a state. */
+export type Setter<I, O = I> = (value: SetAction<I, O>) => void;
 
-export type MaybeSignal<T> = Signal<T> | T;
+export type MaybeState<T> = State<T> | T;
 
 /**
- * A signal and setter in one. Useful for passing signals that are intended to be updated by subviews.
+ * A state and setter in one. Useful for passing states that are intended to be updated by subviews.
  */
-export interface SettableSignal<I, O = I> extends Signal<I> {
+export interface SettableState<I, O = I> extends State<I> {
   /**
-   * Updates the signal's value.
+   * Updates the state's value.
    */
   set(next: O): void;
 
   /**
-   * Takes a callback that recieves the signal's current value and returns a new one.
+   * Takes a callback that recieves the state's current value and returns a new one.
    */
   set(callback: (current: I) => O): void;
 }
@@ -81,7 +81,7 @@ export interface SettableSignal<I, O = I> extends Signal<I> {
 ||            Utils             ||
 \*==============================*/
 
-export function isSignal<T>(value: any): value is Signal<T> {
+export function isState<T>(value: any): value is State<T> {
   if (value == null || typeof value !== "object") {
     return false;
   }
@@ -97,7 +97,7 @@ export function isSignal<T>(value: any): value is Signal<T> {
   return true;
 }
 
-export function isSettableSignal<T>(value: any): value is Signal<T> {
+export function isSettableState<T>(value: any): value is SettableState<T> {
   if (value == null || typeof value !== "object") {
     return false;
   }
@@ -118,10 +118,10 @@ export function isSettableSignal<T>(value: any): value is Signal<T> {
 }
 
 /**
- * Retrieves a plain value from a variable that may be a signal.
+ * Retrieves a plain value from a variable that may be a state.
  */
-export function designalify<T>(value: MaybeSignal<T>): T {
-  if (isSignal(value)) {
+export function valueOf<T>(value: MaybeState<T>): T {
+  if (isState(value)) {
     return value.get();
   } else {
     return value;
@@ -129,35 +129,50 @@ export function designalify<T>(value: MaybeSignal<T>): T {
 }
 
 /**
- * Ensures a variable that may be a signal or plain value is a signal.
+ * Ensures a variable that may be a state or plain value is a state.
  */
-export function signalify<T>(value: MaybeSignal<T>): Signal<T> {
-  if (isSignal(value)) {
+export function toState<T>(value: MaybeState<T>): State<T> {
+  if (isSettableState<T>(value)) {
+    return {
+      get: value.get,
+      watch: value.watch,
+    };
+  } else if (isState<T>(value)) {
     return value;
   } else {
-    return createStaticSignal(value);
+    return {
+      get() {
+        return value;
+      },
+      watch(callback, options = {}) {
+        if (!options?.lazy) {
+          callback(value);
+        }
+        return noOp;
+      },
+    };
   }
 }
 
 /*==============================*\
-||            Signal            ||
+||             State            ||
 \*==============================*/
 
 /**
- * Creates a SettableSignal.
+ * Creates a SettableState.
  */
-export function createSettableSignal<T>(initialValue: T, options?: CreateSignalOptions<T>): SettableSignal<T>;
+export function createSettableState<T>(initialValue: T, options?: CreateStateOptions<T>): SettableState<T>;
 
 /**
- * Creates a SettableSignal.
+ * Creates a SettableState.
  */
-export function createSettableSignal<T>(
+export function createSettableState<T>(
   initialValue?: T,
-  options?: CreateSignalOptions<T | undefined>,
-): SettableSignal<T | undefined>;
+  options?: CreateStateOptions<T | undefined>,
+): SettableState<T | undefined>;
 
-export function createSettableSignal<T>(initialValue?: T, options?: CreateSignalOptions<T>) {
-  const [$value, setValue] = createSignal<any>(initialValue, options);
+export function createSettableState<T>(initialValue?: T, options?: CreateStateOptions<T>) {
+  const [$value, setValue] = createState<any>(initialValue, options);
   return {
     get: $value.get,
     watch: $value.watch,
@@ -166,25 +181,22 @@ export function createSettableSignal<T>(initialValue?: T, options?: CreateSignal
 }
 
 /**
- * Join a signal and its setter into a single SettableSignal object.
+ * Join a state and its setter into a single SettableState object.
  */
-export function toSettableSignal<I, O = I>(signal: Signal<I>, setter: SignalSetter<I, O>): SettableSignal<I, O> {
+export function toSettableState<I, O = I>($state: State<I>, setter: Setter<I, O>): SettableState<I, O> {
   return {
-    get: signal.get,
-    watch: signal.watch,
+    get: $state.get,
+    watch: $state.watch,
     set: setter,
   };
 }
 
 /**
- * Creates a SignalSetter with custom logic provided by `callback`.
+ * Creates a Setter with custom logic provided by `callback`.
  */
-export function createSignalSetter<I, O = I>(
-  signal: Signal<I>,
-  callback: (next: O, current: I) => void,
-): SignalSetter<I, O> {
+export function createSetter<I, O = I>($state: State<I>, callback: (next: O, current: I) => void): Setter<I, O> {
   return function setValue(nextOrCallback) {
-    const current = signal.get();
+    const current = $state.get();
     let next: O;
 
     if (typeof nextOrCallback === "function") {
@@ -198,41 +210,22 @@ export function createSignalSetter<I, O = I>(
 }
 
 /**
- * Creates a minimal signal wrapper around a static value.
+ * Creates a state and setter.
  */
-function createStaticSignal<T>(value: T): Signal<T> {
-  return {
-    get() {
-      return value;
-    },
-    watch(callback, options = {}) {
-      if (!options.lazy) {
-        callback(value);
-      }
-      return function stop() {
-        // no-op because this value can never change.
-      };
-    },
-  };
-}
+export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>];
 
 /**
- * Creates a signal and setter.
+ * Creates a state and setter.
  */
-export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T>): [Signal<T>, SignalSetter<T>];
-
-/**
- * Creates a signal and setter.
- */
-export function createSignal<T>(
+export function createState<T>(
   initialValue?: T,
-  options?: CreateSignalOptions<T | undefined>,
-): [Signal<T | undefined>, SignalSetter<T | undefined>];
+  options?: CreateStateOptions<T | undefined>,
+): [State<T | undefined>, Setter<T | undefined>];
 
 /**
- * Creates a signal and setter.
+ * Creates a state and setter.
  */
-export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T>): [Signal<T>, SignalSetter<T>] {
+export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>] {
   let currentValue = initialValue;
   let watchers: ((value: T) => void)[] = [];
 
@@ -250,9 +243,9 @@ export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T
     }
   }
 
-  const $value: Signal<T> = {
+  const $value: State<T> = {
     get() {
-      return designalify(currentValue);
+      return valueOf(currentValue);
     },
     watch(callback, options) {
       // Add callback to watchers array to receive future values.
@@ -270,7 +263,7 @@ export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T
     },
   };
 
-  function setValue(action: SignalSetAction<T>) {
+  function setValue(action: SetAction<T>) {
     let value: T;
     if (typeof action === "function") {
       value = (action as (next: T) => T)(currentValue);
@@ -287,7 +280,7 @@ export function createSignal<T>(initialValue: T, options?: CreateSignalOptions<T
 }
 
 /*==============================*\
-||        Derived Signal        ||
+||        Derived States        ||
 \*==============================*/
 
 export interface DeriveOptions {
@@ -296,22 +289,16 @@ export interface DeriveOptions {
 
 const EMPTY = Symbol("EMPTY");
 
-export function derive<Inputs extends MaybeSignal<any>[], T>(
-  signals: [...Inputs],
-  fn: (...currentValues: SignalValues<Inputs>) => T | Signal<T>,
+export function derive<Inputs extends MaybeState<any>[], T>(
+  states: [...Inputs],
+  fn: (...currentValues: StateValues<Inputs>) => T | State<T>,
   options?: DeriveOptions,
-): Signal<T> {
-  // Wrap any plain values in a static signal.
-  signals = signals.map((s) => {
-    if (isSignal(s)) {
-      return s;
-    } else {
-      return createStaticSignal(s);
-    }
-  }) as [...Inputs];
+): State<T> {
+  // Wrap any plain values in a static state.
+  states = states.map(toState) as [...Inputs];
 
-  let previousSourceValues = new Array(signals.length).fill(EMPTY, 0, signals.length) as SignalValues<Inputs>;
-  let currentValue: T | Signal<T>;
+  let previousSourceValues = new Array(states.length).fill(EMPTY, 0, states.length) as StateValues<Inputs>;
+  let currentValue: T | State<T>;
 
   /**
    * Watcher callbacks for the derived value.
@@ -329,7 +316,7 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
   let stoppers: StopFunction[] = [];
 
   /**
-   * Stop function for currentValue (used when currentValue is itself a signal).
+   * Stop function for currentValue (used when currentValue is itself a state).
    */
   let stopWatchingCurrentValue: StopFunction | undefined;
 
@@ -350,9 +337,9 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
   }
 
   function update() {
-    const sourceValues = signals.map((s) => s.get()) as SignalValues<Inputs>;
+    const sourceValues = states.map((s) => s.get()) as StateValues<Inputs>;
 
-    for (let i = 0; i < signals.length; i++) {
+    for (let i = 0; i < states.length; i++) {
       if (!equal(sourceValues[i], previousSourceValues[i])) {
         // Run derive function only if absolutely necessary.
         setCurrentValue(fn(...sourceValues));
@@ -367,30 +354,30 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
     if (!watching) {
       update();
     }
-    rawCurrentValue = designalify(currentValue);
+    rawCurrentValue = valueOf(currentValue);
     return rawCurrentValue;
   }
 
-  function setCurrentValue(value: T | Signal<T>) {
+  function setCurrentValue(value: T | State<T>) {
     // If they're the same we don't need to do anything.
     if (value === currentValue) {
       return;
     }
 
-    // Stop watching current value if it was a signal.
+    // Stop watching current value if it was a state.
     if (stopWatchingCurrentValue) {
       stopWatchingCurrentValue();
       stopWatchingCurrentValue = undefined;
     }
 
     currentValue = value;
-    rawCurrentValue = designalify(value);
+    rawCurrentValue = valueOf(value);
 
-    if (isSignal(value)) {
+    if (isState(value)) {
       if (watching) {
         stopWatchingCurrentValue = value.watch((current) => {
-          // TODO: Can we handle infinite nested signals?
-          const raw = designalify(current);
+          // TODO: Can we handle infinite nested states?
+          const raw = valueOf(current);
           if (!equal(raw, rawCurrentValue)) {
             rawCurrentValue = raw;
             notify(raw);
@@ -403,16 +390,16 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
   function startWatchingSources() {
     let startingSourceValues = [...previousSourceValues];
 
-    for (let i = 0; i < signals.length; i++) {
-      const signal = signals[i] as Signal<any>;
+    for (let i = 0; i < states.length; i++) {
+      const state = states[i] as State<any>;
       stoppers.push(
-        signal.watch((next) => {
+        state.watch((next) => {
           const previous = previousSourceValues[i];
           previousSourceValues[i] = next;
 
           if (watching && !equal(next, previous)) {
             setCurrentValue(fn(...previousSourceValues));
-            notify(designalify(currentValue));
+            notify(valueOf(currentValue));
           }
         }),
       );
@@ -421,10 +408,10 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
     watching = true;
 
     // Derive and notify watchers if values have changed since last derivation.
-    for (let i = 0; i < signals.length; i++) {
+    for (let i = 0; i < states.length; i++) {
       if (!equal(previousSourceValues[i], startingSourceValues[i])) {
         setCurrentValue(fn(...previousSourceValues));
-        notify(designalify(currentValue));
+        notify(valueOf(currentValue));
         break;
       }
     }
@@ -436,7 +423,7 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
     }
     stoppers = [];
 
-    // Stop watching current value if it was a signal.
+    // Stop watching current value if it was a state.
     if (stopWatchingCurrentValue) {
       stopWatchingCurrentValue();
       stopWatchingCurrentValue = undefined;
@@ -445,11 +432,11 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
     watching = false;
   }
 
-  const $value: Signal<T> = {
+  const $value: State<T> = {
     get() {
       return getCurrentValue();
     },
-    watch(callback: (value: T) => void, options?: SignalWatchOptions<T>) {
+    watch(callback: (value: T) => void, options?: WatchOptions<T>) {
       if (!watching) {
         startWatchingSources();
       }
@@ -473,29 +460,23 @@ export function derive<Inputs extends MaybeSignal<any>[], T>(
   return $value;
 }
 
-export function watch<I extends MaybeSignal<any>[]>(
-  signals: [...I],
-  fn: (...currentValues: SignalValues<I>) => void,
+export function watch<I extends MaybeState<any>[]>(
+  states: [...I],
+  fn: (...currentValues: StateValues<I>) => void,
 ): StopFunction {
-  if (signals.length === 0) {
-    throw new TypeError(`Expected at least one signal.`);
+  if (states.length === 0) {
+    throw new TypeError(`Expected at least one state.`);
   }
 
-  if (signals.some((s) => !isSignal(s))) {
-    throw new TypeError(`All values must be signals`);
+  if (states.some((s) => !isState(s))) {
+    throw new TypeError(`All values must be states`);
   }
 
-  signals = signals.map((s) => {
-    if (isSignal(s)) {
-      return s;
-    } else {
-      return createStaticSignal(s);
-    }
-  }) as [...I];
+  states = states.map(toState) as [...I];
 
-  if (signals.length > 1) {
-    return derive(signals, fn).watch(() => null);
+  if (states.length > 1) {
+    return derive(states, fn).watch(() => null);
   } else {
-    return signals[0].watch(fn);
+    return states[0].watch(fn);
   }
 }

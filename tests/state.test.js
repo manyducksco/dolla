@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert";
 
-import { createSignal, derive } from "../dist/index.js";
+import { createState, derive } from "../dist/index.js";
 
 test("signal", (t) => {
-  const [$count, setCount] = createSignal(5);
+  const [$count, setCount] = createState(5);
 
   const defaultWatcher = t.mock.fn();
   const stopDefault = $count.watch(defaultWatcher);
@@ -42,8 +42,8 @@ test("signal", (t) => {
 });
 
 test("derive", (t) => {
-  const [$one, setOne] = createSignal(5);
-  const [$two, setTwo] = createSignal(20);
+  const [$one, setOne] = createState(5);
+  const [$two, setTwo] = createState(20);
 
   const deriveSum = t.mock.fn((one, two) => one + two);
   const deriveProduct = t.mock.fn((one, two) => one * two);
@@ -101,9 +101,9 @@ test("derive", (t) => {
 });
 
 test("derive nested signals", (t) => {
-  const [$value, setValue] = createSignal(5);
+  const [$value, setValue] = createState(5);
 
-  const [$object, setObject] = createSignal({
+  const [$object, setObject] = createState({
     href: derive([$value], (value) => `/projects/${value}/test`),
   });
 

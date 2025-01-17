@@ -1,17 +1,17 @@
 import { type MarkupNode } from "../markup.js";
-import { isSignal, type MaybeSignal, type StopFunction } from "../signals.js";
+import { isState, type MaybeState, type StopFunction } from "../state.js";
 
 interface Stringable {
   toString(): string;
 }
 
 interface TextOptions {
-  value: MaybeSignal<Stringable>;
+  value: MaybeState<Stringable>;
 }
 
 export class Text implements MarkupNode {
   node = document.createTextNode("");
-  value: MaybeSignal<Stringable> = "";
+  value: MaybeState<Stringable> = "";
   stopCallback?: StopFunction;
 
   get isMounted() {
@@ -24,7 +24,7 @@ export class Text implements MarkupNode {
 
   async mount(parent: Node, after: Node | null = null) {
     if (!this.isMounted) {
-      if (isSignal<Stringable>(this.value)) {
+      if (isState<Stringable>(this.value)) {
         this.stopCallback = this.value.watch((value) => {
           this.update(value);
         });

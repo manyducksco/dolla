@@ -9,15 +9,7 @@ import {
   constructMarkup,
 } from "./markup.js";
 import type { Logger } from "./modules/dolla.js";
-import {
-  createSignal,
-  isSignal,
-  type MaybeSignal,
-  Signal,
-  type SignalValues,
-  type StopFunction,
-  watch,
-} from "./signals.js";
+import { createState, isState, type MaybeState, State, type StateValues, type StopFunction, watch } from "./state.js";
 import { isArrayOf, typeOf } from "./typeChecking.js";
 
 /*=====================================*\
@@ -27,7 +19,7 @@ import { isArrayOf, typeOf } from "./typeChecking.js";
 /**
  * Any valid value that a View can return.
  */
-export type ViewResult = Node | Signal<any> | Markup | Markup[] | null;
+export type ViewResult = Node | State<any> | Markup | Markup[] | null;
 
 export type ViewFunction<P> = (props: P, context: ViewContext) => ViewResult;
 
@@ -70,10 +62,10 @@ export interface ViewContext extends Logger {
   onUnmount(callback: () => void): void;
 
   /**
-   * Watch a set of signals. The callback is called when any of the signals receive a new value.
+   * Watch a set of states. The callback is called when any of the states receive a new value.
    * Watchers will be automatically stopped when this view is unmounted.
    */
-  watch<T extends MaybeSignal<any>[]>(signals: [...T], callback: (...values: SignalValues<T>) => void): StopFunction;
+  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
 
   /**
    * Returns a Markup element that displays this view's children.
@@ -92,7 +84,7 @@ export function constructView<P>(
   children: Markup[] = [],
 ): ViewNode {
   elementContext = { ...elementContext };
-  const [$children, setChildren] = createSignal<MarkupNode[]>(constructMarkup(elementContext, children));
+  const [$children, setChildren] = createState<MarkupNode[]>(constructMarkup(elementContext, children));
 
   let isMounted = false;
 
@@ -105,7 +97,7 @@ export function constructView<P>(
 
   const uniqueId = nanoid();
 
-  const [$name, setName] = createSignal(view.name);
+  const [$name, setName] = createState(view.name);
   const logger = elementContext.root.createLogger($name, { uid: uniqueId });
 
   const ctx: Pick<ViewContext, Exclude<keyof ViewContext, keyof Logger>> = {
@@ -133,11 +125,11 @@ export function constructView<P>(
       onUnmountCallbacks.push(callback);
     },
 
-    watch(signals, callback) {
+    watch(states, callback) {
       if (isMounted) {
         // If called when the component is connected, we assume this code is in a lifecycle hook
         // where it will be triggered at some point again after the component is reconnected.
-        const stop = watch(signals, callback);
+        const stop = watch(states, callback);
         stopObserverCallbacks.push(stop);
         return stop;
       } else {
@@ -147,7 +139,7 @@ export function constructView<P>(
         let isStopped = false;
         onMountCallbacks.push(() => {
           if (!isStopped) {
-            stop = watch(signals, callback);
+            stop = watch(states, callback);
             stopObserverCallbacks.push(stop);
           }
         });
@@ -191,9 +183,9 @@ export function constructView<P>(
       rendered = mergeNodes(constructMarkup(elementContext, createMarkup("$node", { value: result })));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
       rendered = mergeNodes(constructMarkup(elementContext, result));
-    } else if (isSignal(result)) {
+    } else if (isState(result)) {
       rendered = mergeNodes(
-        constructMarkup(elementContext, createMarkup("$observer", { signals: [result], renderFn: (x) => x })),
+        constructMarkup(elementContext, createMarkup("$observer", { states: [result], renderFn: (x) => x })),
       );
     } else {
       const error = new TypeError(

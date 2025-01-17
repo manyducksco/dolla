@@ -9,7 +9,7 @@ import {
   sortRoutes,
   splitPath,
 } from "../routing.js";
-import { createSignal, StopFunction, watch } from "../signals.js";
+import { createState, StopFunction, watch } from "../state.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
 import { ViewNode, type ViewFunction } from "../view.js";
@@ -192,11 +192,11 @@ export class Router {
     this.#logger = dolla.createLogger("dolla/router");
     this.#elements = elements;
 
-    const [$pattern, setPattern] = createSignal<string | null>(null);
-    const [$path, setPath] = createSignal("");
-    const [$params, setParams] = createSignal<ParsedParams>({});
-    const [$query, setQuery] = createSignal<ParsedQuery>(
-      parseQueryParams(typeof window === "undefined" ? "" : window.location.search ?? ""),
+    const [$pattern, setPattern] = createState<string | null>(null);
+    const [$path, setPath] = createState("");
+    const [$params, setParams] = createState<ParsedParams>({});
+    const [$query, setQuery] = createState<ParsedQuery>(
+      parseQueryParams(typeof window === "undefined" ? "" : (window.location.search ?? "")),
     );
 
     this.$pattern = $pattern;

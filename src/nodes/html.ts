@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { isRef, constructMarkup, type MarkupNode, type ElementContext, type Markup, type Ref } from "../markup.js";
-import { isSettableSignal, isSignal, SettableSignal, type Signal, type StopFunction } from "../signals.js";
+import { isSettableState, isState, SettableState, type State, type StopFunction } from "../state.js";
 import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
 
@@ -121,8 +121,8 @@ export class HTML implements MarkupNode {
   }
 
   applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
-    const attachProp = <T>(value: Signal<T> | T, callback: (value: T) => void, updateKey: string) => {
-      if (isSignal(value)) {
+    const attachProp = <T>(value: State<T> | T, callback: (value: T) => void, updateKey: string) => {
+      if (isState(value)) {
         this.stopCallbacks.push(
           value.watch((current) => {
             this.elementContext.root.render.update(() => {
@@ -160,7 +160,7 @@ export class HTML implements MarkupNode {
         const values = value as Record<string, any>;
 
         for (const name in values) {
-          const listener: (e: Event) => void = isSignal<(e: Event) => void>(value)
+          const listener: (e: Event) => void = isState<(e: Event) => void>(value)
             ? (e: Event) => value.get()(e)
             : (value as (e: Event) => void);
 
@@ -173,7 +173,7 @@ export class HTML implements MarkupNode {
       } else if (key === "onClickOutside" || key === "onclickoutside") {
         const listener = (e: Event) => {
           if (this.canClickAway && !element.contains(e.target as any)) {
-            if (isSignal<(e: Event) => void>(value)) {
+            if (isState<(e: Event) => void>(value)) {
               value.get()(e);
             } else {
               (value as (e: Event) => void)(e);
@@ -190,11 +190,11 @@ export class HTML implements MarkupNode {
         });
       } else if (key === "$$value") {
         // Two-way binding for input values.
-        if (!isSettableSignal(value)) {
-          throw new TypeError(`$$value attribute must be a settable signal. Got: ${value}`);
+        if (!isSettableState(value)) {
+          throw new TypeError(`$$value attribute must be a settable state. Got: ${value}`);
         }
 
-        // Read value from signal.
+        // Read value from state.
         attachProp(
           value,
           (current) => {
@@ -203,11 +203,11 @@ export class HTML implements MarkupNode {
           this.getUpdateKey("attr", "value"),
         );
 
-        // Propagate value to signal.
+        // Propagate value to state.
         const listener: EventListener = (e) => {
-          // Attempt to cast value back to the same type stored in the signal.
+          // Attempt to cast value back to the same type stored in the state.
           const updated = toTypeOf(value.get(), (e.currentTarget as HTMLInputElement).value);
-          (value as SettableSignal<any>).set(updated);
+          (value as SettableState<any>).set(updated);
         };
 
         element.addEventListener("input", listener);
@@ -218,7 +218,7 @@ export class HTML implements MarkupNode {
       } else if (isCamelCaseEventName(key)) {
         const eventName = key.slice(2).toLowerCase();
 
-        const listener: (e: Event) => void = isSignal<(e: Event) => void>(value)
+        const listener: (e: Event) => void = isState<(e: Event) => void>(value)
           ? (e: Event) => value.get()(e)
           : (value as (e: Event) => void);
 
@@ -349,7 +349,7 @@ export class HTML implements MarkupNode {
   applyStyles(element: HTMLElement | SVGElement, styles: unknown, stopCallbacks: StopFunction[]) {
     const propStopCallbacks: StopFunction[] = [];
 
-    if (isSignal(styles)) {
+    if (isState(styles)) {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
@@ -373,7 +373,7 @@ export class HTML implements MarkupNode {
       for (const name in mapped) {
         const { value, priority } = mapped[name];
 
-        if (isSignal(value)) {
+        if (isState(value)) {
           const stop = value.watch((current) => {
             this.elementContext.root.render.update(() => {
               if (current) {
@@ -403,7 +403,7 @@ export class HTML implements MarkupNode {
   applyClasses(element: HTMLElement | SVGElement, classes: unknown, stopCallbacks: StopFunction[]) {
     const classStopCallbacks: StopFunction[] = [];
 
-    if (isSignal(classes)) {
+    if (isState(classes)) {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
@@ -427,7 +427,7 @@ export class HTML implements MarkupNode {
       for (const name in mapped) {
         const value = mapped[name];
 
-        if (isSignal(value)) {
+        if (isState(value)) {
           const stop = value.watch((current) => {
             this.elementContext.root.render.update(() => {
               if (current) {
