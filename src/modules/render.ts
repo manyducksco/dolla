@@ -11,6 +11,7 @@ export class Render {
   // All unkeyed updates are run on every batch.
   #unkeyedUpdates: (() => void)[] = [];
 
+  // All read callbacks are run before updates on every batch.
   #reads: (() => void)[] = [];
 
   #isUpdating = false;

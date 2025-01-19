@@ -465,11 +465,7 @@ export function watch<I extends MaybeState<any>[]>(
   fn: (...currentValues: StateValues<I>) => void,
 ): StopFunction {
   if (states.length === 0) {
-    throw new TypeError(`Expected at least one state.`);
-  }
-
-  if (states.some((s) => !isState(s))) {
-    throw new TypeError(`All values must be states`);
+    throw new TypeError(`Expected at least one state to watch.`);
   }
 
   states = states.map(toState) as [...I];

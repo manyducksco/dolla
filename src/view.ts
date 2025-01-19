@@ -27,7 +27,10 @@ export type ViewFunction<P> = (props: P, context: ViewContext) => ViewResult;
  * A view that has been constructed into DOM nodes.
  */
 export interface ViewNode extends MarkupNode {
-  setChildren(children: MarkupNode[]): void;
+  /**
+   * Take a ViewFunction and render it as a child of this view.
+   */
+  setChildView(view: ViewFunction<{}>): ViewNode;
 }
 
 export interface ViewContext extends Logger {
@@ -35,6 +38,21 @@ export interface ViewContext extends Logger {
    * A string ID unique to this view.
    */
   readonly uid: string;
+
+  /**
+   * Sets a context variable. Context variables are accessible on the same context and from those of child views.
+   */
+  set<T>(key: string | symbol, value: T): void;
+
+  /**
+   * Gets the value of a context variable. Returns null if the variable is not set.
+   */
+  get<T>(key: string | symbol): T | null;
+
+  /**
+   * Returns an object of all variables stored on this context.
+   */
+  getAll(): Record<string | symbol, unknown>;
 
   /**
    * Sets the name of the view's built in logger.
@@ -83,7 +101,7 @@ export function constructView<P>(
   props: P,
   children: Markup[] = [],
 ): ViewNode {
-  elementContext = { ...elementContext };
+  elementContext = { ...elementContext, data: {}, parent: elementContext };
   const [$children, setChildren] = createState<MarkupNode[]>(constructMarkup(elementContext, children));
 
   let isMounted = false;
@@ -103,6 +121,50 @@ export function constructView<P>(
   const ctx: Pick<ViewContext, Exclude<keyof ViewContext, keyof Logger>> = {
     get uid() {
       return uniqueId;
+    },
+
+    set(key, value) {
+      elementContext.data[key] = value;
+    },
+
+    get<T>(key: string | symbol) {
+      let ctx = elementContext;
+
+      while (true) {
+        if (key in ctx.data) {
+          return ctx.data[key] as T;
+        } else if (ctx.parent) {
+          ctx = ctx.parent;
+        } else {
+          break;
+        }
+      }
+
+      return null;
+    },
+
+    getAll() {
+      const contexts: Record<string | symbol, unknown>[] = [];
+
+      let ctx = elementContext;
+      while (true) {
+        contexts.push(ctx.data);
+
+        if (ctx.parent) {
+          ctx = ctx.parent;
+        } else {
+          break;
+        }
+      }
+
+      const data: Record<string | symbol, unknown> = {};
+
+      // Iterate data objects in top -> bottom order.
+      for (const context of contexts.reverse()) {
+        Object.assign(data, context);
+      }
+
+      return data;
     },
 
     setName(name) {
@@ -258,8 +320,10 @@ export function constructView<P>(
       }
     },
 
-    setChildren(children) {
-      setChildren(children);
+    setChildView(view) {
+      const node = constructView(elementContext, view, {});
+      setChildren([node]);
+      return node;
     },
   };
 }

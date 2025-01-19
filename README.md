@@ -3,15 +3,16 @@
 ![bundle size](https://img.shields.io/bundlephobia/min/@manyducks.co/dolla)
 ![bundle size](https://img.shields.io/bundlephobia/minzip/@manyducks.co/dolla)
 
-> WARNING: This package is in active development. It may contain serious bugs and releases may introduce breaking changes without notice.
+> WARNING: This package is in active development. It may contain serious bugs and docs may be outdated or inaccurate. Use at your own risk.
 
 Dolla is a batteries-included JavaScript frontend framework covering the needs of moderate-to-complex single page apps:
 
-- ⚡ Reactive DOM updates with [State](). A similar concept to Signals without behind the scenes magic.
+- ⚡ Reactive DOM updates with [State](). Inspired by Signals, but with more explicit tracking.
 - 📦 Reusable components with [Views](#section-views).
-- 🗺️ Built in [router]() supporting nested routes and preloading.
-- Built in [HTTP]() client with middleware support.
-- Built in [Localization] (translations as JSON files and a `t` function to get strings)
+- 🔀 Built in [routing]() with nested routes and middleware support (check login status, preload data, etc).
+- 🐕 Built in [HTTP]() client with middleware support (set auth headers, etc).
+- 📍 Built in [localization]() system (store translated strings in JSON files and call the `t` function to get them).
+- 🍳 Build system optional. Write views in JSX or use `html` tagged template literals.
 
 Let's first get into some examples.
 
@@ -104,10 +105,10 @@ $value.get(); // 50
 A basic view:
 
 ```js
-import Dolla, { html } from "@manyducks.co/dolla";
+import Dolla, { createState, html } from "@manyducks.co/dolla";
 
 function Counter(props, ctx) {
-  const [$count, setCount] = Dolla.createState(0);
+  const [$count, setCount] = createState(0);
 
   function increment() {
     setCount((count) => count + 1);

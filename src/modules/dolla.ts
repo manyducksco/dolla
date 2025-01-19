@@ -381,13 +381,13 @@ export class Dolla {
    *
    */
   constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []): ViewNode {
-    return constructView({ root: this }, view, props, children);
+    return constructView({ root: this, data: {} }, view, props, children);
   }
 
   /**
    *
    */
   constructMarkup(markup: Markup | Markup[]): MarkupNode {
-    return mergeNodes(constructMarkup({ root: this }, markup));
+    return mergeNodes(constructMarkup({ root: this, data: {} }, markup));
   }
 }

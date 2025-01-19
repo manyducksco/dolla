@@ -24,6 +24,16 @@ export interface ElementContext {
   root: Dolla;
 
   /**
+   * Storage for context variables.
+   */
+  data: Record<string | symbol, unknown>;
+
+  /**
+   * A reference to the parent context.
+   */
+  parent?: ElementContext;
+
+  /**
    * Whether to create DOM nodes in the SVG namespace. An `<svg>` element will set this to true and pass it down to children.
    */
   isSVG?: boolean;
@@ -32,8 +42,6 @@ export interface ElementContext {
 /*===========================*\
 ||           Markup          ||
 \*===========================*/
-
-const MARKUP = Symbol("Markup");
 
 /**
  * Markup is a set of element metadata that hasn't been constructed into a MarkupNode yet.
@@ -58,7 +66,11 @@ export interface MarkupNode {
 }
 
 export function isMarkup(value: unknown): value is Markup {
-  return isObject(value) && value[MARKUP] === true;
+  return (
+    isObject(value) &&
+    (typeof value.type === "string" || typeof value.type === "function") &&
+    Array.isArray(value.children)
+  );
 }
 
 export function isNode(value: unknown): value is MarkupNode {
@@ -142,7 +154,6 @@ export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...ch
   }
 
   return {
-    [MARKUP]: true,
     type,
     props,
     children: toMarkup(children),

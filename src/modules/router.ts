@@ -491,8 +491,10 @@ export class Router {
       return;
     }
 
+    // TODO: Replace with concept of route middleware.
     if (matched.meta.beforeMatch) {
       await matched.meta.beforeMatch({
+        // TODO: Allow setting context variables from here.
         redirect: (path) => {
           // TODO: Implement
           throw new Error(`Redirect not yet implemented.`);
@@ -548,18 +550,19 @@ export class Router {
             this.#activeLayers = this.#activeLayers.slice(0, i);
 
             const parentLayer = this.#activeLayers.at(-1);
-            const node = this.#dolla.constructView(matchedLayer.view, {});
 
             if (activeLayer && activeLayer.node.isMounted) {
               // Disconnect first mismatched active layer.
               activeLayer.node.unmount();
             }
 
+            let node: ViewNode;
+
             // Replace parentLayer's previous children with the new layer.
             if (parentLayer) {
-              parentLayer.node.setChildren([node]);
+              node = parentLayer.node.setChildView(matchedLayer.view);
             } else {
-              this.#elements.rootView!.setChildren([node]);
+              node = this.#elements.rootView!.setChildView(matchedLayer.view);
             }
 
             // Store the new active layer.
