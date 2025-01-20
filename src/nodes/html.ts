@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
-import { isRef, constructMarkup, type MarkupNode, type ElementContext, type Markup, type Ref } from "../markup.js";
+import { constructMarkup, isRef, type ElementContext, type Markup, type MarkupNode, type Ref } from "../markup.js";
 import { isSettableState, isState, SettableState, type State, type StopFunction } from "../state.js";
-import { isFunction, isNumber, isObject, isString } from "../typeChecking.js";
+import { isFunction, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
@@ -198,7 +198,11 @@ export class HTML implements MarkupNode {
         attachProp(
           value,
           (current) => {
-            (element as HTMLInputElement).value = String(current);
+            if (current == null) {
+              (element as HTMLInputElement).value = "";
+            } else {
+              (element as HTMLInputElement).value = String(current);
+            }
           },
           this.getUpdateKey("attr", "value"),
         );
@@ -297,6 +301,7 @@ export class HTML implements MarkupNode {
             case "exportParts":
             case "part":
             case "translate":
+            case "type":
             case "title": {
               const _key = key.toLowerCase();
               attachProp(
@@ -471,11 +476,14 @@ function getClassMap(classes: unknown) {
     Object.assign(mapped, classes);
   } else if (Array.isArray(classes)) {
     Array.from(classes)
-      .filter((item) => item != null)
+      .filter(Boolean)
       .forEach((item) => {
         Object.assign(mapped, getClassMap(item));
       });
   }
+
+  // Delete undefined keys. These are usually the result of a class that is not specified in the stylesheet and would have no effect on appearance.
+  delete mapped["undefined"];
 
   return mapped;
 }

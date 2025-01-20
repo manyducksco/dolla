@@ -502,12 +502,10 @@ export class Router {
       });
     }
 
-    this.#logger.info(`Matched route: '${matched.pattern}' ('${matched.path}')`);
-
     if (matched.meta.redirect != null) {
       if (typeof matched.meta.redirect === "string") {
         const path = replaceParams(matched.meta.redirect, matched.params);
-        this.#logger.info(`Redirecting to: '${path}'`);
+        this.#logger.info(`↩️ redirecting from '${matched.path}' to '${path}'`);
         this.#history.replace(path);
       } else if (typeof matched.meta.redirect === "function") {
         const redirectContext: RouteRedirectContext = {
@@ -530,6 +528,8 @@ export class Router {
         throw new TypeError(`Redirect must either be a path string or a function.`);
       }
     } else {
+      this.#logger.info(`📍 navigating to '${matched.path}'`);
+
       this.#setPath(matched.path);
       this.#setParams(matched.params);
 
@@ -544,8 +544,6 @@ export class Router {
           const activeLayer = this.#activeLayers[i];
 
           if (activeLayer?.id !== matchedLayer.id) {
-            this.#logger.info(`Replacing layer @${i} (active ID: ${activeLayer?.id}, matched ID: ${matchedLayer.id})`);
-
             // Remove any previously active layers at this depth or deeper.
             this.#activeLayers = this.#activeLayers.slice(0, i);
 

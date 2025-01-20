@@ -1,5 +1,42 @@
 # Scratch Note
 
+Bring the $ back and the name full circle.
+
+```js
+import { $, $$ } from "@manyducks.co/dolla";
+
+// Shorthand dolla sign
+
+// An initial value (with optional options object) creates a state.
+const [$count, setCount] = $(0);
+// = createState(0)
+
+// An array and a function derives a state.
+const $doubled = $([$count], (count) => count * 2);
+// = derive([$count], (count) => count * 2);
+
+// A state returns the same state.
+const $sameCount = $.of($count);
+const $wrapped = $.of({ message: "This is a state with no setter." });
+// = toState($count)
+
+// Get value from a state. Values that are not states are returned directly.
+const count = $.value($count);
+
+// An initial value creates a SettableState
+const $$count = $$(5);
+// = createSettableState(5);
+
+// Merge state and setter into a SettableState
+const $$count = $$($count, setCount);
+// = toSettableState($count, setCount);
+
+// Split a SettableState into a state and setter
+const [$count, setCount] = $($$count);
+```
+
+---
+
 What if Dolla was just a global object that you don't instantiate. I have never personally run into a use case for having more than one app on a page at once. In all my projects, the page and the app are synonymous.
 
 Doing this would make it possible to access things inside the Dolla app from _outside_ code such as Quill blots. Effectively all code that has access to your Dolla import is _inside_ the app.

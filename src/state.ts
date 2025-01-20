@@ -231,7 +231,12 @@ export function createState<T>(initialValue: T, options?: CreateStateOptions<T>)
 
   function notify() {
     for (const watcher of watchers) {
-      watcher(currentValue);
+      try {
+        watcher(currentValue);
+      } catch (err) {
+        console.warn("error in state watcher", watcher);
+        console.error(err);
+      }
     }
   }
 
@@ -398,7 +403,14 @@ export function derive<Inputs extends MaybeState<any>[], T>(
           previousSourceValues[i] = next;
 
           if (watching && !equal(next, previous)) {
-            setCurrentValue(fn(...previousSourceValues));
+            try {
+              let computed = fn(...previousSourceValues);
+              setCurrentValue(computed);
+            } catch (err) {
+              console.warn("error when updating source values", previousSourceValues, fn.toString());
+              console.error(err);
+            }
+
             notify(valueOf(currentValue));
           }
         }),
