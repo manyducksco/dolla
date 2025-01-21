@@ -214,6 +214,9 @@ export class I18n {
   
    * @param key - Key to the translated value.
    * @param values - A map of {{placeholder}} names and the values to replace them with.
+   * 
+   * @example
+   * const $value = t("your.key.here");
    */
   t(key: string, values?: Record<string, Stringable | State<Stringable>>): State<string> {
     if (this === undefined) {
@@ -282,40 +285,59 @@ export class I18n {
   }
 
   /**
-   * Format a number in the current locale.
+   * Creates a wrapped `Intl.Collator` configured for the current locale.
+   * NOTE: The Collator remains bound to the locale it was created with.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
    */
-  formatNumber(count: number, options?: Intl.NumberFormatOptions): string {
-    return new Intl.NumberFormat(this.$locale.get(), options).format(count);
+  collator(options?: Intl.CollatorOptions) {
+    return new Intl.Collator(this.$locale.get(), options);
   }
 
   /**
-   * Format a number in the current locale and get the result as a State that will update if the locale changes.
+   * Returns a State containing the number formatted for the current locale. Uses `Intl.NumberFormat` under the hood.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
-  formatNumber$(count: MaybeState<number>, options?: Intl.NumberFormatOptions): State<string> {
-    return derive([this.$locale, count], (_, value) => this.formatNumber(value, options));
+  number(count: MaybeState<number | bigint>, options?: Intl.NumberFormatOptions): State<string> {
+    return derive([this.$locale, count], (_, value) => {
+      return new Intl.NumberFormat(this.$locale.get(), options).format(value);
+    });
   }
 
-  formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat(this.$locale.get(), options).format(new Date(date));
+  /**
+   * Returns a State containing the date formatted for the current locale. Uses `Intl.DateTimeFormat` under the hood.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat#options
+   *
+   * @example
+   * const date = new Date();
+   * const $formatted = Dolla.i18n.dateTime(date, { dateFormat: "short" });
+   */
+  dateTime(date?: MaybeState<string | number | Date | undefined>, options?: Intl.DateTimeFormatOptions): State<string> {
+    return derive([this.$locale, date], (_, value) => {
+      return new Intl.DateTimeFormat(this.$locale.get(), options).format(
+        typeof value === "string" ? new Date(value) : value,
+      );
+    });
   }
 
-  formatDate$(date: MaybeState<string | Date>, options?: Intl.DateTimeFormatOptions): State<string> {
-    return derive([this.$locale, date], (_, value) => this.formatDate(value, options));
+  /**
+   * Returns a State containing the date formatted for the current locale. Uses `Intl.DateTimeFormat` under the hood.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat#options
+   *
+   * @example
+   * const list = new Date();
+   * const $formatted = Dolla.i18n.list(list, {  });
+   */
+  list(list: MaybeState<Iterable<string>>, options?: Intl.ListFormatOptions): State<string> {
+    return derive([this.$locale, list], (_, value) => {
+      return new Intl.ListFormat(this.$locale.get(), options).format(value);
+    });
   }
 
-  formatList(list: string[], options?: Intl.ListFormatOptions): string {
-    return new Intl.ListFormat(this.$locale.get(), options).format(list);
-  }
-
-  formatList$(list: MaybeState<string[]>, options?: Intl.ListFormatOptions): State<string> {
-    return derive([this.$locale, list], (_, value) => this.formatList(value, options));
-  }
-
-  // formatRelativeTime(): string {
-
-  // }
-
-  // formatRelativeTime$(): State<string> {
+  // relativeTime(): State<string> {
 
   // }
 

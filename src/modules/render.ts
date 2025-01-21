@@ -52,7 +52,7 @@ export class Render {
    * ensuring all writes have been performed before reading.
    * Returns a Promise that resolves once the callback has run.
    */
-  async read(callback: () => void): Promise<void> {
+  read(callback: () => void): Promise<void> {
     return new Promise((resolve) => {
       this.#reads.push(() => {
         callback();

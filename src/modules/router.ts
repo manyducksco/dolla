@@ -319,8 +319,8 @@ export class Router {
    * Navigates to another route.
    *
    * @example
-   * navigate("/login"); // navigate to `/login`
-   * navigate(["/users", 215], { replace: true }); // replace current history entry with `/users/215`
+   * Dolla.router.go("/login"); // navigate to `/login`
+   * Dolla.router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
    */
   go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
     if (this.#history == null) {
