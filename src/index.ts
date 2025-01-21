@@ -12,7 +12,7 @@ const dolla = new Dolla();
 export default dolla;
 
 // Language: standalone `t` function
-export const t = dolla.language.t.bind(dolla.language);
+export const t = dolla.i18n.t.bind(dolla.i18n);
 
 // Other types
 export type { Dolla, Environment, Logger, LoggerErrorContext, LoggerOptions, Loggles } from "./modules/dolla.js";

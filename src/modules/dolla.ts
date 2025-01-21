@@ -16,7 +16,7 @@ import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-vi
 import { Passthrough } from "../views/passthrough.js";
 
 import { HTTP } from "./http.js";
-import { Language } from "./language.js";
+import { I18n } from "./i18n.js";
 import { Render } from "./render.js";
 import { Router } from "./router.js";
 
@@ -61,7 +61,7 @@ export type LoggerOptions = {
 
 export class Dolla {
   readonly http: HTTP;
-  readonly language: Language;
+  readonly i18n: I18n;
   readonly render: Render;
   readonly router: Router;
 
@@ -88,7 +88,7 @@ export class Dolla {
     const self = this;
 
     this.http = new HTTP();
-    this.language = new Language(this);
+    this.i18n = new I18n(this);
     this.render = new Render(this);
     this.router = new Router(this, {
       get rootElement() {

@@ -630,11 +630,11 @@ function Counter(props, ctx) {
   `;
 }
 
-Dolla.language.setup({
-  initialLanguage: "en",
-  languages: [
-    { name: "en", strings: { buttonLabel: "Click here to increment" } },
-    { name: "ja", strings: { buttonLabel: "ここに押して増加する" } },
+Dolla.i18n.setup({
+  locale: "en",
+  translations: [
+    { locale: "en", strings: { buttonLabel: "Click here to increment" } },
+    { locale: "ja", strings: { buttonLabel: "ここに押して増加する" } },
   ],
 });
 

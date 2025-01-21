@@ -1,4 +1,4 @@
-import { createState, derive, isState, toState, type State } from "../state.js";
+import { createState, derive, isState, MaybeState, toState, type State } from "../state.js";
 import { isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { deepEqual } from "../utils.js";
@@ -15,8 +15,11 @@ type LocalizedStrings = Record<
   string | Record<string, string | Record<string, string | Record<string, string>>>
 >;
 
-export interface LanguageConfig {
-  name: string;
+export interface TranslationConfig {
+  /**
+   * Name of the locale this translation is for (BCP 47 locale names recommended).
+   */
+  locale: string;
 
   /**
    * Path to a JSON file with translated strings for this language.
@@ -29,23 +32,23 @@ export interface LanguageConfig {
   fetch?: () => Promise<LocalizedStrings>;
 }
 
-export type LanguageSetupOptions = {
+export type I18nSetupOptions = {
   /**
-   * Default language to load on startup
+   * Default locale to load on startup
    */
-  initialLanguage?: string | null;
+  locale?: string | null;
 
-  languages: LanguageConfig[];
+  translations: TranslationConfig[];
 };
 
 // ----- Code ----- //
 
 class Localization {
   dolla: Dolla;
-  config: LanguageConfig;
+  config: TranslationConfig;
   strings?: LocalizedStrings;
 
-  constructor(config: LanguageConfig, dolla: Dolla) {
+  constructor(config: TranslationConfig, dolla: Dolla) {
     this.config = config;
     this.dolla = dolla;
   }
@@ -83,29 +86,32 @@ class Localization {
   }
 }
 
-export class Language {
+/**
+ * Dolla's I(nternationalizatio)n module. Manages language translations and locale-based formatting.
+ */
+export class I18n {
   #dolla: Dolla;
   #logger: Logger;
   #localizations = new Map<string, Localization>();
   #cache: [key: string, values: Record<string, Stringable | State<Stringable>> | undefined, readable: State<string>][] =
     [];
 
-  #initialLanguage = "auto";
+  #initialLocale = "auto";
 
-  $current: State<string | undefined>;
-  #setCurrent;
+  $locale: State<string | undefined>;
+  #setLocale;
   #$strings;
   #setStrings;
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
-    this.#logger = dolla.createLogger("dolla/language");
+    this.#logger = dolla.createLogger("dolla/i18n");
 
-    const [$current, setCurrent] = createState<string>();
+    const [$locale, setLocale] = createState<string>();
     const [$strings, setStrings] = createState<LocalizedStrings>();
 
-    this.$current = $current;
-    this.#setCurrent = setCurrent;
+    this.$locale = $locale;
+    this.#setLocale = setLocale;
     this.#$strings = $strings;
     this.#setStrings = setStrings;
 
@@ -114,28 +120,28 @@ export class Language {
      */
     dolla.beforeMount(async () => {
       if (this.#localizations.size > 0) {
-        await this.setLanguage(this.#initialLanguage);
+        await this.setLocale(this.#initialLocale);
       }
     });
   }
 
-  get supportedLanguages() {
+  get locales() {
     return [...this.#localizations.keys()];
   }
 
-  setup(options: LanguageSetupOptions) {
+  setup(options: I18nSetupOptions) {
     // Convert languages into Language instances.
-    options.languages.forEach((entry) => {
-      this.#localizations.set(entry.name, new Localization(entry, this.#dolla));
+    options.translations.forEach((entry) => {
+      this.#localizations.set(entry.locale, new Localization(entry, this.#dolla));
     });
 
     // Check that initialLanguage is actually registered.
-    if (options.initialLanguage && options.initialLanguage !== "auto") {
-      const isRegistered = options.languages.some((entry) => entry.name === options.initialLanguage);
+    if (options.locale && options.locale !== "auto") {
+      const isRegistered = options.translations.some((entry) => entry.locale === options.locale);
       if (!isRegistered) {
-        throw new Error(`Initial language '${options.initialLanguage}' has no registered translation.`);
+        throw new Error(`Initial locale '${options.locale}' is not registered in the locales array.`);
       }
-      this.#initialLanguage = options.initialLanguage;
+      this.#initialLocale = options.locale;
     }
 
     this.#logger.info(
@@ -143,7 +149,7 @@ export class Language {
     );
   }
 
-  async setLanguage(name: string) {
+  async setLocale(name: string) {
     let realName!: string;
 
     if (name === "auto") {
@@ -193,7 +199,7 @@ export class Language {
       const translation = await lang.load();
 
       this.#setStrings(translation);
-      this.#setCurrent(realName);
+      this.#setLocale(realName);
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -216,7 +222,7 @@ export class Language {
       );
     }
 
-    if (!this.$current.get()) {
+    if (!this.$locale.get()) {
       return $noLanguageValue;
     }
 
@@ -274,6 +280,44 @@ export class Language {
 
     return $replaced;
   }
+
+  /**
+   * Format a number in the current locale.
+   */
+  formatNumber(count: number, options?: Intl.NumberFormatOptions): string {
+    return new Intl.NumberFormat(this.$locale.get(), options).format(count);
+  }
+
+  /**
+   * Format a number in the current locale and get the result as a State that will update if the locale changes.
+   */
+  formatNumber$(count: MaybeState<number>, options?: Intl.NumberFormatOptions): State<string> {
+    return derive([this.$locale, count], (_, value) => this.formatNumber(value, options));
+  }
+
+  formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
+    return new Intl.DateTimeFormat(this.$locale.get(), options).format(new Date(date));
+  }
+
+  formatDate$(date: MaybeState<string | Date>, options?: Intl.DateTimeFormatOptions): State<string> {
+    return derive([this.$locale, date], (_, value) => this.formatDate(value, options));
+  }
+
+  formatList(list: string[], options?: Intl.ListFormatOptions): string {
+    return new Intl.ListFormat(this.$locale.get(), options).format(list);
+  }
+
+  formatList$(list: MaybeState<string[]>, options?: Intl.ListFormatOptions): State<string> {
+    return derive([this.$locale, list], (_, value) => this.formatList(value, options));
+  }
+
+  // formatRelativeTime(): string {
+
+  // }
+
+  // formatRelativeTime$(): State<string> {
+
+  // }
 
   #getCached(key: string, values?: Record<string, Stringable | State<Stringable>>): State<string> | undefined {
     for (const entry of this.#cache) {

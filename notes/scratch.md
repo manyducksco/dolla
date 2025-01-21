@@ -48,8 +48,8 @@ Doing this would make it possible to access things inside the Dolla app from _ou
 import Dolla from "@manyducks.co/dolla";
 
 // Languages: add translation, set language and get localized string as a signal
-Dolla.language.setup({
-  initialLanguage: Dolla.language.detect({ fallback: "ja" }), // Detect user's language and fall back to passed value
+Dolla.i18n.setup({
+  initialLanguage: Dolla.i18n.detect({ fallback: "ja" }), // Detect user's language and fall back to passed value
   languages: [
     { name: "ja", path: "/static/locales/ja.json" },
     {
@@ -63,8 +63,8 @@ Dolla.language.setup({
   ]
 });
 
-Dolla.language.$current
-Dolla.language.t$()
+Dolla.i18n.$locale
+Dolla.i18n.t$()
 
 // A single setup call to keep things contained (must happen before mount)
 Dolla.router.setup({
