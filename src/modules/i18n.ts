@@ -1,6 +1,5 @@
-import { createState, derive, isState, MaybeState, toState, type State } from "../state.js";
-import { isFunction, isObject, isString } from "../typeChecking.js";
-import type { Stringable } from "../types.js";
+import { createState, derive, toState, type MaybeState, type State } from "../state.js";
+import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 import type { Dolla, Logger } from "./dolla.js";
 
@@ -14,6 +13,27 @@ type LocalizedStrings = Record<
   string,
   string | Record<string, string | Record<string, string | Record<string, string>>>
 >;
+
+enum SegmentType {
+  Static,
+  Value,
+}
+type StringTemplate = { segments: (StaticSegment | ValueSegment)[] };
+/**
+ * A string segment with literal text to be appended without processing.
+ */
+type StaticSegment = {
+  type: SegmentType.Static;
+  text: string;
+};
+/**
+ * A variable passed to the t() function. Needs to be formatted before it is appended.
+ */
+type ValueSegment = {
+  type: SegmentType.Value;
+  name: string;
+  formats: { name: string; options: Record<string, any> }[];
+};
 
 export interface TranslationConfig {
   /**
@@ -55,35 +75,40 @@ export type TOptions = {
   [value: string]: MaybeState<any>;
 };
 
+export type Formatter = (locale: string, value: unknown, options: Record<string, any>) => string;
+
 // ----- Code ----- //
 
 // Fallback labels for missing state and data.
 const $noLanguageValue = toState("[NO LANGUAGE SET]");
 
-class Localization {
+class Translation {
   dolla: Dolla;
   config: TranslationConfig;
-  strings?: LocalizedStrings;
+
+  #isLoaded = false;
+
+  #templates = new Map<string, StringTemplate>();
 
   constructor(config: TranslationConfig, dolla: Dolla) {
     this.config = config;
     this.dolla = dolla;
   }
 
-  async load(): Promise<LocalizedStrings> {
-    if (this.strings == null) {
+  async load(): Promise<void> {
+    let strings: LocalizedStrings | undefined;
+
+    if (!this.#isLoaded) {
       if (isFunction(this.config.fetch)) {
-        const strings = await this.config.fetch();
-        if (isObject(strings)) {
-          this.strings = strings as LocalizedStrings;
-        } else {
+        strings = await this.config.fetch();
+        if (!isObject(strings)) {
           throw new Error(`Fetch function did not return an object of language strings: ${strings}`);
         }
       } else if (isString(this.config.path)) {
         const res = await this.dolla.http.get(this.config.path);
         if (res.status >= 200 && res.status < 300) {
           if (isObject(res.body)) {
-            this.strings = res.body as LocalizedStrings;
+            strings = res.body as LocalizedStrings;
           } else {
             throw new Error(
               `Language path '${this.config.path}' did not return an object of language strings: ${res.body}`,
@@ -95,11 +120,224 @@ class Localization {
       }
     }
 
-    if (this.strings == null) {
+    if (strings == null) {
       throw new Error(`Language could not be loaded.`);
     } else {
-      return this.strings;
+      const entries = this.#compile(strings);
+      for (const entry of entries) {
+        this.#templates.set(entry[0], entry[1]);
+      }
+
+      console.log(entries);
     }
+  }
+
+  getTemplate(selector: string): StringTemplate | null {
+    return this.#templates.get(selector) ?? null;
+  }
+
+  hasTemplate(selector: string): boolean {
+    return this.#templates.has(selector);
+  }
+
+  #compile(strings: { [key: string]: any }, path: string[] = []): [string, StringTemplate][] {
+    const entries: [string, StringTemplate][] = [];
+
+    for (const key in strings) {
+      switch (typeOf(strings[key])) {
+        case "string":
+          entries.push([[...path, key].join("."), this.#parseTemplate(strings[key])]);
+          break;
+        case "object":
+          entries.push(...this.#compile(strings[key], [...path, key]));
+          break;
+        default:
+          throw new Error(
+            `Expected to find a string or object at ${[...path, key].join(".")}. Got: ${typeOf(strings[key])}`,
+          );
+      }
+    }
+
+    return entries;
+  }
+
+  #parseTemplate(template: string): StringTemplate {
+    // "{{itemName}} costs {{amount | number(style: currency, currency: USD)}}."
+
+    enum Loc {
+      /**
+       * Outside value braces.
+       */
+      Static,
+      /**
+       * Inside value braces; currently parsing the name of the value. e.g. `{{ [name] | number(style: currency, currency: USD) }}`
+       */
+      ValueName,
+      /**
+       * Inside value braces; currently parsing the name of a format function. e.g. `{{ name | [number](style: currency, currency: USD) }}`
+       */
+      FormatName,
+      /**
+       * Inside value braces; currently parsing the name of a format option. e.g. `{{ name | number([style]: currency, currency: USD) }}`
+       */
+      FormatOptionName,
+      /**
+       * Inside value braces; currently parsing the value of a format option. e.g. `{{ name | number(style: [currency], currency: USD ) }}`
+       */
+      FormatOptionValue,
+      /**
+       * Inside value braces; just reached the closing bracket of a format option. e.g. `{{ name | number(style: [currency], currency: USD) [] }}`
+       */
+      FormatOptionEnd,
+    }
+
+    const parsed: StringTemplate = {
+      segments: [],
+    };
+
+    let buffer = "";
+    let i = 0;
+    let loc: Loc = Loc.Static;
+    let segment!: ValueSegment;
+    let format!: ValueSegment["formats"][0];
+
+    let formatOptionName!: string;
+
+    const startSegment = () => {
+      segment = {
+        type: SegmentType.Value,
+        name: "",
+        formats: [],
+      };
+    };
+
+    const startFormat = () => {
+      format = {
+        name: "",
+        options: {},
+      };
+    };
+
+    while (i < template.length) {
+      // Skip spaces (unless we're in static)
+      if (loc !== Loc.Static && template[i] === " ") {
+        i++;
+        continue;
+      }
+
+      switch (loc) {
+        case Loc.Static:
+          if (template[i] === "{" && template[i + 1] === "{") {
+            loc = Loc.ValueName;
+            i += 2;
+            // close static segment
+            if (buffer.length > 0) {
+              parsed.segments.push({ type: SegmentType.Static, text: buffer });
+              buffer = "";
+            }
+            startSegment();
+          } else {
+            buffer += template[i];
+            i++;
+          }
+          break;
+        case Loc.ValueName:
+          if (template[i] === "|") {
+            loc = Loc.FormatName;
+            i += 1;
+            // add name to value segment
+            segment.name = buffer;
+            buffer = "";
+            startFormat();
+          } else if (template[i] === "}" && template[i + 1] === "}") {
+            loc = Loc.Static;
+            i += 2;
+            // close value segment
+            segment.name = buffer;
+            buffer = "";
+            parsed.segments.push(segment);
+          } else {
+            buffer += template[i];
+            i++;
+          }
+          break;
+        case Loc.FormatName:
+          if (template[i] === "(") {
+            loc = Loc.FormatOptionName;
+            i += 1;
+            // add name to format object
+            format.name = buffer;
+            buffer = "";
+          } else if (template[i] === "}" && template[i + 1] === "}") {
+            loc = Loc.Static;
+            i += 2;
+            // close format and value segment
+            segment.formats.push(format);
+            parsed.segments.push(segment);
+          } else {
+            buffer += template[i];
+            i++;
+          }
+          break;
+        case Loc.FormatOptionName:
+          if (template[i] === ")") {
+            // TODO: error - no value provided for option
+          } else if (template[i] === ":") {
+            loc = Loc.FormatOptionValue;
+            i += 1;
+            // add name to format option object
+            formatOptionName = buffer;
+            buffer = "";
+          } else if (template[i] === "}" && template[i + 1] === "}") {
+            // TODO: error - format options parenthesis not closed
+          } else {
+            buffer += template[i];
+            i++;
+          }
+          break;
+        case Loc.FormatOptionValue:
+          if (template[i] === ")") {
+            loc = Loc.FormatOptionEnd;
+            i += 1;
+            // add value to format option object
+            // add format option to format object; we're done with this format
+            format.options[formatOptionName] = buffer;
+            buffer = "";
+            segment.formats.push(format);
+          } else if (template[i] === ",") {
+            loc = Loc.FormatOptionName;
+            i += 1;
+            // add value to format option object
+            // add format option to format object; we're adding another option
+            format.options[formatOptionName] = buffer;
+            buffer = "";
+          } else if (template[i] === "}" && template[i + 1] === "}") {
+            // TODO: error - format options parenthesis not closed
+          } else {
+            buffer += template[i];
+            i++;
+          }
+          break;
+        case Loc.FormatOptionEnd:
+          if (template[i] === "|") {
+            loc = Loc.FormatName;
+            i += 1;
+            startFormat();
+          } else if (template[i] === "}" && template[i + 1] === "}") {
+            loc = Loc.Static;
+            i += 2;
+            // add value segment
+            parsed.segments.push(segment);
+          }
+          break;
+      }
+    }
+
+    if (loc === Loc.Static && buffer.length > 0) {
+      parsed.segments.push({ type: SegmentType.Static, text: buffer });
+    }
+
+    return parsed;
   }
 }
 
@@ -109,46 +347,52 @@ class Localization {
 export class I18n {
   #dolla: Dolla;
   #logger: Logger;
-  #localizations = new Map<string, Localization>();
+  #translations = new Map<string, Translation>();
   #cache: [key: string, values: Record<string, any> | undefined, output: string][] = [];
+  #formats = new Map<string, Formatter>();
 
   #initialLocale = "auto";
 
   $locale: State<string | undefined>;
   #setLocale;
-  #$strings;
-  #setStrings;
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
     this.#logger = dolla.createLogger("dolla/i18n");
 
     const [$locale, setLocale] = createState<string>();
-    const [$strings, setStrings] = createState<LocalizedStrings>();
 
     this.$locale = $locale;
     this.#setLocale = setLocale;
-    this.#$strings = $strings;
-    this.#setStrings = setStrings;
+
+    this.#formats.set("number", (_, value, options) => {
+      return this.#formatNumber(Number(value), options);
+    });
+    this.#formats.set("datetime", (_, value, options) => {
+      return this.#formatDateTime(value as any, options);
+    });
+    this.#formats.set("list", (_, value, options) => {
+      return this.#formatList(value as any, options);
+    });
 
     /**
      * Load language before the app mounts.
      */
     dolla.beforeMount(async () => {
-      if (this.#localizations.size > 0) {
+      if (this.#translations.size > 0) {
         await this.setLocale(this.#initialLocale);
       }
     });
   }
 
   get locales() {
-    return [...this.#localizations.keys()];
+    return [...this.#translations.keys()];
   }
 
   setup(options: I18nSetupOptions) {
     // Convert languages into Language instances.
     options.translations.forEach((entry) => {
-      this.#localizations.set(entry.locale, new Localization(entry, this.#dolla));
+      this.#translations.set(entry.locale, new Translation(entry, this.#dolla));
     });
 
     // Check that initialLanguage is actually registered.
@@ -161,7 +405,7 @@ export class I18n {
     }
 
     this.#logger.info(
-      `${this.#localizations.size} language${this.#localizations.size === 1 ? "" : "s"} supported: '${[...this.#localizations.keys()].join("', '")}'`,
+      `${this.#translations.size} language${this.#translations.size === 1 ? "" : "s"} supported: '${[...this.#translations.keys()].join("', '")}'`,
     );
   }
 
@@ -186,36 +430,35 @@ export class I18n {
       }
 
       for (const name of names) {
-        if (this.#localizations.has(name)) {
+        if (this.#translations.has(name)) {
           // Found a matching language.
           realName = name;
         }
       }
     } else {
       // Tag is the actual tag to set.
-      if (this.#localizations.has(name)) {
+      if (this.#translations.has(name)) {
         realName = name;
       }
     }
 
     if (realName == null) {
-      const firstLanguage = this.#localizations.keys().next().value;
+      const firstLanguage = this.#translations.keys().next().value;
       if (firstLanguage) {
         realName = firstLanguage;
       }
     }
 
-    if (!realName || !this.#localizations.has(realName)) {
+    if (!realName || !this.#translations.has(realName)) {
       throw new Error(`Language '${name}' is not configured for this app.`);
     }
 
-    const lang = this.#localizations.get(realName)!;
+    const lang = this.#translations.get(realName)!;
 
     try {
-      const translation = await lang.load();
+      await lang.load();
 
       this.#cache = [];
-      this.#setStrings(translation);
       this.#setLocale(realName);
 
       this.#logger.info("set language to " + realName);
@@ -229,13 +472,13 @@ export class I18n {
   /**
    * Returns a State containing the value at `key`.
   
-   * @param key - Key to the translated value.
-   * @param options - A map of {{placeholder}} names and the values to replace them with.
+   * @param selector - Key to the translated value.
+   * @param options - A map of `{{placeholder}}` names and the values to replace them with.
    * 
    * @example
-   * const $value = t("your.key.here");
+   * const $value = t("your.key.here", { count: 5 });
    */
-  t(key: string, options?: TOptions): State<string> {
+  t(selector: string, options?: TOptions): State<string> {
     if (this === undefined) {
       throw new Error(
         `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
@@ -246,57 +489,106 @@ export class I18n {
       return $noLanguageValue;
     }
 
-    let keys = [];
-    let values = [];
+    let optionKeys = [];
+    let optionValues = [];
     for (const key in options) {
-      keys.push(key);
-      values.push(options[key]);
+      optionKeys.push(key);
+      optionValues.push(options[key]);
     }
 
-    return derive([this.$locale, ...values], (locale, ...current) => {
-      const merged: Record<string, any> = {};
-      for (let i = 0; i < current.length; i++) {
-        merged[keys[i]] = current[i];
-      }
+    return derive([this.$locale, ...optionValues], (locale, ...currentValues) =>
+      this.#getValue(locale!, selector, optionKeys, ...currentValues),
+    );
+  }
 
-      const cached = this.#getCached(key, merged);
-      if (cached) return cached;
+  #getValue(locale: string, selector: string, optionKeys: string[], ...optionValues: any[]): string {
+    const options: Record<string, any> = {};
+    for (let i = 0; i < optionValues.length; i++) {
+      options[optionKeys[i]] = optionValues[i];
+    }
 
-      // Strings is not a dependency because it always changes together with locale.
-      const strings = this.#$strings.get();
+    const cached = this.#getCached(selector, options);
+    if (cached) return cached;
 
-      // Handle count (pluralization) and context. Keys become "key_context_pluralization".
-      let fullKey = key;
-      if (merged.context != null) {
-        fullKey += "_" + merged.context;
-      }
-      if (merged.count != null) {
-        if (merged.ordinal) {
-          // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
-          const exactKey = `${fullKey}_ordinal_(=${merged.count})`;
-          if (resolve(strings, exactKey) != null) {
-            fullKey = exactKey;
-          } else {
-            fullKey += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(merged.count);
-          }
+    const translation = this.#translations.get(locale)!;
+
+    // Handle count (pluralization) and context. Keys become "key_context_pluralization".
+
+    if (options.context != null) {
+      selector += "_" + options.context;
+    }
+    if (options.count != null) {
+      if (options.ordinal) {
+        // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
+        const exact = `${selector}_ordinal_(=${options.count})`;
+        if (translation.hasTemplate(exact)) {
+          selector = exact;
         } else {
-          // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
-          const exactKey = `${fullKey}_(=${merged.count})`;
-          if (resolve(strings, exactKey) != null) {
-            fullKey = exactKey;
-          } else {
-            fullKey += "_" + new Intl.PluralRules(locale).select(merged.count);
-          }
+          selector += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(options.count);
+        }
+      } else {
+        // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
+        const exact = `${selector}_(=${options.count})`;
+        if (translation.hasTemplate(exact)) {
+          selector = exact;
+        } else {
+          selector += "_" + new Intl.PluralRules(locale).select(options.count);
         }
       }
+    }
 
-      const translation = resolve(strings, fullKey) || `[MISSING: ${fullKey}]`;
-      const output = this.#replaceMustaches(translation, merged);
+    const template = translation.getTemplate(selector) || {
+      segments: [{ type: SegmentType.Static, text: `[MISSING: ${selector}]` }],
+    };
 
-      this.#cache.push([key, merged, output]);
+    let output = "";
 
-      return output;
-    });
+    for (const segment of template.segments) {
+      if (segment.type === SegmentType.Static) {
+        output += segment.text;
+      } else if (segment.type === SegmentType.Value) {
+        const formats = [...segment.formats];
+        let value = resolve(options, segment.name);
+
+        if (segment.name === "count" && formats.length === 0) {
+          formats.push({ name: "number", options: {} });
+        }
+
+        for (const format of formats) {
+          const fn = this.#formats.get(format.name);
+          if (fn == null) {
+            const error = new Error(
+              `Failed to load format '${format.name}' when processing '${selector}', template: ${template}`,
+            );
+            this.#logger.crash(error);
+            throw error;
+          }
+          value = fn(locale, value, format.options);
+        }
+
+        output += value;
+      }
+    }
+
+    return output;
+  }
+
+  /**
+   * Add a custom format callback.
+   *
+   * @example
+   * Dolla.i18n.addFormat("myCurrency", (locale, value, options) => {
+   *   // ...
+   * });
+   *
+   * {
+   *   "exampleKey": "{{count | myCurrency}} dollars"
+   * }
+   *
+   * t("exampleKey", {count: 5}); // State<"&5 dollars">
+   */
+  addFormat(name: string, callback: (locale: string, value: unknown, options: Record<string, any>) => string) {
+    this.#formats.set(name, callback);
   }
 
   /**
@@ -368,22 +660,6 @@ export class I18n {
         return entry[2];
       }
     }
-  }
-
-  /**
-   * Replaces {{placeholders}} with values in translated strings.
-   */
-  #replaceMustaches(template: string, values: Record<string, Stringable>) {
-    // TODO: Handle formatting
-
-    for (const name in values) {
-      if (name === "count") {
-        template = template.replace(`{{${name}}}`, this.#formatNumber(Number(values[name]), values));
-      } else {
-        template = template.replace(`{{${name}}}`, String(resolve(values, name)));
-      }
-    }
-    return template;
   }
 }
 
