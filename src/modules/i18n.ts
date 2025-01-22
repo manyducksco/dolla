@@ -41,7 +41,24 @@ export type I18nSetupOptions = {
   translations: TranslationConfig[];
 };
 
+export type TOptions = {
+  /**
+   *
+   */
+  count?: MaybeState<number>;
+
+  /**
+   *
+   */
+  context?: MaybeState<string>;
+
+  [value: string]: MaybeState<any>;
+};
+
 // ----- Code ----- //
+
+// Fallback labels for missing state and data.
+const $noLanguageValue = toState("[NO LANGUAGE SET]");
 
 class Localization {
   dolla: Dolla;
@@ -93,8 +110,7 @@ export class I18n {
   #dolla: Dolla;
   #logger: Logger;
   #localizations = new Map<string, Localization>();
-  #cache: [key: string, values: Record<string, Stringable | State<Stringable>> | undefined, readable: State<string>][] =
-    [];
+  #cache: [key: string, values: Record<string, any> | undefined, output: string][] = [];
 
   #initialLocale = "auto";
 
@@ -198,6 +214,7 @@ export class I18n {
     try {
       const translation = await lang.load();
 
+      this.#cache = [];
       this.#setStrings(translation);
       this.#setLocale(realName);
 
@@ -213,12 +230,12 @@ export class I18n {
    * Returns a State containing the value at `key`.
   
    * @param key - Key to the translated value.
-   * @param values - A map of {{placeholder}} names and the values to replace them with.
+   * @param options - A map of {{placeholder}} names and the values to replace them with.
    * 
    * @example
    * const $value = t("your.key.here");
    */
-  t(key: string, values?: Record<string, Stringable | State<Stringable>>): State<string> {
+  t(key: string, options?: TOptions): State<string> {
     if (this === undefined) {
       throw new Error(
         `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
@@ -229,64 +246,62 @@ export class I18n {
       return $noLanguageValue;
     }
 
-    const cached = this.#getCached(key, values);
-    if (cached) {
-      return cached;
+    let keys = [];
+    let values = [];
+    for (const key in options) {
+      keys.push(key);
+      values.push(options[key]);
     }
 
-    if (values) {
-      const stateValues: Record<string, State<any>> = {};
+    return derive([this.$locale, ...values], (locale, ...current) => {
+      const merged: Record<string, any> = {};
+      for (let i = 0; i < current.length; i++) {
+        merged[keys[i]] = current[i];
+      }
 
-      for (const [key, value] of Object.entries<any>(values)) {
-        if (isState(value)) {
-          stateValues[key] = value;
+      const cached = this.#getCached(key, merged);
+      if (cached) return cached;
+
+      // Strings is not a dependency because it always changes together with locale.
+      const strings = this.#$strings.get();
+
+      // Handle count (pluralization) and context. Keys become "key_context_pluralization".
+      let fullKey = key;
+      if (merged.context != null) {
+        fullKey += "_" + merged.context;
+      }
+      if (merged.count != null) {
+        if (merged.ordinal) {
+          // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
+          const exactKey = `${fullKey}_ordinal_(=${merged.count})`;
+          if (resolve(strings, exactKey) != null) {
+            fullKey = exactKey;
+          } else {
+            fullKey += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(merged.count);
+          }
+        } else {
+          // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
+          const exactKey = `${fullKey}_(=${merged.count})`;
+          if (resolve(strings, exactKey) != null) {
+            fullKey = exactKey;
+          } else {
+            fullKey += "_" + new Intl.PluralRules(locale).select(merged.count);
+          }
         }
       }
 
-      // This looks extremely weird, but it creates a joined state
-      // that contains the translation with interpolated observable values.
-      const readableEntries = Object.entries(stateValues);
-      if (readableEntries.length > 0) {
-        const readables = readableEntries.map((x) => x[1]);
-        const $merged = derive([this.#$strings, ...readables], (t, ...entryValues) => {
-          const entries = entryValues.map((_, i) => readableEntries[i]);
-          const mergedValues = {
-            ...values,
-          };
+      const translation = resolve(strings, fullKey) || `[MISSING: ${fullKey}]`;
+      const output = this.#replaceMustaches(translation, merged);
 
-          for (let i = 0; i < entries.length; i++) {
-            const key = entries[i][0];
-            mergedValues[key] = entryValues[i];
-          }
+      this.#cache.push([key, merged, output]);
 
-          const result = resolve(t, key) || `[NO TRANSLATION: ${key}]`;
-          return replaceMustaches(result, mergedValues);
-        });
-
-        this.#cache.push([key, values, $merged]);
-
-        return $merged;
-      }
-    }
-
-    const $replaced = derive([this.#$strings], (t) => {
-      let result = resolve(t, key) || `[NO TRANSLATION: ${key}]`;
-
-      if (values) {
-        result = replaceMustaches(result, values);
-      }
-
-      return result;
+      return output;
     });
-
-    this.#cache.push([key, values, $replaced]);
-
-    return $replaced;
   }
 
   /**
-   * Creates a wrapped `Intl.Collator` configured for the current locale.
-   * NOTE: The Collator remains bound to the locale it was created with.
+   * Creates an `Intl.Collator` configured for the current locale.
+   * NOTE: The Collator remains bound to the locale it was created with, even when the app's locale changes.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
    */
@@ -300,9 +315,11 @@ export class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
   number(count: MaybeState<number | bigint>, options?: Intl.NumberFormatOptions): State<string> {
-    return derive([this.$locale, count], (_, value) => {
-      return new Intl.NumberFormat(this.$locale.get(), options).format(value);
-    });
+    return derive([this.$locale, count], (_, value) => this.#formatNumber(value, options));
+  }
+
+  #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
+    return new Intl.NumberFormat(this.$locale.get(), options).format(count);
   }
 
   /**
@@ -315,11 +332,13 @@ export class I18n {
    * const $formatted = Dolla.i18n.dateTime(date, { dateFormat: "short" });
    */
   dateTime(date?: MaybeState<string | number | Date | undefined>, options?: Intl.DateTimeFormatOptions): State<string> {
-    return derive([this.$locale, date], (_, value) => {
-      return new Intl.DateTimeFormat(this.$locale.get(), options).format(
-        typeof value === "string" ? new Date(value) : value,
-      );
-    });
+    return derive([this.$locale, date], (_, value) => this.#formatDateTime(value, options));
+  }
+
+  #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
+    return new Intl.DateTimeFormat(this.$locale.get(), options).format(
+      typeof date === "string" ? new Date(date) : date,
+    );
   }
 
   /**
@@ -332,35 +351,40 @@ export class I18n {
    * const $formatted = Dolla.i18n.list(list, {  });
    */
   list(list: MaybeState<Iterable<string>>, options?: Intl.ListFormatOptions): State<string> {
-    return derive([this.$locale, list], (_, value) => {
-      return new Intl.ListFormat(this.$locale.get(), options).format(value);
-    });
+    return derive([this.$locale, list], (_, value) => this.#formatList(value, options));
+  }
+
+  #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {
+    return new Intl.ListFormat(this.$locale.get(), options).format(list);
   }
 
   // relativeTime(): State<string> {
 
   // }
 
-  #getCached(key: string, values?: Record<string, Stringable | State<Stringable>>): State<string> | undefined {
+  #getCached(key: string, values?: Record<string, any>): string | undefined {
     for (const entry of this.#cache) {
       if (entry[0] === key && deepEqual(entry[1], values)) {
         return entry[2];
       }
     }
   }
-}
 
-// Fallback labels for missing state and data.
-const $noLanguageValue = toState("[NO LANGUAGE SET]");
+  /**
+   * Replaces {{placeholders}} with values in translated strings.
+   */
+  #replaceMustaches(template: string, values: Record<string, Stringable>) {
+    // TODO: Handle formatting
 
-/**
- * Replaces {{placeholders}} with values in translated strings.
- */
-function replaceMustaches(template: string, values: Record<string, Stringable>) {
-  for (const name in values) {
-    template = template.replace(`{{${name}}}`, String(values[name]));
+    for (const name in values) {
+      if (name === "count") {
+        template = template.replace(`{{${name}}}`, this.#formatNumber(Number(values[name]), values));
+      } else {
+        template = template.replace(`{{${name}}}`, String(resolve(values, name)));
+      }
+    }
+    return template;
   }
-  return template;
 }
 
 function resolve(object: any, key: string) {
