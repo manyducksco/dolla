@@ -127,8 +127,6 @@ class Translation {
       for (const entry of entries) {
         this.#templates.set(entry[0], entry[1]);
       }
-
-      console.log(entries);
     }
   }
 
@@ -489,6 +487,7 @@ export class I18n {
       return $noLanguageValue;
     }
 
+    // Split keys and values so we can observe values which may be States.
     let optionKeys = [];
     let optionValues = [];
     for (const key in options) {
@@ -496,17 +495,18 @@ export class I18n {
       optionValues.push(options[key]);
     }
 
-    return derive([this.$locale, ...optionValues], (locale, ...currentValues) =>
-      this.#getValue(locale!, selector, optionKeys, ...currentValues),
-    );
+    return derive([this.$locale, ...optionValues], (locale, ...currentValues) => {
+      // Reassemble options now that State values are unwrapped.
+      const options: Record<string, any> = {};
+      for (let i = 0; i < currentValues.length; i++) {
+        options[optionKeys[i]] = currentValues[i];
+      }
+
+      return this.#getValue(locale!, selector, options);
+    });
   }
 
-  #getValue(locale: string, selector: string, optionKeys: string[], ...optionValues: any[]): string {
-    const options: Record<string, any> = {};
-    for (let i = 0; i < optionValues.length; i++) {
-      options[optionKeys[i]] = optionValues[i];
-    }
-
+  #getValue(locale: string, selector: string, options: Record<string, any>): string {
     const cached = this.#getCached(selector, options);
     if (cached) return cached;
 
@@ -577,15 +577,15 @@ export class I18n {
    * Add a custom format callback.
    *
    * @example
-   * Dolla.i18n.addFormat("myCurrency", (locale, value, options) => {
-   *   // ...
+   * Dolla.i18n.addFormat("uppercase", (locale, value, options) => {
+   *   return value.toUpperCase();
    * });
    *
    * {
-   *   "exampleKey": "{{count | myCurrency}} dollars"
+   *   "greeting": "Hello, {{name|uppercase}}!"
    * }
    *
-   * t("exampleKey", {count: 5}); // State<"&5 dollars">
+   * t("greeting", {name: "world"}); // State<"Hello, WORLD!">
    */
   addFormat(name: string, callback: (locale: string, value: unknown, options: Record<string, any>) => string) {
     this.#formats.set(name, callback);
