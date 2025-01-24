@@ -1,4 +1,4 @@
-import { type MarkupNode, type ElementContext } from "../markup.js";
+import { type MarkupElement, type ElementContext } from "../markup.js";
 import { createState, type State, type Setter, type StopFunction } from "../state.js";
 import { constructView, type ViewContext, type ViewResult } from "../view.js";
 
@@ -17,12 +17,12 @@ type ConnectedItem<T> = {
   setValue: Setter<T>;
   $index: State<number>;
   setIndex: Setter<number>;
-  handle: MarkupNode;
+  element: MarkupElement;
 };
 
 // ----- Code ----- //
 
-export class Repeat<T> implements MarkupNode {
+export class Repeat<T> implements MarkupElement {
   node: Node;
   endNode: Node;
   $items: State<T[]>;
@@ -78,7 +78,7 @@ export class Repeat<T> implements MarkupNode {
 
   _cleanup() {
     for (const item of this.connectedItems) {
-      item.handle.unmount();
+      item.element.unmount();
     }
     this.connectedItems = [];
   }
@@ -108,7 +108,7 @@ export class Repeat<T> implements MarkupNode {
       const potentialItem = potentialItems.find((p) => p.key === connected.key);
 
       if (!potentialItem) {
-        connected.handle.unmount();
+        connected.element.unmount();
       }
     }
 
@@ -130,7 +130,7 @@ export class Repeat<T> implements MarkupNode {
           setValue,
           $index,
           setIndex,
-          handle: constructView(this.elementContext, RepeatItemView, {
+          element: constructView(this.elementContext, RepeatItemView, {
             $value,
             $index,
             renderFn: this.renderFn,
@@ -142,8 +142,8 @@ export class Repeat<T> implements MarkupNode {
     // Reconnect to ensure order. Lifecycle hooks won't be run again if the view is already connected.
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
-      const previous = newItems[i - 1]?.handle.node ?? this.node;
-      item.handle.mount(this.node.parentNode!, previous);
+      const previous = newItems[i - 1]?.element.node ?? this.node;
+      item.element.mount(this.node.parentNode!, previous);
     }
 
     this.connectedItems = newItems;
@@ -151,7 +151,7 @@ export class Repeat<T> implements MarkupNode {
     if (this.elementContext.root.getEnv() === "development") {
       this.node.textContent = `Repeat (${newItems.length} item${newItems.length === 1 ? "" : "s"})`;
 
-      const lastItem = newItems.at(-1)?.handle.node ?? this.node;
+      const lastItem = newItems.at(-1)?.element.node ?? this.node;
       this.node.parentNode?.insertBefore(this.endNode, lastItem.nextSibling);
     }
   }

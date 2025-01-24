@@ -37,6 +37,56 @@ const [$count, setCount] = $($$count);
 
 ---
 
+I've been looking into other libraries that don't make you track your dependencies specifically.
+
+```js
+import { $ } from "@manyducks.co/dolla";
+
+const [count, setCount] = $(0);
+
+const doubled = $.computed(() => count() * 2);
+
+
+
+$.effect(() => {
+  console.log(doubled());
+});
+
+$.batch(() => {
+  // Set multiple things but defer updates to after this function returns.
+});
+
+// Helpers on $; can plug into template as is.
+$.if(
+  $.computed(() => count() > 5),
+  <span>Greater than 5!</span>,
+  <span>Not greater than 5...</span>,
+);
+
+const switched = $.switch(count, [[1, "one"], [2, "two"], [3, "three"]], "more...");
+
+$.repeat()
+
+// TODO: How feasible is this?
+<Repeat each={}>
+  {(item, index) => {
+
+  }}
+</Repeat>
+
+<Show when={condition}>
+  Condition is true.
+</Show>
+
+// Get
+count();
+
+// Set
+count(52);
+```
+
+---
+
 What if Dolla was just a global object that you don't instantiate. I have never personally run into a use case for having more than one app on a page at once. In all my projects, the page and the app are synonymous.
 
 Doing this would make it possible to access things inside the Dolla app from _outside_ code such as Quill blots. Effectively all code that has access to your Dolla import is _inside_ the app.

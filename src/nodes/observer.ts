@@ -1,14 +1,14 @@
 import {
   constructMarkup,
   isMarkup,
-  isNode,
+  isMarkupElement,
   isRenderable,
-  mergeNodes,
+  mergeElements,
   toMarkup,
   type ElementContext,
-  type MarkupNode,
+  type MarkupElement,
 } from "../markup.js";
-import { watch, type State, type StopFunction } from "../state.js";
+import { createWatcher, type State, type StopFunction } from "../state.js";
 import { typeOf } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
 
@@ -21,13 +21,14 @@ interface ObserverOptions {
 /**
  * Displays dynamic children without a parent element.
  */
-export class Observer implements MarkupNode {
+export class Observer implements MarkupElement {
   node: Node;
   endNode: Node;
-  connectedViews: MarkupNode[] = [];
+  connectedViews: MarkupElement[] = [];
   renderFn: (...values: any) => Renderable;
   elementContext;
   observerControls;
+  watcher = createWatcher();
 
   get isMounted() {
     return this.node.parentNode != null;
@@ -46,7 +47,7 @@ export class Observer implements MarkupNode {
       start: () => {
         if (_stop != null) return;
 
-        _stop = watch(states, (...values) => {
+        _stop = this.watcher.watch(states, (...values) => {
           const rendered = this.renderFn(...values);
 
           if (!isRenderable(rendered)) {
@@ -81,6 +82,7 @@ export class Observer implements MarkupNode {
 
   unmount() {
     this.observerControls.stop();
+    this.watcher.stopAll();
 
     if (this.isMounted) {
       this.cleanup();
@@ -101,13 +103,13 @@ export class Observer implements MarkupNode {
       return;
     }
 
-    const nodes: MarkupNode[] = children.map((c) => {
-      if (isNode(c)) {
+    const nodes: MarkupElement[] = children.map((c) => {
+      if (isMarkupElement(c)) {
         return c;
       } else if (isMarkup(c)) {
-        return mergeNodes(constructMarkup(this.elementContext, c));
+        return mergeElements(constructMarkup(this.elementContext, c));
       } else {
-        return mergeNodes(constructMarkup(this.elementContext, toMarkup(c)));
+        return mergeElements(constructMarkup(this.elementContext, toMarkup(c)));
       }
     });
 

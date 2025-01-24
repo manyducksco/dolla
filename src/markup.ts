@@ -22,17 +22,14 @@ export interface ElementContext {
    * The root Dolla instance this element belongs to.
    */
   root: Dolla;
-
   /**
    * Storage for context variables.
    */
   data: Record<string | symbol, unknown>;
-
   /**
    * A reference to the parent context.
    */
   parent?: ElementContext;
-
   /**
    * Whether to create DOM nodes in the SVG namespace. An `<svg>` element will set this to true and pass it down to children.
    */
@@ -44,18 +41,28 @@ export interface ElementContext {
 \*===========================*/
 
 /**
- * Markup is a set of element metadata that hasn't been constructed into a MarkupNode yet.
+ * Markup is a set of element metadata that hasn't been constructed into a MarkupElement yet.
  */
 export interface Markup {
+  /**
+   * In the case of a view, type will be the View function itself. It can also hold an identifier for special nodes like "$cond", "$repeat", etc.
+   * DOM nodes can be created by name, such as HTML elements like "div", "ul" or "span", SVG elements like ""
+   */
   type: string | ViewFunction<any>;
+  /**
+   * Data that will be passed to a new MarkupElement instance when it is constructed.
+   */
   props?: Record<string, any>;
+  /**
+   *
+   */
   children?: Markup[];
 }
 
 /**
  * A DOM node that has been constructed from a Markup object.
  */
-export interface MarkupNode {
+export interface MarkupElement {
   readonly node?: Node;
 
   readonly isMounted: boolean;
@@ -73,7 +80,7 @@ export function isMarkup(value: unknown): value is Markup {
   );
 }
 
-export function isNode(value: unknown): value is MarkupNode {
+export function isMarkupElement(value: unknown): value is MarkupElement {
   return isObject(value) && isFunction(value.connect) && isFunction(value.disconnect);
 }
 
@@ -127,7 +134,7 @@ export interface MarkupAttributes {
     renderFn: (...items: any) => Renderable;
   };
   $outlet: {
-    $children: State<MarkupNode[]>;
+    $children: State<MarkupElement[]>;
   };
   $node: {
     value: Node;
@@ -271,9 +278,9 @@ export interface Ref<T extends Node> extends State<T | undefined> {
 \*===========================*/
 
 /**
- * Wraps any plain DOM node in a MarkupNode interface.
+ * Wraps any plain DOM node in a MarkupElement interface.
  */
-class DOMNode implements MarkupNode {
+class DOMNode implements MarkupElement {
   node: Node;
 
   get isMounted() {
@@ -296,9 +303,9 @@ class DOMNode implements MarkupNode {
 }
 
 /**
- * Construct Markup metadata into a set of MarkupNodes.
+ * Construct Markup metadata into a set of MarkupElements.
  */
-export function constructMarkup(elementContext: ElementContext, markup: Markup | Markup[]): MarkupNode[] {
+export function constructMarkup(elementContext: ElementContext, markup: Markup | Markup[]): MarkupElement[] {
   const items = isArray(markup) ? markup : [markup];
 
   return items.map((item) => {
@@ -375,9 +382,9 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
 }
 
 /**
- * Combines one or more MarkupNodes into a single MarkupNode.
+ * Combines one or more MarkupElements into a single MarkupElement.
  */
-export function mergeNodes(nodes: MarkupNode[]): MarkupNode {
+export function mergeElements(nodes: MarkupElement[]): MarkupElement {
   if (nodes.length === 1) {
     return nodes[0];
   }

@@ -1,18 +1,18 @@
-import { createBrowserHistory, createHashHistory, Update, type History } from "history";
+import { createBrowserHistory, createHashHistory, type Update, type History } from "history";
 import {
   joinPath,
   matchRoutes,
-  ParsedRoute,
+  type ParsedRoute,
   parseQueryParams,
   patternToFragments,
   resolvePath,
   sortRoutes,
   splitPath,
 } from "../routing.js";
-import { createState, StopFunction, watch } from "../state.js";
+import { createState, type StopFunction, createWatcher } from "../state.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
-import { ViewNode, type ViewFunction } from "../view.js";
+import { type ViewElement, type ViewFunction } from "../view.js";
 import { Passthrough } from "../views/passthrough.js";
 import type { Dolla, Logger } from "./dolla.js";
 
@@ -72,7 +72,7 @@ export interface RouteLayer {
  */
 interface ActiveLayer {
   id: number;
-  node: ViewNode;
+  node: ViewElement;
 }
 
 /**
@@ -144,7 +144,7 @@ export interface RouterSetupOptions {
 
 export interface RouterElements {
   readonly rootElement?: HTMLElement;
-  readonly rootView?: ViewNode;
+  readonly rootView?: ViewElement;
 }
 
 // ----- Code ----- //
@@ -153,6 +153,7 @@ export class Router {
   #dolla: Dolla;
   #logger: Logger;
   #elements: RouterElements;
+  #watcher = createWatcher();
 
   #history!: History;
   #layerId = 0;
@@ -216,24 +217,23 @@ export class Router {
       if (this.#history == null) return;
 
       // Update URL when query changes
-      this.#cleanupCallbacks.push(
-        watch([$query], (current) => {
-          const params = new URLSearchParams();
 
-          for (const key in current) {
-            params.set(key, String(current[key]));
-          }
+      this.#watcher.watch([$query], (current) => {
+        const params = new URLSearchParams();
 
-          const search = "?" + params.toString();
+        for (const key in current) {
+          params.set(key, String(current[key]));
+        }
 
-          if (search != this.#history.location.search) {
-            this.#history.replace({
-              pathname: this.#history.location.pathname,
-              search,
-            });
-          }
-        }),
-      );
+        const search = "?" + params.toString();
+
+        if (search != this.#history.location.search) {
+          this.#history.replace({
+            pathname: this.#history.location.pathname,
+            search,
+          });
+        }
+      });
 
       this.#cleanupCallbacks.push(this.#history.listen(this.#onRouteChange.bind(this)));
       this.#onRouteChange(this.#history);
@@ -259,6 +259,7 @@ export class Router {
         const callback = this.#cleanupCallbacks.pop()!;
         callback();
       }
+      this.#watcher.stopAll();
     });
   }
 
@@ -554,7 +555,7 @@ export class Router {
               activeLayer.node.unmount();
             }
 
-            let node: ViewNode;
+            let node: ViewElement;
 
             // Replace parentLayer's previous children with the new layer.
             if (parentLayer) {

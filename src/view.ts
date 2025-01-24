@@ -1,15 +1,23 @@
 import { nanoid } from "nanoid";
 import {
-  type MarkupNode,
+  type MarkupElement,
   type ElementContext,
-  mergeNodes,
+  mergeElements,
   isMarkup,
   createMarkup,
   type Markup,
   constructMarkup,
 } from "./markup.js";
 import type { Logger } from "./modules/dolla.js";
-import { createState, isState, type MaybeState, State, type StateValues, type StopFunction, watch } from "./state.js";
+import {
+  createState,
+  createWatcher,
+  isState,
+  type MaybeState,
+  State,
+  type StateValues,
+  type StopFunction,
+} from "./state.js";
 import { isArrayOf, typeOf } from "./typeChecking.js";
 
 /*=====================================*\
@@ -26,11 +34,11 @@ export type ViewFunction<P> = (props: P, context: ViewContext) => ViewResult;
 /**
  * A view that has been constructed into DOM nodes.
  */
-export interface ViewNode extends MarkupNode {
+export interface ViewElement extends MarkupElement {
   /**
    * Take a ViewFunction and render it as a child of this view.
    */
-  setChildView(view: ViewFunction<{}>): ViewNode;
+  setChildView(view: ViewFunction<{}>): ViewElement;
 }
 
 export interface ViewContext extends Logger {
@@ -100,14 +108,16 @@ export function constructView<P>(
   view: ViewFunction<P>,
   props: P,
   children: Markup[] = [],
-): ViewNode {
+): ViewElement {
   elementContext = { ...elementContext, data: {}, parent: elementContext };
-  const [$children, setChildren] = createState<MarkupNode[]>(constructMarkup(elementContext, children));
+  const [$children, setChildren] = createState<MarkupElement[]>(constructMarkup(elementContext, children));
 
   let isMounted = false;
 
+  const watcher = createWatcher();
+
   // Lifecycle and observers
-  const stopObserverCallbacks: (() => void)[] = [];
+  // const stopObserverCallbacks: (() => void)[] = [];
   const beforeMountCallbacks: (() => void | Promise<void>)[] = [];
   const onMountCallbacks: (() => any)[] = [];
   const beforeUnmountCallbacks: (() => void | Promise<void>)[] = [];
@@ -191,9 +201,7 @@ export function constructView<P>(
       if (isMounted) {
         // If called when the component is connected, we assume this code is in a lifecycle hook
         // where it will be triggered at some point again after the component is reconnected.
-        const stop = watch(states, callback);
-        stopObserverCallbacks.push(stop);
-        return stop;
+        return watcher.watch(states, callback);
       } else {
         // This should only happen if called in the body of the component function.
         // This code is not always re-run between when a component is unmounted and remounted.
@@ -201,11 +209,10 @@ export function constructView<P>(
         let isStopped = false;
         onMountCallbacks.push(() => {
           if (!isStopped) {
-            stop = watch(states, callback);
-            stopObserverCallbacks.push(stop);
+            stop = watcher.watch(states, callback);
           }
         });
-        return function stop() {
+        return () => {
           if (stop != null) {
             isStopped = true;
             stop();
@@ -221,7 +228,7 @@ export function constructView<P>(
 
   Object.assign(ctx, logger);
 
-  let rendered: MarkupNode | undefined;
+  let rendered: MarkupElement | undefined;
 
   function initialize() {
     let result: unknown;
@@ -242,11 +249,11 @@ export function constructView<P>(
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      rendered = mergeNodes(constructMarkup(elementContext, createMarkup("$node", { value: result })));
+      rendered = mergeElements(constructMarkup(elementContext, createMarkup("$node", { value: result })));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      rendered = mergeNodes(constructMarkup(elementContext, result));
+      rendered = mergeElements(constructMarkup(elementContext, result));
     } else if (isState(result)) {
-      rendered = mergeNodes(
+      rendered = mergeElements(
         constructMarkup(elementContext, createMarkup("$observer", { states: [result], renderFn: (x) => x })),
       );
     } else {
@@ -314,10 +321,7 @@ export function constructView<P>(
         callback();
       }
 
-      while (stopObserverCallbacks.length > 0) {
-        const callback = stopObserverCallbacks.shift()!;
-        callback();
-      }
+      watcher.stopAll();
     },
 
     setChildView(view) {

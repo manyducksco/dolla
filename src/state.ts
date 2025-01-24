@@ -1,5 +1,30 @@
 import { deepEqual, noOp } from "./utils";
 
+/**
+ * Counts total active state watchers for the purpose of tracking memory leaks.
+ */
+const tracker = {
+  watcherCount: 0,
+  increment() {
+    this.watcherCount++;
+    this._bump();
+  },
+  decrement() {
+    this.watcherCount--;
+    this._bump();
+  },
+
+  _timeout: null as any,
+  _bump() {
+    if ((window as any).DOLLA_DEV_DEBUG === true && !this._timeout) {
+      this._timeout = setTimeout(() => {
+        console.log({ watcherCount: this.watcherCount });
+        this._timeout = null;
+      }, 200);
+    }
+  },
+};
+
 /*==============================*\
 ||            Types             ||
 \*==============================*/
@@ -261,9 +286,13 @@ export function createState<T>(initialValue: T, options?: CreateStateOptions<T>)
         callback($value.get());
       }
 
+      tracker.increment();
+
       // Return a function to remove callback from watchers array.
       return function stop() {
         watchers.splice(watchers.indexOf(callback), 1);
+
+        tracker.decrement();
       };
     },
   };
@@ -315,10 +344,7 @@ export function derive<Inputs extends MaybeState<any>[], T>(
    */
   let watching = false;
 
-  /**
-   * Stop functions from watched sources.
-   */
-  let stoppers: StopFunction[] = [];
+  const sourceWatcher = createWatcher();
 
   /**
    * Stop function for currentValue (used when currentValue is itself a state).
@@ -396,25 +422,22 @@ export function derive<Inputs extends MaybeState<any>[], T>(
     let startingSourceValues = [...previousSourceValues];
 
     for (let i = 0; i < states.length; i++) {
-      const state = states[i] as State<any>;
-      stoppers.push(
-        state.watch((next) => {
-          const previous = previousSourceValues[i];
-          previousSourceValues[i] = next;
+      sourceWatcher.watch([states[i] as State<any>], (next) => {
+        const previous = previousSourceValues[i];
+        previousSourceValues[i] = next;
 
-          if (watching && !equal(next, previous)) {
-            try {
-              let computed = fn(...previousSourceValues);
-              setCurrentValue(computed);
-            } catch (err) {
-              console.warn("error when updating source values", previousSourceValues, fn.toString());
-              console.error(err);
-            }
-
-            notify(valueOf(currentValue));
+        if (watching && !equal(next, previous)) {
+          try {
+            let computed = fn(...previousSourceValues);
+            setCurrentValue(computed);
+          } catch (err) {
+            console.warn("error when updating source values", previousSourceValues, fn.toString());
+            console.error(err);
           }
-        }),
-      );
+
+          notify(valueOf(currentValue));
+        }
+      });
     }
 
     watching = true;
@@ -430,10 +453,7 @@ export function derive<Inputs extends MaybeState<any>[], T>(
   }
 
   function stopWatchingSources() {
-    for (const stop of stoppers) {
-      stop();
-    }
-    stoppers = [];
+    sourceWatcher.stopAll();
 
     // Stop watching current value if it was a state.
     if (stopWatchingCurrentValue) {
@@ -459,12 +479,16 @@ export function derive<Inputs extends MaybeState<any>[], T>(
         callback(getCurrentValue());
       }
 
+      tracker.increment();
+
       return function stop() {
         watchers.splice(watchers.indexOf(callback), 1);
 
         if (watching && watchers.length === 0) {
           stopWatchingSources();
         }
+
+        tracker.decrement();
       };
     },
   };
@@ -472,19 +496,55 @@ export function derive<Inputs extends MaybeState<any>[], T>(
   return $value;
 }
 
-export function watch<I extends MaybeState<any>[]>(
-  states: [...I],
-  fn: (...currentValues: StateValues<I>) => void,
-): StopFunction {
-  if (states.length === 0) {
-    throw new TypeError(`Expected at least one state to watch.`);
-  }
+export interface StateWatcher {
+  /**
+   * Watch one or more states, calling the provided `fn` each time one of their values changes.
+   *
+   * @param states - An array of states or plain values. States will be unwrapped before being passed to `fn`.
+   * @param fn - A function that takes the values of `states` in the same order they were passed.
+   */
+  watch<I extends MaybeState<any>[]>(states: [...I], fn: (...currentValues: StateValues<I>) => void): StopFunction;
 
-  states = states.map(toState) as [...I];
+  /**
+   * Stop all watch callbacks registered to this watcher.
+   */
+  stopAll(): void;
+}
 
-  if (states.length > 1) {
-    return derive(states, fn).watch(() => null);
-  } else {
-    return states[0].watch(fn);
-  }
+export function createWatcher(): StateWatcher {
+  const stopFns: StopFunction[] = [];
+
+  return {
+    watch(states, fn) {
+      if (states.length === 0) {
+        throw new TypeError(`Expected at least one state to watch.`);
+      }
+      states = states.map(toState) as any;
+
+      let stop: StopFunction;
+
+      if (states.length > 1) {
+        stop = derive(states, fn).watch(() => null);
+      } else {
+        stop = states[0].watch(fn);
+      }
+
+      stopFns.push(stop);
+
+      return () => {
+        let index = stopFns.indexOf(stop);
+        if (index > -1) {
+          stopFns.splice(index, 1);
+        }
+        stop();
+      };
+    },
+
+    stopAll() {
+      while (stopFns.length > 0) {
+        const stop = stopFns.pop()!;
+        stop();
+      }
+    },
+  };
 }

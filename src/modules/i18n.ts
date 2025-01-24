@@ -5,20 +5,16 @@ import type { Dolla, Logger } from "./dolla.js";
 
 // ----- Types ----- //
 
-// TODO: Is there a good way to represent infinitely nested recursive types?
 /**
- * An object where values are either a translated string or another nested Translation object.
+ * A JSON object of translated strings. Values can be string templates or nested objects.
  */
-type LocalizedStrings = Record<
-  string,
-  string | Record<string, string | Record<string, string | Record<string, string>>>
->;
+interface LocalizedStrings extends Record<string, string | LocalizedStrings> {}
 
 enum SegmentType {
   Static,
-  Value,
+  Variable,
 }
-type StringTemplate = { segments: (StaticSegment | ValueSegment)[] };
+type StringTemplate = { segments: (StaticSegment | VariableSegment)[] };
 /**
  * A string segment with literal text to be appended without processing.
  */
@@ -29,10 +25,17 @@ type StaticSegment = {
 /**
  * A variable passed to the t() function. Needs to be formatted before it is appended.
  */
-type ValueSegment = {
-  type: SegmentType.Value;
+type VariableSegment = {
+  type: SegmentType.Variable;
   name: string;
-  formats: { name: string; options: Record<string, any> }[];
+  formats: Format[];
+};
+/**
+ * A formatter to be applied to a variable.
+ */
+type Format = {
+  name: string;
+  options: Record<string, any>;
 };
 
 export interface TranslationConfig {
@@ -72,15 +75,25 @@ export type TOptions = {
    */
   context?: MaybeState<string>;
 
+  /**
+   * Override formats specified in the template with the ones in the array for each named variable.
+   *
+   * @example
+   * t("example_key", {
+   *   count: 5,
+   *   formatOverrides: {
+   *     count: [ { name: "datetime", options: { style: "currency", currency: "JPY" } } ]
+   *   }
+   * });
+   */
+  formatOverrides?: MaybeState<Record<string, Record<string, Format[]>>>;
+
   [value: string]: MaybeState<any>;
 };
 
 export type Formatter = (locale: string, value: unknown, options: Record<string, any>) => string;
 
 // ----- Code ----- //
-
-// Fallback labels for missing state and data.
-const $noLanguageValue = toState("[NO LANGUAGE SET]");
 
 class Translation {
   dolla: Dolla;
@@ -120,18 +133,22 @@ class Translation {
       }
     }
 
-    if (strings == null) {
-      throw new Error(`Language could not be loaded.`);
-    } else {
+    if (strings) {
       const entries = this.#compile(strings);
       for (const entry of entries) {
         this.#templates.set(entry[0], entry[1]);
       }
+    } else {
+      throw new Error(`Language could not be loaded.`);
     }
   }
 
-  getTemplate(selector: string): StringTemplate | null {
-    return this.#templates.get(selector) ?? null;
+  getTemplate(selector: string): StringTemplate {
+    return (
+      this.#templates.get(selector) ?? {
+        segments: [{ type: SegmentType.Static, text: `[MISSING: ${selector}]` }],
+      }
+    );
   }
 
   hasTemplate(selector: string): boolean {
@@ -196,14 +213,14 @@ class Translation {
     let buffer = "";
     let i = 0;
     let loc: Loc = Loc.Static;
-    let segment!: ValueSegment;
-    let format!: ValueSegment["formats"][0];
+    let segment!: VariableSegment;
+    let format!: VariableSegment["formats"][0];
 
     let formatOptionName!: string;
 
     const startSegment = () => {
       segment = {
-        type: SegmentType.Value,
+        type: SegmentType.Variable,
         name: "",
         formats: [],
       };
@@ -326,6 +343,8 @@ class Translation {
             i += 2;
             // add value segment
             parsed.segments.push(segment);
+          } else {
+            // TODO: error - no other valid characters
           }
           break;
       }
@@ -363,13 +382,13 @@ export class I18n {
     this.$locale = $locale;
     this.#setLocale = setLocale;
 
-    this.#formats.set("number", (_, value, options) => {
+    this.addFormat("number", (_, value, options) => {
       return this.#formatNumber(Number(value), options);
     });
-    this.#formats.set("datetime", (_, value, options) => {
+    this.addFormat("datetime", (_, value, options) => {
       return this.#formatDateTime(value as any, options);
     });
-    this.#formats.set("list", (_, value, options) => {
+    this.addFormat("list", (_, value, options) => {
       return this.#formatList(value as any, options);
     });
 
@@ -448,13 +467,13 @@ export class I18n {
     }
 
     if (!realName || !this.#translations.has(realName)) {
-      throw new Error(`Language '${name}' is not configured for this app.`);
+      throw new Error(`Locale '${name}' has no translation.`);
     }
 
-    const lang = this.#translations.get(realName)!;
+    const translation = this.#translations.get(realName)!;
 
     try {
-      await lang.load();
+      await translation.load();
 
       this.#cache = [];
       this.#setLocale(realName);
@@ -483,10 +502,6 @@ export class I18n {
       );
     }
 
-    if (!this.$locale.get()) {
-      return $noLanguageValue;
-    }
-
     // Split keys and values so we can observe values which may be States.
     let optionKeys = [];
     let optionValues = [];
@@ -496,13 +511,17 @@ export class I18n {
     }
 
     return derive([this.$locale, ...optionValues], (locale, ...currentValues) => {
+      if (locale == null) {
+        return "[NO LOCALE SET]";
+      }
+
       // Reassemble options now that State values are unwrapped.
       const options: Record<string, any> = {};
       for (let i = 0; i < currentValues.length; i++) {
         options[optionKeys[i]] = currentValues[i];
       }
 
-      return this.#getValue(locale!, selector, options);
+      return this.#getValue(locale, selector, options);
     });
   }
 
@@ -537,18 +556,16 @@ export class I18n {
       }
     }
 
-    const template = translation.getTemplate(selector) || {
-      segments: [{ type: SegmentType.Static, text: `[MISSING: ${selector}]` }],
-    };
-
+    const template = translation.getTemplate(selector);
     let output = "";
 
     for (const segment of template.segments) {
       if (segment.type === SegmentType.Static) {
         output += segment.text;
-      } else if (segment.type === SegmentType.Value) {
-        const formats = [...segment.formats];
+      } else if (segment.type === SegmentType.Variable) {
         let value = resolve(options, segment.name);
+
+        const formats = options.formatOverrides?.[segment.name] ?? [...segment.formats];
 
         if (segment.name === "count" && formats.length === 0) {
           formats.push({ name: "number", options: {} });

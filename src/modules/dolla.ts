@@ -1,4 +1,12 @@
-import { constructMarkup, createMarkup, createRef, isRef, MarkupNode, mergeNodes, type Markup } from "../markup.js";
+import {
+  constructMarkup,
+  createMarkup,
+  createRef,
+  isRef,
+  MarkupElement,
+  mergeElements,
+  type Markup,
+} from "../markup.js";
 import {
   createSettableState,
   createState,
@@ -6,12 +14,13 @@ import {
   toSettableState,
   toState,
   valueOf,
-  watch,
+  createWatcher,
   type State,
+  type StateWatcher,
 } from "../state.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
-import { constructView, type ViewFunction, type ViewNode } from "../view.js";
+import { constructView, type ViewFunction, type ViewElement } from "../view.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 
@@ -68,8 +77,10 @@ export class Dolla {
   #isMounted = false;
   #env: Environment = "production";
   #rootElement?: HTMLElement;
-  #rootView?: ViewNode;
+  #rootView?: ViewElement;
   #crashView: ViewFunction<CrashViewProps> = DefaultCrashView;
+
+  #watcher = createWatcher();
 
   #beforeMountCallbacks: Array<() => void | Promise<void>> = [];
   #onMountCallbacks: Array<() => void> = [];
@@ -100,13 +111,15 @@ export class Dolla {
     });
   }
 
+  watch = this.#watcher.watch;
+
   createState = createState;
   createSettableState = createSettableState;
   toSettableState = toSettableState;
   toState = toState;
   valueOf = valueOf;
   derive = derive;
-  watch = watch;
+  createWatcher = createWatcher;
 
   createRef = createRef;
   isRef = isRef;
@@ -191,6 +204,8 @@ export class Dolla {
     await Promise.all(this.#beforeUnmountCallbacks.map((callback) => callback()));
 
     this.#rootView?.unmount();
+
+    this.#watcher.stopAll();
 
     this.#isMounted = false;
 
@@ -380,14 +395,14 @@ export class Dolla {
   /**
    *
    */
-  constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []): ViewNode {
+  constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []): ViewElement {
     return constructView({ root: this, data: {} }, view, props, children);
   }
 
   /**
    *
    */
-  constructMarkup(markup: Markup | Markup[]): MarkupNode {
-    return mergeNodes(constructMarkup({ root: this, data: {} }, markup));
+  constructMarkup(markup: Markup | Markup[]): MarkupElement {
+    return mergeElements(constructMarkup({ root: this, data: {} }, markup));
   }
 }

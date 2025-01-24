@@ -1,10 +1,10 @@
 import {
-  mergeNodes,
-  isNode,
+  mergeElements as mergeElements,
+  isMarkupElement,
   isMarkup,
   constructMarkup,
   toMarkup,
-  type MarkupNode,
+  type MarkupElement,
   type ElementContext,
 } from "../markup.js";
 import { type Renderable } from "../types.js";
@@ -18,15 +18,15 @@ interface PortalConfig {
 /**
  * Renders content into a specified parent node.
  */
-export class Portal implements MarkupNode {
+export class Portal implements MarkupElement {
   config: PortalConfig;
-  handle?: MarkupNode;
+  element?: MarkupElement;
 
   get isMounted() {
-    if (!this.handle) {
+    if (!this.element) {
       return false;
     }
-    return this.handle.isMounted;
+    return this.element.isMounted;
   }
 
   constructor(config: PortalConfig) {
@@ -36,20 +36,20 @@ export class Portal implements MarkupNode {
   mount(_parent: Node, _after?: Node) {
     const { content, parent } = this.config;
 
-    if (isNode(content)) {
-      this.handle = content;
+    if (isMarkupElement(content)) {
+      this.element = content;
     } else if (isMarkup(content)) {
-      this.handle = mergeNodes(constructMarkup(this.config.elementContext, content));
+      this.element = mergeElements(constructMarkup(this.config.elementContext, content));
     } else {
-      this.handle = mergeNodes(constructMarkup(this.config.elementContext, toMarkup(content)));
+      this.element = mergeElements(constructMarkup(this.config.elementContext, toMarkup(content)));
     }
 
-    this.handle.mount(parent);
+    this.element.mount(parent);
   }
 
   unmount() {
-    if (this.handle?.isMounted) {
-      this.handle.unmount();
+    if (this.element?.isMounted) {
+      this.element.unmount();
     }
   }
 }

@@ -1,20 +1,20 @@
-import { type MarkupNode, type ElementContext } from "../markup.js";
+import { type MarkupElement, type ElementContext } from "../markup.js";
 import { type State, type StopFunction } from "../state.js";
 
 export interface OutletConfig {
-  $children: State<MarkupNode[]>;
+  $children: State<MarkupElement[]>;
   elementContext: ElementContext;
 }
 
 /**
  * Manages an array of DOMHandles.
  */
-export class Outlet implements MarkupNode {
+export class Outlet implements MarkupElement {
   node: Node;
   endNode: Node;
-  $children: State<MarkupNode[]>;
+  $children: State<MarkupElement[]>;
   stopCallback?: StopFunction;
-  connectedChildren: MarkupNode[] = [];
+  mountedChildren: MarkupElement[] = [];
   elementContext: ElementContext;
 
   constructor(config: OutletConfig) {
@@ -51,16 +51,16 @@ export class Outlet implements MarkupNode {
     }
 
     if (this.isMounted) {
-      for (const child of this.connectedChildren) {
+      for (const child of this.mountedChildren) {
         child.unmount();
       }
-      this.connectedChildren = [];
+      this.mountedChildren = [];
       this.endNode.parentNode?.removeChild(this.endNode);
     }
   }
 
-  update(newChildren: MarkupNode[]) {
-    for (const child of this.connectedChildren) {
+  update(newChildren: MarkupElement[]) {
+    for (const child of this.mountedChildren) {
       child.unmount();
     }
 
@@ -70,13 +70,13 @@ export class Outlet implements MarkupNode {
       child.mount(this.node.parentElement!, previous?.node);
     }
 
-    this.connectedChildren = newChildren;
+    this.mountedChildren = newChildren;
 
     if (this.elementContext.root.getEnv() === "development") {
       this.node.textContent = `Outlet (${newChildren.length} ${newChildren.length === 1 ? "child" : "children"})`;
       this.node.parentElement?.insertBefore(
         this.endNode,
-        this.connectedChildren[this.connectedChildren.length - 1]?.node?.nextSibling ?? null,
+        this.mountedChildren[this.mountedChildren.length - 1]?.node?.nextSibling ?? null,
       );
     }
   }

@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { constructMarkup, isRef, type ElementContext, type Markup, type MarkupNode, type Ref } from "../markup.js";
+import { constructMarkup, isRef, type ElementContext, type Markup, type MarkupElement, type Ref } from "../markup.js";
 import { isSettableState, isState, SettableState, type State, type StopFunction } from "../state.js";
 import { isFunction, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
@@ -14,10 +14,10 @@ type HTMLOptions = {
   children?: Markup[];
 };
 
-export class HTML implements MarkupNode {
+export class HTML implements MarkupElement {
   node;
   props: Record<string, any>;
-  children: MarkupNode[];
+  children: MarkupElement[];
   stopCallbacks: StopFunction[] = [];
   elementContext;
   uniqueId = nanoid();

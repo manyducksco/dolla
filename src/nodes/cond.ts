@@ -1,4 +1,4 @@
-import { constructMarkup, toMarkup, type MarkupNode, type ElementContext, type Markup } from "../markup.js";
+import { constructMarkup, toMarkup, type MarkupElement, type ElementContext, type Markup } from "../markup.js";
 import { type State, type StopFunction } from "../state.js";
 import { type Renderable } from "../types.js";
 
@@ -9,14 +9,14 @@ export interface ConditionalConfig {
   elementContext: ElementContext;
 }
 
-export class Conditional implements MarkupNode {
+export class Conditional implements MarkupElement {
   node: Node;
   endNode: Node;
   $predicate: State<any>;
   stopCallback?: StopFunction;
   thenContent?: Markup[];
   elseContent?: Markup[];
-  connectedContent: MarkupNode[] = [];
+  connectedContent: MarkupElement[] = [];
   elementContext: ElementContext;
 
   initialUpdateHappened = false;
