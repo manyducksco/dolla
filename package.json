@@ -6,7 +6,10 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "sideEffects": false,
-  "repository": "https://github.com/manyducksco/dolla",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manyducksco/dolla.git"
+  },
   "scripts": {
     "test": "npm run build && node --test",
     "build:esbuild": "tsc && node build.js",
