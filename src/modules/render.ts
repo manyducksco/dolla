@@ -4,17 +4,26 @@ export class Render {
   #dolla: Dolla;
   #logger: Logger;
 
-  // Keyed updates ensure only the most recent callback queued with a certain key
+  // Keys ensure only the most recent callback queued with a certain key
   // will be called, keeping DOM operations to a minimum.
-  #keyedUpdates = new Map<string, () => void>();
+  #keyedWrites = new Map<string, () => void>();
 
-  // All unkeyed updates are run on every batch.
-  #unkeyedUpdates: (() => void)[] = [];
+  // All unkeyed writes are run on every batch.
+  #unkeyedWrites: (() => void)[] = [];
 
   // All read callbacks are run before updates on every batch.
   #reads: (() => void)[] = [];
 
-  #isUpdating = false;
+  #batchInProgress = false;
+
+  // When true, batches that would exceed 16ms will be split and deferred to a rAF.
+  // This may not be desirable, because while it does prevent hitching it sometimes leaves
+  // the state partially rendered for a brief second and certain elements can be seen to update after the fact.
+  // But the tradeoff here is snappier navigation with possibly slightly out of date DOM updates on heavy pages.
+  #deferIfOvertime = true;
+  #deferrals = 0;
+
+  #msFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
@@ -22,82 +31,109 @@ export class Render {
   }
 
   /**
-   * Queues a callback to run in the next render batch.
-   * Running your DOM mutations in update callbacks reduces layout thrashing.
-   * Returns a Promise that resolves once the callback has run.
+   * Queues a callback that runs before the next batch of writes.
    */
-  update(callback: () => void, key?: string): Promise<void> {
-    return new Promise((resolve) => {
-      if (key) {
-        this.#keyedUpdates.set(key, () => {
-          callback();
-          resolve();
-        });
-      } else {
-        this.#unkeyedUpdates.push(() => {
-          callback();
-          resolve();
-        });
-      }
+  read(callback: () => void) {
+    if (!this.#dolla.isMounted) return;
 
-      if (!this.#isUpdating && this.#dolla.isMounted) {
-        this.#isUpdating = true;
-        this.#runUpdates();
-      }
-    });
+    this.#reads.push(callback);
+    this.#queueBatch();
   }
 
   /**
-   * Queues a callback that reads DOM information to run after the next render batch,
-   * ensuring all writes have been performed before reading.
-   * Returns a Promise that resolves once the callback has run.
+   * Queues a callback to run in the next render batch.
+   * Always put DOM mutations in a write callback when possible to help Dolla batch them efficiently.
    */
-  read(callback: () => void): Promise<void> {
-    return new Promise((resolve) => {
-      this.#reads.push(() => {
-        callback();
-        resolve();
-      });
+  write(callback: () => void, key?: string) {
+    if (!this.#dolla.isMounted) return;
 
-      if (!this.#isUpdating && this.#dolla.isMounted) {
-        this.#isUpdating = true;
-        this.#runUpdates();
-      }
-    });
+    if (key) {
+      this.#keyedWrites.set(key, callback);
+    } else {
+      this.#unkeyedWrites.push(callback);
+    }
+    this.#queueBatch();
   }
 
-  #runUpdates() {
-    const totalQueued = this.#keyedUpdates.size + this.#unkeyedUpdates.length;
+  #queueBatch() {
+    if (!this.#batchInProgress) {
+      this.#batchInProgress = true;
+      queueMicrotask(() => {
+        this.#runBatch();
+      });
+    }
+  }
 
-    if (!this.#dolla.isMounted || totalQueued === 0) {
-      this.#isUpdating = false;
+  #runBatch() {
+    const isDevEnv = this.#dolla.getEnv() === "development";
+
+    if (!this.#dolla.isMounted) {
+      this.#batchInProgress = false;
     }
 
-    if (!this.#isUpdating) {
-      for (const callback of this.#reads) {
-        callback();
+    const start = performance.now();
+    let elapsed = 0;
+
+    const total = this.#reads.length + this.#keyedWrites.size + this.#unkeyedWrites.length;
+    let completed = 0;
+
+    /**
+     * Runs after each operation. If returns true, the batch has been deferred and processing should stop. If returns true, processing of the current batch should continue.
+     */
+    const checkpoint = () => {
+      completed++;
+      elapsed = performance.now() - start;
+      if (this.#deferIfOvertime && elapsed > 12 && completed < total) {
+        this.#deferrals++;
+        if (isDevEnv) {
+          this.#logger.warn(
+            `⚠️ Deferring batch to next frame. Performed ${completed} of ${total} batched operation${completed === 1 ? "" : "s"} in ${this.#msFormat.format(elapsed)}ms (deferral ${this.#deferrals}).`,
+          );
+        }
+        requestAnimationFrame(() => {
+          this.#runBatch();
+        });
+        return true;
       }
-      this.#reads = [];
-      return;
+      return false;
+    };
+
+    const keyedWrites = [...this.#keyedWrites.entries()];
+
+    let op: (() => void) | undefined;
+
+    // Run reads.
+    while ((op = this.#reads.shift())) {
+      op();
+      if (checkpoint()) return;
     }
 
-    requestAnimationFrame(() => {
-      this.#logger.info(`Batching ${this.#keyedUpdates.size + this.#unkeyedUpdates.length} queued DOM update(s).`);
+    // Run keyed writes first.
+    for (const [key, callback] of keyedWrites) {
+      callback();
+      this.#keyedWrites.delete(key);
+      if (checkpoint()) return;
+    }
 
-      // Run keyed updates first.
-      for (const callback of this.#keyedUpdates.values()) {
-        callback();
-      }
-      this.#keyedUpdates.clear();
+    // Run unkeyed writes second.
+    while ((op = this.#unkeyedWrites.shift())) {
+      op();
+      if (checkpoint()) return;
+    }
 
-      // Run unkeyed updates second.
-      for (const callback of this.#unkeyedUpdates) {
-        callback();
-      }
-      this.#unkeyedUpdates = [];
-
-      // Trigger again to catch updates queued while this batch was running.
-      this.#runUpdates();
-    });
+    if (isDevEnv) {
+      this.#logger[elapsed > 16 ? "warn" : "info"](
+        `${elapsed > 16 ? "⚠️ (>=16ms) " : ""}Executed ${completed} operation${completed === 1 ? "" : "s"} in ${this.#msFormat.format(elapsed)}ms${this.#deferrals > 0 ? ` (after ${this.#deferrals} deferral${this.#deferrals === 1 ? "" : "s"})` : ""}.`,
+      );
+    }
+    this.#deferrals = 0;
+    // Trigger again to catch updates queued while this batch was running.
+    if (this.#reads.length || this.#keyedWrites.size || this.#unkeyedWrites.length) {
+      queueMicrotask(() => {
+        this.#runBatch();
+      });
+    } else {
+      this.#batchInProgress = false;
+    }
   }
 }

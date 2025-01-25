@@ -124,13 +124,13 @@ export class HTML implements MarkupElement {
     if (isState(value)) {
       this.stopCallbacks.push(
         value.watch((current) => {
-          this.elementContext.root.render.update(() => {
+          this.elementContext.root.render.write(() => {
             callback(current);
           }, updateKey);
         }),
       );
     } else {
-      this.elementContext.root.render.update(() => {
+      this.elementContext.root.render.write(() => {
         callback(value);
       }, updateKey);
     }
@@ -358,7 +358,7 @@ export class HTML implements MarkupElement {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
-        this.elementContext.root.render.update(
+        this.elementContext.root.render.write(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -380,7 +380,7 @@ export class HTML implements MarkupElement {
 
         if (isState(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.render.update(() => {
+            this.elementContext.root.render.write(() => {
               if (current) {
                 element.style.setProperty(name, String(current), priority);
               } else {
@@ -412,7 +412,7 @@ export class HTML implements MarkupElement {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
-        this.elementContext.root.render.update(
+        this.elementContext.root.render.write(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -434,7 +434,7 @@ export class HTML implements MarkupElement {
 
         if (isState(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.render.update(() => {
+            this.elementContext.root.render.write(() => {
               if (current) {
                 element.classList.add(name);
               } else {

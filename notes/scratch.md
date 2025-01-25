@@ -165,7 +165,7 @@ debug.warn("THIS IS A SCOPED LOGGER");
 Dolla.render.read(() => {
   // Reference DOM nodes
 });
-Dolla.render.update(() => {
+Dolla.render.write(() => {
   // Mutate the DOM as part of Dolla's next batch
 }, "some-key");
 

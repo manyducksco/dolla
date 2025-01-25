@@ -567,8 +567,9 @@ export function derive<Inputs extends MaybeState<any>[], T>(
 \*===========================*/
 
 class RefSignal<T extends Node> implements State<T | undefined> {
-  // Instances will pass isRef() with this symbol
+  // Instances will pass isRef() and isState() with these symbols
   [TYPE_REF] = true;
+  [TYPE_STATE] = true;
 
   __value: ValueHolder<T | undefined>;
 
