@@ -14,6 +14,7 @@ import {
   createWatcher,
   isState,
   type MaybeState,
+  Setter,
   State,
   type StateValues,
   type StopFunction,
@@ -65,7 +66,7 @@ export interface ViewContext extends Logger {
   /**
    * Sets the name of the view's built in logger.
    */
-  setName(name: string): void;
+  setName(name: string): ViewContext;
 
   /**
    * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
@@ -103,230 +104,254 @@ export interface ViewContext extends Logger {
 ||              View Init              ||
 \*=====================================*/
 
-export function constructView<P>(
-  elementContext: ElementContext,
-  view: ViewFunction<P>,
-  props: P,
-  children: Markup[] = [],
-): ViewElement {
-  elementContext = { ...elementContext, data: {}, parent: elementContext };
-  const [$children, setChildren] = createState<MarkupElement[]>(constructMarkup(elementContext, children));
+// Defines logger methods on context.
+interface Context extends Logger {}
 
-  let isMounted = false;
+class Context implements ViewContext {
+  __view;
 
-  // Lifecycle and observers
-  const watcher = createWatcher();
-  const beforeMountCallbacks: (() => void | Promise<void>)[] = [];
-  const onMountCallbacks: (() => any)[] = [];
-  const beforeUnmountCallbacks: (() => void | Promise<void>)[] = [];
-  const onUnmountCallbacks: (() => any)[] = [];
+  constructor(view: View<any>) {
+    this.__view = view;
 
-  const uniqueId = nanoid();
-
-  const [$name, setName] = createState(view.name);
-  const logger = elementContext.root.createLogger($name, { uid: uniqueId });
-
-  const ctx: Pick<ViewContext, Exclude<keyof ViewContext, keyof Logger>> = {
-    get uid() {
-      return uniqueId;
-    },
-
-    set(key, value) {
-      elementContext.data[key] = value;
-      return value;
-    },
-
-    get<T>(key: string | symbol) {
-      let ctx = elementContext;
-
-      while (true) {
-        if (key in ctx.data) {
-          return ctx.data[key] as T;
-        } else if (ctx.parent) {
-          ctx = ctx.parent;
-        } else {
-          break;
-        }
+    // Copy logger methods from logger.
+    const descriptors = Object.getOwnPropertyDescriptors(this.__view._logger);
+    for (const key in descriptors) {
+      if (key !== "getName") {
+        Object.defineProperty(this, key, descriptors[key]);
       }
+    }
+  }
 
-      return null;
-    },
+  get uid() {
+    return this.__view.uniqueId;
+  }
 
-    getAll() {
-      const contexts: Record<string | symbol, unknown>[] = [];
+  setName(name: string): ViewContext {
+    this.__view._logger.setName(name);
+    return this;
+  }
 
-      let ctx = elementContext;
-      while (true) {
-        contexts.push(ctx.data);
+  set<T>(key: string | symbol, value: T): T {
+    this.__view._elementContext.data[key] = value;
+    return value;
+  }
 
-        if (ctx.parent) {
-          ctx = ctx.parent;
-        } else {
-          break;
-        }
-      }
+  get<T>(key: string | symbol): T | null {
+    let ctx = this.__view._elementContext;
 
-      const data: Record<string | symbol, unknown> = {};
-
-      // Iterate data objects in top -> bottom order.
-      for (const context of contexts.reverse()) {
-        Object.assign(data, context);
-      }
-
-      return data;
-    },
-
-    setName(name) {
-      setName(name);
-    },
-
-    beforeMount(callback) {
-      beforeMountCallbacks.push(callback);
-    },
-
-    onMount(callback) {
-      onMountCallbacks.push(callback);
-    },
-
-    beforeUnmount(callback) {
-      beforeUnmountCallbacks.push(callback);
-    },
-
-    onUnmount(callback) {
-      onUnmountCallbacks.push(callback);
-    },
-
-    watch(states, callback) {
-      if (isMounted) {
-        // If called when the component is connected, we assume this code is in a lifecycle hook
-        // where it will be triggered at some point again after the component is reconnected.
-        return watcher.watch(states, callback);
+    while (true) {
+      if (key in ctx.data) {
+        return ctx.data[key] as T;
+      } else if (ctx.parent) {
+        ctx = ctx.parent;
       } else {
-        // This should only happen if called in the body of the component function.
-        // This code is not always re-run between when a component is unmounted and remounted.
-        let stop: StopFunction | undefined;
-        let isStopped = false;
-        onMountCallbacks.push(() => {
-          if (!isStopped) {
-            stop = watcher.watch(states, callback);
-          }
-        });
-        return () => {
-          if (stop != null) {
-            isStopped = true;
-            stop();
-          }
-        };
+        break;
       }
-    },
-
-    outlet() {
-      return createMarkup("$outlet", { $children });
-    },
-  };
-
-  Object.assign(ctx, logger);
-
-  let rendered: MarkupElement | undefined;
-
-  function initialize() {
-    let result: unknown;
-
-    try {
-      result = view(props, ctx as ViewContext);
-    } catch (error) {
-      if (error instanceof Error) {
-        logger.crash(error);
-      }
-      throw error;
     }
 
-    if (result instanceof Promise) {
-      throw new TypeError(`View function cannot return a Promise.`);
+    return null;
+  }
+
+  getAll(): Record<string | symbol, unknown> {
+    const contexts: Record<string | symbol, unknown>[] = [];
+
+    let ctx = this.__view._elementContext;
+    while (true) {
+      contexts.push(ctx.data);
+
+      if (ctx.parent) {
+        ctx = ctx.parent;
+      } else {
+        break;
+      }
+    }
+
+    const data: Record<string | symbol, unknown> = {};
+
+    // Iterate data objects in top -> bottom order.
+    for (const context of contexts.reverse()) {
+      Object.assign(data, context);
+    }
+
+    return data;
+  }
+
+  beforeMount(callback: () => void): void {
+    this.__view._beforeMountCallbacks.push(callback);
+  }
+
+  onMount(callback: () => void): void {
+    this.__view._onMountCallbacks.push(callback);
+  }
+
+  beforeUnmount(callback: () => void): void {
+    this.__view._beforeUnmountCallbacks.push(callback);
+  }
+
+  onUnmount(callback: () => void): void {
+    this.__view._onUnmountCallbacks.push(callback);
+  }
+
+  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction {
+    const view = this.__view;
+
+    if (view.isMounted) {
+      // If called when the component is connected, we assume this code is in a lifecycle hook
+      // where it will be triggered at some point again after the component is reconnected.
+      return view._watcher.watch(states, callback);
+    } else {
+      // This should only happen if called in the body of the component function.
+      // This code is not always re-run between when a component is unmounted and remounted.
+      let stop: StopFunction | undefined;
+      let isStopped = false;
+      view._onMountCallbacks.push(() => {
+        if (!isStopped) {
+          stop = view._watcher.watch(states, callback);
+        }
+      });
+      return () => {
+        if (stop != null) {
+          isStopped = true;
+          stop();
+        }
+      };
+    }
+  }
+
+  outlet(): Markup {
+    return createMarkup("$outlet", { $children: this.__view._$children });
+  }
+}
+
+export class View<P> implements ViewElement {
+  uniqueId = nanoid();
+
+  _elementContext: ElementContext;
+  _logger;
+  _view;
+  _props;
+
+  _element?: MarkupElement;
+
+  _$children;
+  _setChildren;
+
+  _watcher = createWatcher();
+  _beforeMountCallbacks: (() => any)[] = [];
+  _onMountCallbacks: (() => any)[] = [];
+  _beforeUnmountCallbacks: (() => any)[] = [];
+  _onUnmountCallbacks: (() => any)[] = [];
+
+  constructor(elementContext: ElementContext, view: ViewFunction<P>, props: P, children: Markup[] = []) {
+    this._elementContext = { ...elementContext, data: {}, parent: elementContext };
+    this._logger = elementContext.root.createLogger(view.name, { uid: this.uniqueId });
+    this._view = view;
+    this._props = props;
+
+    const [$children, setChildren] = createState<MarkupElement[]>(constructMarkup(elementContext, children));
+    this._$children = $children;
+    this._setChildren = setChildren;
+  }
+
+  /*===============================*\
+  ||         "Public" API          ||
+  \*===============================*/
+
+  get node() {
+    return this._element!.node!;
+  }
+
+  isMounted = false;
+
+  mount(parent: Node, after?: Node) {
+    // Don't run lifecycle hooks or initialize if already connected.
+    // Calling connect again can be used to re-order elements that are already connected to the DOM.
+    const wasConnected = this.isMounted;
+
+    if (!wasConnected) {
+      this.initialize();
+      while (this._beforeMountCallbacks.length > 0) {
+        const callback = this._beforeMountCallbacks.shift()!;
+        callback();
+      }
+    }
+
+    if (this._element) {
+      this._element.mount(parent, after);
+    }
+
+    if (!wasConnected) {
+      this.isMounted = true;
+
+      requestAnimationFrame(() => {
+        while (this._onMountCallbacks.length > 0) {
+          const callback = this._onMountCallbacks.shift()!;
+          callback();
+        }
+      });
+    }
+  }
+
+  unmount() {
+    while (this._beforeUnmountCallbacks.length > 0) {
+      const callback = this._beforeUnmountCallbacks.shift()!;
+      callback();
+    }
+
+    if (this._element) {
+      this._element.unmount();
+    }
+
+    this.isMounted = false;
+
+    while (this._onUnmountCallbacks.length > 0) {
+      const callback = this._onUnmountCallbacks.shift()!;
+      callback();
+    }
+
+    this._watcher.stopAll();
+  }
+
+  setChildView(fn: ViewFunction<{}>) {
+    const node = new View(this._elementContext, fn, {});
+    this._setChildren([node]);
+    return node;
+  }
+
+  /*===============================*\
+  ||           Internal            ||
+  \*===============================*/
+
+  initialize() {
+    const context = new Context(this);
+
+    let result: ViewResult;
+    try {
+      result = this._view(this._props, context);
+    } catch (error) {
+      if (error instanceof Error) {
+        this._logger.crash(error);
+      }
+      throw error;
     }
 
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      rendered = mergeElements(constructMarkup(elementContext, createMarkup("$node", { value: result })));
+      this._element = mergeElements(constructMarkup(this._elementContext, createMarkup("$node", { value: result })));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      rendered = mergeElements(constructMarkup(elementContext, result));
+      this._element = mergeElements(constructMarkup(this._elementContext, result));
     } else if (isState(result)) {
-      rendered = mergeElements(
-        constructMarkup(elementContext, createMarkup("$observer", { states: [result], renderFn: (x) => x })),
+      this._element = mergeElements(
+        constructMarkup(this._elementContext, createMarkup("$observer", { states: [result], renderFn: (x) => x })),
       );
     } else {
       const error = new TypeError(
         `Expected '${
-          view.name
+          this._view.name
         }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
       );
-      logger.crash(error);
+      this._logger.crash(error);
     }
   }
-
-  return {
-    get node() {
-      return rendered?.node!;
-    },
-
-    get isMounted() {
-      return isMounted;
-    },
-
-    mount(parent: Node, after?: Node) {
-      // Don't run lifecycle hooks or initialize if already connected.
-      // Calling connect again can be used to re-order elements that are already connected to the DOM.
-      const wasConnected = isMounted;
-
-      if (!wasConnected) {
-        initialize();
-        while (beforeMountCallbacks.length > 0) {
-          const callback = beforeMountCallbacks.shift()!;
-          callback();
-        }
-      }
-
-      if (rendered) {
-        rendered.mount(parent, after);
-      }
-
-      if (!wasConnected) {
-        isMounted = true;
-
-        requestAnimationFrame(() => {
-          while (onMountCallbacks.length > 0) {
-            const callback = onMountCallbacks.shift()!;
-            callback();
-          }
-        });
-      }
-    },
-
-    unmount() {
-      while (beforeUnmountCallbacks.length > 0) {
-        const callback = beforeUnmountCallbacks.shift()!;
-        callback();
-      }
-
-      if (rendered) {
-        rendered.unmount();
-      }
-
-      isMounted = false;
-
-      while (onUnmountCallbacks.length > 0) {
-        const callback = onUnmountCallbacks.shift()!;
-        callback();
-      }
-
-      watcher.stopAll();
-    },
-
-    setChildView(view) {
-      const node = constructView(elementContext, view, {});
-      setChildren([node]);
-      return node;
-    },
-  };
 }

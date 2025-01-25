@@ -16,11 +16,10 @@ import {
   toSettableState,
   toState,
   valueOf,
-  type State,
 } from "../state.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
-import { constructView, type ViewElement, type ViewFunction } from "../view.js";
+import { View, type ViewElement, type ViewFunction } from "../view.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 
@@ -48,6 +47,8 @@ export interface Logger {
   warn(...args: any[]): void;
   error(...args: any[]): void;
   crash(error: Error): void;
+
+  setName(name: string): Logger;
 }
 
 export interface LoggerErrorContext {
@@ -288,16 +289,18 @@ export class Dolla {
     this.#match = createMatcher(filter);
   }
 
-  createLogger(name: string | State<string>, options?: LoggerOptions): Logger {
-    const $name = toState(name);
-
+  createLogger(name: string, options?: LoggerOptions): Logger {
     const _console = options?.console ?? getDefaultConsole();
 
     const self = this;
 
     return {
+      setName(newName: string) {
+        name = newName;
+        return this;
+      },
+
       get info() {
-        const name = $name.get();
         if (
           self.#loggles.info === false ||
           (isString(self.#loggles.info) && self.#loggles.info !== self.getEnv()) ||
@@ -323,7 +326,6 @@ export class Dolla {
       },
 
       get log() {
-        const name = $name.get();
         if (
           self.#loggles.log === false ||
           (isString(self.#loggles.log) && self.#loggles.log !== self.getEnv()) ||
@@ -349,7 +351,6 @@ export class Dolla {
       },
 
       get warn() {
-        const name = $name.get();
         if (
           self.#loggles.warn === false ||
           (isString(self.#loggles.warn) && self.#loggles.warn !== self.getEnv()) ||
@@ -375,7 +376,6 @@ export class Dolla {
       },
 
       get error() {
-        const name = $name.get();
         if (
           self.#loggles.error === false ||
           (isString(self.#loggles.error) && self.#loggles.error !== self.getEnv()) ||
@@ -408,7 +408,7 @@ export class Dolla {
           // Mount the crash page
           const crashPage = self.constructView(self.#crashView, {
             error,
-            loggerName: $name.get(),
+            loggerName: name,
             uid: options?.uid,
           });
           crashPage.mount(self.#rootElement!);
@@ -423,7 +423,7 @@ export class Dolla {
    *
    */
   constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []): ViewElement {
-    return constructView(this.#rootElementContext, view, props, children);
+    return new View(this.#rootElementContext, view, props, children);
   }
 
   /**

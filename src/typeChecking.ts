@@ -16,11 +16,6 @@ type TypeNames =
   | "NaN";
 
 /**
- * Represents an object that can be called with `new` to produce a T.
- */
-type Factory<T> = { new (): T };
-
-/**
  * Extends `typeof` operator with more specific and useful type distinctions.
  */
 export function typeOf(value: unknown): TypeNames {
@@ -70,7 +65,7 @@ export function typeOf(value: unknown): TypeNames {
 export function assert(condition: any, errorMessage?: string): void {
   if (!condition) {
     throw new TypeError(
-      formatError(condition, errorMessage || "Failed assertion. Value is not truthy. Got type: %t, value: %v")
+      formatError(condition, errorMessage || "Failed assertion. Value is not truthy. Got type: %t, value: %v"),
     );
   }
 }
@@ -139,7 +134,7 @@ export function assertArrayOf<T>(check: (item: unknown) => boolean): (value: unk
 export function assertArrayOf<T>(
   check: (item: unknown) => boolean,
   value: unknown,
-  errorMessage?: string
+  errorMessage?: string,
 ): value is T[];
 
 export function assertArrayOf<T>(...args: unknown[]) {
@@ -421,8 +416,8 @@ export function assertIterable<T>(value: any, errorMessage?: string): value is I
   throw new TypeError(
     formatError(
       value,
-      errorMessage ?? "Expected an object that implements the iterable protocol. Got type: %t, value: %v"
-    )
+      errorMessage ?? "Expected an object that implements the iterable protocol. Got type: %t, value: %v",
+    ),
   );
 }
 

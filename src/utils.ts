@@ -1,63 +1,7 @@
 import colorHash from "simple-color-hash";
-import { isState } from "./state.js";
 import { isObject } from "./typeChecking.js";
-import fastDeepEqual from "fast-deep-equal";
 
 export const noOp = () => {};
-
-function isPlainObject<T = { [name: string]: any }>(value: any): value is T {
-  return (
-    value != null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.getPrototypeOf({})
-  );
-}
-
-export function deepEqual(one: any, two: any) {
-  if (one === two) {
-    return true;
-  }
-
-  if (isState(one) || isState(two)) {
-    return false;
-  }
-
-  return fastDeepEqual(one, two);
-
-  // if (isPlainObject(one) && isPlainObject(two)) {
-  //   const keysOne = Object.keys(one);
-  //   const keysTwo = Object.keys(two);
-
-  //   if (keysOne.length !== keysTwo.length) {
-  //     return false;
-  //   }
-
-  //   for (const key in one) {
-  //     if (!deepEqual(one[key], two[key])) {
-  //       return false;
-  //     }
-  //   }
-
-  //   return true;
-  // }
-
-  // if (Array.isArray(one) && Array.isArray(two)) {
-  //   if (one.length !== two.length) {
-  //     return false;
-  //   }
-
-  //   for (const index in one) {
-  //     if (!deepEqual(one[index], two[index])) {
-  //       return false;
-  //     }
-  //   }
-
-  //   return true;
-  // }
-
-  // return one === two;
-}
 
 /**
  * Takes an old value and a new value.  Returns a merged copy if both are objects, otherwise returns the new value.

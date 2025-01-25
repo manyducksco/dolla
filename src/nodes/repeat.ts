@@ -1,6 +1,6 @@
 import { type MarkupElement, type ElementContext } from "../markup.js";
 import { createState, type State, type Setter, type StopFunction } from "../state.js";
-import { constructView, type ViewContext, type ViewResult } from "../view.js";
+import { View, type ViewContext, type ViewResult } from "../view.js";
 
 // ----- Types ----- //
 
@@ -130,7 +130,7 @@ export class Repeat<T> implements MarkupElement {
           setValue,
           $index,
           setIndex,
-          element: constructView(this.elementContext, RepeatItemView, {
+          element: new View(this.elementContext, RepeatItemView, {
             $value,
             $index,
             renderFn: this.renderFn,

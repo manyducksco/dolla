@@ -11,7 +11,7 @@ import { Text } from "./nodes/text.js";
 import { MaybeState, isRef, isSettableState, isState, toState, type State } from "./state.js";
 import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
-import { constructView, type ViewContext, type ViewFunction, type ViewResult } from "./view.js";
+import { View, type ViewContext, type ViewFunction, type ViewResult } from "./view.js";
 
 /*===========================*\
 ||       ElementContext      ||
@@ -271,7 +271,7 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
 
   return items.map((item) => {
     if (isFunction(item.type)) {
-      return constructView(elementContext, item.type as ViewFunction<any>, item.props, item.children);
+      return new View(elementContext, item.type as ViewFunction<any>, item.props, item.children);
     } else if (isString(item.type)) {
       switch (item.type) {
         case "$node": {

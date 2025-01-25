@@ -15,7 +15,6 @@ import { type Stringable } from "../types.js";
 import { type ViewElement, type ViewFunction } from "../view.js";
 import { Passthrough } from "../views/passthrough.js";
 import type { Dolla, Logger } from "./dolla.js";
-import deepEqual from "fast-deep-equal";
 
 // ----- Types ----- //
 
@@ -150,6 +149,21 @@ export interface RouterElements {
 
 // ----- Code ----- //
 
+/**
+ * A quick equality check for parsed params.
+ */
+const objectEqual = (a: Record<string, any>, b: Record<string, any>) => {
+  if (Object.keys(a).length !== Object.keys(b).length) {
+    return false;
+  }
+  for (const key in a) {
+    if (a[key] !== b[key]) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export class Router {
   #dolla: Dolla;
   #logger: Logger;
@@ -196,10 +210,10 @@ export class Router {
 
     const [$pattern, setPattern] = createState<string | null>(null);
     const [$path, setPath] = createState("");
-    const [$params, setParams] = createState<ParsedParams>({}, { equals: deepEqual });
+    const [$params, setParams] = createState<ParsedParams>({}, { equals: objectEqual });
     const [$query, setQuery] = createState<ParsedQuery>(
       parseQueryParams(typeof window === "undefined" ? "" : (window.location.search ?? "")),
-      { equals: deepEqual },
+      { equals: objectEqual },
     );
 
     this.$pattern = $pattern;
