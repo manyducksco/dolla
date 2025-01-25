@@ -258,7 +258,7 @@ export class View<P> implements ViewElement {
   \*===============================*/
 
   get node() {
-    return this._element!.node!;
+    return this._element?.node!;
   }
 
   isMounted = false;
