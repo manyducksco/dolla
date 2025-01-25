@@ -48,9 +48,9 @@ export interface ViewContext extends Logger {
   readonly uid: string;
 
   /**
-   * Sets a context variable. Context variables are accessible on the same context and from those of child views.
+   * Sets a context variable and returns its value. Context variables are accessible on the same context and from those of child views.
    */
-  set<T>(key: string | symbol, value: T): void;
+  set<T>(key: string | symbol, value: T): T;
 
   /**
    * Gets the value of a context variable. Returns null if the variable is not set.
@@ -114,10 +114,8 @@ export function constructView<P>(
 
   let isMounted = false;
 
-  const watcher = createWatcher();
-
   // Lifecycle and observers
-  // const stopObserverCallbacks: (() => void)[] = [];
+  const watcher = createWatcher();
   const beforeMountCallbacks: (() => void | Promise<void>)[] = [];
   const onMountCallbacks: (() => any)[] = [];
   const beforeUnmountCallbacks: (() => void | Promise<void>)[] = [];
@@ -135,6 +133,7 @@ export function constructView<P>(
 
     set(key, value) {
       elementContext.data[key] = value;
+      return value;
     },
 
     get<T>(key: string | symbol) {

@@ -21,7 +21,7 @@ Let's first get into some examples.
 ### Basic State API
 
 ```jsx
-import { createState, toState, valueOf, derive } from "@manyducks.co/dolla";
+import { createState, toState, valueOf, derive, createWatcher } from "@manyducks.co/dolla";
 
 const [$count, setCount] = createState(72);
 
@@ -36,11 +36,9 @@ $count.get(); // 300
 setCount((current) => current + 1);
 $count.get(); // 301
 
-// Watch for changes to the value
-const unwatch = $count.watch((value) => {
-  // This function is called immediately with the current value, then again each time the value changes.
-});
-unwatch(); // Stop watching for changes
+// Derive a new state from one or more other states. Whenever $count changes, $doubled will follow.
+const $doubled = derive([$count], (count) => count * 2);
+const $sum = derive([$count, $doubled], (count, doubled) => count + doubled);
 
 // Returns the value of a state. If the value is not a state it is returned as is.
 const count = valueOf($count);
@@ -50,9 +48,14 @@ const bool = valueOf(true);
 const $bool = toState(true);
 const $anotherCount = toState($count);
 
-// Derive a new state from one or more other states. Whenever $count changes, $doubled will follow.
-const $doubled = derive([$count], (count) => count * 2);
-const $sum = derive([$count, $doubled], (count, doubled) => count + doubled);
+const watcher = createWatcher();
+
+// Watch for changes to the value
+const stop = watcher.watch([$count], (value) => [
+// This function is called immediately with the current value, then again each time the value changes.
+]);
+stop(); // Stop watching for changes
+
 ```
 
 States also come in a settable variety that includes the setter on the same object. Sometimes you want to pass around a two-way binding and this is what SettableState is for.
@@ -60,9 +63,11 @@ States also come in a settable variety that includes the setter on the same obje
 ```jsx
 import { createSettableState, fromSettable, toSettable } from "@manyducks.co/dolla";
 
-// Settable states have their setter included.
+// Settable states can be set by passing a value when they are called.
 const $$value = createSettableState("Test");
-$$value.set("New Value");
+$$value(); // "Test"
+$$value("New Value");
+$$value(); // "New Value"
 
 // They can also be split into a State and Setter
 const [$value, setValue] = fromSettableState($$value);
@@ -92,12 +97,12 @@ const setDoubled = createSetter($doubled, (next, current) => {
 const $$doubled = toSettableState($doubled, setDoubled);
 
 // Setting the doubled state...
-$$doubled.set(100);
+$$doubled(100);
 
 // ... will be reflected everywhere.
-$$doubled.get(); // 100
-$doubled.get(); // 100
-$value.get(); // 50
+$$doubled(); // 100
+$doubled(); // 100
+$value(); // 50
 ```
 
 ## Views [id="section-views"]

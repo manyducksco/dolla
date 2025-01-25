@@ -1,4 +1,4 @@
-import { deepEqual, noOp } from "./utils";
+import { colorFromString, noOp } from "./utils";
 
 /**
  * Counts total active state watchers for the purpose of tracking memory leaks.
@@ -7,18 +7,27 @@ const tracker = {
   watcherCount: 0,
   increment() {
     this.watcherCount++;
-    this._bump();
+    this._log();
   },
   decrement() {
     this.watcherCount--;
-    this._bump();
+    this._log();
   },
 
+  _label: "dolla/state-tracker",
   _timeout: null as any,
-  _bump() {
+  _log() {
     if ((window as any).DOLLA_DEV_DEBUG === true && !this._timeout) {
       this._timeout = setTimeout(() => {
-        console.log({ watcherCount: this.watcherCount });
+        console.log(
+          `%c[DOLLA_DEV_DEBUG] %c${this._label}%c%c%c`,
+          `color:#e44c4c;font-weight:bold`,
+          `color:${colorFromString(this._label)};font-weight:bold`,
+          `color:#777`,
+          `color:#aaa`,
+          `color:#777`,
+          { watcherCount: this.watcherCount },
+        );
         this._timeout = null;
       }, 200);
     }
@@ -52,7 +61,7 @@ export interface CreateStateOptions<T> {
    * @param next - The new value being set.
    * @param current - The current value being replaced.
    */
-  equality?: (next: T, current: T) => boolean;
+  equals?: (next: T, current: T) => boolean;
 }
 
 export interface WatchOptions<T> {
@@ -102,44 +111,28 @@ export interface SettableState<I, O = I> extends State<I> {
   set(callback: (current: I) => O): void;
 }
 
+export interface Ref<T extends Node> extends State<T | undefined> {
+  node: T | undefined;
+}
+
 /*==============================*\
 ||            Utils             ||
 \*==============================*/
 
+const TYPE_STATE = Symbol("State");
+const TYPE_SETTABLE_STATE = Symbol("SettableState");
+const TYPE_REF = Symbol("Ref");
+
 export function isState<T>(value: any): value is State<T> {
-  if (value == null || typeof value !== "object") {
-    return false;
-  }
-
-  if (typeof value["get"] !== "function") {
-    return false;
-  }
-
-  if (typeof value["watch"] !== "function") {
-    return false;
-  }
-
-  return true;
+  return value?.[TYPE_STATE] === true;
 }
 
 export function isSettableState<T>(value: any): value is SettableState<T> {
-  if (value == null || typeof value !== "object") {
-    return false;
-  }
+  return value?.[TYPE_SETTABLE_STATE] === true;
+}
 
-  if (typeof value["set"] !== "function") {
-    return false;
-  }
-
-  if (typeof value["get"] !== "function") {
-    return false;
-  }
-
-  if (typeof value["watch"] !== "function") {
-    return false;
-  }
-
-  return true;
+export function isRef<T extends Node>(value: any): value is Ref<T> {
+  return value?.[TYPE_REF] === true;
 }
 
 /**
@@ -158,14 +151,11 @@ export function valueOf<T>(value: MaybeState<T>): T {
  */
 export function toState<T>(value: MaybeState<T>): State<T> {
   if (isSettableState<T>(value)) {
-    return {
-      get: value.get,
-      watch: value.watch,
-    };
+    return new Signal(value);
   } else if (isState<T>(value)) {
     return value;
   } else {
-    return {
+    return new Signal({
       get() {
         return value;
       },
@@ -175,13 +165,151 @@ export function toState<T>(value: MaybeState<T>): State<T> {
         }
         return noOp;
       },
-    };
+    });
   }
 }
 
 /*==============================*\
 ||             State            ||
 \*==============================*/
+
+export class ValueHolder<T> implements State<T> {
+  static defaultEquals(next: any, current: any): boolean {
+    return next === current;
+    // return deepEqual(next, current);
+  }
+
+  value: T;
+  watchers: ((value: T) => void)[] = [];
+  equals = ValueHolder.defaultEquals;
+
+  constructor(value: T, options?: CreateStateOptions<T>) {
+    this.value = value;
+    if (options?.equals) {
+      this.equals = options.equals;
+    }
+  }
+
+  get() {
+    return this.value;
+  }
+
+  set(action: T | ((value: T) => T)) {
+    if (typeof action === "function") {
+      action = (action as (value: T) => T)(this.value);
+    }
+
+    if (!this.equals(this.value, action)) {
+      this.value = action;
+
+      try {
+        for (const watcher of this.watchers) {
+          watcher(action);
+        }
+      } catch (err) {
+        console.error("Error in watcher");
+        throw err;
+      }
+    }
+  }
+
+  watch(callback: (value: T) => void, options?: WatchOptions<T>) {
+    if (this.watchers.indexOf(callback) === -1) {
+      this.watchers.push(callback);
+    }
+
+    if (!options?.lazy) {
+      callback(this.value);
+    }
+
+    tracker.increment();
+
+    return () => {
+      const index = this.watchers.indexOf(callback);
+      if (index > -1) {
+        this.watchers.splice(index, 1);
+      }
+
+      tracker.decrement();
+    };
+  }
+}
+
+export class Signal<T> implements State<T> {
+  // Instances will pass isState() with this symbol
+  [TYPE_STATE] = true;
+
+  __value: State<T>;
+
+  constructor(value: State<T>) {
+    if (value == null) {
+      throw new TypeError(`Value is null`);
+    }
+    this.__value = value;
+  }
+
+  get() {
+    return this.__value.get();
+  }
+
+  watch(callback: (value: T) => void, options?: WatchOptions<T>) {
+    return this.__value.watch(callback, options);
+  }
+}
+
+/**
+ * Creates a state and setter.
+ */
+export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>];
+
+/**
+ * Creates a state and setter.
+ */
+export function createState<T>(
+  initialValue?: T,
+  options?: CreateStateOptions<T | undefined>,
+): [State<T | undefined>, Setter<T | undefined>];
+
+/**
+ * Creates a state and setter.
+ */
+export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>] {
+  const value = new ValueHolder(initialValue, options);
+  const signal = new Signal(value);
+
+  return [signal, (action) => value.set(action)];
+}
+
+/*==============================*\
+||       Settable States        ||
+\*==============================*/
+
+export class SettableSignal<T> implements State<T>, SettableState<T> {
+  // Instances will pass isState() and isSettableState() with these symbols
+  [TYPE_STATE] = true;
+  [TYPE_SETTABLE_STATE] = true;
+
+  __value: ValueHolder<T>;
+
+  constructor(value: ValueHolder<T>) {
+    if (value == null) {
+      throw new TypeError(`Value is null`);
+    }
+    this.__value = value;
+  }
+
+  get() {
+    return this.__value.get();
+  }
+
+  set(action: T | ((value: T) => T)) {
+    this.__value.set(action);
+  }
+
+  watch(callback: (value: T) => void, options?: WatchOptions<T>) {
+    return this.__value.watch(callback, options);
+  }
+}
 
 /**
  * Creates a SettableState.
@@ -197,12 +325,7 @@ export function createSettableState<T>(
 ): SettableState<T | undefined>;
 
 export function createSettableState<T>(initialValue?: T, options?: CreateStateOptions<T>) {
-  const [$value, setValue] = createState<any>(initialValue, options);
-  return {
-    get: $value.get,
-    watch: $value.watch,
-    set: setValue,
-  };
+  return new SettableSignal<any>(new ValueHolder(initialValue!, options));
 }
 
 /**
@@ -210,10 +333,13 @@ export function createSettableState<T>(initialValue?: T, options?: CreateStateOp
  */
 export function toSettableState<I, O = I>($state: State<I>, setter: Setter<I, O>): SettableState<I, O> {
   return {
-    get: $state.get,
-    watch: $state.watch,
+    [TYPE_STATE]: true,
+    [TYPE_SETTABLE_STATE]: true,
+
+    get: $state.get.bind($state),
+    watch: $state.watch.bind($state),
     set: setter,
-  };
+  } as any;
 }
 
 /**
@@ -234,267 +360,263 @@ export function createSetter<I, O = I>($state: State<I>, callback: (next: O, cur
   };
 }
 
-/**
- * Creates a state and setter.
- */
-export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>];
-
-/**
- * Creates a state and setter.
- */
-export function createState<T>(
-  initialValue?: T,
-  options?: CreateStateOptions<T | undefined>,
-): [State<T | undefined>, Setter<T | undefined>];
-
-/**
- * Creates a state and setter.
- */
-export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>] {
-  let currentValue = initialValue;
-  let watchers: ((value: T) => void)[] = [];
-
-  function notify() {
-    for (const watcher of watchers) {
-      try {
-        watcher(currentValue);
-      } catch (err) {
-        console.warn("error in state watcher", watcher);
-        console.error(err);
-      }
-    }
-  }
-
-  function equal(next: T, current: T): boolean {
-    if (options?.equality) {
-      return options.equality(next, current);
-    } else {
-      return deepEqual(next, current);
-    }
-  }
-
-  const $value: State<T> = {
-    get() {
-      return valueOf(currentValue);
-    },
-    watch(callback, options) {
-      // Add callback to watchers array to receive future values.
-      watchers.push(callback);
-
-      // Call immediately with current value unless lazy.
-      if (!options?.lazy) {
-        callback($value.get());
-      }
-
-      tracker.increment();
-
-      // Return a function to remove callback from watchers array.
-      return function stop() {
-        watchers.splice(watchers.indexOf(callback), 1);
-
-        tracker.decrement();
-      };
-    },
-  };
-
-  function setValue(action: SetAction<T>) {
-    let value: T;
-    if (typeof action === "function") {
-      value = (action as (next: T) => T)(currentValue);
-    } else {
-      value = action as T;
-    }
-    if (!equal(value, currentValue)) {
-      currentValue = value;
-      notify();
-    }
-  }
-
-  return [$value, setValue];
-}
-
 /*==============================*\
 ||        Derived States        ||
 \*==============================*/
 
-export interface DeriveOptions {
-  equality?: (next: unknown, current: unknown) => boolean;
-}
-
 const EMPTY = Symbol("EMPTY");
 
-export function derive<Inputs extends MaybeState<any>[], T>(
-  states: [...Inputs],
-  fn: (...currentValues: StateValues<Inputs>) => T | State<T>,
-  options?: DeriveOptions,
-): State<T> {
-  // Wrap any plain values in a static state.
-  states = states.map(toState) as [...Inputs];
-
-  let previousSourceValues = new Array(states.length).fill(EMPTY, 0, states.length) as StateValues<Inputs>;
-  let currentValue: T | State<T>;
+class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
+  equals = ValueHolder.defaultEquals;
 
   /**
-   * Watcher callbacks for the derived value.
+   * Array of states this holder's value is derived from.
    */
-  let watchers: ((value: T) => void)[] = [];
+  sources: State<any>[] = [];
+  /**
+   * The function that does the deriving. Receives source values and returns a derived value.
+   */
+  fn: (...values: StateValues<I>) => MaybeState<O>;
+  /**
+   *
+   */
+  sourceWatcher = createWatcher();
+  /**
+   * Array of functions awaiting notification when this holder's value changes.
+   */
+  watchers: ((value: O) => void)[] = [];
+  /**
+   * True when this holder is actively watching sources.
+   */
+  isWatchingSources = false;
 
   /**
-   * True when sources are being watched.
+   * Latest values as received from sources.
    */
-  let watching = false;
-
-  const sourceWatcher = createWatcher();
+  previousSourceValues: StateValues<I>;
 
   /**
-   * Stop function for currentValue (used when currentValue is itself a state).
+   * The current value as returned from `fn` (may be a State)
    */
-  let stopWatchingCurrentValue: StopFunction | undefined;
+  value: typeof EMPTY | MaybeState<O> = EMPTY;
+  /**
+   * The current unwrapped value.
+   */
+  rawValue?: O;
 
-  let rawCurrentValue: T;
+  /**
+   * When value is a State, this function will stop watching its value.
+   */
+  stopWatchingCurrentValue?: StopFunction;
 
-  function notify(value = getCurrentValue()) {
-    for (const watcher of watchers) {
+  constructor(states: [...I], fn: (...values: StateValues<I>) => MaybeState<O>, options?: DeriveOptions) {
+    this.sources = states.map(toState);
+    this.fn = fn;
+
+    if (options?.equals) {
+      this.equals = options.equals;
+    }
+
+    this.previousSourceValues = new Array(states.length).fill(EMPTY, 0, states.length) as StateValues<I>;
+  }
+
+  /*==========================*\
+  ||     "Public" methods     ||
+  \*==========================*/
+
+  get(): O {
+    return this.getValue();
+  }
+
+  watch(callback: (value: O) => void, options?: WatchOptions<O>): StopFunction {
+    if (!this.isWatchingSources) {
+      this.startWatchingSources();
+    }
+
+    const watchers = this.watchers;
+
+    watchers.push(callback);
+
+    if (!options?.lazy) {
+      callback(this.getValue());
+    }
+
+    tracker.increment();
+
+    return () => {
+      watchers.splice(watchers.indexOf(callback), 1);
+
+      if (this.isWatchingSources && watchers.length === 0) {
+        this.stopWatchingSources();
+      }
+
+      tracker.decrement();
+    };
+  }
+
+  /*==========================*\
+  ||         Internal         ||
+  \*==========================*/
+
+  notify(value: O) {
+    for (const watcher of this.watchers) {
       watcher(value);
     }
   }
 
-  function equal(next: unknown, current: unknown): boolean {
-    if (options?.equality) {
-      return options.equality(next, current);
-    } else {
-      return deepEqual(next, current);
-    }
-  }
+  update() {
+    const sourceValues = this.sources.map((s) => s.get()) as StateValues<I>;
 
-  function update() {
-    const sourceValues = states.map((s) => s.get()) as StateValues<Inputs>;
-
-    for (let i = 0; i < states.length; i++) {
-      if (!equal(sourceValues[i], previousSourceValues[i])) {
+    for (let i = 0; i < this.sources.length; i++) {
+      if (!this.equals(sourceValues[i], this.previousSourceValues[i])) {
         // Run derive function only if absolutely necessary.
-        setCurrentValue(fn(...sourceValues));
-        previousSourceValues = sourceValues;
+        this.setValue(this.fn(...sourceValues));
+        this.previousSourceValues = sourceValues;
         break;
       }
     }
   }
 
-  function getCurrentValue() {
+  getValue() {
     // Current value will always be up to date when watching sources.
-    if (!watching) {
-      update();
+    if (!this.isWatchingSources) {
+      this.update();
     }
-    rawCurrentValue = valueOf(currentValue);
-    return rawCurrentValue;
+    this.rawValue = valueOf<O>(this.value as MaybeState<O>);
+    return this.rawValue;
   }
 
-  function setCurrentValue(value: T | State<T>) {
+  setValue(value: O | State<O>) {
     // If they're the same we don't need to do anything.
-    if (value === currentValue) {
+    if (value === this.value) {
       return;
     }
 
     // Stop watching current value if it was a state.
-    if (stopWatchingCurrentValue) {
-      stopWatchingCurrentValue();
-      stopWatchingCurrentValue = undefined;
+    if (this.stopWatchingCurrentValue) {
+      this.stopWatchingCurrentValue();
+      this.stopWatchingCurrentValue = undefined;
     }
 
-    currentValue = value;
-    rawCurrentValue = valueOf(value);
+    this.value = value;
+    this.rawValue = valueOf(value);
 
     if (isState(value)) {
-      if (watching) {
-        stopWatchingCurrentValue = value.watch((current) => {
+      if (this.isWatchingSources) {
+        this.stopWatchingCurrentValue = value.watch((current) => {
           // TODO: Can we handle infinite nested states?
           const raw = valueOf(current);
-          if (!equal(raw, rawCurrentValue)) {
-            rawCurrentValue = raw;
-            notify(raw);
+          if (!this.equals(raw, this.rawValue)) {
+            this.rawValue = raw;
+            this.notify(raw);
           }
         });
       }
     }
   }
 
-  function startWatchingSources() {
+  startWatchingSources() {
+    const previousSourceValues = this.previousSourceValues;
     let startingSourceValues = [...previousSourceValues];
 
-    for (let i = 0; i < states.length; i++) {
-      sourceWatcher.watch([states[i] as State<any>], (next) => {
+    for (let i = 0; i < this.sources.length; i++) {
+      this.sourceWatcher.watch([this.sources[i] as State<any>], (next) => {
         const previous = previousSourceValues[i];
         previousSourceValues[i] = next;
 
-        if (watching && !equal(next, previous)) {
+        if (this.isWatchingSources && !this.equals(next, previous)) {
           try {
-            let computed = fn(...previousSourceValues);
-            setCurrentValue(computed);
+            let computed = this.fn(...previousSourceValues);
+            this.setValue(computed);
           } catch (err) {
-            console.warn("error when updating source values", previousSourceValues, fn.toString());
+            console.warn("error when updating source values", previousSourceValues, this.fn.toString());
             console.error(err);
           }
 
-          notify(valueOf(currentValue));
+          this.notify(this.rawValue!);
         }
       });
     }
 
-    watching = true;
+    this.isWatchingSources = true;
 
     // Derive and notify watchers if values have changed since last derivation.
-    for (let i = 0; i < states.length; i++) {
-      if (!equal(previousSourceValues[i], startingSourceValues[i])) {
-        setCurrentValue(fn(...previousSourceValues));
-        notify(valueOf(currentValue));
+    for (let i = 0; i < this.sources.length; i++) {
+      if (!this.equals(previousSourceValues[i], startingSourceValues[i])) {
+        this.setValue(this.fn(...previousSourceValues));
+        this.notify(this.rawValue!);
         break;
       }
     }
   }
 
-  function stopWatchingSources() {
-    sourceWatcher.stopAll();
+  stopWatchingSources() {
+    this.sourceWatcher.stopAll();
 
     // Stop watching current value if it was a state.
-    if (stopWatchingCurrentValue) {
-      stopWatchingCurrentValue();
-      stopWatchingCurrentValue = undefined;
+    if (this.stopWatchingCurrentValue) {
+      this.stopWatchingCurrentValue();
+      this.stopWatchingCurrentValue = undefined;
     }
 
-    watching = false;
+    this.isWatchingSources = false;
+  }
+}
+
+export interface DeriveOptions {
+  equals?: (next: unknown, current: unknown) => boolean;
+}
+
+export function derive<Inputs extends MaybeState<any>[], T>(
+  states: [...Inputs],
+  fn: (...currentValues: StateValues<Inputs>) => T | State<T>,
+  options?: DeriveOptions,
+): State<T> {
+  const value = new DerivedValueHolder(states, fn, options);
+  return new Signal(value);
+}
+
+/*===========================*\
+||            Ref            ||
+\*===========================*/
+
+class RefSignal<T extends Node> implements State<T | undefined> {
+  // Instances will pass isRef() with this symbol
+  [TYPE_REF] = true;
+
+  __value: ValueHolder<T | undefined>;
+
+  constructor(value: ValueHolder<T | undefined>) {
+    this.__value = value;
   }
 
-  const $value: State<T> = {
-    get() {
-      return getCurrentValue();
-    },
-    watch(callback: (value: T) => void, options?: WatchOptions<T>) {
-      if (!watching) {
-        startWatchingSources();
-      }
+  get() {
+    return this.__value.get();
+  }
 
-      watchers.push(callback);
+  watch(callback: (value: T | undefined) => void, options?: WatchOptions<T>) {
+    return this.__value.watch(callback, options);
+  }
 
-      if (!options?.lazy) {
-        callback(getCurrentValue());
-      }
+  get node() {
+    return this.__value.get();
+  }
 
-      tracker.increment();
-
-      return function stop() {
-        watchers.splice(watchers.indexOf(callback), 1);
-
-        if (watching && watchers.length === 0) {
-          stopWatchingSources();
-        }
-
-        tracker.decrement();
-      };
-    },
-  };
-
-  return $value;
+  set node(value) {
+    this.__value.set(value);
+  }
 }
+
+/**
+ * A special kind of State exclusively for storing references to DOM nodes.
+ */
+export function createRef<T extends Node>(): Ref<T> {
+  return new RefSignal<T>(new ValueHolder<T | undefined>(undefined));
+}
+
+/*===========================*\
+||          Watcher          ||
+\*===========================*/
 
 export interface StateWatcher {
   /**

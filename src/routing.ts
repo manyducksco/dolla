@@ -238,7 +238,7 @@ export function matchRoutes<T>(
       }
     }
 
-    const params = Object.create(null);
+    const params: Record<string, string | number> = {};
 
     for (const frag of matched) {
       if (frag.type === FragTypes.Param) {

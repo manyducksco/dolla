@@ -1,10 +1,20 @@
 // States
-export { createSettableState, createSetter, createState, derive, toSettableState, toState, valueOf } from "./state.js";
-export type { MaybeState, SettableState, State, StopFunction } from "./state.js";
+export {
+  createRef,
+  createSettableState,
+  createSetter,
+  createState,
+  derive,
+  isRef,
+  toSettableState,
+  toState,
+  valueOf,
+} from "./state.js";
+export type { MaybeState, Ref, SettableState, State, StopFunction } from "./state.js";
 
 // Markup
-export { cond, createMarkup, createRef, html, isRef, portal, repeat } from "./markup.js";
-export type { Markup, MarkupElement, Ref } from "./markup.js";
+export { cond, createMarkup, html, portal, repeat } from "./markup.js";
+export type { Markup, MarkupElement } from "./markup.js";
 
 import { Dolla } from "./modules/dolla.js";
 const dolla = new Dolla();

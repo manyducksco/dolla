@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
-import { constructMarkup, isRef, type ElementContext, type Markup, type MarkupElement, type Ref } from "../markup.js";
-import { isSettableState, isState, SettableState, type State, type StopFunction } from "../state.js";
+import { constructMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
+import { isRef, isSettableState, isState, SettableState, type Ref, type State, type StopFunction } from "../state.js";
 import { isFunction, isObject, isString } from "../typeChecking.js";
 import { omit } from "../utils.js";
 
@@ -120,23 +120,23 @@ export class HTML implements MarkupElement {
     return `${this.uniqueId}:${type}:${value}`;
   }
 
-  applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
-    const attachProp = <T>(value: State<T> | T, callback: (value: T) => void, updateKey: string) => {
-      if (isState(value)) {
-        this.stopCallbacks.push(
-          value.watch((current) => {
-            this.elementContext.root.render.update(() => {
-              callback(current);
-            }, updateKey);
-          }),
-        );
-      } else {
-        this.elementContext.root.render.update(() => {
-          callback(value);
-        }, updateKey);
-      }
-    };
+  attachProp<T>(value: State<T> | T, callback: (value: T) => void, updateKey: string) {
+    if (isState(value)) {
+      this.stopCallbacks.push(
+        value.watch((current) => {
+          this.elementContext.root.render.update(() => {
+            callback(current);
+          }, updateKey);
+        }),
+      );
+    } else {
+      this.elementContext.root.render.update(() => {
+        callback(value);
+      }, updateKey);
+    }
+  }
 
+  applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
     for (const key in props) {
       const value = props[key];
 
@@ -144,7 +144,7 @@ export class HTML implements MarkupElement {
         const values = value as Record<string, any>;
         // Set attributes directly without mapping props
         for (const name in values) {
-          attachProp(
+          this.attachProp(
             values[name],
             (current) => {
               if (current == null) {
@@ -195,7 +195,7 @@ export class HTML implements MarkupElement {
         }
 
         // Read value from state.
-        attachProp(
+        this.attachProp(
           value,
           (current) => {
             if (current == null) {
@@ -233,7 +233,7 @@ export class HTML implements MarkupElement {
         });
       } else if (key.includes("-")) {
         // Names with dashes in them are not valid prop names, so they are treated as attributes.
-        attachProp(
+        this.attachProp(
           value,
           (current) => {
             if (current == null) {
@@ -246,7 +246,7 @@ export class HTML implements MarkupElement {
         );
       } else if (!privateProps.includes(key)) {
         if (this.elementContext.isSVG) {
-          attachProp(
+          this.attachProp(
             value,
             (current) => {
               if (current != null) {
@@ -261,7 +261,7 @@ export class HTML implements MarkupElement {
           switch (key) {
             case "contentEditable":
             case "value":
-              attachProp(
+              this.attachProp(
                 value,
                 (current) => {
                   (element as any)[key] = String(current);
@@ -271,7 +271,7 @@ export class HTML implements MarkupElement {
               break;
 
             case "for":
-              attachProp(
+              this.attachProp(
                 value,
                 (current) => {
                   (element as any).htmlFor = current;
@@ -281,7 +281,7 @@ export class HTML implements MarkupElement {
               break;
 
             case "checked":
-              attachProp(
+              this.attachProp(
                 value,
                 (current) => {
                   (element as any).checked = current;
@@ -304,7 +304,7 @@ export class HTML implements MarkupElement {
             case "type":
             case "title": {
               const _key = key.toLowerCase();
-              attachProp(
+              this.attachProp(
                 value,
                 (current) => {
                   if (current == undefined) {
@@ -320,7 +320,7 @@ export class HTML implements MarkupElement {
 
             case "autocomplete":
             case "autocapitalize":
-              attachProp(
+              this.attachProp(
                 value,
                 (current) => {
                   if (typeof current === "string") {
@@ -336,7 +336,7 @@ export class HTML implements MarkupElement {
               break;
 
             default: {
-              attachProp(
+              this.attachProp(
                 value,
                 (current) => {
                   (element as any)[key] = current;

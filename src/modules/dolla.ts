@@ -1,26 +1,26 @@
 import {
   constructMarkup,
   createMarkup,
-  createRef,
-  isRef,
-  MarkupElement,
   mergeElements,
+  type ElementContext,
   type Markup,
+  type MarkupElement,
 } from "../markup.js";
 import {
+  createRef,
   createSettableState,
   createState,
+  createWatcher,
   derive,
+  isRef,
   toSettableState,
   toState,
   valueOf,
-  createWatcher,
   type State,
-  type StateWatcher,
 } from "../state.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
-import { constructView, type ViewFunction, type ViewElement } from "../view.js";
+import { constructView, type ViewElement, type ViewFunction } from "../view.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 
@@ -86,6 +86,11 @@ export class Dolla {
   #onMountCallbacks: Array<() => void> = [];
   #beforeUnmountCallbacks: Array<() => void | Promise<void>> = [];
   #onUnmountCallbacks: Array<() => void> = [];
+
+  #rootElementContext: ElementContext = {
+    root: this,
+    data: {},
+  };
 
   #loggles: Loggles = {
     info: "development",
@@ -153,6 +158,28 @@ export class Dolla {
    */
   setCrashView(view: ViewFunction<CrashViewProps>) {
     this.#crashView = view;
+  }
+
+  /**
+   * Sets a context variable and returns its value. Context variables are accessible on the app and in child views.
+   */
+  set<T>(key: string | symbol, value: T): T {
+    this.#rootElementContext.data[key] = value;
+    return value;
+  }
+
+  /**
+   * Gets the value of a context variable. Returns null if the variable is not set.
+   */
+  get<T>(key: string | symbol): T | null {
+    return (this.#rootElementContext.data[key] as T) ?? null;
+  }
+
+  /**
+   * Returns an object of all context variables stored at the app level.
+   */
+  getAll(): Record<string | symbol, unknown> {
+    return { ...this.#rootElementContext.data };
   }
 
   async mount(selector: string, view?: ViewFunction<any>): Promise<void>;
@@ -396,13 +423,13 @@ export class Dolla {
    *
    */
   constructView<P>(view: ViewFunction<P>, props: P, children: Markup[] = []): ViewElement {
-    return constructView({ root: this, data: {} }, view, props, children);
+    return constructView(this.#rootElementContext, view, props, children);
   }
 
   /**
    *
    */
   constructMarkup(markup: Markup | Markup[]): MarkupElement {
-    return mergeElements(constructMarkup({ root: this, data: {} }, markup));
+    return mergeElements(constructMarkup(this.#rootElementContext, markup));
   }
 }

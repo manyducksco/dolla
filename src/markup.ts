@@ -8,10 +8,10 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
-import { MaybeState, createState, isSettableState, isState, toState, type State } from "./state.js";
+import { MaybeState, isRef, isSettableState, isState, toState, type State } from "./state.js";
 import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
 import type { Renderable, Stringable } from "./types.js";
-import { constructView, type ViewFunction, type ViewContext, type ViewResult } from "./view.js";
+import { constructView, type ViewContext, type ViewFunction, type ViewResult } from "./view.js";
 
 /*===========================*\
 ||       ElementContext      ||
@@ -232,45 +232,6 @@ export function repeat<T>(
  */
 export function portal(parent: Node, content: Renderable) {
   return createMarkup("$portal", { parent, content });
-}
-
-/*===========================*\
-||            Ref            ||
-\*===========================*/
-
-/**
- * A special kind of State exclusively for storing references to DOM nodes.
- */
-export function createRef<T extends Node>(): Ref<T> {
-  const [$node, setNode] = createState<T>();
-
-  return {
-    get: $node.get,
-    watch: $node.watch,
-
-    get node() {
-      return $node.get();
-    },
-    set node(node) {
-      setNode(node);
-    },
-  };
-}
-
-export function isRef<T extends Node>(value: any): value is Ref<T> {
-  if (value == null || typeof value !== "object") {
-    return false;
-  }
-
-  if (!value.hasOwnProperty("node")) {
-    return false;
-  }
-
-  return true;
-}
-
-export interface Ref<T extends Node> extends State<T | undefined> {
-  node: T | undefined;
 }
 
 /*===========================*\

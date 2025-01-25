@@ -1,6 +1,7 @@
 import colorHash from "simple-color-hash";
 import { isState } from "./state.js";
 import { isObject } from "./typeChecking.js";
+import fastDeepEqual from "fast-deep-equal/es6";
 
 export const noOp = () => {};
 
@@ -22,38 +23,40 @@ export function deepEqual(one: any, two: any) {
     return false;
   }
 
-  if (isPlainObject(one) && isPlainObject(two)) {
-    const keysOne = Object.keys(one);
-    const keysTwo = Object.keys(two);
+  return fastDeepEqual(one, two);
 
-    if (keysOne.length !== keysTwo.length) {
-      return false;
-    }
+  // if (isPlainObject(one) && isPlainObject(two)) {
+  //   const keysOne = Object.keys(one);
+  //   const keysTwo = Object.keys(two);
 
-    for (const key in one) {
-      if (!deepEqual(one[key], two[key])) {
-        return false;
-      }
-    }
+  //   if (keysOne.length !== keysTwo.length) {
+  //     return false;
+  //   }
 
-    return true;
-  }
+  //   for (const key in one) {
+  //     if (!deepEqual(one[key], two[key])) {
+  //       return false;
+  //     }
+  //   }
 
-  if (Array.isArray(one) && Array.isArray(two)) {
-    if (one.length !== two.length) {
-      return false;
-    }
+  //   return true;
+  // }
 
-    for (const index in one) {
-      if (!deepEqual(one[index], two[index])) {
-        return false;
-      }
-    }
+  // if (Array.isArray(one) && Array.isArray(two)) {
+  //   if (one.length !== two.length) {
+  //     return false;
+  //   }
 
-    return true;
-  }
+  //   for (const index in one) {
+  //     if (!deepEqual(one[index], two[index])) {
+  //       return false;
+  //     }
+  //   }
 
-  return one === two;
+  //   return true;
+  // }
+
+  // return one === two;
 }
 
 /**
