@@ -15,6 +15,7 @@ import { type Stringable } from "../types.js";
 import { type ViewElement, type ViewFunction } from "../view.js";
 import { Passthrough } from "../views/passthrough.js";
 import type { Dolla, Logger } from "./dolla.js";
+import deepEqual from "fast-deep-equal";
 
 // ----- Types ----- //
 
@@ -195,9 +196,10 @@ export class Router {
 
     const [$pattern, setPattern] = createState<string | null>(null);
     const [$path, setPath] = createState("");
-    const [$params, setParams] = createState<ParsedParams>({});
+    const [$params, setParams] = createState<ParsedParams>({}, { equals: deepEqual });
     const [$query, setQuery] = createState<ParsedQuery>(
       parseQueryParams(typeof window === "undefined" ? "" : (window.location.search ?? "")),
+      { equals: deepEqual },
     );
 
     this.$pattern = $pattern;

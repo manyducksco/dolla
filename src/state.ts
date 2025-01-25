@@ -56,7 +56,7 @@ export interface CreateStateOptions<T> {
   /**
    * Determines if the `next` value is equal to the `current` value.
    * If this function returns true, watchers will be notified of changes. If it returns false, watchers will not be notified.
-   * By default equality is defined as deep equality.
+   * Default equals check is `===` (strict) equality.
    *
    * @param next - The new value being set.
    * @param current - The current value being replaced.
@@ -89,7 +89,8 @@ export interface State<T> {
 }
 
 /** A new value for a state, or a callback that receives the current value and returns a new one. */
-export type SetAction<I, O = I> = O | ((current: I) => O);
+export type SetAction<I, O = I> = O | SetFunction<I, O>;
+export type SetFunction<I, O = I> = (current: I) => O;
 
 /** Callback that updates the value of a state. */
 export type Setter<I, O = I> = (value: SetAction<I, O>) => void;
@@ -176,7 +177,6 @@ export function toState<T>(value: MaybeState<T>): State<T> {
 export class ValueHolder<T> implements State<T> {
   static defaultEquals(next: any, current: any): boolean {
     return next === current;
-    // return deepEqual(next, current);
   }
 
   value: T;
@@ -194,12 +194,12 @@ export class ValueHolder<T> implements State<T> {
     return this.value;
   }
 
-  set(action: T | ((value: T) => T)) {
+  set(action: T | SetFunction<T>) {
     if (typeof action === "function") {
-      action = (action as (value: T) => T)(this.value);
+      action = (action as SetFunction<T>)(this.value);
     }
 
-    if (!this.equals(this.value, action)) {
+    if (!this.equals(action, this.value)) {
       this.value = action;
 
       try {
@@ -207,16 +207,14 @@ export class ValueHolder<T> implements State<T> {
           watcher(action);
         }
       } catch (err) {
-        console.error("Error in watcher");
+        console.error("Error in watcher", err);
         throw err;
       }
     }
   }
 
   watch(callback: (value: T) => void, options?: WatchOptions<T>) {
-    if (this.watchers.indexOf(callback) === -1) {
-      this.watchers.push(callback);
-    }
+    this.watchers.push(callback);
 
     if (!options?.lazy) {
       callback(this.value);
@@ -402,7 +400,7 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
   /**
    * The current unwrapped value.
    */
-  rawValue?: O;
+  rawValue!: O;
 
   /**
    * When value is a State, this function will stop watching its value.
@@ -438,7 +436,7 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
     watchers.push(callback);
 
     if (!options?.lazy) {
-      callback(this.getValue());
+      callback(this.rawValue);
     }
 
     tracker.increment();
@@ -465,15 +463,22 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
   }
 
   update() {
-    const sourceValues = this.sources.map((s) => s.get()) as StateValues<I>;
+    const sources = this.sources;
+    const sourceValues = this.previousSourceValues;
+    let changed = false;
+    let value: any;
 
-    for (let i = 0; i < this.sources.length; i++) {
-      if (!this.equals(sourceValues[i], this.previousSourceValues[i])) {
-        // Run derive function only if absolutely necessary.
-        this.setValue(this.fn(...sourceValues));
-        this.previousSourceValues = sourceValues;
-        break;
+    for (let i = 0; i < sources.length; i++) {
+      value = sources[i].get();
+      if (!changed && !this.equals(value, sourceValues[i])) {
+        changed = true;
       }
+      sourceValues[i] = value;
+    }
+
+    // We are assuming purity of `fn`, wherein a change in source values means a different output and vice versa.
+    if (changed) {
+      this.setValue(this.fn(...sourceValues));
     }
   }
 
@@ -482,16 +487,10 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
     if (!this.isWatchingSources) {
       this.update();
     }
-    this.rawValue = valueOf<O>(this.value as MaybeState<O>);
     return this.rawValue;
   }
 
   setValue(value: O | State<O>) {
-    // If they're the same we don't need to do anything.
-    if (value === this.value) {
-      return;
-    }
-
     // Stop watching current value if it was a state.
     if (this.stopWatchingCurrentValue) {
       this.stopWatchingCurrentValue();
@@ -501,52 +500,39 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
     this.value = value;
     this.rawValue = valueOf(value);
 
-    if (isState(value)) {
-      if (this.isWatchingSources) {
-        this.stopWatchingCurrentValue = value.watch((current) => {
-          // TODO: Can we handle infinite nested states?
-          const raw = valueOf(current);
-          if (!this.equals(raw, this.rawValue)) {
-            this.rawValue = raw;
-            this.notify(raw);
-          }
-        });
-      }
+    if (this.isWatchingSources && isState(value)) {
+      this.stopWatchingCurrentValue = value.watch((current) => {
+        this.rawValue = current;
+        this.notify(current);
+      });
+    } else {
+      this.notify(this.rawValue);
     }
   }
 
   startWatchingSources() {
-    const previousSourceValues = this.previousSourceValues;
-    let startingSourceValues = [...previousSourceValues];
+    const sourceValues = this.previousSourceValues;
 
     for (let i = 0; i < this.sources.length; i++) {
       this.sourceWatcher.watch([this.sources[i] as State<any>], (next) => {
-        const previous = previousSourceValues[i];
-        previousSourceValues[i] = next;
+        sourceValues[i] = next;
 
-        if (this.isWatchingSources && !this.equals(next, previous)) {
-          try {
-            let computed = this.fn(...previousSourceValues);
-            this.setValue(computed);
-          } catch (err) {
-            console.warn("error when updating source values", previousSourceValues, this.fn.toString());
-            console.error(err);
+        // This boolean is set after all sources have been watched.
+        // We want to update previousSourceValues, but not actually run `fn` yet.
+        if (this.isWatchingSources) {
+          const value = this.fn(...sourceValues);
+          if (!this.equals(value, this.value)) {
+            this.setValue(value);
           }
-
-          this.notify(this.rawValue!);
         }
       });
     }
 
     this.isWatchingSources = true;
 
-    // Derive and notify watchers if values have changed since last derivation.
-    for (let i = 0; i < this.sources.length; i++) {
-      if (!this.equals(previousSourceValues[i], startingSourceValues[i])) {
-        this.setValue(this.fn(...previousSourceValues));
-        this.notify(this.rawValue!);
-        break;
-      }
+    const value = this.fn(...sourceValues);
+    if (!this.equals(value, this.value)) {
+      this.setValue(value);
     }
   }
 

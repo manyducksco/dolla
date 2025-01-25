@@ -1,7 +1,7 @@
 import colorHash from "simple-color-hash";
 import { isState } from "./state.js";
 import { isObject } from "./typeChecking.js";
-import fastDeepEqual from "fast-deep-equal/es6";
+import fastDeepEqual from "fast-deep-equal";
 
 export const noOp = () => {};
 
