@@ -292,14 +292,15 @@ export class View<P> implements ViewElement {
     }
   }
 
-  unmount() {
+  unmount(parentIsUnmounting: boolean) {
     while (this._beforeUnmountCallbacks.length > 0) {
       const callback = this._beforeUnmountCallbacks.shift()!;
       callback();
     }
 
     if (this._element) {
-      this._element.unmount();
+      // parentIsUnmounting is forwarded to the element because the view acts as a proxy for an element.
+      this._element.unmount(parentIsUnmounting);
     }
 
     this.isMounted = false;

@@ -80,24 +80,24 @@ export class Observer implements MarkupElement {
     }
   }
 
-  unmount() {
+  unmount(parentIsUnmounting: boolean) {
     this.observerControls.stop();
     this.watcher.stopAll();
 
     if (this.isMounted) {
-      this.cleanup();
+      this.cleanup(parentIsUnmounting);
       this.node.parentNode?.removeChild(this.node);
     }
   }
 
-  cleanup() {
+  cleanup(parentIsUnmounting: boolean) {
     while (this.connectedViews.length > 0) {
-      this.connectedViews.pop()?.unmount();
+      this.connectedViews.pop()?.unmount(parentIsUnmounting);
     }
   }
 
   update(...children: Renderable[]) {
-    this.cleanup();
+    this.cleanup(false);
 
     if (children == null || !this.isMounted) {
       return;

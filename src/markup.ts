@@ -69,7 +69,10 @@ export interface MarkupElement {
 
   mount(parent: Node, after?: Node): void;
 
-  unmount(): void;
+  /**
+   * Disconnect from the DOM and clean up. If parentIsUnmounting, DOM operations are skipped.
+   */
+  unmount(parentIsUnmounting: boolean): void;
 }
 
 export function isMarkup(value: unknown): value is Markup {
@@ -371,10 +374,10 @@ export function mergeElements(nodes: MarkupElement[]): MarkupElement {
 
       isConnected = true;
     },
-    unmount() {
+    unmount(parentIsUnmounting) {
       if (isConnected) {
         for (const handle of nodes) {
-          handle.unmount();
+          handle.unmount(true);
         }
 
         node.remove();

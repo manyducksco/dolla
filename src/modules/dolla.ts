@@ -231,7 +231,7 @@ export class Dolla {
     // Run beforeUnmount
     await Promise.all(this.#beforeUnmountCallbacks.map((callback) => callback()));
 
-    this.#rootView?.unmount();
+    this.#rootView?.unmount(false);
 
     this.#watcher.stopAll();
 

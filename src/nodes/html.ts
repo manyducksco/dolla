@@ -95,17 +95,19 @@ export class HTML implements MarkupElement {
     }, 0);
   }
 
-  unmount() {
+  unmount(parentIsUnmounting: boolean) {
     if (this.isMounted) {
       for (const child of this.children) {
-        child.unmount();
+        child.unmount(true);
       }
 
       if (this.ref) {
         this.ref.node = undefined;
       }
 
-      this.node.parentNode?.removeChild(this.node);
+      if (!parentIsUnmounting) {
+        this.node.parentNode?.removeChild(this.node);
+      }
 
       this.canClickAway = false;
 

@@ -59,14 +59,14 @@ export class Conditional implements MarkupElement {
     }
   }
 
-  unmount(): void {
+  unmount(parentIsUnmounting: boolean): void {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;
     }
 
     for (const handle of this.connectedContent) {
-      handle.unmount();
+      handle.unmount(parentIsUnmounting);
     }
     this.connectedContent = [];
 
@@ -78,7 +78,7 @@ export class Conditional implements MarkupElement {
 
   update(value: any) {
     for (const handle of this.connectedContent) {
-      handle.unmount();
+      handle.unmount(false);
     }
     this.connectedContent = [];
 

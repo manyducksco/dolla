@@ -44,7 +44,7 @@ export class Outlet implements MarkupElement {
     }
   }
 
-  unmount() {
+  unmount(parentIsUnmounting: boolean) {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;
@@ -52,7 +52,7 @@ export class Outlet implements MarkupElement {
 
     if (this.isMounted) {
       for (const child of this.mountedChildren) {
-        child.unmount();
+        child.unmount(parentIsUnmounting);
       }
       this.mountedChildren = [];
       this.endNode.parentNode?.removeChild(this.endNode);
@@ -61,7 +61,7 @@ export class Outlet implements MarkupElement {
 
   update(newChildren: MarkupElement[]) {
     for (const child of this.mountedChildren) {
-      child.unmount();
+      child.unmount(false);
     }
 
     for (let i = 0; i < newChildren.length; i++) {

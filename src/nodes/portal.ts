@@ -47,9 +47,9 @@ export class Portal implements MarkupElement {
     this.element.mount(parent);
   }
 
-  unmount() {
+  unmount(parentIsUnmounting: boolean) {
     if (this.element?.isMounted) {
-      this.element.unmount();
+      this.element.unmount(parentIsUnmounting);
     }
   }
 }

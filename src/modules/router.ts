@@ -568,7 +568,7 @@ export class Router {
 
             if (activeLayer && activeLayer.node.isMounted) {
               // Disconnect first mismatched active layer.
-              activeLayer.node.unmount();
+              activeLayer.node.unmount(false);
             }
 
             let node: ViewElement;

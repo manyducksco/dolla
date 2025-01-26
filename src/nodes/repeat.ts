@@ -62,30 +62,30 @@ export class Repeat<T> implements MarkupElement {
     }
   }
 
-  unmount() {
+  unmount(parentIsUnmounting: boolean) {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;
     }
 
-    if (this.isMounted) {
+    if (!parentIsUnmounting && this.isMounted) {
       this.node.parentNode?.removeChild(this.node);
       this.endNode.parentNode?.removeChild(this.endNode);
     }
 
-    this._cleanup();
+    this._cleanup(parentIsUnmounting);
   }
 
-  _cleanup() {
+  _cleanup(parentIsUnmounting: boolean) {
     for (const item of this.connectedItems) {
-      item.element.unmount();
+      item.element.unmount(parentIsUnmounting);
     }
     this.connectedItems = [];
   }
 
   _update(value: T[]) {
     if (value.length === 0 || !this.isMounted) {
-      return this._cleanup();
+      return this._cleanup(false);
     }
 
     type UpdateItem = { key: string | number | symbol; value: T; index: number };
@@ -108,7 +108,7 @@ export class Repeat<T> implements MarkupElement {
       const potentialItem = potentialItems.find((p) => p.key === connected.key);
 
       if (!potentialItem) {
-        connected.element.unmount();
+        connected.element.unmount(false);
       }
     }
 
