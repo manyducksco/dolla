@@ -36,7 +36,7 @@ export class Text implements MarkupElement {
     parent.insertBefore(this.node, after?.nextSibling ?? null);
   }
 
-  async unmount(parentIsUnmounting: boolean) {
+  async unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
       if (this.stopCallback) {
         this.stopCallback();

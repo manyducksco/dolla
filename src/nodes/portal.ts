@@ -1,5 +1,5 @@
 import {
-  mergeElements as mergeElements,
+  groupElements,
   isMarkupElement,
   isMarkup,
   constructMarkup,
@@ -39,15 +39,15 @@ export class Portal implements MarkupElement {
     if (isMarkupElement(content)) {
       this.element = content;
     } else if (isMarkup(content)) {
-      this.element = mergeElements(constructMarkup(this.config.elementContext, content));
+      this.element = groupElements(constructMarkup(this.config.elementContext, content));
     } else {
-      this.element = mergeElements(constructMarkup(this.config.elementContext, toMarkup(content)));
+      this.element = groupElements(constructMarkup(this.config.elementContext, toMarkup(content)));
     }
 
     this.element.mount(parent);
   }
 
-  unmount(parentIsUnmounting: boolean) {
+  unmount(parentIsUnmounting = false) {
     if (this.element?.isMounted) {
       this.element.unmount(parentIsUnmounting);
     }

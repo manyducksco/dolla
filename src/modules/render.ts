@@ -34,8 +34,6 @@ export class Render {
    * Queues a callback that runs before the next batch of writes.
    */
   read(callback: () => void) {
-    if (!this.#dolla.isMounted) return;
-
     this.#reads.push(callback);
     this.#queueBatch();
   }
@@ -45,8 +43,6 @@ export class Render {
    * Always put DOM mutations in a write callback when possible to help Dolla batch them efficiently.
    */
   write(callback: () => void, key?: string) {
-    if (!this.#dolla.isMounted) return;
-
     if (key) {
       this.#keyedWrites.set(key, callback);
     } else {
@@ -58,19 +54,14 @@ export class Render {
   #queueBatch() {
     if (!this.#batchInProgress) {
       this.#batchInProgress = true;
+      const isDevEnv = this.#dolla.getEnv() === "development";
       queueMicrotask(() => {
-        this.#runBatch();
+        this.#runBatch(isDevEnv);
       });
     }
   }
 
-  #runBatch() {
-    const isDevEnv = this.#dolla.getEnv() === "development";
-
-    if (!this.#dolla.isMounted) {
-      this.#batchInProgress = false;
-    }
-
+  #runBatch(isDevEnv = false) {
     const start = performance.now();
     let elapsed = 0;
 
@@ -91,7 +82,7 @@ export class Render {
           );
         }
         requestAnimationFrame(() => {
-          this.#runBatch();
+          this.#runBatch(isDevEnv);
         });
         return true;
       }
@@ -130,7 +121,7 @@ export class Render {
     // Trigger again to catch updates queued while this batch was running.
     if (this.#reads.length || this.#keyedWrites.size || this.#unkeyedWrites.length) {
       queueMicrotask(() => {
-        this.#runBatch();
+        this.#runBatch(isDevEnv);
       });
     } else {
       this.#batchInProgress = false;

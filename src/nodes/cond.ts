@@ -59,7 +59,7 @@ export class Conditional implements MarkupElement {
     }
   }
 
-  unmount(parentIsUnmounting: boolean): void {
+  unmount(parentIsUnmounting = false): void {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;

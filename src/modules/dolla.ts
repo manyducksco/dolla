@@ -1,7 +1,7 @@
 import {
   constructMarkup,
   createMarkup,
-  mergeElements,
+  groupElements,
   type ElementContext,
   type Markup,
   type MarkupElement,
@@ -200,15 +200,8 @@ export class Dolla {
       this.#rootElement = target;
     }
 
-    let rootViewMarkup: Markup;
-
-    if (view) {
-      rootViewMarkup = createMarkup(view);
-    } else {
-      rootViewMarkup = createMarkup(Passthrough);
-    }
-
     // First, initialize the root view. The router store needs this to connect the initial route.
+    const rootViewMarkup = createMarkup(view ?? Passthrough);
     this.#rootView = this.constructView(rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
 
     // Run beforeMount
@@ -430,6 +423,6 @@ export class Dolla {
    *
    */
   constructMarkup(markup: Markup | Markup[]): MarkupElement {
-    return mergeElements(constructMarkup(this.#rootElementContext, markup));
+    return groupElements(constructMarkup(this.#rootElementContext, markup));
   }
 }

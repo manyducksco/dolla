@@ -44,7 +44,7 @@ export class Outlet implements MarkupElement {
     }
   }
 
-  unmount(parentIsUnmounting: boolean) {
+  unmount(parentIsUnmounting = false) {
     if (this.stopCallback) {
       this.stopCallback();
       this.stopCallback = undefined;

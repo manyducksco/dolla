@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import {
   type MarkupElement,
   type ElementContext,
-  mergeElements,
+  groupElements,
   isMarkup,
   createMarkup,
   type Markup,
@@ -292,7 +292,7 @@ export class View<P> implements ViewElement {
     }
   }
 
-  unmount(parentIsUnmounting: boolean) {
+  unmount(parentIsUnmounting = false) {
     while (this._beforeUnmountCallbacks.length > 0) {
       const callback = this._beforeUnmountCallbacks.shift()!;
       callback();
@@ -339,11 +339,11 @@ export class View<P> implements ViewElement {
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      this._element = mergeElements(constructMarkup(this._elementContext, createMarkup("$node", { value: result })));
+      this._element = groupElements(constructMarkup(this._elementContext, createMarkup("$node", { value: result })));
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      this._element = mergeElements(constructMarkup(this._elementContext, result));
+      this._element = groupElements(constructMarkup(this._elementContext, result));
     } else if (isState(result)) {
-      this._element = mergeElements(
+      this._element = groupElements(
         constructMarkup(this._elementContext, createMarkup("$observer", { states: [result], renderFn: (x) => x })),
       );
     } else {

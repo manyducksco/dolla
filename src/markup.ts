@@ -72,7 +72,7 @@ export interface MarkupElement {
   /**
    * Disconnect from the DOM and clean up. If parentIsUnmounting, DOM operations are skipped.
    */
-  unmount(parentIsUnmounting: boolean): void;
+  unmount(parentIsUnmounting?: boolean): void;
 }
 
 export function isMarkup(value: unknown): value is Markup {
@@ -348,7 +348,7 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
 /**
  * Combines one or more MarkupElements into a single MarkupElement.
  */
-export function mergeElements(nodes: MarkupElement[]): MarkupElement {
+export function groupElements(nodes: MarkupElement[]): MarkupElement {
   if (nodes.length === 1) {
     return nodes[0];
   }

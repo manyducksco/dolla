@@ -95,7 +95,7 @@ export class HTML implements MarkupElement {
     }, 0);
   }
 
-  unmount(parentIsUnmounting: boolean) {
+  unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
       for (const child of this.children) {
         child.unmount(true);

@@ -3,7 +3,7 @@ import {
   isMarkup,
   isMarkupElement,
   isRenderable,
-  mergeElements,
+  groupElements,
   toMarkup,
   type ElementContext,
   type MarkupElement,
@@ -80,7 +80,7 @@ export class Observer implements MarkupElement {
     }
   }
 
-  unmount(parentIsUnmounting: boolean) {
+  unmount(parentIsUnmounting = false) {
     this.observerControls.stop();
     this.watcher.stopAll();
 
@@ -107,9 +107,9 @@ export class Observer implements MarkupElement {
       if (isMarkupElement(c)) {
         return c;
       } else if (isMarkup(c)) {
-        return mergeElements(constructMarkup(this.elementContext, c));
+        return groupElements(constructMarkup(this.elementContext, c));
       } else {
-        return mergeElements(constructMarkup(this.elementContext, toMarkup(c)));
+        return groupElements(constructMarkup(this.elementContext, toMarkup(c)));
       }
     });
 
