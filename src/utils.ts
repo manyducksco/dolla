@@ -1,7 +1,54 @@
 import colorHash from "simple-color-hash";
-import { isObject } from "./typeChecking.js";
+import { isObject, typeOf } from "./typeChecking.js";
+import _deepEqual from "fast-deep-equal";
 
 export const noOp = () => {};
+
+/**
+ * Equality check that passes if both values are the same object.
+ * This is the default equality check for states.
+ */
+export function strictEqual(a: any, b: any): boolean {
+  return a === b;
+}
+
+/**
+ * Equality check that passes if both values are the same object, or if both are objects or arrays with equal keys and values.
+ */
+export function shallowEqual(a: any, b: any): boolean {
+  // Strict equal shortcut
+  if (a === b) return true;
+
+  // Must be same type
+  const t = typeOf(a);
+  if (t !== typeOf(b)) {
+    return false;
+  }
+
+  if (t === "object") {
+    // Objects must have same number of keys with strict equal values
+    let size = 0;
+    for (const key in a) {
+      if (a[key] !== b[key]) return false;
+      size++;
+    }
+    return Object.keys(b).length === size;
+  } else if (t === "array") {
+    // Arrays must be the same length with strict equal values
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Equality check that passes if two objects have equal values, even if they are not the same object.
+ */
+export const deepEqual = _deepEqual;
 
 /**
  * Takes an old value and a new value.  Returns a merged copy if both are objects, otherwise returns the new value.

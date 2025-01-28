@@ -1,4 +1,4 @@
-import { type ViewContext } from "../view.js";
+import { type ViewContext } from "../core/view.js";
 
 /**
  * A utility view that simply displays its children.

@@ -1,6 +1,6 @@
 import htm from "htm/mini";
 
-import type { Dolla } from "./modules/dolla.js";
+import type { Dolla } from "./dolla.js";
 import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
 import { Observer } from "./nodes/observer.js";
@@ -9,8 +9,8 @@ import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
 import { MaybeState, isRef, isSettableState, isState, toState, type State } from "./state.js";
-import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "./typeChecking.js";
-import type { Renderable, Stringable } from "./types.js";
+import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "../typeChecking.js";
+import type { Renderable, Stringable } from "../types.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./view.js";
 
 /*===========================*\

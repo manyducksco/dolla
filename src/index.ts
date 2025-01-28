@@ -9,14 +9,17 @@ export {
   toSettableState,
   toState,
   valueOf,
-} from "./state.js";
-export type { MaybeState, Ref, SettableState, State, StopFunction } from "./state.js";
+} from "./core/state.js";
+export type { MaybeState, Ref, SettableState, State, StopFunction } from "./core/state.js";
+
+// Equality checks (useful for states)
+export { strictEqual, shallowEqual, deepEqual } from "./utils.js";
 
 // Markup
-export { cond, createMarkup, html, portal, repeat } from "./markup.js";
-export type { Markup, MarkupElement } from "./markup.js";
+export { cond, createMarkup, html, portal, repeat } from "./core/markup.js";
+export type { Markup, MarkupElement } from "./core/markup.js";
 
-import { Dolla } from "./modules/dolla.js";
+import { Dolla } from "./core/dolla.js";
 const dolla = new Dolla();
 
 export default dolla;
@@ -38,10 +41,10 @@ export function getDevDebug(): boolean {
 }
 
 // Other types
-export type { Dolla, Environment, Logger, LoggerErrorContext, LoggerOptions, Loggles } from "./modules/dolla.js";
+export type { Dolla, Environment, Logger, LoggerErrorContext, LoggerOptions, Loggles } from "./core/dolla.js";
 export type { HTTPRequest, HTTPResponse } from "./modules/http.js";
 export type { InputType, Renderable } from "./types.js";
-export type { ViewContext, ViewFunction, ViewElement as ViewNode } from "./view.js";
+export type { ViewContext, ViewFunction, ViewElement as ViewNode } from "./core/view.js";
 export type { CrashViewProps } from "./views/default-crash-view.js";
 
 import type { IntrinsicElements as Elements } from "./types";

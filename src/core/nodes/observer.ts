@@ -9,8 +9,8 @@ import {
   type MarkupElement,
 } from "../markup.js";
 import { createWatcher, type State, type StopFunction } from "../state.js";
-import { typeOf } from "../typeChecking.js";
-import type { Renderable } from "../types.js";
+import { typeOf } from "../../typeChecking.js";
+import type { Renderable } from "../../types.js";
 
 interface ObserverOptions {
   elementContext: ElementContext;

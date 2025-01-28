@@ -1,6 +1,9 @@
 import type { Dolla, Logger } from "./dolla.js";
 
-export class Render {
+/**
+ * Batches DOM updates; reads before writes.
+ */
+export class Batch {
   #dolla: Dolla;
   #logger: Logger;
 
@@ -91,6 +94,7 @@ export class Render {
 
     const keyedWrites = [...this.#keyedWrites.entries()];
 
+    let key: string | undefined;
     let op: (() => void) | undefined;
 
     // Run reads.
@@ -100,8 +104,8 @@ export class Render {
     }
 
     // Run keyed writes first.
-    for (const [key, callback] of keyedWrites) {
-      callback();
+    for ([key, op] of keyedWrites) {
+      op();
       this.#keyedWrites.delete(key);
       if (checkpoint()) return;
     }

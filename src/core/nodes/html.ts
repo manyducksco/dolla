@@ -1,8 +1,16 @@
 import { nanoid } from "nanoid";
 import { constructMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
-import { isRef, isSettableState, isState, SettableState, type Ref, type State, type StopFunction } from "../state.js";
-import { isFunction, isObject, isString } from "../typeChecking.js";
-import { omit } from "../utils.js";
+import {
+  isRef,
+  isSettableState,
+  isState,
+  type Ref,
+  type SettableState,
+  type State,
+  type StopFunction,
+} from "../state.js";
+import { isFunction, isObject, isString } from "../../typeChecking.js";
+import { omit } from "../../utils.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -126,13 +134,13 @@ export class HTML implements MarkupElement {
     if (isState(value)) {
       this.stopCallbacks.push(
         value.watch((current) => {
-          this.elementContext.root.render.write(() => {
+          this.elementContext.root.batch.write(() => {
             callback(current);
           }, updateKey);
         }),
       );
     } else {
-      this.elementContext.root.render.write(() => {
+      this.elementContext.root.batch.write(() => {
         callback(value);
       }, updateKey);
     }
@@ -360,7 +368,7 @@ export class HTML implements MarkupElement {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
-        this.elementContext.root.render.write(
+        this.elementContext.root.batch.write(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -382,7 +390,7 @@ export class HTML implements MarkupElement {
 
         if (isState(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.render.write(() => {
+            this.elementContext.root.batch.write(() => {
               if (current) {
                 element.style.setProperty(name, String(current), priority);
               } else {
@@ -414,7 +422,7 @@ export class HTML implements MarkupElement {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
-        this.elementContext.root.render.write(
+        this.elementContext.root.batch.write(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -436,7 +444,7 @@ export class HTML implements MarkupElement {
 
         if (isState(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.render.write(() => {
+            this.elementContext.root.batch.write(() => {
               if (current) {
                 element.classList.add(name);
               } else {

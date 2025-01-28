@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import test from "node:test";
 
-import { ParsedRoute, joinPath, matchRoutes, patternToFragments, resolvePath, sortRoutes } from "./routing.js";
+import { type ParsedRoute, joinPath, matchRoutes, patternToFragments, resolvePath, sortRoutes } from "./router.utils";
 
 test("add and match routes", (t) => {
   let routes: ParsedRoute<{ testId: number }>[] = [];

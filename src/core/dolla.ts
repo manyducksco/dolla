@@ -5,7 +5,7 @@ import {
   type ElementContext,
   type Markup,
   type MarkupElement,
-} from "../markup.js";
+} from "./markup.js";
 import {
   createRef,
   createSettableState,
@@ -16,17 +16,17 @@ import {
   toSettableState,
   toState,
   valueOf,
-} from "../state.js";
+} from "./state.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
-import { View, type ViewElement, type ViewFunction } from "../view.js";
+import { View, type ViewElement, type ViewFunction } from "./view.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 
-import { HTTP } from "./http.js";
-import { I18n } from "./i18n.js";
-import { Render } from "./render.js";
-import { Router } from "./router.js";
+import { Batch } from "./batch.js";
+import { HTTP } from "../modules/http.js";
+import { I18n } from "../modules/i18n.js";
+import { Router } from "../modules/router.js";
 
 // Affects which log messages will print and how much debugging info is included in the DOM.
 export type Environment = "development" | "production";
@@ -70,9 +70,10 @@ export type LoggerOptions = {
 };
 
 export class Dolla {
+  readonly batch: Batch;
+
   readonly http: HTTP;
   readonly i18n: I18n;
-  readonly render: Render;
   readonly router: Router;
 
   #isMounted = false;
@@ -104,9 +105,10 @@ export class Dolla {
   constructor() {
     const self = this;
 
+    this.batch = new Batch(this);
+
     this.http = new HTTP();
     this.i18n = new I18n(this);
-    this.render = new Render(this);
     this.router = new Router(this, {
       get rootElement() {
         return self.#rootElement;

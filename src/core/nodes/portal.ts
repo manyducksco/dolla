@@ -7,7 +7,7 @@ import {
   type MarkupElement,
   type ElementContext,
 } from "../markup.js";
-import { type Renderable } from "../types.js";
+import { type Renderable } from "../../types.js";
 
 interface PortalConfig {
   content: Renderable;

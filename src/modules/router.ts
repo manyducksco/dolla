@@ -1,4 +1,3 @@
-import { createBrowserHistory, createHashHistory, type Update, type History } from "history";
 import {
   joinPath,
   matchRoutes,
@@ -8,13 +7,14 @@ import {
   resolvePath,
   sortRoutes,
   splitPath,
-} from "../routing.js";
-import { createState, type StopFunction, createWatcher } from "../state.js";
+} from "./router.utils.js";
+import { createState, type StopFunction } from "../core/state.js";
 import { isFunction, isString } from "../typeChecking.js";
 import { type Stringable } from "../types.js";
-import { type ViewElement, type ViewFunction } from "../view.js";
+import { shallowEqual } from "../utils.js";
+import { type ViewElement, type ViewFunction } from "../core/view.js";
 import { Passthrough } from "../views/passthrough.js";
-import type { Dolla, Logger } from "./dolla.js";
+import type { Dolla, Logger } from "../core/dolla.js";
 
 // ----- Types ----- //
 
@@ -119,27 +119,13 @@ export interface NavigateOptions {
   preserveQuery?: boolean;
 }
 
-export enum RoutingStyle {
-  /**
-   * Constructs routes like "https://www.example.com/#/sub/route" which work without any server-side setup.
-   * A good choice if your app has no backend.
-   */
-  hash = "hash",
-
-  /**
-   * Constructs routes like "https://www.example.com/sub/route" which look nicer (subjective?) than hash routes and are what most users will expect URLs to look like, but require additional backend setup.
-   * Path routing requires you to configure your backend to redirect to the app's index.html when subpaths are requested.
-   */
-  path = "path",
-}
-
 export interface RouterSetupOptions {
   routes: Route[];
 
   /**
-   * The routing style to use; "hash" will construct routes like "https://www.example.com/#/sub/route" which work without any server-side setup, while "path" will construct routes that use paths directly.
+   * When true, the router will construct routes like "https://www.example.com/#/sub/route" which work without any backend intervention.
    */
-  style?: RoutingStyle;
+  hash?: boolean;
 }
 
 export interface RouterElements {
@@ -149,32 +135,21 @@ export interface RouterElements {
 
 // ----- Code ----- //
 
-/**
- * A quick equality check for parsed params.
- */
-const objectEqual = (a: Record<string, any>, b: Record<string, any>) => {
-  if (Object.keys(a).length !== Object.keys(b).length) {
-    return false;
-  }
-  for (const key in a) {
-    if (a[key] !== b[key]) {
-      return false;
-    }
-  }
-  return true;
-};
-
 export class Router {
   #dolla: Dolla;
   #logger: Logger;
   #elements: RouterElements;
-  #watcher = createWatcher();
 
-  #history!: History;
+  // #history!: History;
   #layerId = 0;
   #activeLayers: ActiveLayer[] = [];
   #lastQuery?: string;
   #routes: ParsedRoute<RouteConfig["meta"]>[] = [];
+
+  /**
+   * Use hash routing when true. Configured in router options.
+   */
+  #hash = false;
 
   // Callbacks that need to be called on unmount.
   #cleanupCallbacks: StopFunction[] = [];
@@ -210,10 +185,10 @@ export class Router {
 
     const [$pattern, setPattern] = createState<string | null>(null);
     const [$path, setPath] = createState("");
-    const [$params, setParams] = createState<ParsedParams>({}, { equals: objectEqual });
+    const [$params, setParams] = createState<ParsedParams>({}, { equals: shallowEqual });
     const [$query, setQuery] = createState<ParsedQuery>(
       parseQueryParams(typeof window === "undefined" ? "" : (window.location.search ?? "")),
-      { equals: objectEqual },
+      { equals: shallowEqual },
     );
 
     this.$pattern = $pattern;
@@ -229,68 +204,50 @@ export class Router {
     this.#setQuery = setQuery;
 
     dolla.beforeMount(() => {
-      // If router setup has not run, we don't need to do anything.
-      if (this.#history == null) return;
+      // Listen for popstate events and update route accordingly.
+      const onPopState = () => {
+        this.#updateRoute();
+      };
+      window.addEventListener("popstate", onPopState);
+      this.#cleanupCallbacks.push(() => window.removeEventListener("popstate", onPopState));
 
-      // Update URL when query changes
-
-      this.#watcher.watch([$query], (current) => {
-        const params = new URLSearchParams();
-
-        for (const key in current) {
-          params.set(key, String(current[key]));
-        }
-
-        const search = "?" + params.toString();
-
-        if (search != this.#history.location.search) {
-          this.#history.replace({
-            pathname: this.#history.location.pathname,
-            search,
-          });
-        }
-      });
-
-      this.#cleanupCallbacks.push(this.#history.listen(this.#onRouteChange.bind(this)));
-      this.#onRouteChange(this.#history);
-
+      // Listen for clicks on <a> tags within the app.
       this.#cleanupCallbacks.push(
         catchLinks(this.#elements.rootElement!, (anchor) => {
           let href = anchor.getAttribute("href")!;
-
-          this.#logger.info("Intercepted link click", anchor, href);
+          this.#logger.info("intercepted click on <a> tag", anchor);
 
           if (!/^https?:\/\/|^\//.test(href)) {
-            href = joinPath([this.#history.location.pathname, href]);
+            href = joinPath([window.location.pathname, href]);
           }
 
-          this.#history.push(href);
+          this.#push(href);
         }),
       );
-      this.#logger.info("Intercepting <a> clicks within root element:", this.#elements.rootElement!);
+      this.#logger.info("will intercept clicks on <a> tags within root element", this.#elements.rootElement!);
+
+      // Setup initial route content.
+      return this.#updateRoute();
     });
 
     dolla.onUnmount(() => {
-      while (this.#cleanupCallbacks.length > 0) {
-        const callback = this.#cleanupCallbacks.pop()!;
+      for (const callback of this.#cleanupCallbacks) {
         callback();
       }
-      this.#watcher.stopAll();
+      this.#cleanupCallbacks = [];
     });
   }
 
   setup(options: RouterSetupOptions) {
     if (this.#dolla.isMounted) {
       this.#logger.crash(
-        new Error(`Dolla is already mounted. Router setup must be called before Dolla.mount is called.`),
+        new Error(`Dolla is already mounted. Dolla.router.setup() must be called before Dolla.mount().`),
       );
       return;
     }
 
-    if (options.style === RoutingStyle.hash) {
-      this.#history = createHashHistory();
-    } else {
-      this.#history = createBrowserHistory();
+    if (options.hash) {
+      this.#hash = true;
     }
 
     this.#routes = sortRoutes(
@@ -333,6 +290,20 @@ export class Router {
   }
 
   /**
+   * Navigate backward. Pass a number of steps to hit the back button that many times.
+   */
+  back(steps = 1) {
+    window.history.go(-steps);
+  }
+
+  /**
+   * Navigate forward. Pass a number of steps to hit the forward button that many times.
+   */
+  forward(steps = 1) {
+    window.history.go(steps);
+  }
+
+  /**
    * Navigates to another route.
    *
    * @example
@@ -340,15 +311,6 @@ export class Router {
    * Dolla.router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
    */
   go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
-    if (this.#history == null) {
-      this.#logger.crash(
-        new Error(
-          `Router.go was called, but the router was never configured! Run 'Dolla.router.setup' before 'Dolla.mount' to configure routes.`,
-        ),
-      );
-      return;
-    }
-
     let joined: string;
 
     if (Array.isArray(path)) {
@@ -357,49 +319,134 @@ export class Router {
       joined = path.toString();
     }
 
-    joined = resolvePath(this.#history.location.pathname, joined);
+    joined = resolvePath(window.location.pathname, joined);
 
     if (options.preserveQuery) {
-      joined += this.#history.location.search;
+      joined += window.location.search;
     }
 
     if (options.replace) {
-      this.#history.replace(joined);
+      this.#replace(joined);
     } else {
-      this.#history.push(joined);
+      this.#push(joined);
+    }
+  }
+
+  #push(href: string) {
+    this.#logger.info("(push)", href);
+
+    window.history.pushState({}, "", this.#hash ? "/#" + href : href);
+    this.#updateRoute(href);
+  }
+
+  #replace(href: string) {
+    this.#logger.info("(replace)", href);
+
+    window.history.replaceState({}, "", this.#hash ? "/#" + href : href);
+    this.#updateRoute(href);
+  }
+
+  #getCurrentURL(): URL {
+    if (this.#hash) {
+      return new URL(window.location.hash.slice(1), window.location.origin);
+    } else {
+      return new URL(window.location.pathname, window.location.origin);
     }
   }
 
   /**
-   * Navigate backward. Pass a number of steps to hit the back button that many times.
+   * Run when the location changes. Diffs and mounts new routes and updates
+   * the $path, $route, $params and $query states accordingly.
    */
-  back(steps = 1) {
-    if (this.#history == null) {
-      this.#logger.crash(
-        new Error(
-          `Router.back was called, but the router was never configured! Run 'Dolla.router.setup' before 'Dolla.mount' to configure routes.`,
-        ),
-      );
+  async #updateRoute(href?: string) {
+    const location = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
+
+    this.#logger.info("updating route", { location, href });
+
+    // Update query params if they've changed.
+    if (location.search !== this.#lastQuery) {
+      this.#lastQuery = location.search;
+      this.#setQuery(parseQueryParams(location.search));
+    }
+
+    const matched = matchRoutes(this.#routes, location.pathname);
+
+    if (!matched) {
+      this.#setPattern(null);
+      this.#setPath(location.pathname);
+      this.#setParams({
+        wildcard: location.pathname,
+      });
       return;
     }
 
-    this.#history.go(-steps);
-  }
+    let redirect = matched.meta.redirect;
 
-  /**
-   * Navigate forward. Pass a number of steps to hit the forward button that many times.
-   */
-  forward(steps = 1) {
-    if (this.#history == null) {
-      this.#logger.crash(
-        new Error(
-          `Router.forward was called, but the router was never configured! Run 'Dolla.router.setup' before 'Dolla.mount' to configure routes.`,
-        ),
-      );
-      return;
+    // TODO: Replace with concept of route middleware.
+    if (matched.meta.beforeMatch) {
+      await matched.meta.beforeMatch({
+        // TODO: Allow setting context variables from here? Would apply to the context of the matched view.
+        redirect: (path) => {
+          redirect = path;
+        },
+      });
     }
 
-    this.#history.go(steps);
+    if (redirect != null) {
+      if (typeof redirect === "string") {
+        const path = replaceParams(redirect, matched.params);
+        this.#logger.info(`↩️ redirecting from '${matched.path}' to '${path}'`);
+        this.#replace(path);
+      } else if (typeof redirect === "function") {
+        const redirectContext: RouteRedirectContext = {
+          path: matched.path,
+          pattern: matched.pattern,
+          params: matched.params,
+          query: matched.query,
+        };
+        let path = await redirect(redirectContext);
+        if (typeof path !== "string") {
+          throw new Error(`Redirect function must return a path to redirect to.`);
+        }
+        if (!path.startsWith("/")) {
+          // Not absolute. Resolve against matched path.
+          path = resolvePath(matched.path, path);
+        }
+        this.#logger.info(`Redirecting to: '${path}'`);
+        this.#replace(path);
+      } else {
+        throw new TypeError(`Redirect must either be a path string or a function.`);
+      }
+    } else {
+      this.#logger.info(`📍 navigating to '${matched.path}'`);
+
+      this.#setPath(matched.path);
+      this.#setParams(matched.params);
+
+      if (matched.pattern !== this.$pattern.get()) {
+        this.#setPattern(matched.pattern);
+
+        const layers = matched.meta.layers!;
+
+        // Diff and update route layers.
+        for (let i = 0; i < layers.length; i++) {
+          const matchedLayer = layers[i];
+          const activeLayer = this.#activeLayers[i];
+
+          if (activeLayer?.id !== matchedLayer.id) {
+            // Discard all previously active layers starting at this depth.
+            this.#activeLayers = this.#activeLayers.slice(0, i);
+            activeLayer?.node.unmount();
+
+            const parentLayer = this.#activeLayers.at(-1);
+            const parent = parentLayer?.node ?? this.#elements.rootView!;
+
+            const node = parent.setChildView(matchedLayer.view);
+            this.#activeLayers.push({ id: matchedLayer.id, node });
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -484,108 +531,6 @@ export class Router {
     }
 
     return routes;
-  }
-
-  /**
-   * Run when the location changes. Diffs and mounts new routes and updates
-   * the $path, $route, $params and $query states accordingly.
-   */
-  async #onRouteChange({ location }: History | Update) {
-    // Update query params if they've changed.
-    if (location.search !== this.#lastQuery) {
-      this.#lastQuery = location.search;
-      this.#setQuery(parseQueryParams(location.search));
-    }
-
-    const matched = matchRoutes(this.#routes, location.pathname);
-
-    if (!matched) {
-      this.#setPattern(null);
-      this.#setPath(location.pathname);
-      this.#setParams({
-        wildcard: location.pathname,
-      });
-      return;
-    }
-
-    // TODO: Replace with concept of route middleware.
-    if (matched.meta.beforeMatch) {
-      await matched.meta.beforeMatch({
-        // TODO: Allow setting context variables from here.
-        redirect: (path) => {
-          // TODO: Implement
-          throw new Error(`Redirect not yet implemented.`);
-        },
-      });
-    }
-
-    if (matched.meta.redirect != null) {
-      if (typeof matched.meta.redirect === "string") {
-        const path = replaceParams(matched.meta.redirect, matched.params);
-        this.#logger.info(`↩️ redirecting from '${matched.path}' to '${path}'`);
-        this.#history.replace(path);
-      } else if (typeof matched.meta.redirect === "function") {
-        const redirectContext: RouteRedirectContext = {
-          path: matched.path,
-          pattern: matched.pattern,
-          params: matched.params,
-          query: matched.query,
-        };
-        let path = await matched.meta.redirect(redirectContext);
-        if (typeof path !== "string") {
-          throw new Error(`Redirect function must return a path to redirect to.`);
-        }
-        if (!path.startsWith("/")) {
-          // Not absolute. Resolve against matched path.
-          path = resolvePath(matched.path, path);
-        }
-        this.#logger.info(`Redirecting to: '${path}'`);
-        this.#history.replace(path);
-      } else {
-        throw new TypeError(`Redirect must either be a path string or a function.`);
-      }
-    } else {
-      this.#logger.info(`📍 navigating to '${matched.path}'`);
-
-      this.#setPath(matched.path);
-      this.#setParams(matched.params);
-
-      if (matched.pattern !== this.$pattern.get()) {
-        this.#setPattern(matched.pattern);
-
-        const layers = matched.meta.layers!;
-
-        // Diff and update route layers.
-        for (let i = 0; i < layers.length; i++) {
-          const matchedLayer = layers[i];
-          const activeLayer = this.#activeLayers[i];
-
-          if (activeLayer?.id !== matchedLayer.id) {
-            // Remove any previously active layers at this depth or deeper.
-            this.#activeLayers = this.#activeLayers.slice(0, i);
-
-            const parentLayer = this.#activeLayers.at(-1);
-
-            if (activeLayer && activeLayer.node.isMounted) {
-              // Disconnect first mismatched active layer.
-              activeLayer.node.unmount(false);
-            }
-
-            let node: ViewElement;
-
-            // Replace parentLayer's previous children with the new layer.
-            if (parentLayer) {
-              node = parentLayer.node.setChildView(matchedLayer.view);
-            } else {
-              node = this.#elements.rootView!.setChildView(matchedLayer.view);
-            }
-
-            // Store the new active layer.
-            this.#activeLayers.push({ id: matchedLayer.id, node });
-          }
-        }
-      }
-    }
   }
 }
 

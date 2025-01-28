@@ -1,4 +1,4 @@
-import { assertString, assertArrayOf, isFunction } from "./typeChecking.js";
+import { assertString, assertArrayOf, isFunction } from "../typeChecking.js";
 
 export type RouteMatch<T = Record<string, any>> = {
   /**

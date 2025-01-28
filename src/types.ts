@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
-import type { Markup } from "./markup.js";
-import type { SettableState, State, Ref } from "./state.js";
+import type { Markup } from "./core/markup.js";
+import type { SettableState, State, Ref } from "./core/state.js";
 
 /**
  * Represents everything that can be handled as a DOM node.

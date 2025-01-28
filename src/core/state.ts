@@ -1,4 +1,4 @@
-import { colorFromString, noOp } from "./utils";
+import { colorFromString, noOp } from "../utils";
 
 /**
  * Counts total active state watchers for the purpose of tracking memory leaks.

@@ -1,7 +1,7 @@
 import deepEqual from "fast-deep-equal";
-import { createState, derive, type MaybeState, type State } from "../state.js";
+import { createState, derive, type MaybeState, type State } from "../core/state.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
-import type { Dolla, Logger } from "./dolla.js";
+import type { Dolla, Logger } from "../core/dolla.js";
 
 // ----- Types ----- //
 

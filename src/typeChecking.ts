@@ -18,38 +18,21 @@ type TypeNames =
 /**
  * Extends `typeof` operator with more specific and useful type distinctions.
  */
-export function typeOf(value: unknown): TypeNames {
-  if (value === undefined) {
-    return "undefined";
-  }
-
-  if (value === null) {
-    return "null";
-  }
-
+export function typeOf(value: any): TypeNames {
   const type = typeof value;
-
   switch (type) {
+    case "undefined":
+      return type;
     case "number":
-      if (isNaN(value as any)) {
-        return "NaN";
-      }
-      return "number";
+      if (isNaN(value as any)) return "NaN";
+      return type;
     case "function":
-      if (isClass(value)) {
-        return "class";
-      }
-
+      if (/^\s*class\s+/.test(value.toString())) return "class";
       return type;
     case "object":
-      if (isArray(value)) {
-        return "array";
-      }
-
-      if (isPromise(value)) {
-        return "promise";
-      }
-
+      if (value === null) return "null";
+      if (value instanceof Promise) return "promise";
+      if (Array.isArray(value)) return "array";
       return type;
     default:
       return type;

@@ -1,25 +1,24 @@
 import { nanoid } from "nanoid";
+import { isArrayOf, typeOf } from "../typeChecking.js";
+import type { Logger } from "./dolla.js";
 import {
-  type MarkupElement,
+  constructMarkup,
+  createMarkup,
   type ElementContext,
   groupElements,
   isMarkup,
-  createMarkup,
   type Markup,
-  constructMarkup,
+  type MarkupElement,
 } from "./markup.js";
-import type { Logger } from "./modules/dolla.js";
 import {
   createState,
   createWatcher,
   isState,
   type MaybeState,
-  Setter,
   State,
   type StateValues,
   type StopFunction,
 } from "./state.js";
-import { isArrayOf, typeOf } from "./typeChecking.js";
 
 /*=====================================*\
 ||                Types                ||
