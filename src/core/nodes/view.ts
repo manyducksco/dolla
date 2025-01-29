@@ -1,6 +1,6 @@
-import { nanoid } from "nanoid";
-import { isArrayOf, typeOf } from "../typeChecking.js";
-import type { Logger } from "./dolla.js";
+import { isArrayOf, typeOf } from "../../typeChecking.js";
+import { getUniqueId } from "../../utils.js";
+import type { Logger } from "../dolla.js";
 import {
   constructMarkup,
   createMarkup,
@@ -9,16 +9,17 @@ import {
   isMarkup,
   type Markup,
   type MarkupElement,
-} from "./markup.js";
+} from "../markup.js";
 import {
   createState,
   createWatcher,
   isState,
   type MaybeState,
-  State,
+  type State,
   type StateValues,
   type StopFunction,
-} from "./state.js";
+} from "../state.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 /*=====================================*\
 ||                Types                ||
@@ -43,7 +44,7 @@ export interface ViewElement extends MarkupElement {
 
 export interface ViewContext extends Logger {
   /**
-   * A string ID unique to this view.
+   * An ID unique to this view.
    */
   readonly uid: string;
 
@@ -223,7 +224,9 @@ class Context implements ViewContext {
 }
 
 export class View<P> implements ViewElement {
-  uniqueId = nanoid();
+  [TYPE_MARKUP_ELEMENT] = true;
+
+  uniqueId = getUniqueId();
 
   _elementContext: ElementContext;
   _logger;
@@ -247,9 +250,7 @@ export class View<P> implements ViewElement {
     this._view = view;
     this._props = props;
 
-    const [$children, setChildren] = createState<MarkupElement[]>(constructMarkup(elementContext, children));
-    this._$children = $children;
-    this._setChildren = setChildren;
+    [this._$children, this._setChildren] = createState<MarkupElement[]>(constructMarkup(elementContext, children));
   }
 
   /*===============================*\

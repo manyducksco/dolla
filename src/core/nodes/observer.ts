@@ -1,16 +1,17 @@
+import { typeOf } from "../../typeChecking.js";
+import type { Renderable } from "../../types.js";
 import {
   constructMarkup,
+  groupElements,
   isMarkup,
   isMarkupElement,
   isRenderable,
-  groupElements,
   toMarkup,
   type ElementContext,
   type MarkupElement,
 } from "../markup.js";
 import { createWatcher, type State, type StopFunction } from "../state.js";
-import { typeOf } from "../../typeChecking.js";
-import type { Renderable } from "../../types.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 interface ObserverOptions {
   elementContext: ElementContext;
@@ -20,8 +21,11 @@ interface ObserverOptions {
 
 /**
  * Displays dynamic children without a parent element.
+ * Used when a State is passed as a child in a view template.
  */
 export class Observer implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   node: Node;
   endNode: Node;
   connectedViews: MarkupElement[] = [];
@@ -48,10 +52,10 @@ export class Observer implements MarkupElement {
         if (_stop != null) return;
 
         _stop = this.watcher.watch(states, (...values) => {
-          const rendered = this.renderFn(...values);
+          let rendered = this.renderFn(...values);
 
           if (!isRenderable(rendered)) {
-            console.error(rendered);
+            console.error(rendered, values);
             throw new TypeError(
               `Observer received invalid value to render. Got type: ${typeOf(rendered)}, value: ${rendered}`,
             );

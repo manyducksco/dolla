@@ -162,10 +162,10 @@ debug.log("HELLO");
 debug.warn("THIS IS A SCOPED LOGGER");
 
 // Efficiently and safely read and mutate the DOM using Dolla's render batching
-Dolla.render.read(() => {
+Dolla.batch.read(() => {
   // Reference DOM nodes
 });
-Dolla.render.write(() => {
+Dolla.batch.write(() => {
   // Mutate the DOM as part of Dolla's next batch
 }, "some-key");
 

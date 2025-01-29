@@ -1,6 +1,7 @@
-import { constructMarkup, toMarkup, type MarkupElement, type ElementContext, type Markup } from "../markup.js";
-import { type State, type StopFunction } from "../state.js";
 import { type Renderable } from "../../types.js";
+import { constructMarkup, toMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
+import { type State, type StopFunction } from "../state.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 export interface ConditionalConfig {
   $predicate: State<any>;
@@ -10,6 +11,8 @@ export interface ConditionalConfig {
 }
 
 export class Conditional implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   node: Node;
   endNode: Node;
   $predicate: State<any>;

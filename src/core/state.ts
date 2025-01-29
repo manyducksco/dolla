@@ -1,4 +1,5 @@
-import { colorFromString, noOp } from "../utils";
+import { colorFromString, noOp, strictEqual } from "../utils";
+import { TYPE_REF, TYPE_SETTABLE_STATE, TYPE_STATE } from "./symbols";
 
 /**
  * Counts total active state watchers for the purpose of tracking memory leaks.
@@ -120,10 +121,6 @@ export interface Ref<T extends Node> extends State<T | undefined> {
 ||            Utils             ||
 \*==============================*/
 
-const TYPE_STATE = Symbol("State");
-const TYPE_SETTABLE_STATE = Symbol("SettableState");
-const TYPE_REF = Symbol("Ref");
-
 export function isState<T>(value: any): value is State<T> {
   return value?.[TYPE_STATE] === true;
 }
@@ -175,13 +172,9 @@ export function toState<T>(value: MaybeState<T>): State<T> {
 \*==============================*/
 
 export class ValueHolder<T> implements State<T> {
-  static defaultEquals(next: any, current: any): boolean {
-    return next === current;
-  }
-
   value: T;
   watchers: ((value: T) => void)[] = [];
-  equals = ValueHolder.defaultEquals;
+  equals = strictEqual;
 
   constructor(value: T, options?: CreateStateOptions<T>) {
     this.value = value;
@@ -365,7 +358,7 @@ export function createSetter<I, O = I>($state: State<I>, callback: (next: O, cur
 const EMPTY = Symbol("EMPTY");
 
 class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
-  equals = ValueHolder.defaultEquals;
+  equals = strictEqual;
 
   /**
    * Array of states this holder's value is derived from.

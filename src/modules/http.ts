@@ -1,4 +1,5 @@
 import { isObject } from "../typeChecking.js";
+import type { Dolla, Logger } from "../core/dolla.js";
 
 /**
  * A simple HTTP client with middleware support. Middleware applies to all requests made through this store,
@@ -7,6 +8,13 @@ import { isObject } from "../typeChecking.js";
 export class HTTP {
   #middleware: HTTPMiddleware[] = [];
   #fetch = getDefaultFetch();
+  #dolla: Dolla;
+  #logger: Logger;
+
+  constructor(dolla: Dolla) {
+    this.#dolla = dolla;
+    this.#logger = dolla.createLogger("dolla/http");
+  }
 
   /**
    * Adds a new middleware that will apply to subsequent requests.
@@ -62,6 +70,7 @@ export class HTTP {
       uri,
       middleware: this.#middleware,
       fetch: this.#fetch,
+      logger: this.#logger,
     });
   }
 }
@@ -140,10 +149,11 @@ interface MakeRequestConfig<ReqBody> extends RequestOptions<ReqBody> {
   uri: string;
   middleware: HTTPMiddleware[];
   fetch: typeof window.fetch;
+  logger: Logger;
 }
 
 async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>) {
-  const { headers, query, fetch, middleware } = config;
+  const { headers, query, fetch, middleware, logger } = config;
 
   const request: HTTPRequest<ReqBody> = {
     method: config.method,
@@ -241,6 +251,8 @@ async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>)
       headers: headers,
       body,
     };
+
+    // logger.info("response", response);
   };
 
   if (middleware.length > 0) {

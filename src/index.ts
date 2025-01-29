@@ -44,7 +44,7 @@ export function getDevDebug(): boolean {
 export type { Dolla, Environment, Logger, LoggerErrorContext, LoggerOptions, Loggles } from "./core/dolla.js";
 export type { HTTPRequest, HTTPResponse } from "./modules/http.js";
 export type { InputType, Renderable } from "./types.js";
-export type { ViewContext, ViewFunction, ViewElement as ViewNode } from "./core/view.js";
+export type { ViewContext, ViewFunction, ViewElement as ViewNode } from "./core/nodes/view.js";
 export type { CrashViewProps } from "./views/default-crash-view.js";
 
 import type { IntrinsicElements as Elements } from "./types";

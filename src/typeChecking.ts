@@ -13,6 +13,8 @@ type TypeNames =
   | "array"
   | "class"
   | "promise"
+  | "map"
+  | "set"
   | "NaN";
 
 /**
@@ -32,6 +34,8 @@ export function typeOf(value: any): TypeNames {
     case "object":
       if (value === null) return "null";
       if (value instanceof Promise) return "promise";
+      if (value instanceof Map) return "map";
+      if (value instanceof Set) return "set";
       if (Array.isArray(value)) return "array";
       return type;
     default:

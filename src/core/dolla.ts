@@ -1,3 +1,8 @@
+import { assertInstanceOf, isString } from "../typeChecking.js";
+import { colorFromString, createMatcher, noOp } from "../utils.js";
+import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
+import { Passthrough } from "../views/passthrough.js";
+import { Batch } from "./batch.js";
 import {
   constructMarkup,
   createMarkup,
@@ -6,6 +11,7 @@ import {
   type Markup,
   type MarkupElement,
 } from "./markup.js";
+import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import {
   createRef,
   createSettableState,
@@ -17,13 +23,7 @@ import {
   toState,
   valueOf,
 } from "./state.js";
-import { assertInstanceOf, isString } from "../typeChecking.js";
-import { colorFromString, createMatcher, getDefaultConsole, noOp } from "../utils.js";
-import { View, type ViewElement, type ViewFunction } from "./view.js";
-import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
-import { Passthrough } from "../views/passthrough.js";
 
-import { Batch } from "./batch.js";
 import { HTTP } from "../modules/http.js";
 import { I18n } from "../modules/i18n.js";
 import { Router } from "../modules/router.js";
@@ -69,6 +69,16 @@ export type LoggerOptions = {
   uid?: string;
 };
 
+export interface DollaModuleConfig<Options = never> {
+  root: Dolla;
+  options: Options;
+}
+
+// export interface DollaModule<Options> {
+//   readonly moduleName: string;
+//   register(config: DollaModuleConfig<Options>): any | Promise<any>;
+// }
+
 export class Dolla {
   readonly batch: Batch;
 
@@ -102,21 +112,15 @@ export class Dolla {
   };
   #match = createMatcher("*,-dolla/*");
 
+  // Registration functions for modules.
+  // All modules will be registered before mount.
+  #modules: (() => Promise<any>)[] = [];
+
   constructor() {
-    const self = this;
-
     this.batch = new Batch(this);
-
-    this.http = new HTTP();
+    this.http = new HTTP(this);
     this.i18n = new I18n(this);
-    this.router = new Router(this, {
-      get rootElement() {
-        return self.#rootElement;
-      },
-      get rootView() {
-        return self.#rootView;
-      },
-    });
+    this.router = new Router(this);
   }
 
   watch = this.#watcher.watch;
@@ -164,6 +168,30 @@ export class Dolla {
   }
 
   /**
+   * Returns the HTMLElement Dolla is mounted to. This will return undefined until Dolla.mount() is called.
+   */
+  getRootElement() {
+    return this.#rootElement;
+  }
+
+  /**
+   * Returns the top level view Dolla is rendering inside the root element. This will return undefined until Dolla.mount() is called.
+   */
+  getRootView() {
+    return this.#rootView;
+  }
+
+  /**
+   * Registers a Dolla module.
+   */
+  // use<O>(module: DollaModule<O>, options: O) {
+  //   this.#modules.push(async () => {
+  //     return module.register({ root: this, options });
+  //   });
+  //   return this;
+  // }
+
+  /**
    * Sets a context variable and returns its value. Context variables are accessible on the app and in child views.
    */
   set<T>(key: string | symbol, value: T): T {
@@ -206,15 +234,19 @@ export class Dolla {
     const rootViewMarkup = createMarkup(view ?? Passthrough);
     this.#rootView = this.constructView(rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
 
+    // Register modules
+    // TODO: Handle errors
+    await Promise.all(this.#modules.map((register) => register()));
+
     // Run beforeMount
+    // TODO: Handle errors
     await Promise.all(this.#beforeMountCallbacks.map((callback) => callback()));
 
     this.#rootView.mount(this.#rootElement);
-
-    // App is now fully mounted.
     this.#isMounted = true;
 
     // Run onMount
+    // TODO: Handle errors
     for (const callback of this.#onMountCallbacks) {
       callback();
     }
@@ -426,5 +458,14 @@ export class Dolla {
    */
   constructMarkup(markup: Markup | Markup[]): MarkupElement {
     return groupElements(constructMarkup(this.#rootElementContext, markup));
+  }
+}
+
+export function getDefaultConsole() {
+  if (typeof window !== "undefined" && window.console) {
+    return window.console;
+  }
+  if (typeof global !== "undefined" && global.console) {
+    return global.console;
   }
 }

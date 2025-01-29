@@ -1,5 +1,7 @@
 import htm from "htm/mini";
 
+import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
+import type { Renderable, Stringable } from "../types.js";
 import type { Dolla } from "./dolla.js";
 import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
@@ -8,10 +10,9 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
+import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
 import { MaybeState, isRef, isSettableState, isState, toState, type State } from "./state.js";
-import { isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "../typeChecking.js";
-import type { Renderable, Stringable } from "../types.js";
-import { View, type ViewContext, type ViewFunction, type ViewResult } from "./view.js";
+import { TYPE_MARKUP, TYPE_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
 ||       ElementContext      ||
@@ -75,16 +76,12 @@ export interface MarkupElement {
   unmount(parentIsUnmounting?: boolean): void;
 }
 
-export function isMarkup(value: unknown): value is Markup {
-  return (
-    isObject(value) &&
-    (typeof value.type === "string" || typeof value.type === "function") &&
-    Array.isArray(value.children)
-  );
+export function isMarkup(value: any): value is Markup {
+  return value?.[TYPE_MARKUP] === true;
 }
 
-export function isMarkupElement(value: unknown): value is MarkupElement {
-  return isObject(value) && isFunction(value.connect) && isFunction(value.disconnect);
+export function isMarkupElement(value: any): value is MarkupElement {
+  return value?.[TYPE_MARKUP_ELEMENT] === true;
 }
 
 export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
@@ -164,6 +161,7 @@ export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...ch
   }
 
   return {
+    [TYPE_MARKUP]: true,
     type,
     props,
     children: toMarkup(children),
@@ -245,6 +243,8 @@ export function portal(parent: Node, content: Renderable) {
  * Wraps any plain DOM node in a MarkupElement interface.
  */
 class DOMNode implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   node: Node;
 
   get isMounted() {
@@ -315,10 +315,7 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
         }
         case "$outlet": {
           const attrs = item.props! as MarkupAttributes["$outlet"];
-          return new Outlet({
-            $children: attrs.$children,
-            elementContext,
-          });
+          return new Outlet(attrs.$children);
         }
         case "$portal": {
           const attrs = item.props! as MarkupAttributes["$portal"];
@@ -348,52 +345,20 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
 /**
  * Combines one or more MarkupElements into a single MarkupElement.
  */
-export function groupElements(nodes: MarkupElement[]): MarkupElement {
-  if (nodes.length === 1) {
-    return nodes[0];
+export function groupElements(elements: MarkupElement[]): MarkupElement {
+  if (elements.length === 1) {
+    return elements[0];
   }
 
-  const node = document.createComment("Fragment");
-
-  let isConnected = false;
-
-  return {
-    get node() {
-      return node;
-    },
-    get isMounted() {
-      return isConnected;
-    },
-    mount(parent: Node, after?: Node) {
-      parent.insertBefore(node, after ? after : null);
-
-      for (const handle of nodes) {
-        const previous = nodes[nodes.length - 1]?.node ?? node;
-        handle.mount(parent, previous);
-      }
-
-      isConnected = true;
-    },
-    unmount(parentIsUnmounting) {
-      if (isConnected) {
-        for (const handle of nodes) {
-          handle.unmount(true);
-        }
-
-        node.remove();
-      }
-
-      isConnected = false;
-    },
-  };
+  return new Outlet(elements);
 }
 
 export function isRenderable(value: unknown): value is Renderable {
   return (
     value == null ||
     value === false ||
-    typeof value === "string" ||
-    typeof value === "number" ||
+    isString(value) ||
+    isNumber(value) ||
     isMarkup(value) ||
     isState(value) ||
     isArrayOf(isRenderable, value)

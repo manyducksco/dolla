@@ -1,5 +1,6 @@
 import { type MarkupElement } from "../markup.js";
 import { isState, type MaybeState, type StopFunction } from "../state.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 interface Stringable {
   toString(): string;
@@ -10,6 +11,8 @@ interface TextOptions {
 }
 
 export class Text implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   node = document.createTextNode("");
   value: MaybeState<Stringable> = "";
   stopCallback?: StopFunction;

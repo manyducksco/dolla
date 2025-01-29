@@ -1,20 +1,20 @@
+import type { Dolla, Logger } from "../core/dolla.js";
+import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
+import { createState, derive, type StopFunction } from "../core/state.js";
+import { assert, isFunction, isObject, isString } from "../typeChecking.js";
+import type { Stringable } from "../types.js";
+import { shallowEqual } from "../utils.js";
+import { Passthrough } from "../views/passthrough.js";
 import {
   joinPath,
   matchRoutes,
-  type ParsedRoute,
-  parseQueryParams,
   patternToFragments,
   resolvePath,
   sortRoutes,
   splitPath,
+  type ParsedRoute,
+  type RouteMatch,
 } from "./router.utils.js";
-import { createState, type StopFunction } from "../core/state.js";
-import { isFunction, isString } from "../typeChecking.js";
-import { type Stringable } from "../types.js";
-import { shallowEqual } from "../utils.js";
-import { type ViewElement, type ViewFunction } from "../core/view.js";
-import { Passthrough } from "../views/passthrough.js";
-import type { Dolla, Logger } from "../core/dolla.js";
 
 // ----- Types ----- //
 
@@ -52,14 +52,16 @@ export interface Route {
   beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
 }
 
+export interface RouteMeta {
+  redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
+  pattern?: string;
+  layers?: RouteLayer[];
+  beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
+}
+
 export interface RouteConfig {
   pattern: string;
-  meta: {
-    redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
-    pattern?: string;
-    layers?: RouteLayer[];
-    beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
-  };
+  meta: RouteMeta;
 }
 
 export interface RouteLayer {
@@ -100,11 +102,13 @@ export interface RouteRedirectContext {
   query: Record<string, string | number | boolean | undefined>;
 }
 
-interface ParsedParams {
-  [key: string]: string | number | boolean | (string | number | boolean | null)[] | null;
+/**
+ * A log for a single step in the route resolution process.
+ */
+interface JourneyStep {
+  kind: "match" | "redirect" | "miss";
+  message: string;
 }
-
-interface ParsedQuery extends ParsedParams {}
 
 export interface NavigateOptions {
   /**
@@ -119,7 +123,7 @@ export interface NavigateOptions {
   preserveQuery?: boolean;
 }
 
-export interface RouterSetupOptions {
+export interface RouterOptions {
   routes: Route[];
 
   /**
@@ -128,23 +132,15 @@ export interface RouterSetupOptions {
   hash?: boolean;
 }
 
-export interface RouterElements {
-  readonly rootElement?: HTMLElement;
-  readonly rootView?: ViewElement;
-}
-
 // ----- Code ----- //
 
 export class Router {
   #dolla: Dolla;
   #logger: Logger;
-  #elements: RouterElements;
 
-  // #history!: History;
   #layerId = 0;
   #activeLayers: ActiveLayer[] = [];
-  #lastQuery?: string;
-  #routes: ParsedRoute<RouteConfig["meta"]>[] = [];
+  #routes: ParsedRoute<RouteMeta>[] = [];
 
   /**
    * Use hash routing when true. Configured in router options.
@@ -155,55 +151,43 @@ export class Router {
   #cleanupCallbacks: StopFunction[] = [];
 
   /**
+   * The current match object.
+   */
+  #$match;
+  #setMatch;
+
+  /**
    * The currently matched route pattern, if any.
    */
   $pattern;
-  #setPattern;
 
   /**
    * The current URL path.
    */
   $path;
-  #setPath;
 
   /**
    * The current named path params.
    */
   $params;
-  #setParams;
 
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
   $query;
-  #setQuery;
 
-  constructor(dolla: Dolla, elements: RouterElements) {
+  constructor(dolla: Dolla) {
     this.#dolla = dolla;
     this.#logger = dolla.createLogger("dolla/router");
-    this.#elements = elements;
 
-    const [$pattern, setPattern] = createState<string | null>(null);
-    const [$path, setPath] = createState("");
-    const [$params, setParams] = createState<ParsedParams>({}, { equals: shallowEqual });
-    const [$query, setQuery] = createState<ParsedQuery>(
-      parseQueryParams(typeof window === "undefined" ? "" : (window.location.search ?? "")),
-      { equals: shallowEqual },
-    );
+    [this.#$match, this.#setMatch] = createState<RouteMatch>();
 
-    this.$pattern = $pattern;
-    this.#setPattern = setPattern;
+    this.$pattern = derive([this.#$match], (m) => m?.pattern);
+    this.$path = derive([this.#$match], (m) => m?.path ?? window.location.pathname);
+    this.$params = derive([this.#$match], (m) => m?.params ?? {}, { equals: shallowEqual });
+    this.$query = derive([this.#$match], (m) => m?.query ?? {}, { equals: shallowEqual });
 
-    this.$path = $path;
-    this.#setPath = setPath;
-
-    this.$params = $params;
-    this.#setParams = setParams;
-
-    this.$query = $query;
-    this.#setQuery = setQuery;
-
-    dolla.beforeMount(() => {
+    dolla.beforeMount(async () => {
       // Listen for popstate events and update route accordingly.
       const onPopState = () => {
         this.#updateRoute();
@@ -211,9 +195,11 @@ export class Router {
       window.addEventListener("popstate", onPopState);
       this.#cleanupCallbacks.push(() => window.removeEventListener("popstate", onPopState));
 
+      const rootElement = dolla.getRootElement()!;
+
       // Listen for clicks on <a> tags within the app.
       this.#cleanupCallbacks.push(
-        catchLinks(this.#elements.rootElement!, (anchor) => {
+        catchLinks(rootElement, (anchor) => {
           let href = anchor.getAttribute("href")!;
           this.#logger.info("intercepted click on <a> tag", anchor);
 
@@ -224,7 +210,7 @@ export class Router {
           this.#push(href);
         }),
       );
-      this.#logger.info("will intercept clicks on <a> tags within root element", this.#elements.rootElement!);
+      this.#logger.info("will intercept clicks on <a> tags within root element", rootElement);
 
       // Setup initial route content.
       return this.#updateRoute();
@@ -238,18 +224,18 @@ export class Router {
     });
   }
 
-  setup(options: RouterSetupOptions) {
-    if (this.#dolla.isMounted) {
-      this.#logger.crash(
-        new Error(`Dolla is already mounted. Dolla.router.setup() must be called before Dolla.mount().`),
-      );
-      return;
-    }
+  async setup(options: RouterOptions) {
+    assert(options != null, "Options object must not be null. Got: %t");
+    assert(
+      !this.#dolla.isMounted,
+      "Dolla is already mounted. Dolla.router.setup() must be called before Dolla.mount().",
+    );
 
     if (options.hash) {
       this.#hash = true;
     }
 
+    // Add routes.
     this.#routes = sortRoutes(
       options.routes
         .flatMap((route) => this.#prepareRoute(route))
@@ -259,34 +245,7 @@ export class Router {
           fragments: patternToFragments(route.pattern),
         })),
     );
-
-    // Test redirects to make sure all possible redirect targets actually exist.
-    for (const route of this.#routes) {
-      if (route.meta.redirect) {
-        let redirectPath: string;
-
-        if (isFunction(route.meta.redirect)) {
-          // throw new Error(`Redirect functions are not yet supported.`);
-          // Just allow, though it could fail later. Best not to call the function and cause potential side effects.
-        } else if (isString(route.meta.redirect)) {
-          redirectPath = route.meta.redirect;
-
-          const match = matchRoutes(this.#routes, redirectPath, {
-            willMatch(r) {
-              return r !== route;
-            },
-          });
-
-          if (!match) {
-            throw new Error(
-              `Found a redirect to an undefined URL. From '${route.pattern}' to '${route.meta.redirect}'`,
-            );
-          }
-        } else {
-          throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
-        }
-      }
-    }
+    assertValidRedirects(this.#routes);
   }
 
   /**
@@ -311,6 +270,10 @@ export class Router {
    * Dolla.router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
    */
   go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
+    if (this.#dolla == null) {
+      throw new Error(`Routa methods won't work until you register it: Dolla.use(Routa, { /* ...options */ })`);
+    }
+
     let joined: string;
 
     if (Array.isArray(path)) {
@@ -332,17 +295,17 @@ export class Router {
     }
   }
 
-  #push(href: string) {
+  #push(href: string, state?: any) {
     this.#logger.info("(push)", href);
 
-    window.history.pushState({}, "", this.#hash ? "/#" + href : href);
+    window.history.pushState(state, "", this.#hash ? "/#" + href : href);
     this.#updateRoute(href);
   }
 
-  #replace(href: string) {
+  #replace(href: string, state?: any) {
     this.#logger.info("(replace)", href);
 
-    window.history.replaceState({}, "", this.#hash ? "/#" + href : href);
+    window.history.replaceState(state, "", this.#hash ? "/#" + href : href);
     this.#updateRoute(href);
   }
 
@@ -359,32 +322,63 @@ export class Router {
    * the $path, $route, $params and $query states accordingly.
    */
   async #updateRoute(href?: string) {
-    const location = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
+    const logger = this.#logger;
+    const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
 
-    this.#logger.info("updating route", { location, href });
+    const { match, journey } = await this.#resolveRoute(url);
 
-    // Update query params if they've changed.
-    if (location.search !== this.#lastQuery) {
-      this.#lastQuery = location.search;
-      this.#setQuery(parseQueryParams(location.search));
+    for (const step of journey) {
+      switch (step.kind) {
+        case "match":
+          logger.info(`📍 ${step.message}`);
+          break;
+        case "redirect":
+          logger.info(`↩️ ${step.message}`);
+          break;
+        case "miss":
+          logger.info(`💀 ${step.message}`);
+          break;
+        default:
+          break;
+      }
     }
 
-    const matched = matchRoutes(this.#routes, location.pathname);
+    if (match) {
+      const currentPattern = this.$pattern.get();
 
-    if (!matched) {
-      this.#setPattern(null);
-      this.#setPath(location.pathname);
-      this.#setParams({
-        wildcard: location.pathname,
-      });
-      return;
+      this.#setMatch(match);
+
+      if (match.pattern !== currentPattern) {
+        this.#mountRoute(match);
+      }
+    } else {
+      logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
+    }
+  }
+
+  /**
+   * Takes a URL and finds a match, following redirects.
+   */
+  async #resolveRoute(
+    url: URL,
+    journey: JourneyStep[] = [],
+  ): Promise<{
+    match: RouteMatch<RouteMeta> | null;
+    journey: JourneyStep[];
+  }> {
+    const match = matchRoutes(this.#routes, url.pathname);
+
+    if (!match) {
+      return {
+        match: null,
+        journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
+      };
     }
 
-    let redirect = matched.meta.redirect;
+    let redirect = match.meta.redirect;
 
-    // TODO: Replace with concept of route middleware.
-    if (matched.meta.beforeMatch) {
-      await matched.meta.beforeMatch({
+    if (match.meta.beforeMatch) {
+      await match.meta.beforeMatch({
         // TODO: Allow setting context variables from here? Would apply to the context of the matched view.
         redirect: (path) => {
           redirect = path;
@@ -393,58 +387,59 @@ export class Router {
     }
 
     if (redirect != null) {
-      if (typeof redirect === "string") {
-        const path = replaceParams(redirect, matched.params);
-        this.#logger.info(`↩️ redirecting from '${matched.path}' to '${path}'`);
-        this.#replace(path);
-      } else if (typeof redirect === "function") {
+      let path: string;
+
+      if (isString(redirect)) {
+        path = replaceParams(redirect, match.params);
+      } else if (isFunction(redirect)) {
         const redirectContext: RouteRedirectContext = {
-          path: matched.path,
-          pattern: matched.pattern,
-          params: matched.params,
-          query: matched.query,
+          path: match.path,
+          pattern: match.pattern,
+          params: match.params,
+          query: match.query,
         };
-        let path = await redirect(redirectContext);
-        if (typeof path !== "string") {
+        path = await redirect(redirectContext);
+        if (!isString(path)) {
           throw new Error(`Redirect function must return a path to redirect to.`);
         }
         if (!path.startsWith("/")) {
           // Not absolute. Resolve against matched path.
-          path = resolvePath(matched.path, path);
+          path = resolvePath(match.path, path);
         }
-        this.#logger.info(`Redirecting to: '${path}'`);
-        this.#replace(path);
       } else {
         throw new TypeError(`Redirect must either be a path string or a function.`);
       }
+
+      return this.#resolveRoute(new URL(path, window.location.origin), [
+        ...journey,
+        { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
+      ]);
     } else {
-      this.#logger.info(`📍 navigating to '${matched.path}'`);
+      return { match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] };
+    }
+  }
 
-      this.#setPath(matched.path);
-      this.#setParams(matched.params);
+  /**
+   * Takes a matched route and mounts it.
+   */
+  #mountRoute(match: RouteMatch<RouteMeta>) {
+    const layers = match.meta.layers!;
 
-      if (matched.pattern !== this.$pattern.get()) {
-        this.#setPattern(matched.pattern);
+    // Diff and update route layers.
+    for (let i = 0; i < layers.length; i++) {
+      const matchedLayer = layers[i];
+      const activeLayer = this.#activeLayers[i];
 
-        const layers = matched.meta.layers!;
+      if (activeLayer?.id !== matchedLayer.id) {
+        // Discard all previously active layers starting at this depth.
+        this.#activeLayers = this.#activeLayers.slice(0, i);
+        activeLayer?.node.unmount();
 
-        // Diff and update route layers.
-        for (let i = 0; i < layers.length; i++) {
-          const matchedLayer = layers[i];
-          const activeLayer = this.#activeLayers[i];
+        const parentLayer = this.#activeLayers.at(-1);
+        const parent = parentLayer?.node ?? this.#dolla!.getRootView()!;
 
-          if (activeLayer?.id !== matchedLayer.id) {
-            // Discard all previously active layers starting at this depth.
-            this.#activeLayers = this.#activeLayers.slice(0, i);
-            activeLayer?.node.unmount();
-
-            const parentLayer = this.#activeLayers.at(-1);
-            const parent = parentLayer?.node ?? this.#elements.rootView!;
-
-            const node = parent.setChildView(matchedLayer.view);
-            this.#activeLayers.push({ id: matchedLayer.id, node });
-          }
-        }
+        const node = parent.setChildView(matchedLayer.view);
+        this.#activeLayers.push({ id: matchedLayer.id, node });
       }
     }
   }
@@ -456,7 +451,7 @@ export class Router {
    * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
    */
   #prepareRoute(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
-    if (!(typeof route === "object" && !Array.isArray(route)) || !(typeof route.path === "string")) {
+    if (!isObject(route) || !isString(route.path)) {
       throw new TypeError(`Route configs must be objects with a 'path' string property. Got: ${route}`);
     }
 
@@ -506,7 +501,7 @@ export class Router {
 
     let view: ViewFunction<any> = Passthrough;
 
-    if (typeof route.view === "function") {
+    if (isFunction(route.view)) {
       view = route.view;
     } else if (route.view) {
       throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
@@ -604,3 +599,33 @@ function replaceParams(path: string, params: Record<string, string | number>) {
 
   return path;
 }
+
+function assertValidRedirects(routes: ParsedRoute<RouteMeta>[]) {
+  // Test redirects to make sure all possible redirect targets actually exist.
+  for (const route of routes) {
+    if (route.meta.redirect) {
+      let redirectPath: string;
+
+      if (isFunction(route.meta.redirect)) {
+        // throw new Error(`Redirect functions are not yet supported.`);
+        // Just allow, though it could fail later. Best not to call the function and cause potential side effects.
+      } else if (isString(route.meta.redirect)) {
+        redirectPath = route.meta.redirect;
+
+        const match = matchRoutes(routes, redirectPath, {
+          willMatch(r) {
+            return r !== route;
+          },
+        });
+
+        if (!match) {
+          throw new Error(`Found a redirect to an undefined URL. From '${route.pattern}' to '${route.meta.redirect}'`);
+        }
+      } else {
+        throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
+      }
+    }
+  }
+}
+
+class NoRouteError extends Error {}

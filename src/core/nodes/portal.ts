@@ -1,13 +1,14 @@
-import {
-  groupElements,
-  isMarkupElement,
-  isMarkup,
-  constructMarkup,
-  toMarkup,
-  type MarkupElement,
-  type ElementContext,
-} from "../markup.js";
 import { type Renderable } from "../../types.js";
+import {
+  constructMarkup,
+  groupElements,
+  isMarkup,
+  isMarkupElement,
+  toMarkup,
+  type ElementContext,
+  type MarkupElement,
+} from "../markup.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 interface PortalConfig {
   content: Renderable;
@@ -19,6 +20,8 @@ interface PortalConfig {
  * Renders content into a specified parent node.
  */
 export class Portal implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   config: PortalConfig;
   element?: MarkupElement;
 

@@ -3,8 +3,6 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   build: {
-    // minify: "terser",
-    // minify: false,
     sourcemap: true,
 
     lib: {
@@ -16,13 +14,5 @@ export default defineConfig({
       name: "Dolla",
       formats: ["es"],
     },
-    // rollupOptions: {
-    //   external: ["vue"],
-    //   output: {
-    //     globals: {
-    //       vue: "Vue",
-    //     },
-    //   },
-    // },
   },
 });

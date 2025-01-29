@@ -1,7 +1,7 @@
-import deepEqual from "fast-deep-equal";
+import type { Dolla, Logger } from "../core/dolla.js";
 import { createState, derive, type MaybeState, type State } from "../core/state.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
-import type { Dolla, Logger } from "../core/dolla.js";
+import { deepEqual } from "../utils.js";
 
 // ----- Types ----- //
 
@@ -118,13 +118,14 @@ class Translation {
           throw new Error(`Fetch function did not return an object of language strings: ${strings}`);
         }
       } else if (isString(this.config.path)) {
-        const res = await this.dolla.http.get(this.config.path);
-        if (res.status >= 200 && res.status < 300) {
-          if (isObject(res.body)) {
-            strings = res.body as LocalizedStrings;
+        const res = await fetch(this.config.path);
+        if (res.ok) {
+          const body = await res.json();
+          if (isObject(body)) {
+            strings = body as LocalizedStrings;
           } else {
             throw new Error(
-              `Language path '${this.config.path}' did not return an object of language strings: ${res.body}`,
+              `Language path '${this.config.path}' did not return an object of language strings: ${body}`,
             );
           }
         } else {
@@ -432,7 +433,7 @@ export class I18n {
     if (name === "auto") {
       let names = [];
 
-      if (typeof navigator === "object") {
+      if (typeof navigator !== "undefined") {
         const nav = navigator as any;
 
         if (nav.languages?.length > 0) {
@@ -645,9 +646,7 @@ export class I18n {
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat(this.$locale.get(), options).format(
-      typeof date === "string" ? new Date(date) : date,
-    );
+    return new Intl.DateTimeFormat(this.$locale.get(), options).format(isString(date) ? new Date(date) : date);
   }
 
   /**

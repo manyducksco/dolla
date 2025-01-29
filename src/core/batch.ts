@@ -72,7 +72,7 @@ export class Batch {
     let completed = 0;
 
     /**
-     * Runs after each operation. If returns true, the batch has been deferred and processing should stop. If returns true, processing of the current batch should continue.
+     * Runs after each operation. If true, the batch has been deferred and processing should stop. If false, processing of the current batch should continue.
      */
     const checkpoint = () => {
       completed++;

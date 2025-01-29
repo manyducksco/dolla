@@ -1,46 +1,38 @@
-import { type MarkupElement, type ElementContext } from "../markup.js";
-import { type State, type StopFunction } from "../state.js";
-
-export interface OutletConfig {
-  $children: State<MarkupElement[]>;
-  elementContext: ElementContext;
-}
+import { type ElementContext, type MarkupElement } from "../markup.js";
+import { isState, MaybeState, type State, type StopFunction } from "../state.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
- * Manages an array of DOMHandles.
+ * Manages several MarkupElements as one.
  */
 export class Outlet implements MarkupElement {
-  node: Node;
-  endNode: Node;
-  $children: State<MarkupElement[]>;
+  [TYPE_MARKUP_ELEMENT] = true;
+
+  node = document.createTextNode("");
+  isMounted = false;
+
+  elements: MaybeState<MarkupElement[]>;
+  children: MarkupElement[] = [];
+
   stopCallback?: StopFunction;
-  mountedChildren: MarkupElement[] = [];
-  elementContext: ElementContext;
 
-  constructor(config: OutletConfig) {
-    this.$children = config.$children;
-    this.elementContext = config.elementContext;
-
-    if (this.elementContext.root.getEnv() === "development") {
-      this.node = document.createComment("Outlet");
-      this.endNode = document.createComment("/Outlet");
-    } else {
-      this.node = document.createTextNode("");
-      this.endNode = document.createTextNode("");
-    }
-  }
-
-  get isMounted() {
-    return this.node?.parentNode != null;
+  constructor(elements: MaybeState<MarkupElement[]>) {
+    this.elements = elements;
   }
 
   mount(parent: Node, after?: Node | undefined) {
     if (!this.isMounted) {
+      this.isMounted = true;
+
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
-      this.stopCallback = this.$children.watch((children) => {
-        this.update(children);
-      });
+      if (isState<MarkupElement[]>(this.elements)) {
+        this.stopCallback = this.elements.watch((children) => {
+          this.update(children);
+        });
+      } else {
+        this.update(this.children);
+      }
     }
   }
 
@@ -51,16 +43,17 @@ export class Outlet implements MarkupElement {
     }
 
     if (this.isMounted) {
-      for (const child of this.mountedChildren) {
+      for (const child of this.children) {
         child.unmount(parentIsUnmounting);
       }
-      this.mountedChildren = [];
-      this.endNode.parentNode?.removeChild(this.endNode);
+      this.children = [];
+
+      this.isMounted = false;
     }
   }
 
   update(newChildren: MarkupElement[]) {
-    for (const child of this.mountedChildren) {
+    for (const child of this.children) {
       child.unmount(false);
     }
 
@@ -70,14 +63,6 @@ export class Outlet implements MarkupElement {
       child.mount(this.node.parentElement!, previous?.node);
     }
 
-    this.mountedChildren = newChildren;
-
-    if (this.elementContext.root.getEnv() === "development") {
-      this.node.textContent = `Outlet (${newChildren.length} ${newChildren.length === 1 ? "child" : "children"})`;
-      this.node.parentElement?.insertBefore(
-        this.endNode,
-        this.mountedChildren[this.mountedChildren.length - 1]?.node?.nextSibling ?? null,
-      );
-    }
+    this.children = newChildren;
   }
 }

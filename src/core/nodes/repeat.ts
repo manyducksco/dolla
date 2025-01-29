@@ -1,6 +1,7 @@
-import { type MarkupElement, type ElementContext } from "../markup.js";
-import { createState, type State, type Setter, type StopFunction } from "../state.js";
-import { View, type ViewContext, type ViewResult } from "../view.js";
+import { type ElementContext, type MarkupElement } from "../markup.js";
+import { createState, type Setter, type State, type StopFunction } from "../state.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
+import { View, type ViewContext, type ViewResult } from "./view.js";
 
 // ----- Types ----- //
 
@@ -23,6 +24,8 @@ type ConnectedItem<T> = {
 // ----- Code ----- //
 
 export class Repeat<T> implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   node: Node;
   endNode: Node;
   $items: State<T[]>;

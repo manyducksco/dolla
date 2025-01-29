@@ -1,4 +1,5 @@
-import { nanoid } from "nanoid";
+import { isFunction, isObject, isString } from "../../typeChecking.js";
+import { getUniqueId, omit } from "../../utils.js";
 import { constructMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
 import {
   isRef,
@@ -9,8 +10,7 @@ import {
   type State,
   type StopFunction,
 } from "../state.js";
-import { isFunction, isObject, isString } from "../../typeChecking.js";
-import { omit } from "../../utils.js";
+import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -23,12 +23,14 @@ type HTMLOptions = {
 };
 
 export class HTML implements MarkupElement {
+  [TYPE_MARKUP_ELEMENT] = true;
+
   node;
   props: Record<string, any>;
   children: MarkupElement[];
   stopCallbacks: StopFunction[] = [];
   elementContext;
-  uniqueId = nanoid();
+  uniqueId = getUniqueId();
 
   // Track the ref so we can nullify it on unmount.
   ref?: Ref<any>;

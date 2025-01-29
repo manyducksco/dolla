@@ -1,8 +1,19 @@
 import colorHash from "simple-color-hash";
-import { isObject, typeOf } from "./typeChecking.js";
-import _deepEqual from "fast-deep-equal";
+import { isFunction, isObject, typeOf } from "./typeChecking.js";
+import _deepEqual from "fast-deep-equal/es6";
 
 export const noOp = () => {};
+
+// Guarantee unique ID by incrementing a global counter.
+let idCounter = 1;
+export function getUniqueId() {
+  idCounter = (idCounter % Number.MAX_SAFE_INTEGER) + 1;
+  return idCounter.toString(36) + Date.now().toString(36);
+}
+
+/*=============================*\
+||       Object Equality       ||
+\*=============================*/
 
 /**
  * Equality check that passes if both values are the same object.
@@ -25,21 +36,37 @@ export function shallowEqual(a: any, b: any): boolean {
     return false;
   }
 
-  if (t === "object") {
-    // Objects must have same number of keys with strict equal values
-    let size = 0;
-    for (const key in a) {
-      if (a[key] !== b[key]) return false;
-      size++;
-    }
-    return Object.keys(b).length === size;
-  } else if (t === "array") {
-    // Arrays must be the same length with strict equal values
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
+  switch (t) {
+    case "object":
+      // Objects must have same number of keys with strict equal values
+      let size = 0;
+      for (const key in a) {
+        if (a[key] !== b[key]) return false;
+        size++;
+      }
+      return Object.keys(b).length === size;
+    case "array":
+      // Arrays must be the same length with strict equal values
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    case "map":
+      if (a.size !== b.size) return false;
+      for (const key of a.keys()) {
+        if (a[key] !== b[key]) return false;
+      }
+      return true;
+    case "set":
+      if (isFunction(a.symmetricDifference)) {
+        return a.symmetricDifference(b).size === 0;
+      } else {
+        for (const key of a.keys()) {
+          if (a[key] !== b.get(key)) return false;
+        }
+        return true;
+      }
   }
 
   return false;
@@ -49,6 +76,10 @@ export function shallowEqual(a: any, b: any): boolean {
  * Equality check that passes if two objects have equal values, even if they are not the same object.
  */
 export const deepEqual = _deepEqual;
+
+/*=============================*\
+||         Object Utils        ||
+\*=============================*/
 
 /**
  * Takes an old value and a new value.  Returns a merged copy if both are objects, otherwise returns the new value.
@@ -99,15 +130,9 @@ export function omit<O extends Record<any, any>>(keys: (keyof O)[], object: O): 
   return process(object);
 }
 
-export function getDefaultConsole() {
-  if (typeof window !== "undefined" && window.console) {
-    return window.console;
-  }
-
-  if (typeof global !== "undefined" && global.console) {
-    return global.console;
-  }
-}
+/*=============================*\
+||         Object Utils        ||
+\*=============================*/
 
 export function colorFromString(value: string) {
   return colorHash({
