@@ -1,5 +1,7 @@
 # Scratch Note
 
+---
+
 Bring the $ back and the name full circle.
 
 ```js
@@ -12,7 +14,7 @@ const [$count, setCount] = $(0);
 // = createState(0)
 
 // An array and a function derives a state.
-const $doubled = $([$count], (count) => count * 2);
+const $doubled = $.derive([$count], (count) => count * 2);
 // = derive([$count], (count) => count * 2);
 
 // A state returns the same state.
@@ -21,7 +23,7 @@ const $wrapped = $.of({ message: "This is a state with no setter." });
 // = toState($count)
 
 // Get value from a state. Values that are not states are returned directly.
-const count = $.value($count);
+const count = $.get($count);
 
 // An initial value creates a SettableState
 const $$count = $$(5);
@@ -37,7 +39,7 @@ const [$count, setCount] = $($$count);
 
 ---
 
-I've been looking into other libraries that don't make you track your dependencies specifically.
+I've been looking into other libraries that don't make you track your dependencies specifically. I think this is weird and unhinged to be honest. Calling functions with side effects that magically re-run things when the value changes is a truly weird and unexpected lifecycle. At least if you're explicitly tracking dependencies you know exactly what depends on what at a glance. Getting the computer to figure it out for you doesn't seem smart.
 
 ```js
 import { $ } from "@manyducks.co/dolla";
@@ -45,8 +47,6 @@ import { $ } from "@manyducks.co/dolla";
 const [count, setCount] = $(0);
 
 const doubled = $.computed(() => count() * 2);
-
-
 
 $.effect(() => {
   console.log(doubled());

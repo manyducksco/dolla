@@ -20,8 +20,8 @@ Let's first get into some examples.
 
 ### Basic State API
 
-```jsx
-import { createState, toState, valueOf, derive, createWatcher } from "@manyducks.co/dolla";
+```js
+import { createState, derive } from "@manyducks.co/dolla";
 
 const [$count, setCount] = createState(72);
 
@@ -35,26 +35,24 @@ $count.get(); // 300
 // You can also pass a function that takes the current value and returns a new one
 setCount((current) => current + 1);
 $count.get(); // 301
+```
 
-// Derive a new state from one or more other states. Whenever $count changes, $doubled will follow.
+Now that you have a state you can derive more states from that one. Derived states automatically stay in sync with the values of their dependencies.
+
+```js
+// Pass and array of one or more states followed by a function that computes a new value.
 const $doubled = derive([$count], (count) => count * 2);
-const $sum = derive([$count, $doubled], (count, doubled) => count + doubled);
 
-// Returns the value of a state. If the value is not a state it is returned as is.
-const count = valueOf($count);
-const bool = valueOf(true);
+$doubled.get(); // 602
 
-// Creates a state from a value. If the value is already a state it is returned as is.
-const $bool = toState(true);
-const $anotherCount = toState($count);
+setCount(500);
 
-const watcher = createWatcher();
+$doubled.get(); // 1000
+```
 
-// Watch for changes to the value
-const stop = watcher.watch([$count], (value) => [
-// This function is called immediately with the current value, then again each time the value changes.
-]);
-stop(); // Stop watching for changes
+### In Views
+
+```jsx
 
 ```
 
@@ -105,12 +103,12 @@ $doubled(); // 100
 $value(); // 50
 ```
 
-## Views [id="section-views"]
+<h2 id="section-views">Views</h2>
 
 A basic view:
 
 ```js
-import Dolla, { createState, html } from "@manyducks.co/dolla";
+import Dolla, { createState } from "@manyducks.co/dolla";
 
 function Counter(props, ctx) {
   const [$count, setCount] = createState(0);
@@ -119,12 +117,24 @@ function Counter(props, ctx) {
     setCount((count) => count + 1);
   }
 
-  return html`
+  function decrement() {
+    setCount((count) => count - 1);
+  }
+
+  function reset() {
+    setCount(0);
+  }
+
+  return (
     <div>
-      <p>Clicks: ${$count}</p>
-      <button onclick=${increment}>+1</button>
+      <p>Clicks: {$count}</p>
+      <div>
+        <button onClick={decrement}>-1</button>
+        <button onClick={reset}>0</button>
+        <button onClick={increment}>-1</button>
+      </div>
     </div>
-  `;
+  );
 }
 
 Dolla.mount(document.body, Counter);
