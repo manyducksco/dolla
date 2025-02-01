@@ -32,6 +32,8 @@ export class HTML implements MarkupElement {
   elementContext;
   uniqueId = getUniqueId();
 
+  _batchWrite;
+
   // Track the ref so we can nullify it on unmount.
   ref?: Ref<any>;
 
@@ -44,6 +46,8 @@ export class HTML implements MarkupElement {
 
   constructor({ tag, props, children, elementContext }: HTMLOptions) {
     elementContext = { ...elementContext };
+
+    this._batchWrite = elementContext.root.batch.write.bind(elementContext.root.batch);
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
@@ -62,10 +66,10 @@ export class HTML implements MarkupElement {
       this.node.dataset.uniqueId = this.uniqueId;
     }
 
-    // Store ref if present. Refs are set on mount.
     if (props.ref) {
       if (isRef(props.ref)) {
         this.ref = props.ref;
+        this.ref.node = this.node;
       } else {
         throw new Error("Expected ref to be a Ref object. Got: " + props.ref);
       }
@@ -96,10 +100,6 @@ export class HTML implements MarkupElement {
 
     parent.insertBefore(this.node, after?.nextSibling ?? null);
 
-    if (this.ref) {
-      this.ref.node = this.node;
-    }
-
     setTimeout(() => {
       this.canClickAway = true;
     }, 0);
@@ -111,12 +111,12 @@ export class HTML implements MarkupElement {
         child.unmount(true);
       }
 
-      if (this.ref) {
-        this.ref.node = undefined;
-      }
-
       if (!parentIsUnmounting) {
         this.node.parentNode?.removeChild(this.node);
+      }
+
+      if (this.ref) {
+        this.ref.node = undefined;
       }
 
       this.canClickAway = false;
@@ -132,19 +132,27 @@ export class HTML implements MarkupElement {
     return `${this.uniqueId}:${type}:${value}`;
   }
 
+  _mutate(callback: () => any, updateKey?: string) {
+    if (!this.isMounted) {
+      // DOM operations on nodes that aren't connected yet shouldn't cause any
+      // layout thrashing. Just execute now.
+      callback();
+    } else {
+      // If we are mounted we have to be more mindful of layout thrashing.
+      // These mutations get batched.
+      this._batchWrite(callback, updateKey);
+    }
+  }
+
   attachProp<T>(value: State<T> | T, callback: (value: T) => void, updateKey: string) {
     if (isState(value)) {
       this.stopCallbacks.push(
         value.watch((current) => {
-          this.elementContext.root.batch.write(() => {
-            callback(current);
-          }, updateKey);
+          this._mutate(() => callback(current), updateKey);
         }),
       );
     } else {
-      this.elementContext.root.batch.write(() => {
-        callback(value);
-      }, updateKey);
+      this._mutate(() => callback(value), updateKey);
     }
   }
 
@@ -370,7 +378,7 @@ export class HTML implements MarkupElement {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
-        this.elementContext.root.batch.write(
+        this._mutate(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -392,7 +400,7 @@ export class HTML implements MarkupElement {
 
         if (isState(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.batch.write(() => {
+            this._mutate(() => {
               if (current) {
                 element.style.setProperty(name, String(current), priority);
               } else {
@@ -424,7 +432,7 @@ export class HTML implements MarkupElement {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
-        this.elementContext.root.batch.write(
+        this._mutate(
           () => {
             if (isFunction(unapply)) {
               unapply();
@@ -446,7 +454,7 @@ export class HTML implements MarkupElement {
 
         if (isState(value)) {
           const stop = value.watch((current) => {
-            this.elementContext.root.batch.write(() => {
+            this._mutate(() => {
               if (current) {
                 element.classList.add(name);
               } else {
