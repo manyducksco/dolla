@@ -213,7 +213,7 @@ export class Router {
       this.#logger.info("will intercept clicks on <a> tags within root element", rootElement);
 
       // Setup initial route content.
-      return this.#updateRoute();
+      await this.#updateRoute();
     });
 
     dolla.onUnmount(() => {
@@ -354,6 +354,8 @@ export class Router {
     } else {
       logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
     }
+
+    return { match, journey };
   }
 
   /**
