@@ -352,7 +352,7 @@ export class View<P> implements ViewElement {
       this._element = groupElements(constructMarkup(this._elementContext, result));
     } else if (isState(result)) {
       this._element = groupElements(
-        constructMarkup(this._elementContext, createMarkup("$observer", { states: [result], renderFn: (x) => x })),
+        constructMarkup(this._elementContext, createMarkup("$observer", { sources: [result], renderFn: (x) => x })),
       );
     } else {
       const error = new TypeError(

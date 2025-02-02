@@ -81,8 +81,10 @@ export class HTML implements MarkupElement {
     }
 
     if (!this.isMounted) {
-      for (const child of this.children) {
-        child.mount(this.node);
+      for (let i = 0; i < this.children.length; i++) {
+        const child = this.children[i];
+        const previous = i > 0 ? this.children[i - 1].node : undefined;
+        child.mount(this.node, previous);
       }
 
       this.applyProps(this.node, this.props);

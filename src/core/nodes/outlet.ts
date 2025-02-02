@@ -1,5 +1,5 @@
-import { type ElementContext, type MarkupElement } from "../markup.js";
-import { isState, MaybeState, type State, type StopFunction } from "../state.js";
+import { type MarkupElement } from "../markup.js";
+import { isState, type MaybeState, type StopFunction } from "../state.js";
 import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
@@ -58,11 +58,15 @@ export class Outlet implements MarkupElement {
   update(newElements: MarkupElement[]) {
     this.cleanup(false);
 
-    for (let i = 0; i < newElements.length; i++) {
-      const element = newElements[i];
-      const previous = i > 0 ? this.elements[i - 1] : undefined;
-      element.mount(this.node.parentElement!, previous?.node);
-      this.elements.push(element);
+    if (newElements.length > 0) {
+      for (let i = 0; i < newElements.length; i++) {
+        const element = newElements[i];
+        const previous = i > 0 ? this.elements[i - 1] : undefined;
+        element.mount(this.node.parentElement!, previous?.node);
+        this.elements.push(element);
+      }
+
+      this.node.parentNode?.insertBefore(this.node, this.elements.at(-1)?.node ?? null);
     }
   }
 }

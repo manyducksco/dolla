@@ -1,5 +1,6 @@
 import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
+import { getUniqueId } from "../../utils.js";
 import {
   constructMarkup,
   groupElements,
@@ -10,12 +11,12 @@ import {
   type ElementContext,
   type MarkupElement,
 } from "../markup.js";
-import { createWatcher, type State } from "../state.js";
+import { createWatcher, type MaybeState } from "../state.js";
 import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 interface ObserverOptions {
   elementContext: ElementContext;
-  states: State<any>[];
+  sources: MaybeState<any>[];
   renderFn: (...values: any) => Renderable;
 }
 
@@ -26,27 +27,23 @@ interface ObserverOptions {
 export class Observer implements MarkupElement {
   [TYPE_MARKUP_ELEMENT] = true;
 
-  node: Node;
-  endNode: Node;
+  node = document.createTextNode("");
   children: MarkupElement[] = [];
   renderFn: (...values: any) => Renderable;
   elementContext;
   watcher = createWatcher();
 
-  sources;
+  sources: MaybeState<any>[];
 
   get isMounted() {
     return this.node.parentNode != null;
   }
 
-  constructor({ states, renderFn, elementContext }: ObserverOptions) {
+  constructor({ sources, renderFn, elementContext }: ObserverOptions) {
     this.elementContext = elementContext;
     this.renderFn = renderFn;
 
-    this.sources = states;
-
-    this.node = document.createComment("Observer");
-    this.endNode = document.createComment("/Observer");
+    this.sources = sources;
   }
 
   mount(parent: Node, after?: Node) {
@@ -54,16 +51,16 @@ export class Observer implements MarkupElement {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
       this.watcher.watch(this.sources, (...values) => {
-        const rendered = this.renderFn(...values);
+        const content = this.renderFn(...values);
 
-        if (!isRenderable(rendered)) {
-          console.error(rendered, values);
+        if (!isRenderable(content)) {
+          console.error(content, values);
           throw new TypeError(
-            `Observer received invalid value to render. Got type: ${typeOf(rendered)}, value: ${rendered}`,
+            `Observer received invalid value to render. Got type: ${typeOf(content)}, value: ${content}`,
           );
         }
 
-        this.update(isArray(rendered) ? rendered : [rendered]);
+        this.update(isArray(content) ? content : [content]);
       });
     }
   }
@@ -87,7 +84,7 @@ export class Observer implements MarkupElement {
   update(children: Renderable[]) {
     this.cleanup(false);
 
-    if (children == null || !this.isMounted) {
+    if (children == null || children.length === 0 || !this.isMounted) {
       return;
     }
 
@@ -107,12 +104,9 @@ export class Observer implements MarkupElement {
       this.children.push(element);
     }
 
-    // Move marker comment node to after last sibling in dev mode.
-    if (this.elementContext.root.getEnv() === "development") {
-      const lastNode = this.children.at(-1)?.node;
-      if (this.endNode.previousSibling !== lastNode) {
-        this.node.parentNode!.insertBefore(this.endNode, lastNode?.nextSibling ?? null);
-      }
-    }
+    // Move marker node to end.
+    const parent = this.node.parentNode!;
+    const lastChildNextSibling = this.children.at(-1)?.node?.nextSibling ?? null;
+    parent.insertBefore(this.node, lastChildNextSibling);
   }
 }

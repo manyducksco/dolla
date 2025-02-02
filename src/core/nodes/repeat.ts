@@ -26,8 +26,7 @@ type ConnectedItem<T> = {
 export class Repeat<T> implements MarkupElement {
   [TYPE_MARKUP_ELEMENT] = true;
 
-  node: Node;
-  endNode: Node;
+  node = document.createTextNode("");
   $items: State<T[]>;
   stopCallback?: StopFunction;
   connectedItems: ConnectedItem<T>[] = [];
@@ -45,14 +44,6 @@ export class Repeat<T> implements MarkupElement {
     this.$items = $items;
     this.renderFn = renderFn;
     this.keyFn = keyFn;
-
-    if (this.elementContext.root.getEnv() === "development") {
-      this.node = document.createComment("Repeat");
-      this.endNode = document.createComment("/Repeat");
-    } else {
-      this.node = document.createTextNode("");
-      this.endNode = document.createTextNode("");
-    }
   }
 
   mount(parent: Node, after?: Node) {
@@ -73,7 +64,6 @@ export class Repeat<T> implements MarkupElement {
 
     if (!parentIsUnmounting && this.isMounted) {
       this.node.parentNode?.removeChild(this.node);
-      this.endNode.parentNode?.removeChild(this.endNode);
     }
 
     this._cleanup(parentIsUnmounting);
@@ -151,12 +141,9 @@ export class Repeat<T> implements MarkupElement {
 
     this.connectedItems = newItems;
 
-    if (this.elementContext.root.getEnv() === "development") {
-      this.node.textContent = `Repeat (${newItems.length} item${newItems.length === 1 ? "" : "s"})`;
-
-      const lastItem = newItems.at(-1)?.element.node ?? this.node;
-      this.node.parentNode?.insertBefore(this.endNode, lastItem.nextSibling);
-    }
+    // Move marker node to end.
+    const lastItem = newItems.at(-1)?.element.node ?? this.node;
+    this.node.parentNode?.insertBefore(this.node, lastItem.nextSibling);
   }
 }
 

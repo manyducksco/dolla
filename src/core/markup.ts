@@ -3,7 +3,6 @@ import htm from "htm/mini";
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
 import type { Renderable, Stringable } from "../types.js";
 import type { Dolla } from "./dolla.js";
-import { Conditional } from "./nodes/cond.js";
 import { HTML } from "./nodes/html.js";
 import { Observer } from "./nodes/observer.js";
 import { Outlet } from "./nodes/outlet.js";
@@ -111,7 +110,7 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
 
       if (isState(x)) {
         return createMarkup("$observer", {
-          states: [x],
+          sources: [x],
           renderFn: (x) => x,
         });
       }
@@ -123,14 +122,13 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
 
 export interface MarkupAttributes {
   $text: { value: MaybeState<Stringable> };
-  $cond: { $predicate: State<any>; thenContent?: Renderable; elseContent?: Renderable };
   $repeat: {
     $items: State<any[]>;
     keyFn: (value: any, index: number) => string | number | symbol;
     renderFn: ($item: State<any>, $index: State<number>, c: ViewContext) => ViewResult;
   };
   $observer: {
-    states: State<any>[];
+    sources: MaybeState<any>[];
     renderFn: (...items: any) => Renderable;
   };
   $outlet: {
@@ -179,12 +177,16 @@ export const html = htm.bind(createMarkup);
  * Displays content conditionally. When `predicate` holds a truthy value, `thenContent` is displayed; when `predicate` holds a falsy value, `elseContent` is displayed.
  */
 export function cond(predicate: MaybeState<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  const $predicate = toState(predicate);
-
-  return createMarkup("$cond", {
-    $predicate,
-    thenContent,
-    elseContent,
+  return createMarkup("$observer", {
+    sources: [predicate],
+    renderFn: (value) => {
+      if (value && thenContent) {
+        return thenContent;
+      } else if (!value && elseContent) {
+        return elseContent;
+      }
+      return null;
+    },
   });
 }
 
@@ -261,15 +263,15 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
             value: attrs.value,
           });
         }
-        case "$cond": {
-          const attrs = item.props! as MarkupAttributes["$cond"];
-          return new Conditional({
-            $predicate: attrs.$predicate,
-            thenContent: attrs.thenContent,
-            elseContent: attrs.elseContent,
-            elementContext,
-          });
-        }
+        // case "$cond": {
+        //   const attrs = item.props! as MarkupAttributes["$cond"];
+        //   return new Conditional({
+        //     $predicate: attrs.$predicate,
+        //     thenContent: attrs.thenContent,
+        //     elseContent: attrs.elseContent,
+        //     elementContext,
+        //   });
+        // }
         case "$repeat": {
           const attrs = item.props! as MarkupAttributes["$repeat"];
           return new Repeat({
@@ -282,7 +284,7 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
         case "$observer": {
           const attrs = item.props! as MarkupAttributes["$observer"];
           return new Observer({
-            states: attrs.states,
+            sources: attrs.sources,
             renderFn: attrs.renderFn,
             elementContext,
           });
