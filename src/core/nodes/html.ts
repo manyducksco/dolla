@@ -1,15 +1,7 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { getUniqueId, omit } from "../../utils.js";
 import { constructMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
-import {
-  isRef,
-  isSettableState,
-  isState,
-  type Ref,
-  type SettableState,
-  type State,
-  type StopFunction,
-} from "../state.js";
+import { isRef, isState, type Ref, type State, type StopFunction } from "../state.js";
 import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
@@ -69,9 +61,9 @@ export class HTML implements MarkupElement {
     if (props.ref) {
       if (isRef(props.ref)) {
         this.ref = props.ref;
-        this.ref.node = this.node;
+        this.ref(this.node);
       } else {
-        throw new Error("Expected ref to be a Ref object. Got: " + props.ref);
+        throw new Error("Expected ref to be a function. Got: " + props.ref);
       }
     }
 
@@ -116,7 +108,7 @@ export class HTML implements MarkupElement {
       }
 
       if (this.ref) {
-        this.ref.node = undefined;
+        this.ref(undefined);
       }
 
       this.canClickAway = false;
@@ -207,37 +199,6 @@ export class HTML implements MarkupElement {
 
         this.stopCallbacks.push(() => {
           window.removeEventListener("click", listener, options);
-        });
-      } else if (key === "$$value") {
-        // Two-way binding for input values.
-        if (!isSettableState(value)) {
-          throw new TypeError(`$$value attribute must be a settable state. Got: ${value}`);
-        }
-
-        // Read value from state.
-        this.attachProp(
-          value,
-          (current) => {
-            if (current == null) {
-              (element as HTMLInputElement).value = "";
-            } else {
-              (element as HTMLInputElement).value = String(current);
-            }
-          },
-          this.getUpdateKey("attr", "value"),
-        );
-
-        // Propagate value to state.
-        const listener: EventListener = (e) => {
-          // Attempt to cast value back to the same type stored in the state.
-          const updated = toTypeOf(value.get(), (e.currentTarget as HTMLInputElement).value);
-          (value as SettableState<any>).set(updated);
-        };
-
-        element.addEventListener("input", listener);
-
-        this.stopCallbacks.push(() => {
-          element.removeEventListener("input", listener);
         });
       } else if (isCamelCaseEventName(key)) {
         const eventName = key.slice(2).toLowerCase();
@@ -555,28 +516,6 @@ function getStyleMap(styles: unknown) {
  */
 export function camelToKebab(value: string): string {
   return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
-}
-
-/**
- * Attempts to convert `source` to the same type as `target`.
- * Returns `source` as-is if conversion is not possible.
- */
-function toTypeOf<T>(target: T, source: unknown): T | unknown {
-  const type = typeof target;
-
-  if (type === "string") {
-    return String(source);
-  }
-
-  if (type === "number") {
-    return Number(source);
-  }
-
-  if (type === "boolean") {
-    return Boolean(source);
-  }
-
-  return source;
 }
 
 // Attributes in this list will not be forwarded to the DOM node.

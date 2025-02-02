@@ -11,13 +11,13 @@ export class Outlet implements MarkupElement {
   node = document.createTextNode("");
   isMounted = false;
 
-  elements: MaybeState<MarkupElement[]>;
-  children: MarkupElement[] = [];
+  source: MaybeState<MarkupElement[]>;
+  elements: MarkupElement[] = [];
 
   stopCallback?: StopFunction;
 
-  constructor(elements: MaybeState<MarkupElement[]>) {
-    this.elements = elements;
+  constructor(source: MaybeState<MarkupElement[]>) {
+    this.source = source;
   }
 
   mount(parent: Node, after?: Node | undefined) {
@@ -26,12 +26,12 @@ export class Outlet implements MarkupElement {
 
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
-      if (isState<MarkupElement[]>(this.elements)) {
-        this.stopCallback = this.elements.watch((children) => {
+      if (isState<MarkupElement[]>(this.source)) {
+        this.stopCallback = this.source.watch((children) => {
           this.update(children);
         });
       } else {
-        this.update(this.children);
+        this.update(this.elements);
       }
     }
   }
@@ -43,26 +43,26 @@ export class Outlet implements MarkupElement {
     }
 
     if (this.isMounted) {
-      for (const child of this.children) {
-        child.unmount(parentIsUnmounting);
-      }
-      this.children = [];
-
+      this.cleanup(parentIsUnmounting);
       this.isMounted = false;
     }
   }
 
-  update(newChildren: MarkupElement[]) {
-    for (const child of this.children) {
-      child.unmount(false);
+  cleanup(parentIsUnmounting: boolean) {
+    for (const element of this.elements) {
+      element.unmount(parentIsUnmounting);
     }
+    this.elements = [];
+  }
 
-    for (let i = 0; i < newChildren.length; i++) {
-      const child = newChildren[i];
-      const previous = i > 0 ? newChildren[i] : undefined;
-      child.mount(this.node.parentElement!, previous?.node);
+  update(newElements: MarkupElement[]) {
+    this.cleanup(false);
+
+    for (let i = 0; i < newElements.length; i++) {
+      const element = newElements[i];
+      const previous = i > 0 ? this.elements[i - 1] : undefined;
+      element.mount(this.node.parentElement!, previous?.node);
+      this.elements.push(element);
     }
-
-    this.children = newChildren;
   }
 }

@@ -14,27 +14,128 @@ const [$count, setCount] = $(0);
 // = createState(0)
 
 // An array and a function derives a state.
-const $doubled = $.derive([$count], (count) => count * 2);
+const $doubled = $.map([$count], (count) => count * 2);
 // = derive([$count], (count) => count * 2);
 
 // A state returns the same state.
-const $sameCount = $.of($count);
-const $wrapped = $.of({ message: "This is a state with no setter." });
+const $sameCount = $.from($count);
+const $wrapped = $.from({ message: "This is a state with no setter." });
 // = toState($count)
 
 // Get value from a state. Values that are not states are returned directly.
 const count = $.get($count);
+```
 
-// An initial value creates a SettableState
-const $$count = $$(5);
-// = createSettableState(5);
+What about other operators like RxJS?
 
-// Merge state and setter into a SettableState
-const $$count = $$($count, setCount);
-// = toSettableState($count, setCount);
+```js
+// These would be functionally equivalent.
+const $doubled = $count.pipe($.map((count) => count * 2));
+const $doubled = $.map([$count], (count) => count * 2);
 
-// Split a SettableState into a state and setter
-const [$count, setCount] = $($$count);
+// Chainable. Get doubled value, but only update if it's between 10 and 100.
+const $boundedDouble = $count.pipe(
+  // Transforms the value
+  $.map((count) => count * 2),
+
+  // Receives the value when it changes without affecting the output.
+  // Only receives values while this state is actively being watched.
+  $.tap((count) => console.log(`doubled value is ${count}`))
+
+  // Value only changes if it's within the range.
+  $.filter((count) => count >= 10 && count <= 100),
+);
+
+// Could have a top level pipe operator
+const $boundedDouble = $.pipe(
+  [$count],
+  $.map((count) => count * 2),
+  $.tap((count) => console.log(`doubled value is ${count}`))
+  $.filter((count) => count >= 10 && count <= 100),
+);
+
+// Could also be chainable
+const $boundedDouble = $count
+  .map((count) => count * 2)
+  .tap((count) => console.log(`doubled value is ${count}`))
+  .filter((count) => count >= 10 && count <= 100);
+
+// I kind of like this more than the current derive. It's cleaner.
+$count.map(c => c * 2);
+$count.merge([$other], (c, o) => c * o);
+
+// Another way to merge multiple.
+$.merge([$count, $other], (c, o) => c * o);
+
+// What if you want to add something in the middle?
+
+const $example = $count
+  .map((count) => count * 2)
+  .tap((count) => console.log(`doubled value is ${count}`))
+  .merge([$other1, $other2], (count, other1, other2) => /* ... */)
+  .filter((value) => value >= 10 && value <= 100);
+
+// Is this a good pattern?
+$count
+  .merge([$other], (count, other) => count * other)
+  .merge([$another], (merged, another) => merged * another);
+// I think it gets a little weird to follow.
+
+// equivalent to
+derive(
+  [
+    derive([$count, $other], (count, other) => count * other),
+    $another
+  ],
+  (merged, another) => merged * another)
+// Is this a pattern? Yeah, I guess I do that. Just never in line like that.
+
+// Do we want to handle errors?
+// I feel like errors usually happen in watchers though.
+$boundedDouble.watch((value) => {
+  // Received a value.
+}, (error) => {
+  // Something threw an error.
+});
+// Or like this.
+$boundedDouble.watch({
+  change: (value) => {
+    // Received a value.
+    // This code is most likely to throw an error.
+    // Should errors here be passed to the error callback?
+    // What is the point if you can just try/catch?
+
+    // Although if you don't then Dolla could use this to catch
+    // and trace errors better than it does now.
+  },
+  error: (error) => {
+    // Something threw an error.
+  }
+});
+
+// Filter derives a new state where the value only updates if the function returns truthy.
+const $evens = $count.pipe($.filter((count) => count % 1 === 0));
+// This is equivalent to
+const $events = $.map([$count], (count) => count, { equals: (a, b) => a % 1 === 0 });
+
+function filter(...args) {
+  if (isArray(args[0]) && isFunction(args[1])) {
+    // Standalone signature. Returns a new derived state.
+  } else if (args.length === 1 && isFunction(args[1])) {
+    // Curried signature. Returns a function that takes an array of states
+    // and returns one with args[1] as the equality check.
+  }
+}
+```
+
+And you can write your own operators that implement these two signatures.
+
+```js
+// Here's one I might want to include.
+// Use this to prevent ever getting a null value.
+compare((next, previous) => next ?? previous ?? "default");
+
+function compare(...args) {}
 ```
 
 ---

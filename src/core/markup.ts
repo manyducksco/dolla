@@ -11,7 +11,7 @@ import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { Text } from "./nodes/text.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
-import { MaybeState, isRef, isSettableState, isState, toState, type State } from "./state.js";
+import { MaybeState, isState, toState, type State } from "./state.js";
 import { TYPE_MARKUP, TYPE_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
@@ -156,9 +156,7 @@ export function createMarkup<T extends keyof MarkupAttributes>(
 export function createMarkup<I>(type: ViewFunction<I>, attributes?: I, ...children: Renderable[]): Markup;
 
 export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
-  if (props != null) {
-    _assertPropTypes(props as Record<string, any>);
-  }
+  // TODO: Alternate path here for SSR?
 
   return {
     [TYPE_MARKUP]: true,
@@ -166,30 +164,6 @@ export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...ch
     props,
     children: toMarkup(children),
   };
-}
-
-/**
- * Throws an error if expectations based on naming conventions aren't met.
- */
-function _assertPropTypes(props: Record<string, any>) {
-  if (props.ref) {
-    if (!isRef(props.ref)) {
-      console.warn(props.ref);
-      throw new TypeError(`Prop 'ref' must be a Ref object. Got: ${props.ref}`);
-    }
-  }
-
-  for (const key in props) {
-    if (key.startsWith("$$") && props[key] !== undefined) {
-      if (!isSettableState(props[key])) {
-        throw new TypeError(`Prop '${key}' is named as a SettableState but value is not. Got: ${props[key]}`);
-      }
-    } else if (key.startsWith("$") && props[key] !== undefined) {
-      if (!isState(props[key])) {
-        throw new TypeError(`Prop '${key}' is named as a State but value is not. Got: ${props[key]}`);
-      }
-    }
-  }
 }
 
 /*===========================*\

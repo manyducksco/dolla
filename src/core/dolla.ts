@@ -12,17 +12,7 @@ import {
   type MarkupElement,
 } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
-import {
-  createRef,
-  createSettableState,
-  createState,
-  createWatcher,
-  derive,
-  isRef,
-  toSettableState,
-  toState,
-  valueOf,
-} from "./state.js";
+import { createRef, createState, createWatcher, derive, isRef, isState, toState, toValue } from "./state.js";
 
 import { HTTP } from "../modules/http.js";
 import { I18n } from "../modules/i18n.js";
@@ -126,10 +116,9 @@ export class Dolla {
   watch = this.#watcher.watch;
 
   createState = createState;
-  createSettableState = createSettableState;
-  toSettableState = toSettableState;
   toState = toState;
-  valueOf = valueOf;
+  toValue = toValue;
+  isState = isState;
   derive = derive;
   createWatcher = createWatcher;
 

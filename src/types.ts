@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
-import type { SettableState, State, Ref } from "./core/state.js";
+import type { SettableState, State } from "./core/state.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -1476,7 +1476,11 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
   /**
    * Receives a reference to the DOM node when rendered.
    */
-  ref?: Ref<E> | Ref<HTMLElement> | Ref<Element> | Ref<Node>;
+  ref?:
+    | ((value: E | undefined) => void)
+    | ((value: HTMLElement | undefined) => void)
+    | ((value: Element | undefined) => void)
+    | ((value: Node | undefined) => void);
 }
 
 /**

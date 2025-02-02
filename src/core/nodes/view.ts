@@ -235,6 +235,8 @@ export class View<P> implements ViewElement {
 
   _element?: MarkupElement;
 
+  _childMarkup;
+
   _$children;
   _setChildren;
 
@@ -250,7 +252,8 @@ export class View<P> implements ViewElement {
     this._view = view;
     this._props = props;
 
-    [this._$children, this._setChildren] = createState<MarkupElement[]>(constructMarkup(elementContext, children));
+    this._childMarkup = children;
+    [this._$children, this._setChildren] = createState<MarkupElement[]>([]);
   }
 
   /*===============================*\
@@ -314,6 +317,7 @@ export class View<P> implements ViewElement {
   }
 
   setChildView(fn: ViewFunction<{}>) {
+    this._childMarkup = [];
     const node = new View(this._elementContext, fn, {});
     this._setChildren([node]);
     return node;
@@ -328,6 +332,10 @@ export class View<P> implements ViewElement {
 
     let result: ViewResult;
     try {
+      if (this._childMarkup.length) {
+        this._setChildren(constructMarkup(this._elementContext, this._childMarkup));
+      }
+
       result = this._view(this._props, context);
     } catch (error) {
       if (error instanceof Error) {

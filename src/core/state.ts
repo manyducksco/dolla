@@ -113,8 +113,19 @@ export interface SettableState<I, O = I> extends State<I> {
   set(callback: (current: I) => O): void;
 }
 
-export interface Ref<T extends Node> extends State<T | undefined> {
-  node: T | undefined;
+/**
+ *
+ */
+export interface Ref<T> {
+  /**
+   * Get: returns the current value stored in the ref (or undefined).
+   */
+  (): T | undefined;
+
+  /**
+   * Set: stores a new `value` in the ref.
+   */
+  <T>(value: T | undefined): void;
 }
 
 /*==============================*\
@@ -125,10 +136,6 @@ export function isState<T>(value: any): value is State<T> {
   return value?.[TYPE_STATE] === true;
 }
 
-export function isSettableState<T>(value: any): value is SettableState<T> {
-  return value?.[TYPE_SETTABLE_STATE] === true;
-}
-
 export function isRef<T extends Node>(value: any): value is Ref<T> {
   return value?.[TYPE_REF] === true;
 }
@@ -136,11 +143,11 @@ export function isRef<T extends Node>(value: any): value is Ref<T> {
 /**
  * Retrieves a plain value from a variable that may be a state.
  */
-export function valueOf<T>(value: MaybeState<T>): T {
-  if (isState(value)) {
-    return value.get();
+export function toValue<T>(source: MaybeState<T>): T {
+  if (isState(source)) {
+    return source.get();
   } else {
-    return value;
+    return source;
   }
 }
 
@@ -148,9 +155,7 @@ export function valueOf<T>(value: MaybeState<T>): T {
  * Ensures a variable that may be a state or plain value is a state.
  */
 export function toState<T>(value: MaybeState<T>): State<T> {
-  if (isSettableState<T>(value)) {
-    return new Signal(value);
-  } else if (isState<T>(value)) {
+  if (isState<T>(value)) {
     return value;
   } else {
     return new Signal({
@@ -230,12 +235,9 @@ export class Signal<T> implements State<T> {
   // Instances will pass isState() with this symbol
   [TYPE_STATE] = true;
 
-  __value: State<T>;
+  __value;
 
   constructor(value: State<T>) {
-    if (value == null) {
-      throw new TypeError(`Value is null`);
-    }
     this.__value = value;
   }
 
@@ -251,104 +253,24 @@ export class Signal<T> implements State<T> {
 /**
  * Creates a state and setter.
  */
-export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>];
+export function createState<T>(value: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>];
 
 /**
  * Creates a state and setter.
  */
 export function createState<T>(
-  initialValue?: T,
+  value?: T,
   options?: CreateStateOptions<T | undefined>,
 ): [State<T | undefined>, Setter<T | undefined>];
 
 /**
  * Creates a state and setter.
  */
-export function createState<T>(initialValue: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>] {
-  const value = new ValueHolder(initialValue, options);
-  const signal = new Signal(value);
+export function createState<T>(value: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>] {
+  const holder = new ValueHolder(value, options);
+  const signal = new Signal(holder);
 
-  return [signal, (action) => value.set(action)];
-}
-
-/*==============================*\
-||       Settable States        ||
-\*==============================*/
-
-export class SettableSignal<T> implements State<T>, SettableState<T> {
-  // Instances will pass isState() and isSettableState() with these symbols
-  [TYPE_STATE] = true;
-  [TYPE_SETTABLE_STATE] = true;
-
-  __value: ValueHolder<T>;
-
-  constructor(value: ValueHolder<T>) {
-    if (value == null) {
-      throw new TypeError(`Value is null`);
-    }
-    this.__value = value;
-  }
-
-  get() {
-    return this.__value.get();
-  }
-
-  set(action: T | ((value: T) => T)) {
-    this.__value.set(action);
-  }
-
-  watch(callback: (value: T) => void, options?: WatchOptions<T>) {
-    return this.__value.watch(callback, options);
-  }
-}
-
-/**
- * Creates a SettableState.
- */
-export function createSettableState<T>(initialValue: T, options?: CreateStateOptions<T>): SettableState<T>;
-
-/**
- * Creates a SettableState.
- */
-export function createSettableState<T>(
-  initialValue?: T,
-  options?: CreateStateOptions<T | undefined>,
-): SettableState<T | undefined>;
-
-export function createSettableState<T>(initialValue?: T, options?: CreateStateOptions<T>) {
-  return new SettableSignal<any>(new ValueHolder(initialValue!, options));
-}
-
-/**
- * Join a state and its setter into a single SettableState object.
- */
-export function toSettableState<I, O = I>($state: State<I>, setter: Setter<I, O>): SettableState<I, O> {
-  return {
-    [TYPE_STATE]: true,
-    [TYPE_SETTABLE_STATE]: true,
-
-    get: $state.get.bind($state),
-    watch: $state.watch.bind($state),
-    set: setter,
-  } as any;
-}
-
-/**
- * Creates a Setter with custom logic provided by `callback`.
- */
-export function createSetter<I, O = I>($state: State<I>, callback: (next: O, current: I) => void): Setter<I, O> {
-  return function setValue(nextOrCallback) {
-    const current = $state.get();
-    let next: O;
-
-    if (typeof nextOrCallback === "function") {
-      next = (nextOrCallback as (current: I) => O)(current);
-    } else {
-      next = nextOrCallback;
-    }
-
-    callback(next, current);
-  };
+  return [signal, (action) => holder.set(action)];
 }
 
 /*==============================*\
@@ -491,7 +413,7 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
     }
 
     this.value = value;
-    this.rawValue = valueOf(value);
+    this.rawValue = toValue(value);
 
     if (this.isWatchingSources && isState(value)) {
       this.stopWatchingCurrentValue = value.watch((current) => {
@@ -546,12 +468,27 @@ export interface DeriveOptions {
   equals?: (next: unknown, current: unknown) => boolean;
 }
 
-export function derive<Inputs extends MaybeState<any>[], T>(
-  states: [...Inputs],
-  fn: (...currentValues: StateValues<Inputs>) => T | State<T>,
+/**
+ * Derives a new `State` from one or more existing states.
+ *
+ * @param sources - Array of source states to track.
+ * @param fn - A function called to recompute the value when any tracked source states receive a new value.
+ *
+ * @example
+ * // With one source...
+ * const [$count, setCount] = createState(5);
+ * const $doubled = derive([$count], count => count * 2);
+ * // ... or many:
+ * const [$greeting, setGreeting] = createState("Hello");
+ * const [$name, setName] = createState("World");
+ * const $hello = derive([$greeting, name], (greeting, name) => `${greeting}, ${name}!`);
+ */
+export function derive<Sources extends MaybeState<any>[], T>(
+  sources: [...Sources],
+  fn: (...values: StateValues<Sources>) => T | State<T>,
   options?: DeriveOptions,
 ): State<T> {
-  const value = new DerivedValueHolder(states, fn, options);
+  const value = new DerivedValueHolder(sources, fn, options);
   return new Signal(value);
 }
 
@@ -559,39 +496,32 @@ export function derive<Inputs extends MaybeState<any>[], T>(
 ||            Ref            ||
 \*===========================*/
 
-class RefSignal<T extends Node> implements State<T | undefined> {
-  // Instances will pass isRef() and isState() with these symbols
-  [TYPE_REF] = true;
-  [TYPE_STATE] = true;
-
-  __value: ValueHolder<T | undefined>;
-
-  constructor(value: ValueHolder<T | undefined>) {
-    this.__value = value;
-  }
-
-  get() {
-    return this.__value.get();
-  }
-
-  watch(callback: (value: T | undefined) => void, options?: WatchOptions<T>) {
-    return this.__value.watch(callback, options);
-  }
-
-  get node() {
-    return this.__value.get();
-  }
-
-  set node(value) {
-    this.__value.set(value);
-  }
-}
-
 /**
- * A special kind of State exclusively for storing references to DOM nodes.
+ * A Ref is a function that returns the last argument it was called with.
+ * Calling it with no arguments will simply return the latest value.
+ * Calling it with an argument will store that value and immediately return it.
+ *
+ * @param value - An (optional) initial value to store.
+ *
+ * @example
+ * const ref = createRef(5);
+ * ref(); // 5
+ * ref(500);
+ * ref(); // 500
  */
-export function createRef<T extends Node>(): Ref<T> {
-  return new RefSignal<T>(new ValueHolder<T | undefined>(undefined));
+export function createRef<T>(value?: T): Ref<T> {
+  const ref = function ref() {
+    if (arguments.length === 1) {
+      value = arguments[0];
+    } else if (arguments.length > 1) {
+      throw new Error(`Too many arguments. Expected 0 or 1. Got: ${arguments.length}`);
+    }
+    return value;
+  };
+
+  ref[TYPE_REF] = true;
+
+  return ref;
 }
 
 /*===========================*\
