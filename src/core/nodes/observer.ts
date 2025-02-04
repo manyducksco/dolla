@@ -1,10 +1,7 @@
 import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
-import { getUniqueId } from "../../utils.js";
 import {
   constructMarkup,
-  groupElements,
-  isMarkup,
   isMarkupElement,
   isRenderable,
   toMarkup,
@@ -12,7 +9,7 @@ import {
   type MarkupElement,
 } from "../markup.js";
 import { createWatcher, type MaybeState } from "../state.js";
-import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
+import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface ObserverOptions {
   elementContext: ElementContext;
@@ -25,12 +22,12 @@ interface ObserverOptions {
  * Used when a State is passed as a child in a view template.
  */
 export class Observer implements MarkupElement {
-  [TYPE_MARKUP_ELEMENT] = true;
+  [IS_MARKUP_ELEMENT] = true;
 
   node = document.createTextNode("");
   children: MarkupElement[] = [];
   renderFn: (...values: any) => Renderable;
-  elementContext;
+  elementContext: ElementContext;
   watcher = createWatcher();
 
   sources: MaybeState<any>[];
@@ -40,10 +37,9 @@ export class Observer implements MarkupElement {
   }
 
   constructor({ sources, renderFn, elementContext }: ObserverOptions) {
-    this.elementContext = elementContext;
-    this.renderFn = renderFn;
-
     this.sources = sources;
+    this.renderFn = renderFn;
+    this.elementContext = elementContext;
   }
 
   mount(parent: Node, after?: Node) {
@@ -88,13 +84,11 @@ export class Observer implements MarkupElement {
       return;
     }
 
-    const newElements: MarkupElement[] = children.map((c) => {
+    const newElements: MarkupElement[] = children.flatMap((c) => {
       if (isMarkupElement(c)) {
-        return c;
-      } else if (isMarkup(c)) {
-        return groupElements(constructMarkup(this.elementContext, c));
+        return c as MarkupElement;
       } else {
-        return groupElements(constructMarkup(this.elementContext, toMarkup(c)));
+        return constructMarkup(this.elementContext, toMarkup(c));
       }
     });
 

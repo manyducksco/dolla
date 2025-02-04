@@ -376,7 +376,7 @@ export class I18n {
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
-    this.#logger = dolla.createLogger("dolla/i18n");
+    this.#logger = dolla.createLogger("Dolla.i18n");
 
     const [$locale, setLocale] = createState<string>();
 

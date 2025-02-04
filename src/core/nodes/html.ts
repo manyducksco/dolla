@@ -1,8 +1,9 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { getUniqueId, omit } from "../../utils.js";
 import { constructMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
-import { isRef, isState, type Ref, type State, type StopFunction } from "../state.js";
-import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
+import { isRef, type Ref } from "../ref.js";
+import { isState, type State, type StopFunction } from "../state.js";
+import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -15,11 +16,12 @@ type HTMLOptions = {
 };
 
 export class HTML implements MarkupElement {
-  [TYPE_MARKUP_ELEMENT] = true;
+  [IS_MARKUP_ELEMENT] = true;
 
   node;
   props: Record<string, any>;
-  children: MarkupElement[];
+  childMarkup: Markup[] = [];
+  children: MarkupElement[] = [];
   stopCallbacks: StopFunction[] = [];
   elementContext;
   uniqueId = getUniqueId();
@@ -53,10 +55,9 @@ export class HTML implements MarkupElement {
       this.node = document.createElement(tag);
     }
 
-    // Add unique ID to attributes for debugging purposes.
-    if (elementContext.root.getEnv() === "development") {
-      this.node.dataset.uniqueId = this.uniqueId;
-    }
+    // if (elementContext.root.getEnv() === "development" && elementContext.viewName) {
+    //   this.node.dataset.view = elementContext.viewName;
+    // }
 
     if (props.ref) {
       if (isRef(props.ref)) {
@@ -71,8 +72,14 @@ export class HTML implements MarkupElement {
       ...omit(["ref", "class", "className"], props),
       class: props.className ?? props.class,
     };
-    this.children = children ? constructMarkup(elementContext, children) : [];
+
+    if (children) {
+      this.childMarkup = children;
+    }
+
+    // this.children = children ? constructMarkup(elementContext, children) : [];
     this.elementContext = elementContext;
+    this.children = constructMarkup(this.elementContext, this.childMarkup);
   }
 
   mount(parent: Node, after?: Node) {

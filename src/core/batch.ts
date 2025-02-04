@@ -26,11 +26,17 @@ export class Batch {
   #deferIfOvertime = true;
   #deferrals = 0;
 
-  #msFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+  #msFormat = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    style: "unit",
+    unit: "millisecond",
+    unitDisplay: "short",
+  });
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
-    this.#logger = dolla.createLogger("dolla/render");
+    this.#logger = dolla.createLogger("Dolla.batch");
   }
 
   /**
@@ -81,7 +87,7 @@ export class Batch {
         this.#deferrals++;
         if (isDevEnv) {
           this.#logger.warn(
-            `⚠️ Deferring batch to next frame. Performed ${completed} of ${total} batched operation${completed === 1 ? "" : "s"} in ${this.#msFormat.format(elapsed)}ms (deferral ${this.#deferrals}).`,
+            `⚠️ Deferring batch to next frame. Performed ${completed} of ${total} batched operation${completed === 1 ? "" : "s"} in ${this.#msFormat.format(elapsed)} (deferral ${this.#deferrals}).`,
           );
         }
         requestAnimationFrame(() => {
@@ -118,7 +124,7 @@ export class Batch {
 
     if (isDevEnv) {
       this.#logger[elapsed > 16 ? "warn" : "info"](
-        `${elapsed > 16 ? "⚠️ (>=16ms) " : ""}Executed ${completed} operation${completed === 1 ? "" : "s"} in ${this.#msFormat.format(elapsed)}ms${this.#deferrals > 0 ? ` (after ${this.#deferrals} deferral${this.#deferrals === 1 ? "" : "s"})` : ""}.`,
+        `${elapsed > 16 ? "⚠️ (>=16ms) " : ""}Executed ${completed} operation${completed === 1 ? "" : "s"} in ${this.#msFormat.format(elapsed)}${this.#deferrals > 0 ? ` (after ${this.#deferrals} deferral${this.#deferrals === 1 ? "" : "s"})` : ""}.`,
       );
     }
     this.#deferrals = 0;

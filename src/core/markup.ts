@@ -1,17 +1,17 @@
 import htm from "htm/mini";
 
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
-import type { Renderable, Stringable } from "../types.js";
+import type { Renderable } from "../types.js";
 import type { Dolla } from "./dolla.js";
+import { DOMNode } from "./nodes/dom.js";
 import { HTML } from "./nodes/html.js";
 import { Observer } from "./nodes/observer.js";
 import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
-import { Text } from "./nodes/text.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
-import { MaybeState, isState, toState, type State } from "./state.js";
-import { TYPE_MARKUP, TYPE_MARKUP_ELEMENT } from "./symbols.js";
+import { isState, toState, type MaybeState, type State } from "./state.js";
+import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
 ||       ElementContext      ||
@@ -34,6 +34,10 @@ export interface ElementContext {
    * Whether to create DOM nodes in the SVG namespace. An `<svg>` element will set this to true and pass it down to children.
    */
   isSVG?: boolean;
+  /**
+   * The name of the nearest parent view.
+   */
+  viewName?: string;
 }
 
 /*===========================*\
@@ -71,16 +75,17 @@ export interface MarkupElement {
 
   /**
    * Disconnect from the DOM and clean up. If parentIsUnmounting, DOM operations are skipped.
+   * parentIsUnmounting is set for all children by HTML nodes when they unmount.
    */
   unmount(parentIsUnmounting?: boolean): void;
 }
 
 export function isMarkup(value: any): value is Markup {
-  return value?.[TYPE_MARKUP] === true;
+  return value?.[IS_MARKUP] === true;
 }
 
 export function isMarkupElement(value: any): value is MarkupElement {
-  return value?.[TYPE_MARKUP_ELEMENT] === true;
+  return value?.[IS_MARKUP_ELEMENT] === true;
 }
 
 export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
@@ -92,20 +97,12 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
     .flat(Infinity)
     .filter((x) => x !== null && x !== undefined && x !== false)
     .map((x) => {
-      if (x instanceof Node) {
-        return createMarkup("$node", { value: x });
-      }
-
-      if (x instanceof DOMNode) {
-        return createMarkup("$node", { value: x.node });
-      }
-
       if (isMarkup(x)) {
         return x;
       }
 
-      if (isString(x) || isNumber(x)) {
-        return createMarkup("$text", { value: x });
+      if (x instanceof Node) {
+        return createMarkup("$node", { value: x });
       }
 
       if (isState(x)) {
@@ -115,13 +112,13 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
         });
       }
 
-      console.error(x);
-      throw new TypeError(`Unexpected child type. Got: ${x}`);
+      // fallback to displaying value as text
+      return createMarkup("$text", { value: x });
     });
 }
 
 export interface MarkupAttributes {
-  $text: { value: MaybeState<Stringable> };
+  $text: { value: any };
   $repeat: {
     $items: State<any[]>;
     keyFn: (value: any, index: number) => string | number | symbol;
@@ -154,14 +151,21 @@ export function createMarkup<T extends keyof MarkupAttributes>(
 export function createMarkup<I>(type: ViewFunction<I>, attributes?: I, ...children: Renderable[]): Markup;
 
 export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
-  // TODO: Alternate path here for SSR?
+  return new VNode(type, props as any, ...children);
+}
 
-  return {
-    [TYPE_MARKUP]: true,
-    type,
-    props,
-    children: toMarkup(children),
-  };
+class VNode<P extends Record<any, any>> implements Markup {
+  [IS_MARKUP] = true;
+
+  type;
+  props;
+  children;
+
+  constructor(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
+    this.type = type;
+    this.props = props;
+    this.children = toMarkup(children);
+  }
 }
 
 /*===========================*\
@@ -200,47 +204,19 @@ export function repeat<T>(
   renderFn: ($value: State<T>, $index: State<number>, ctx: ViewContext) => ViewResult,
 ): Markup {
   const $items = toState(items);
-
   return createMarkup("$repeat", { $items, keyFn, renderFn });
 }
 
 /**
- * Render `content` into a `parent` node anywhere in the page, rather than at its position in the view.
+ * Renders `content` into a `parent` node anywhere in the page, rather than its usual position in the view.
  */
-export function portal(parent: Node, content: Renderable) {
+export function portal(parent: Node, content: Renderable): Markup {
   return createMarkup("$portal", { parent, content });
 }
 
 /*===========================*\
 ||           Render          ||
 \*===========================*/
-
-/**
- * Wraps any plain DOM node in a MarkupElement interface.
- */
-class DOMNode implements MarkupElement {
-  [TYPE_MARKUP_ELEMENT] = true;
-
-  node: Node;
-
-  get isMounted() {
-    return this.node.parentNode != null;
-  }
-
-  constructor(node: Node) {
-    this.node = node;
-  }
-
-  async mount(parent: Node, after?: Node) {
-    parent.insertBefore(this.node, after?.nextSibling ?? null);
-  }
-
-  async unmount() {
-    if (this.node.parentNode) {
-      this.node.parentNode.removeChild(this.node);
-    }
-  }
-}
 
 /**
  * Construct Markup metadata into a set of MarkupElements.
@@ -259,19 +235,8 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
         }
         case "$text": {
           const attrs = item.props! as MarkupAttributes["$text"];
-          return new Text({
-            value: attrs.value,
-          });
+          return new DOMNode(document.createTextNode(String(attrs.value)));
         }
-        // case "$cond": {
-        //   const attrs = item.props! as MarkupAttributes["$cond"];
-        //   return new Conditional({
-        //     $predicate: attrs.$predicate,
-        //     thenContent: attrs.thenContent,
-        //     elseContent: attrs.elseContent,
-        //     elementContext,
-        //   });
-        // }
         case "$repeat": {
           const attrs = item.props! as MarkupAttributes["$repeat"];
           return new Repeat({

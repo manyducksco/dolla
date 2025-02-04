@@ -13,7 +13,7 @@ export class HTTP {
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
-    this.#logger = dolla.createLogger("dolla/http");
+    this.#logger = dolla.createLogger("Dolla.http");
   }
 
   /**
@@ -64,7 +64,7 @@ export class HTTP {
   }
 
   async #request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any>) {
-    return makeRequest<ResBody, ReqBody>({
+    const runner = new Runner<ResBody, ReqBody>({
       ...options,
       method,
       uri,
@@ -72,6 +72,7 @@ export class HTTP {
       fetch: this.#fetch,
       logger: this.#logger,
     });
+    return runner.fetch();
   }
 }
 
@@ -115,33 +116,18 @@ export interface RequestOptions<ReqBody> {
 
 export interface HTTPRequest<Body> {
   method: string;
-  uri: string;
-  readonly sameOrigin: boolean;
+  url: URL;
   headers: Headers;
-  query: URLSearchParams;
   body: Body;
 }
 
 export interface HTTPResponse<Body> {
   method: string;
-  uri: string;
+  url: URL;
+  headers: Headers;
   status: number;
   statusText: string;
-  headers: Record<string, string>;
   body: Body;
-}
-
-export class HTTPResponseError extends Error {
-  response;
-
-  constructor(response: HTTPResponse<any>) {
-    const { status, statusText, method, uri } = response;
-    const message = `${status} ${statusText}: Request failed (${method.toUpperCase()} ${uri})`;
-
-    super(message);
-
-    this.response = response;
-  }
 }
 
 interface MakeRequestConfig<ReqBody> extends RequestOptions<ReqBody> {
@@ -152,33 +138,56 @@ interface MakeRequestConfig<ReqBody> extends RequestOptions<ReqBody> {
   logger: Logger;
 }
 
-async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>) {
-  const { headers, query, fetch, middleware, logger } = config;
+export class HTTPResponseError extends Error {
+  response;
 
-  const request: HTTPRequest<ReqBody> = {
-    method: config.method,
-    uri: config.uri,
-    get sameOrigin() {
-      return !request.uri.startsWith("http");
-    },
-    query: new URLSearchParams(),
-    headers: new Headers(),
-    body: config.body!,
-  };
+  constructor(response: HTTPResponse<any>) {
+    const { status, statusText, method, url } = response;
+    const message = `${status} ${statusText}: Request failed (${method.toUpperCase()} ${url.toString()})`;
 
-  // Read headers into request
-  if (headers) {
+    super(message);
+
+    this.response = response;
+  }
+}
+
+class Request<ReqBody> implements HTTPRequest<ReqBody> {
+  method: string;
+  url: URL;
+  headers = new Headers();
+  body!: ReqBody;
+
+  get isSameOrigin() {
+    return this.url.origin === window.location.origin;
+  }
+
+  constructor(config: MakeRequestConfig<ReqBody>) {
+    this.method = config.method;
+    this.body = config.body!;
+    if (config.uri.startsWith("http")) {
+      this.url = new URL(config.uri);
+    } else {
+      this.url = new URL(config.uri, window.location.origin);
+    }
+
+    this._applyHeaders(config.headers);
+    this._applyQueryParams(config.query);
+  }
+
+  private _applyHeaders(headers: any) {
+    if (headers == null) return;
+
     if (headers instanceof Map || headers instanceof Headers) {
       headers.forEach((value, key) => {
-        request.headers.set(key, value);
+        this.headers.set(key, value);
       });
-    } else if (headers != null && typeof headers === "object" && !Array.isArray(headers)) {
+    } else if (isObject(headers)) {
       for (const name in headers) {
         const value = headers[name];
         if (value instanceof Date) {
-          request.headers.set(name, value.toISOString());
+          this.headers.set(name, value.toISOString());
         } else if (value != null) {
-          request.headers.set(name, String(value));
+          this.headers.set(name, String(value));
         }
       }
     } else {
@@ -186,52 +195,89 @@ async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>)
     }
   }
 
-  // Read query params into request
-  if (query) {
+  private _applyQueryParams(query: any) {
+    if (query == null) return;
+
     if (query instanceof Map || query instanceof URLSearchParams) {
       query.forEach((value, key) => {
-        request.query.set(key, value);
+        this.url.searchParams.set(key, value);
       });
-    } else if (query != null && typeof query === "object" && !Array.isArray(query)) {
+    } else if (isObject(query)) {
       for (const name in query) {
         const value = query[name];
         if (value instanceof Date) {
-          request.query.set(name, value.toISOString());
+          this.url.searchParams.set(name, value.toISOString());
         } else if (value != null) {
-          request.query.set(name, String(value));
+          this.url.searchParams.set(name, String(value));
         }
       }
     } else {
       throw new TypeError(`Unknown query params type. Got: ${query}`);
     }
   }
+}
 
-  let response: HTTPResponse<ResBody>;
+class Runner<ResBody, ReqBody> {
+  private _middleware;
+  private _fetch;
 
-  // This is the function that performs the actual request after the final middleware.
-  const handler = async () => {
-    const query = request.query.toString();
-    const fullURL = query.length > 0 ? request.uri + "?" + query : request.uri;
+  private _request: Request<ReqBody>;
+  private _response?: HTTPResponse<ResBody>;
 
-    let reqBody: BodyInit;
+  constructor(config: MakeRequestConfig<ReqBody>) {
+    this._middleware = config.middleware;
+    this._fetch = config.fetch;
 
-    if (!request.headers.has("content-type") && isObject(request.body)) {
-      // Auto-detect JSON bodies and encode as a string with correct headers.
-      request.headers.set("content-type", "application/json");
-      reqBody = JSON.stringify(request.body);
+    this._request = new Request(config);
+  }
+
+  async fetch() {
+    if (this._middleware.length > 0) {
+      const mount = (index = 0) => {
+        const current = this._middleware[index];
+        const next = this._middleware[index + 1] ? mount(index + 1) : this._handler.bind(this);
+
+        return async () =>
+          current(this._request, async () => {
+            await next();
+            return this._response!;
+          });
+      };
+
+      await mount()();
     } else {
-      reqBody = request.body as BodyInit;
+      await this._handler();
     }
 
-    const fetched = await fetch(fullURL, {
-      method: request.method,
-      headers: request.headers,
+    if (this._response!.status < 200 || this._response!.status >= 400) {
+      throw new HTTPResponseError(this._response!);
+    }
+
+    return this._response!;
+  }
+
+  // This is the function that performs the actual request after the final middleware.
+  private async _handler() {
+    let reqBody: BodyInit;
+
+    const req = this._request;
+
+    if (!req.headers.has("content-type") && isObject(req.body)) {
+      // Auto-detect JSON bodies and encode as a string with correct headers.
+      req.headers.set("content-type", "application/json");
+      reqBody = JSON.stringify(req.body);
+    } else {
+      reqBody = req.body as BodyInit;
+    }
+
+    const fetched = await this._fetch(req.url.toString(), {
+      method: req.method,
+      headers: req.headers,
       body: reqBody,
     });
 
     // Auto-parse response body based on content-type header
-    const headers = Object.fromEntries<string>(fetched.headers.entries());
-    const contentType = headers["content-type"];
+    const contentType = fetched.headers.get("content-type");
 
     let body: ResBody;
 
@@ -243,38 +289,140 @@ async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>)
       body = (await fetched.text()) as ResBody;
     }
 
-    response = {
-      method: request.method,
-      uri: request.uri,
+    this._response = {
+      method: req.method,
+      url: req.url,
       status: fetched.status,
       statusText: fetched.statusText,
-      headers: headers,
+      headers: fetched.headers,
       body,
     };
-
-    // logger.info("response", response);
-  };
-
-  if (middleware.length > 0) {
-    const mount = (index = 0) => {
-      const current = middleware[index];
-      const next = middleware[index + 1] ? mount(index + 1) : handler;
-
-      return async () =>
-        current(request, async () => {
-          await next();
-          return response;
-        });
-    };
-
-    await mount()();
-  } else {
-    await handler();
   }
-
-  if (response!.status < 200 || response!.status >= 400) {
-    throw new HTTPResponseError(response!);
-  }
-
-  return response!;
 }
+
+// async function makeRequest<ResBody, ReqBody>(config: MakeRequestConfig<ReqBody>) {
+//   const { headers, query, fetch, middleware, logger } = config;
+
+//   const request: HTTPRequest<ReqBody> = {
+//     method: config.method,
+//     uri: config.uri,
+//     get sameOrigin() {
+//       return !request.uri.startsWith("http");
+//     },
+//     query: new URLSearchParams(),
+//     headers: new Headers(),
+//     body: config.body!,
+//   };
+
+//   // Read headers into request
+//   if (headers) {
+//     if (headers instanceof Map || headers instanceof Headers) {
+//       headers.forEach((value, key) => {
+//         request.headers.set(key, value);
+//       });
+//     } else if (headers != null && typeof headers === "object" && !Array.isArray(headers)) {
+//       for (const name in headers) {
+//         const value = headers[name];
+//         if (value instanceof Date) {
+//           request.headers.set(name, value.toISOString());
+//         } else if (value != null) {
+//           request.headers.set(name, String(value));
+//         }
+//       }
+//     } else {
+//       throw new TypeError(`Unknown headers type. Got: ${headers}`);
+//     }
+//   }
+
+//   // Read query params into request
+//   if (query) {
+//     if (query instanceof Map || query instanceof URLSearchParams) {
+//       query.forEach((value, key) => {
+//         request.query.set(key, value);
+//       });
+//     } else if (query != null && typeof query === "object" && !Array.isArray(query)) {
+//       for (const name in query) {
+//         const value = query[name];
+//         if (value instanceof Date) {
+//           request.query.set(name, value.toISOString());
+//         } else if (value != null) {
+//           request.query.set(name, String(value));
+//         }
+//       }
+//     } else {
+//       throw new TypeError(`Unknown query params type. Got: ${query}`);
+//     }
+//   }
+
+//   let response: HTTPResponse<ResBody>;
+
+//   // This is the function that performs the actual request after the final middleware.
+//   const handler = async () => {
+//     const query = request.query.toString();
+//     const fullURL = query.length > 0 ? request.uri + "?" + query : request.uri;
+
+//     let reqBody: BodyInit;
+
+//     if (!request.headers.has("content-type") && isObject(request.body)) {
+//       // Auto-detect JSON bodies and encode as a string with correct headers.
+//       request.headers.set("content-type", "application/json");
+//       reqBody = JSON.stringify(request.body);
+//     } else {
+//       reqBody = request.body as BodyInit;
+//     }
+
+//     const fetched = await fetch(fullURL, {
+//       method: request.method,
+//       headers: request.headers,
+//       body: reqBody,
+//     });
+
+//     // Auto-parse response body based on content-type header
+//     const headers = Object.fromEntries<string>(fetched.headers.entries());
+//     const contentType = headers["content-type"];
+
+//     let body: ResBody;
+
+//     if (contentType?.includes("application/json")) {
+//       body = await fetched.json();
+//     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
+//       body = (await fetched.formData()) as ResBody;
+//     } else {
+//       body = (await fetched.text()) as ResBody;
+//     }
+
+//     response = {
+//       method: request.method,
+//       uri: request.uri,
+//       status: fetched.status,
+//       statusText: fetched.statusText,
+//       headers: headers,
+//       body,
+//     };
+
+//     // logger.info("response", response);
+//   };
+
+//   if (middleware.length > 0) {
+//     const mount = (index = 0) => {
+//       const current = middleware[index];
+//       const next = middleware[index + 1] ? mount(index + 1) : handler;
+
+//       return async () =>
+//         current(request, async () => {
+//           await next();
+//           return response;
+//         });
+//     };
+
+//     await mount()();
+//   } else {
+//     await handler();
+//   }
+
+//   if (response!.status < 200 || response!.status >= 400) {
+//     throw new HTTPResponseError(response!);
+//   }
+
+//   return response!;
+// }

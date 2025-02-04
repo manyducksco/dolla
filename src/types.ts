@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
-import type { SettableState, State } from "./core/state.js";
+import type { State } from "./core/state.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -3781,7 +3781,6 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
   value?: OptionalProperty<string>;
-  $$value?: SettableState<any>;
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 

@@ -1,39 +1,6 @@
-import { colorFromString, noOp, strictEqual } from "../utils";
-import { TYPE_REF, TYPE_SETTABLE_STATE, TYPE_STATE } from "./symbols";
-
-/**
- * Counts total active state watchers for the purpose of tracking memory leaks.
- */
-const tracker = {
-  watcherCount: 0,
-  increment() {
-    this.watcherCount++;
-    this._log();
-  },
-  decrement() {
-    this.watcherCount--;
-    this._log();
-  },
-
-  _label: "dolla/state-tracker",
-  _timeout: null as any,
-  _log() {
-    if ((window as any).DOLLA_DEV_DEBUG === true && !this._timeout) {
-      this._timeout = setTimeout(() => {
-        console.log(
-          `%c[DOLLA_DEV_DEBUG] %c${this._label}%c%c%c`,
-          `color:#e44c4c;font-weight:bold`,
-          `color:${colorFromString(this._label)};font-weight:bold`,
-          `color:#777`,
-          `color:#aaa`,
-          `color:#777`,
-          { watcherCount: this.watcherCount },
-        );
-        this._timeout = null;
-      }, 200);
-    }
-  },
-};
+import { noOp, strictEqual } from "../utils";
+import { _onWatcherAdded, _onWatcherRemoved } from "./stats";
+import { IS_STATE } from "./symbols";
 
 /*==============================*\
 ||            Types             ||
@@ -68,7 +35,7 @@ export interface CreateStateOptions<T> {
 export interface WatchOptions<T> {
   /**
    * If true the watch callback will be called for the first time on the next change.
-   * By default the callback is called immediately with the state's current value.
+   * Callback is immediately called with the state's current value by default.
    */
   lazy?: boolean;
 }
@@ -98,46 +65,12 @@ export type Setter<I, O = I> = (value: SetAction<I, O>) => void;
 
 export type MaybeState<T> = State<T> | T;
 
-/**
- * A state and setter in one. Useful for passing states that are intended to be updated by subviews.
- */
-export interface SettableState<I, O = I> extends State<I> {
-  /**
-   * Updates the state's value.
-   */
-  set(next: O): void;
-
-  /**
-   * Takes a callback that recieves the state's current value and returns a new one.
-   */
-  set(callback: (current: I) => O): void;
-}
-
-/**
- *
- */
-export interface Ref<T> {
-  /**
-   * Get: returns the current value stored in the ref (or undefined).
-   */
-  (): T | undefined;
-
-  /**
-   * Set: stores a new `value` in the ref.
-   */
-  <T>(value: T | undefined): void;
-}
-
 /*==============================*\
 ||            Utils             ||
 \*==============================*/
 
 export function isState<T>(value: any): value is State<T> {
-  return value?.[TYPE_STATE] === true;
-}
-
-export function isRef<T extends Node>(value: any): value is Ref<T> {
-  return value?.[TYPE_REF] === true;
+  return value?.[IS_STATE] === true;
 }
 
 /**
@@ -176,6 +109,11 @@ export function toState<T>(value: MaybeState<T>): State<T> {
 ||             State            ||
 \*==============================*/
 
+/**
+ * ValueHolder implements the core functionality of a State.
+ * It holds a value, which can be retrieved with `get`, updated with `set` and observed with `watch`.
+ * The user-facing API splits up access into a read-only State and a setter function.
+ */
 export class ValueHolder<T> implements State<T> {
   value: T;
   watchers: ((value: T) => void)[] = [];
@@ -218,7 +156,7 @@ export class ValueHolder<T> implements State<T> {
       callback(this.value);
     }
 
-    tracker.increment();
+    _onWatcherAdded();
 
     return () => {
       const index = this.watchers.indexOf(callback);
@@ -226,14 +164,16 @@ export class ValueHolder<T> implements State<T> {
         this.watchers.splice(index, 1);
       }
 
-      tracker.decrement();
+      _onWatcherRemoved();
     };
   }
 }
 
+/**
+ * Signal is the implementation of a read-only State.
+ */
 export class Signal<T> implements State<T> {
-  // Instances will pass isState() with this symbol
-  [TYPE_STATE] = true;
+  [IS_STATE] = true;
 
   __value;
 
@@ -354,7 +294,7 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
       callback(this.rawValue);
     }
 
-    tracker.increment();
+    _onWatcherAdded();
 
     return () => {
       watchers.splice(watchers.indexOf(callback), 1);
@@ -363,7 +303,7 @@ class DerivedValueHolder<I extends MaybeState<any>[], O> implements State<O> {
         this.stopWatchingSources();
       }
 
-      tracker.decrement();
+      _onWatcherRemoved();
     };
   }
 
@@ -490,38 +430,6 @@ export function derive<Sources extends MaybeState<any>[], T>(
 ): State<T> {
   const value = new DerivedValueHolder(sources, fn, options);
   return new Signal(value);
-}
-
-/*===========================*\
-||            Ref            ||
-\*===========================*/
-
-/**
- * A Ref is a function that returns the last argument it was called with.
- * Calling it with no arguments will simply return the latest value.
- * Calling it with an argument will store that value and immediately return it.
- *
- * @param value - An (optional) initial value to store.
- *
- * @example
- * const ref = createRef(5);
- * ref(); // 5
- * ref(500);
- * ref(); // 500
- */
-export function createRef<T>(value?: T): Ref<T> {
-  const ref = function ref() {
-    if (arguments.length === 1) {
-      value = arguments[0];
-    } else if (arguments.length > 1) {
-      throw new Error(`Too many arguments. Expected 0 or 1. Got: ${arguments.length}`);
-    }
-    return value;
-  };
-
-  ref[TYPE_REF] = true;
-
-  return ref;
 }
 
 /*===========================*\

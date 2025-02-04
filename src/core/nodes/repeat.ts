@@ -1,6 +1,6 @@
 import { type ElementContext, type MarkupElement } from "../markup.js";
 import { createState, type Setter, type State, type StopFunction } from "../state.js";
-import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
+import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View, type ViewContext, type ViewResult } from "./view.js";
 
 // ----- Types ----- //
@@ -24,7 +24,7 @@ type ConnectedItem<T> = {
 // ----- Code ----- //
 
 export class Repeat<T> implements MarkupElement {
-  [TYPE_MARKUP_ELEMENT] = true;
+  [IS_MARKUP_ELEMENT] = true;
 
   node = document.createTextNode("");
   $items: State<T[]>;
@@ -51,7 +51,13 @@ export class Repeat<T> implements MarkupElement {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
       this.stopCallback = this.$items.watch((value) => {
-        this._update(Array.from(value));
+        if (!this.isMounted) {
+          this._update(Array.from(value));
+        } else {
+          this.elementContext.root.batch.write(() => {
+            this._update(Array.from(value));
+          });
+        }
       });
     }
   }
@@ -133,6 +139,7 @@ export class Repeat<T> implements MarkupElement {
     }
 
     // Reconnect to ensure order. Lifecycle hooks won't be run again if the view is already connected.
+    // TODO: Use a smarter inline reordering method. This causes scrollbars to jump.
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
       const previous = newItems[i - 1]?.element.node ?? this.node;
@@ -154,5 +161,6 @@ interface RepeatItemProps {
 }
 
 function RepeatItemView({ $value, $index, renderFn }: RepeatItemProps, ctx: ViewContext) {
+  // ctx.setName("@RepeatItem");
   return renderFn($value, $index, ctx);
 }

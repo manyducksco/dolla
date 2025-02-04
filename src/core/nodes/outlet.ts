@@ -1,12 +1,12 @@
 import { type MarkupElement } from "../markup.js";
 import { isState, type MaybeState, type StopFunction } from "../state.js";
-import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
+import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
  * Manages several MarkupElements as one.
  */
 export class Outlet implements MarkupElement {
-  [TYPE_MARKUP_ELEMENT] = true;
+  [IS_MARKUP_ELEMENT] = true;
 
   node = document.createTextNode("");
   isMounted = false;

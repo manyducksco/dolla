@@ -19,7 +19,9 @@ import {
   type StateValues,
   type StopFunction,
 } from "../state.js";
-import { TYPE_MARKUP_ELEMENT } from "../symbols.js";
+import { IS_MARKUP_ELEMENT } from "../symbols.js";
+import { _onViewMounted, _onViewUnmounted } from "../stats.js";
+import { Emitter } from "@manyducks.co/emitter";
 
 /*=====================================*\
 ||                Types                ||
@@ -128,6 +130,7 @@ class Context implements ViewContext {
 
   setName(name: string): ViewContext {
     this.__view._logger.setName(name);
+    this.__view._elementContext.viewName = name;
     return this;
   }
 
@@ -177,19 +180,19 @@ class Context implements ViewContext {
   }
 
   beforeMount(callback: () => void): void {
-    this.__view._beforeMountCallbacks.push(callback);
+    this.__view._emitter.on("beforeMount", callback);
   }
 
   onMount(callback: () => void): void {
-    this.__view._onMountCallbacks.push(callback);
+    this.__view._emitter.on("mounted", callback);
   }
 
   beforeUnmount(callback: () => void): void {
-    this.__view._beforeUnmountCallbacks.push(callback);
+    this.__view._emitter.on("beforeUnmount", callback);
   }
 
   onUnmount(callback: () => void): void {
-    this.__view._onUnmountCallbacks.push(callback);
+    this.__view._emitter.on("unmounted", callback);
   }
 
   watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction {
@@ -204,7 +207,7 @@ class Context implements ViewContext {
       // This code is not always re-run between when a component is unmounted and remounted.
       let stop: StopFunction | undefined;
       let isStopped = false;
-      view._onMountCallbacks.push(() => {
+      view._emitter.on("mounted", () => {
         if (!isStopped) {
           stop = view._watcher.watch(states, callback);
         }
@@ -223,8 +226,15 @@ class Context implements ViewContext {
   }
 }
 
+type ViewEvents = {
+  beforeMount: [];
+  mounted: [];
+  beforeUnmount: [];
+  unmounted: [];
+};
+
 export class View<P> implements ViewElement {
-  [TYPE_MARKUP_ELEMENT] = true;
+  [IS_MARKUP_ELEMENT] = true;
 
   uniqueId = getUniqueId();
 
@@ -241,13 +251,10 @@ export class View<P> implements ViewElement {
   _setChildren;
 
   _watcher = createWatcher();
-  _beforeMountCallbacks: (() => any)[] = [];
-  _onMountCallbacks: (() => any)[] = [];
-  _beforeUnmountCallbacks: (() => any)[] = [];
-  _onUnmountCallbacks: (() => any)[] = [];
+  _emitter = new Emitter<ViewEvents>();
 
   constructor(elementContext: ElementContext, view: ViewFunction<P>, props: P, children: Markup[] = []) {
-    this._elementContext = { ...elementContext, data: {}, parent: elementContext };
+    this._elementContext = { ...elementContext, data: {}, parent: elementContext, viewName: view.name };
     this._logger = elementContext.root.createLogger(view.name, { uid: this.uniqueId });
     this._view = view;
     this._props = props;
@@ -272,11 +279,8 @@ export class View<P> implements ViewElement {
     const wasConnected = this.isMounted;
 
     if (!wasConnected) {
-      this.initialize();
-      while (this._beforeMountCallbacks.length > 0) {
-        const callback = this._beforeMountCallbacks.shift()!;
-        callback();
-      }
+      this._initialize();
+      this._emitter.emit("beforeMount");
     }
 
     if (this._element) {
@@ -286,33 +290,30 @@ export class View<P> implements ViewElement {
     if (!wasConnected) {
       this.isMounted = true;
 
+      _onViewMounted();
+
+      // TODO: Figure out why rAF is needed for updates to DOM nodes to work in onMount callbacks.
       requestAnimationFrame(() => {
-        while (this._onMountCallbacks.length > 0) {
-          const callback = this._onMountCallbacks.shift()!;
-          callback();
-        }
+        this._emitter.emit("mounted");
       });
     }
   }
 
   unmount(parentIsUnmounting = false) {
-    while (this._beforeUnmountCallbacks.length > 0) {
-      const callback = this._beforeUnmountCallbacks.shift()!;
-      callback();
-    }
+    this._emitter.emit("beforeUnmount");
 
     if (this._element) {
       // parentIsUnmounting is forwarded to the element because the view acts as a proxy for an element.
       this._element.unmount(parentIsUnmounting);
     }
 
-    this.isMounted = false;
-
-    while (this._onUnmountCallbacks.length > 0) {
-      const callback = this._onUnmountCallbacks.shift()!;
-      callback();
+    if (this.isMounted) {
+      _onViewUnmounted();
     }
 
+    this.isMounted = false;
+    this._emitter.emit("unmounted");
+    this._emitter.clear();
     this._watcher.stopAll();
   }
 
@@ -327,7 +328,7 @@ export class View<P> implements ViewElement {
   ||           Internal            ||
   \*===============================*/
 
-  initialize() {
+  private _initialize() {
     const context = new Context(this);
 
     let result: ViewResult;

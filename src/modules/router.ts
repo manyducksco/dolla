@@ -74,7 +74,7 @@ export interface RouteLayer {
  */
 interface ActiveLayer {
   id: number;
-  node: ViewElement;
+  view: ViewElement;
 }
 
 /**
@@ -160,17 +160,14 @@ export class Router {
    * The currently matched route pattern, if any.
    */
   $pattern;
-
   /**
    * The current URL path.
    */
   $path;
-
   /**
    * The current named path params.
    */
   $params;
-
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
@@ -178,7 +175,7 @@ export class Router {
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
-    this.#logger = dolla.createLogger("dolla/router");
+    this.#logger = dolla.createLogger("Dolla.router");
 
     [this.#$match, this.#setMatch] = createState<RouteMatch>();
 
@@ -435,13 +432,13 @@ export class Router {
       if (activeLayer?.id !== matchedLayer.id) {
         // Discard all previously active layers starting at this depth.
         this.#activeLayers = this.#activeLayers.slice(0, i);
-        activeLayer?.node.unmount();
+        activeLayer?.view.unmount();
 
         const parentLayer = this.#activeLayers.at(-1);
-        const parent = parentLayer?.node ?? this.#dolla!.getRootView()!;
+        const parent = parentLayer?.view ?? this.#dolla!.getRootView()!;
 
-        const node = parent.setChildView(matchedLayer.view);
-        this.#activeLayers.push({ id: matchedLayer.id, node });
+        const view = parent.setChildView(matchedLayer.view);
+        this.#activeLayers.push({ id: matchedLayer.id, view });
       }
     }
   }

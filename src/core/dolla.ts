@@ -3,6 +3,7 @@ import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 import { Batch } from "./batch.js";
+import { Stats } from "./stats.js";
 import {
   constructMarkup,
   createMarkup,
@@ -12,7 +13,8 @@ import {
   type MarkupElement,
 } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
-import { createRef, createState, createWatcher, derive, isRef, isState, toState, toValue } from "./state.js";
+import { createRef, isRef } from "./ref.js";
+import { createState, createWatcher, derive, isState, toState, toValue } from "./state.js";
 
 import { HTTP } from "../modules/http.js";
 import { I18n } from "../modules/i18n.js";
@@ -72,6 +74,9 @@ export interface DollaModuleConfig<Options = never> {
 export class Dolla {
   readonly batch: Batch;
 
+  // Remove `private` when there are public methods to call.
+  private readonly stats: Stats;
+
   readonly http: HTTP;
   readonly i18n: I18n;
   readonly router: Router;
@@ -100,7 +105,7 @@ export class Dolla {
     warn: "development",
     error: true,
   };
-  #match = createMatcher("*,-dolla/*");
+  #match = createMatcher("*,-Dolla.*");
 
   // Registration functions for modules.
   // All modules will be registered before mount.
@@ -108,6 +113,7 @@ export class Dolla {
 
   constructor() {
     this.batch = new Batch(this);
+    this.stats = new Stats(this);
     this.http = new HTTP(this);
     this.i18n = new I18n(this);
     this.router = new Router(this);

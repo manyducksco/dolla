@@ -1,6 +1,9 @@
 // States
-export { createRef, createState, derive, isRef, isState, toState, toValue } from "./core/state.js";
-export type { MaybeState, Ref, Setter, State, StopFunction } from "./core/state.js";
+export { createState, derive, isState, toState, toValue } from "./core/state.js";
+export type { MaybeState, Setter, State, StopFunction } from "./core/state.js";
+
+// Ref
+export { createRef, isRef, type Ref } from "./core/ref.js";
 
 // Equality checks (useful for states)
 export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
