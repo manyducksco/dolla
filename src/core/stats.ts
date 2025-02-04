@@ -10,8 +10,13 @@ interface StatsStore {
 }
 
 type StatsStoreEvents = {
-  watcherCountChanged: [watcherCount: number];
-  viewCountChanged: [viewCount: number];
+  /**
+   * Emitted when any stats are updated in the store.
+   */
+  statsChanged: [];
+
+  _incrementWatcherCount: [amount: number];
+  _incrementViewCount: [amount: number];
 };
 
 /**
@@ -29,7 +34,7 @@ export class Stats {
 
     let timeout: any;
 
-    this.#store.emitter.on("*", (eventName, ...args) => {
+    this.#store.emitter.on("statsChanged", () => {
       if (timeout) {
         clearTimeout(timeout);
       }
@@ -47,13 +52,23 @@ export class Stats {
 const key = "__DOLLA_STATS_STORE__";
 
 export function _createStore(): StatsStore {
-  return {
-    emitter: new Emitter<StatsStoreEvents>(),
-    stats: {
-      watcherCount: 0,
-      viewCount: 0,
-    },
+  const emitter = new Emitter<StatsStoreEvents>();
+  const stats = {
+    watcherCount: 0,
+    viewCount: 0,
   };
+
+  emitter.on("_incrementViewCount", (amount) => {
+    stats.viewCount += amount;
+    emitter.emit("statsChanged");
+  });
+
+  emitter.on("_incrementWatcherCount", (amount) => {
+    stats.watcherCount += amount;
+    emitter.emit("statsChanged");
+  });
+
+  return { emitter, stats };
 }
 
 export function _getStore(): StatsStore {
@@ -71,25 +86,17 @@ export function _getStore(): StatsStore {
 }
 
 export function _onWatcherAdded() {
-  const store = _getStore();
-  store.stats.watcherCount += 1;
-  store.emitter.emit("watcherCountChanged", store.stats.watcherCount);
+  _getStore().emitter.emit("_incrementWatcherCount", 1);
 }
 
 export function _onWatcherRemoved() {
-  const store = _getStore();
-  store.stats.watcherCount -= 1;
-  store.emitter.emit("watcherCountChanged", store.stats.watcherCount);
+  _getStore().emitter.emit("_incrementWatcherCount", -1);
 }
 
 export function _onViewMounted() {
-  const store = _getStore();
-  store.stats.viewCount += 1;
-  store.emitter.emit("viewCountChanged", store.stats.viewCount);
+  _getStore().emitter.emit("_incrementViewCount", 1);
 }
 
 export function _onViewUnmounted() {
-  const store = _getStore();
-  store.stats.viewCount -= 1;
-  store.emitter.emit("viewCountChanged", store.stats.viewCount);
+  _getStore().emitter.emit("_incrementViewCount", -1);
 }
