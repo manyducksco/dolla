@@ -19,3 +19,11 @@ Dolla.http.use(async (req, next) => {
 const res = await Dolla.http.get("/api/some-api-route");
 res.body; // body is already parsed as JSON if server responded with JSON
 ```
+
+---
+
+End.
+
+- [🗂️ Docs](./index.md)
+- [🏠 README](../README.md)
+- [🦆 That's a lot of ducks.](https://www.manyducks.co)

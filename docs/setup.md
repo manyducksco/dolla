@@ -21,3 +21,11 @@ If you want to use JSX in your app you can add the following options to your `ts
   }
 }
 ```
+
+---
+
+End.
+
+- [🗂️ Docs](./index.md)
+- [🏠 README](../README.md)
+- [🦆 That's a lot of ducks.](https://www.manyducks.co)

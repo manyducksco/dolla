@@ -121,13 +121,21 @@ const $number = toState($count);
 ### In Views
 
 ```jsx
-import { derive } from "@manyducks.co/dolla";
+import { derive, createView } from "@manyducks.co/dolla";
 
-function UserName(props, ctx) {
+const UserNameView = createView(function (props) {
   const $name = derive([props.$user], (user) => user.name);
 
   return <span class={{ "user-name": true, "is-selected": props.$selected }}>{$name}</span>;
-}
+});
 ```
 
 In the example above we've displayed the `name` field from a `$user` object inside of a span. We are also assigning an `is-selected` class dynamically based on whether the `$selected` prop contains a truthy or falsy value.
+
+---
+
+End.
+
+- [🗂️ Docs](./index.md)
+- [🏠 README](../README.md)
+- [🦆 That's a lot of ducks.](https://www.manyducks.co)

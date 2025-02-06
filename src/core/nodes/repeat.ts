@@ -32,7 +32,7 @@ export class Repeat<T> implements MarkupElement {
   stopCallback?: StopFunction;
   connectedItems: ConnectedItem<T>[] = [];
   elementContext;
-  renderFn: ($value: State<T>, $index: State<number>, ctx: ViewContext) => ViewResult;
+  renderFn: (this: ViewContext, $value: State<T>, $index: State<number>, context: ViewContext) => ViewResult;
   keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
@@ -158,10 +158,10 @@ export class Repeat<T> implements MarkupElement {
 interface RepeatItemProps {
   $value: State<any>;
   $index: State<number>;
-  renderFn: ($value: State<any>, $index: State<number>, ctx: ViewContext) => ViewResult;
+  renderFn: ($value: State<any>, $index: State<number>, context: ViewContext) => ViewResult;
 }
 
-function RepeatItemView({ $value, $index, renderFn }: RepeatItemProps, ctx: ViewContext) {
+function RepeatItemView({ $value, $index, renderFn }: RepeatItemProps, context: ViewContext) {
   // ctx.setName("@RepeatItem");
-  return renderFn($value, $index, ctx);
+  return renderFn.call(context, $value, $index, context);
 }
