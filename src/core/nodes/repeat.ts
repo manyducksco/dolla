@@ -1,4 +1,5 @@
-import { type ElementContext, type MarkupElement } from "../markup.js";
+import { type ElementContext } from "../context.js";
+import { type MarkupElement } from "../markup.js";
 import { createState, type Setter, type State, type StopFunction } from "../state.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View, type ViewContext, type ViewResult } from "./view.js";

@@ -1,13 +1,6 @@
-import { type Renderable } from "../../types.js";
-import {
-  constructMarkup,
-  groupElements,
-  isMarkup,
-  isMarkupElement,
-  toMarkup,
-  type ElementContext,
-  type MarkupElement,
-} from "../markup.js";
+import type { Renderable } from "../../types.js";
+import type { ElementContext } from "../context.js";
+import { constructMarkup, groupElements, isMarkupElement, toMarkup, type MarkupElement } from "../markup.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface PortalConfig {

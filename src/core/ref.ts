@@ -30,14 +30,14 @@ export interface Ref<T> {
  * ref(); // 500
  */
 export function createRef<T>(value?: T): Ref<T> {
-  const ref = function ref() {
+  function ref() {
     if (arguments.length === 1) {
       value = arguments[0];
     } else if (arguments.length > 1) {
       throw new Error(`Too many arguments. Expected 0 or 1. Got: ${arguments.length}`);
     }
     return value;
-  };
+  }
 
   ref[IS_REF] = true;
 

@@ -1,15 +1,9 @@
+import { Emitter } from "@manyducks.co/emitter";
 import { isArrayOf, typeOf } from "../../typeChecking.js";
 import { getUniqueId } from "../../utils.js";
+import { ContextEvent, type ElementContext, type StorableContext } from "../context.js";
 import type { Logger } from "../dolla.js";
-import {
-  constructMarkup,
-  createMarkup,
-  type ElementContext,
-  groupElements,
-  isMarkup,
-  type Markup,
-  type MarkupElement,
-} from "../markup.js";
+import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
 import {
   createState,
   createWatcher,
@@ -19,9 +13,9 @@ import {
   type StateValues,
   type StopFunction,
 } from "../state.js";
-import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { _onViewMounted, _onViewUnmounted } from "../stats.js";
-import { Emitter } from "@manyducks.co/emitter";
+import { isStore, isStoreFactory, type Store, StoreError, type StoreFactory } from "../store.js";
+import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /*=====================================*\
 ||                Types                ||
@@ -32,7 +26,7 @@ import { Emitter } from "@manyducks.co/emitter";
  */
 export type ViewResult = Node | State<any> | Markup | Markup[] | null;
 
-export type ViewFunction<P> = (props: P, context: ViewContext) => ViewResult;
+export type ViewFunction<P> = (this: ViewContext, props: P, context: ViewContext) => ViewResult;
 
 /**
  * A view that has been constructed into DOM nodes.
@@ -44,26 +38,16 @@ export interface ViewElement extends MarkupElement {
   setChildView(view: ViewFunction<{}>): ViewElement;
 }
 
-export interface ViewContext extends Logger {
+export interface ViewContext extends Logger, StorableContext {
   /**
    * An ID unique to this view.
    */
   readonly uid: string;
 
   /**
-   * Sets a context variable and returns its value. Context variables are accessible on the same context and from those of child views.
-   */
-  set<T>(key: string | symbol, value: T): T;
-
-  /**
-   * Gets the value of a context variable. Returns null if the variable is not set.
-   */
-  get<T>(key: string | symbol): T | null;
-
-  /**
    * Returns an object of all variables stored on this context.
    */
-  getAll(): Record<string | symbol, unknown>;
+  // getAll(): Record<string | symbol, unknown>;
 
   /**
    * Sets the name of the view's built in logger.
@@ -103,8 +87,35 @@ export interface ViewContext extends Logger {
 }
 
 /*=====================================*\
+||         Convenience Helpers         ||
+\*=====================================*/
+
+export function createView<Props extends Record<string, any> = Record<string, unknown>>(
+  fn: ViewFunction<Props>,
+): ViewFunction<Props> {
+  return fn;
+}
+
+/*=====================================*\
 ||              View Init              ||
 \*=====================================*/
+
+// class ViewTemplate<Props> {
+//   private _fn;
+
+//   constructor(fn: ViewFunction<Props>) {
+//     this._fn = fn;
+//   }
+
+//   create(ctx: ElementContext, props: Props, children: Markup[]): View<Props> {
+//     return new View(ctx, this._fn, props, children);
+//   }
+
+//   toString(ctx: ElementContext, props: Props, children: Markup[]): string {
+//     // TODO: Render this view's content as an HTML string.
+//     return "";
+//   }
+// }
 
 // Defines logger methods on context.
 interface Context extends Logger {}
@@ -118,7 +129,7 @@ class Context implements ViewContext {
     // Copy logger methods from logger.
     const descriptors = Object.getOwnPropertyDescriptors(this.__view._logger);
     for (const key in descriptors) {
-      if (key !== "getName") {
+      if (key !== "setName") {
         Object.defineProperty(this, key, descriptors[key]);
       }
     }
@@ -155,28 +166,57 @@ class Context implements ViewContext {
     return null;
   }
 
-  getAll(): Record<string | symbol, unknown> {
-    const contexts: Record<string | symbol, unknown>[] = [];
+  on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
+    this.__view._elementContext.emitter.on(eventName, listener);
+  }
 
-    let ctx = this.__view._elementContext;
-    while (true) {
-      contexts.push(ctx.data);
+  off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
+    this.__view._elementContext.emitter.off(eventName, listener);
+  }
 
-      if (ctx.parent) {
-        ctx = ctx.parent;
-      } else {
-        break;
+  once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
+    this.__view._elementContext.emitter.once(eventName, listener);
+  }
+
+  emit<T = unknown>(eventName: string, detail: T): boolean {
+    return this.__view._elementContext.emitter.emit(eventName, new ContextEvent(eventName, detail));
+  }
+
+  attachStore(store: Store<any, any>): void {
+    store.attach(this.__view._elementContext);
+    this.__view._emitter.on("mounted", () => {
+      store.handleMount();
+    });
+    this.__view._emitter.on("unmounted", () => {
+      store.handleUnmount();
+    });
+  }
+
+  useStore<Value>(factory: StoreFactory<any, Value>): Value {
+    if (isStoreFactory(factory)) {
+      const key = (factory as any).key as string; // The key assigned inside of createStore.
+      let context = this.__view._elementContext;
+      let store: Store<any, Value> | undefined;
+      while (true) {
+        store = context.stores.get(key);
+        if (store == null && context.parent != null) {
+          context = context.parent;
+        } else {
+          break;
+        }
       }
+      if (store == null) {
+        throw new StoreError(`Store not found on this context.`);
+      } else {
+        return store.value;
+      }
+    } else if (isStore(factory)) {
+      throw new StoreError(
+        `Received a Store instance. Please pass the Store factory function to useStore without calling it.`,
+      );
+    } else {
+      throw new StoreError(`Invalid store.`);
     }
-
-    const data: Record<string | symbol, unknown> = {};
-
-    // Iterate data objects in top -> bottom order.
-    for (const context of contexts.reverse()) {
-      Object.assign(data, context);
-    }
-
-    return data;
   }
 
   beforeMount(callback: () => void): void {
@@ -254,13 +294,34 @@ export class View<P> implements ViewElement {
   _emitter = new Emitter<ViewEvents>();
 
   constructor(elementContext: ElementContext, view: ViewFunction<P>, props: P, children: Markup[] = []) {
-    this._elementContext = { ...elementContext, data: {}, parent: elementContext, viewName: view.name };
+    this._elementContext = {
+      ...elementContext,
+      data: {},
+      parent: elementContext,
+      viewName: view.name,
+      emitter: new Emitter(),
+      stores: new Map(),
+    };
     this._logger = elementContext.root.createLogger(view.name, { uid: this.uniqueId });
     this._view = view;
     this._props = props;
 
     this._childMarkup = children;
     [this._$children, this._setChildren] = createState<MarkupElement[]>([]);
+
+    this._emitter.on("error", (error, eventName, ...args) => {
+      this._logger.error({ error, eventName, args });
+      this._logger.crash(error as Error);
+    });
+
+    // Bubble events by emitting them to parent.
+    this._elementContext.emitter.on("*", (eventName, event) => {
+      if (event instanceof ContextEvent) {
+        if (!event.propagationStopped) {
+          this._elementContext.parent?.emitter.emit(eventName, event);
+        }
+      }
+    });
   }
 
   /*===============================*\
@@ -312,8 +373,12 @@ export class View<P> implements ViewElement {
     }
 
     this.isMounted = false;
+
     this._emitter.emit("unmounted");
     this._emitter.clear();
+
+    // Clear elementContext's emitter as well? That was created in this constructor, so garbage collection should get it.
+
     this._watcher.stopAll();
   }
 
@@ -337,7 +402,7 @@ export class View<P> implements ViewElement {
         this._setChildren(constructMarkup(this._elementContext, this._childMarkup));
       }
 
-      result = this._view(this._props, context);
+      result = this._view.call(context, this._props, context);
     } catch (error) {
       if (error instanceof Error) {
         this._logger.crash(error);

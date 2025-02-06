@@ -1,24 +1,19 @@
+import { Emitter } from "@manyducks.co/emitter";
+import { HTTP } from "../modules/http.js";
+import { I18n } from "../modules/i18n.js";
+import { Router } from "../modules/router.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 import { Batch } from "./batch.js";
-import { Stats } from "./stats.js";
-import {
-  constructMarkup,
-  createMarkup,
-  groupElements,
-  type ElementContext,
-  type Markup,
-  type MarkupElement,
-} from "./markup.js";
+import { ContextEvent, type ElementContext, type StorableContext } from "./context.js";
+import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { createRef, isRef } from "./ref.js";
 import { createState, createWatcher, derive, isState, toState, toValue } from "./state.js";
-
-import { HTTP } from "../modules/http.js";
-import { I18n } from "../modules/i18n.js";
-import { Router } from "../modules/router.js";
+import { Stats } from "./stats.js";
+import { isStore, isStoreFactory, StoreError, type Store, type StoreFactory } from "./store.js";
 
 // Affects which log messages will print and how much debugging info is included in the DOM.
 export type Environment = "development" | "production";
@@ -61,17 +56,7 @@ export type LoggerOptions = {
   uid?: string;
 };
 
-export interface DollaModuleConfig<Options = never> {
-  root: Dolla;
-  options: Options;
-}
-
-// export interface DollaModule<Options> {
-//   readonly moduleName: string;
-//   register(config: DollaModuleConfig<Options>): any | Promise<any>;
-// }
-
-export class Dolla {
+export class Dolla implements StorableContext {
   readonly batch: Batch;
 
   // Remove `private` when there are public methods to call.
@@ -97,6 +82,8 @@ export class Dolla {
   #rootElementContext: ElementContext = {
     root: this,
     data: {},
+    emitter: new Emitter(),
+    stores: new Map(),
   };
 
   #loggles: Loggles = {
@@ -177,16 +164,6 @@ export class Dolla {
   }
 
   /**
-   * Registers a Dolla module.
-   */
-  // use<O>(module: DollaModule<O>, options: O) {
-  //   this.#modules.push(async () => {
-  //     return module.register({ root: this, options });
-  //   });
-  //   return this;
-  // }
-
-  /**
    * Sets a context variable and returns its value. Context variables are accessible on the app and in child views.
    */
   set<T>(key: string | symbol, value: T): T {
@@ -204,8 +181,64 @@ export class Dolla {
   /**
    * Returns an object of all context variables stored at the app level.
    */
-  getAll(): Record<string | symbol, unknown> {
-    return { ...this.#rootElementContext.data };
+  // getAll(): Record<string | symbol, unknown> {
+  //   return { ...this.#rootElementContext.data };
+  // }
+
+  /**
+   * Adds a listener to be called when `eventName` is emitted.
+   */
+  on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
+    this.#rootElementContext.emitter.on(eventName, listener);
+  }
+
+  /**
+   * Removes a listener from the list to be called when `eventName` is emitted.
+   */
+  off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
+    this.#rootElementContext.emitter.off(eventName, listener);
+  }
+
+  /**
+   * Adds a listener to be called when `eventName` is emitted. The listener is immediately removed after being called once.
+   */
+  once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
+    this.#rootElementContext.emitter.once(eventName, listener);
+  }
+
+  /**
+   * Emits a new event to all listeners.
+   */
+  emit<T = unknown>(eventName: string, detail: T): boolean {
+    return this.#rootElementContext.emitter.emit(eventName, new ContextEvent(eventName, detail));
+  }
+
+  /**
+   * Attaches a new store to this context.
+   */
+  attachStore(store: Store<any, any>): void {
+    store.attach(this.#rootElementContext);
+  }
+
+  /**
+   * Gets the nearest instance of a store. Throws an error if the store isn't provided higher in the tree.
+   */
+  useStore<Value>(factory: StoreFactory<any, Value>): Value {
+    if (isStoreFactory(factory)) {
+      const key = (factory as any).key as string; // The key assigned inside of createStore.
+      const store = this.#rootElementContext.stores.get(key);
+      if (store == null) {
+        throw new StoreError(`Store not found on this context.`);
+      } else {
+        return store.value;
+      }
+    } else if (isStore(factory)) {
+      throw new StoreError(
+        `Received a Store instance. Please pass the Store factory function to useStore without calling it.`,
+      );
+    } else {
+      throw new StoreError(`Invalid store.`);
+    }
   }
 
   async mount(selector: string, view?: ViewFunction<any>): Promise<void>;
@@ -244,6 +277,11 @@ export class Dolla {
     // TODO: Handle errors
     for (const callback of this.#onMountCallbacks) {
       callback();
+    }
+
+    // Run onMount for stores.
+    for (const store of this.#rootElementContext.stores.values()) {
+      store.handleMount();
     }
   }
 

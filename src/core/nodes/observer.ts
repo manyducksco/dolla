@@ -1,13 +1,7 @@
 import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
-import {
-  constructMarkup,
-  isMarkupElement,
-  isRenderable,
-  toMarkup,
-  type ElementContext,
-  type MarkupElement,
-} from "../markup.js";
+import type { ElementContext } from "../context.js";
+import { constructMarkup, isMarkupElement, isRenderable, toMarkup, type MarkupElement } from "../markup.js";
 import { createWatcher, type MaybeState } from "../state.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 

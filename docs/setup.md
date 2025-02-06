@@ -10,11 +10,12 @@ npm i @manyducks.co/dolla
 
 ## JSX
 
-If you want to use JSX in your app you can add the following options to your `tsconfig.json` or `jsconfig.json`. Most modern build systems like Vite will pick these up automatically.
+If you want to use JSX in your app you can add the following options to your `tsconfig.json` or `jsconfig.json`. Modern build systems like [Vite](https://vite.dev) will pick these up automatically.
 
 ```json
 {
   "compilerOptions": {
+    // ... other options ...
     "jsx": "react-jsx",
     "jsxImportSource": "@manyducks.co/dolla"
   }

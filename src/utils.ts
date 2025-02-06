@@ -20,15 +20,14 @@ export function getUniqueId() {
  * This is the default equality check for states.
  */
 export function strictEqual(a: any, b: any): boolean {
-  return a === b;
+  return Object.is(a, b);
 }
 
 /**
  * Equality check that passes if both values are the same object, or if both are objects or arrays with equal keys and values.
  */
 export function shallowEqual(a: any, b: any): boolean {
-  // Strict equal shortcut
-  if (a === b) return true;
+  if (Object.is(a, b)) return true;
 
   // Must be same type
   const t = typeOf(a);

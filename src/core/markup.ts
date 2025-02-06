@@ -2,7 +2,7 @@ import htm from "htm/mini";
 
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
-import type { Dolla } from "./dolla.js";
+import type { ElementContext } from "./context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { HTML } from "./nodes/html.js";
 import { Observer } from "./nodes/observer.js";
@@ -12,33 +12,6 @@ import { Repeat } from "./nodes/repeat.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
 import { isState, toState, type MaybeState, type State } from "./state.js";
 import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
-
-/*===========================*\
-||       ElementContext      ||
-\*===========================*/
-
-export interface ElementContext {
-  /**
-   * The root Dolla instance this element belongs to.
-   */
-  root: Dolla;
-  /**
-   * Storage for context variables.
-   */
-  data: Record<string | symbol, unknown>;
-  /**
-   * A reference to the parent context.
-   */
-  parent?: ElementContext;
-  /**
-   * Whether to create DOM nodes in the SVG namespace. An `<svg>` element will set this to true and pass it down to children.
-   */
-  isSVG?: boolean;
-  /**
-   * The name of the nearest parent view.
-   */
-  viewName?: string;
-}
 
 /*===========================*\
 ||           Markup          ||

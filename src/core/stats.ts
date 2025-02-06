@@ -49,7 +49,7 @@ export class Stats {
 ||   Internal Functions   ||
 \*========================*/
 
-const key = "__DOLLA_STATS_STORE__";
+const key = Symbol.for("DollaStatsStore");
 
 export function _createStore(): StatsStore {
   const emitter = new Emitter<StatsStoreEvents>();

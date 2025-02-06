@@ -7,101 +7,14 @@
 
 Dolla is a batteries-included JavaScript frontend framework covering the needs of moderate-to-complex single page apps:
 
-- ⚡ Reactive DOM updates with [State](). Inspired by Signals, but with more explicit tracking.
-- 📦 Reusable components with [Views](#section-views).
-- 🔀 Built in [routing]() with nested routes and middleware support (check login status, preload data, etc).
-- 🐕 Built in [HTTP]() client with middleware support (set auth headers, etc).
-- 📍 Built in [localization]() system (store translated strings in JSON files and call the `t` function to get them).
-- 🍳 Build system optional. Write views in JSX or use `html` tagged template literals.
+- ⚡ Reactive DOM updates with [State](./docs/state.md). Inspired by Signals, but with more explicit tracking.
+- 📦 Reusable components with [Views](./docs/views.md).
+- 🔀 Built in [routing](./docs/router.md) with nested routes and middleware support (check login status, preload data, etc).
+- 🐕 Built in [HTTP](./docs/http.md) client with middleware support (set auth headers, etc).
+- 📍 Built in [localization](./docs/i18n.md) system (store translated strings in JSON files and call the `t` function to get them).
+- 🍳 Build system optional. [Write views in JSX](./docs/setup.md) or use `html` tagged template literals.
 
 Let's first get into some examples.
-
-## State
-
-### Basic State API
-
-```js
-import { createState, derive } from "@manyducks.co/dolla";
-
-const [$count, setCount] = createState(72);
-
-// Get value
-$count.get(): // 72
-
-// Replace the stored value with something else
-setCount(300);
-$count.get(); // 300
-
-// You can also pass a function that takes the current value and returns a new one
-setCount((current) => current + 1);
-$count.get(); // 301
-```
-
-Now that you have a state you can derive more states from that one. Derived states automatically stay in sync with the values of their dependencies.
-
-```js
-// Pass and array of one or more states followed by a function that computes a new value.
-const $doubled = derive([$count], (count) => count * 2);
-
-$doubled.get(); // 602
-
-setCount(500);
-
-$doubled.get(); // 1000
-```
-
-### In Views
-
-```jsx
-
-```
-
-States also come in a settable variety that includes the setter on the same object. Sometimes you want to pass around a two-way binding and this is what SettableState is for.
-
-```jsx
-import { createSettableState, fromSettable, toSettable } from "@manyducks.co/dolla";
-
-// Settable states can be set by passing a value when they are called.
-const $$value = createSettableState("Test");
-$$value(); // "Test"
-$$value("New Value");
-$$value(); // "New Value"
-
-// They can also be split into a State and Setter
-const [$value, setValue] = fromSettableState($$value);
-
-// And a State and Setter can be combined into a SettableState.
-const $$otherValue = toSettableState($value, setValue);
-
-// Or discard the setter and make it read-only using the good old toState function:
-const $value = toState($$value);
-```
-
-You can also do weird proxy things like this:
-
-```jsx
-// Create an original place for the state to live
-const [$value, setValue] = createState(5);
-
-// Derive a state that doubles the value
-const $doubled = derive([$value], (value) => value * 2);
-
-// Create a setter that takes the doubled value and sets the original $value accordingly.
-const setDoubled = createSetter($doubled, (next, current) => {
-  setValue(next / 2);
-});
-
-// Bundle the derived state and setter into a SettableState to pass around.
-const $$doubled = toSettableState($doubled, setDoubled);
-
-// Setting the doubled state...
-$$doubled(100);
-
-// ... will be reflected everywhere.
-$$doubled(); // 100
-$doubled(); // 100
-$value(); // 50
-```
 
 <h2 id="section-views">Views</h2>
 

@@ -1,6 +1,7 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { getUniqueId, omit } from "../../utils.js";
-import { constructMarkup, type ElementContext, type Markup, type MarkupElement } from "../markup.js";
+import { type ElementContext } from "../context.js";
+import { constructMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { isRef, type Ref } from "../ref.js";
 import { isState, type State, type StopFunction } from "../state.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
