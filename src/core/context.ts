@@ -41,6 +41,16 @@ export interface ElementContext {
   viewName?: string;
 }
 
+/**
+ * Mapping of listener function passed to `.on` -> wrapped versions that discard eventName.
+ * Wrapping listeners is necessary because the context API's `.on` method does not pass the event name to "*" listeners while the emitter does.
+ * ContextEvent objects already have the event name stored as `event.type`.
+ */
+export type WildcardListenerMap = Map<
+  (event: ContextEvent<any>) => void,
+  (eventName: string | symbol, event: ContextEvent<any>) => void
+>;
+
 export interface ComponentContext {
   /**
    * Sets a context variable and returns its value.

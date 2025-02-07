@@ -1,7 +1,7 @@
 import { Emitter } from "@manyducks.co/emitter";
 import { isArrayOf, typeOf } from "../../typeChecking.js";
 import { getUniqueId } from "../../utils.js";
-import { ContextEvent, type ElementContext, type StorableContext } from "../context.js";
+import { ContextEvent, type WildcardListenerMap, type ElementContext, type StorableContext } from "../context.js";
 import type { Logger } from "../dolla.js";
 import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
 import {
@@ -175,16 +175,53 @@ class Context implements ViewContext {
     return null;
   }
 
+  // on<T = unknown>(eventName: string, listener: (...args: any) => void): void {
+  //   this.__view._elementContext.emitter.on(eventName, listener);
+  // }
+
+  // off<T = unknown>(eventName: string, listener: (...args: any) => void): void {
+  //   this.__view._elementContext.emitter.off(eventName, listener);
+  // }
+
+  // once<T = unknown>(eventName: string, listener: (...args: any) => void): void {
+  //   this.__view._elementContext.emitter.once(eventName, listener);
+  // }
+
   on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.__view._elementContext.emitter.on(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+        listener(event);
+      };
+      this.__view._elementContext.emitter.on(eventName, wrappedListener);
+      this.__view._wildcardListeners.set(listener, wrappedListener);
+    } else {
+      this.__view._elementContext.emitter.on(eventName, listener);
+    }
   }
 
   off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.__view._elementContext.emitter.off(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = this.__view._wildcardListeners.get(listener);
+      if (wrappedListener) {
+        this.__view._elementContext.emitter.off(eventName, wrappedListener);
+        this.__view._wildcardListeners.delete(listener);
+      }
+    } else {
+      this.__view._elementContext.emitter.off(eventName, listener);
+    }
   }
 
   once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.__view._elementContext.emitter.once(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+        this.__view._wildcardListeners.delete(listener);
+        listener(event);
+      };
+      this.__view._elementContext.emitter.once(eventName, wrappedListener);
+      this.__view._wildcardListeners.set(listener, wrappedListener);
+    } else {
+      this.__view._elementContext.emitter.once(eventName, listener);
+    }
   }
 
   emit<T = unknown>(eventName: string, detail: T): boolean {
@@ -306,6 +343,7 @@ export class View<P> implements ViewElement {
 
   _watcher = createWatcher();
   _emitter = new Emitter<ViewEvents>();
+  _wildcardListeners: WildcardListenerMap = new Map();
 
   constructor(elementContext: ElementContext, view: ViewFunction<P>, props: P, children: Markup[] = []) {
     this._elementContext = {

@@ -1,6 +1,6 @@
 import { Emitter } from "@manyducks.co/emitter";
 import { getUniqueId } from "../utils.js";
-import { ContextEvent, type ComponentContext, type ElementContext } from "./context.js";
+import { ContextEvent, type WildcardListenerMap, type ComponentContext, type ElementContext } from "./context.js";
 import type { Logger } from "./dolla.js";
 import { IS_STORE, IS_STORE_FACTORY } from "./symbols.js";
 import { createWatcher, type MaybeState, type StateValues, type StopFunction } from "./state.js";
@@ -81,16 +81,53 @@ class Context<Options, Value> implements StoreContext {
     return null;
   }
 
+  // on<T = unknown>(eventName: string, listener: (...args: any) => void): void {
+  //   this.__store._elementContext.emitter.on(eventName, listener);
+  // }
+
+  // off<T = unknown>(eventName: string, listener: (...args: any) => void): void {
+  //   this.__store._elementContext.emitter.off(eventName, listener);
+  // }
+
+  // once<T = unknown>(eventName: string, listener: (...args: any) => void): void {
+  //   this.__store._elementContext.emitter.once(eventName, listener);
+  // }
+
   on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.__store._elementContext.emitter.on(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+        listener(event);
+      };
+      this.__store._elementContext.emitter.on(eventName, wrappedListener);
+      this.__store._wildcardListeners.set(listener, wrappedListener);
+    } else {
+      this.__store._elementContext.emitter.on(eventName, listener);
+    }
   }
 
   off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.__store._elementContext.emitter.off(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = this.__store._wildcardListeners.get(listener);
+      if (wrappedListener) {
+        this.__store._elementContext.emitter.off(eventName, wrappedListener);
+        this.__store._wildcardListeners.delete(listener);
+      }
+    } else {
+      this.__store._elementContext.emitter.off(eventName, listener);
+    }
   }
 
   once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.__store._elementContext.emitter.once(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+        this.__store._wildcardListeners.delete(listener);
+        listener(event);
+      };
+      this.__store._elementContext.emitter.once(eventName, wrappedListener);
+      this.__store._wildcardListeners.set(listener, wrappedListener);
+    } else {
+      this.__store._elementContext.emitter.once(eventName, listener);
+    }
   }
 
   emit<T = unknown>(eventName: string, detail: T): boolean {
@@ -152,6 +189,7 @@ export class Store<Options, Value> {
 
   _elementContext!: ElementContext;
   _emitter = new Emitter<StoreEvents>();
+  _wildcardListeners: WildcardListenerMap = new Map();
   _logger!: Logger;
   _watcher = createWatcher();
 

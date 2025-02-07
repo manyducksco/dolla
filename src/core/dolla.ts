@@ -7,7 +7,7 @@ import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 import { Batch } from "./batch.js";
-import { ContextEvent, type ElementContext, type StorableContext } from "./context.js";
+import { ContextEvent, type WildcardListenerMap, type ElementContext, type StorableContext } from "./context.js";
 import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { createRef, isRef } from "./ref.js";
@@ -94,6 +94,8 @@ export class Dolla implements StorableContext {
     error: true,
   };
   #match = createMatcher("*,-Dolla.*");
+
+  #wildcardListeners: WildcardListenerMap = new Map();
 
   // Registration functions for modules.
   // All modules will be registered before mount.
@@ -190,21 +192,46 @@ export class Dolla implements StorableContext {
    * Adds a listener to be called when `eventName` is emitted.
    */
   on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.#rootElementContext.emitter.on(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+        listener(event);
+      };
+      this.#rootElementContext.emitter.on(eventName, wrappedListener);
+      this.#wildcardListeners.set(listener, wrappedListener);
+    } else {
+      this.#rootElementContext.emitter.on(eventName, listener);
+    }
   }
 
   /**
    * Removes a listener from the list to be called when `eventName` is emitted.
    */
   off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.#rootElementContext.emitter.off(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = this.#wildcardListeners.get(listener);
+      if (wrappedListener) {
+        this.#rootElementContext.emitter.off(eventName, wrappedListener);
+        this.#wildcardListeners.delete(listener);
+      }
+    } else {
+      this.#rootElementContext.emitter.off(eventName, listener);
+    }
   }
 
   /**
    * Adds a listener to be called when `eventName` is emitted. The listener is immediately removed after being called once.
    */
   once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    this.#rootElementContext.emitter.once(eventName, listener);
+    if (eventName === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+        this.#wildcardListeners.delete(listener);
+        listener(event);
+      };
+      this.#rootElementContext.emitter.once(eventName, wrappedListener);
+      this.#wildcardListeners.set(listener, wrappedListener);
+    } else {
+      this.#rootElementContext.emitter.once(eventName, listener);
+    }
   }
 
   /**
