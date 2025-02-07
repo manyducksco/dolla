@@ -1,7 +1,8 @@
 import type { Dolla, Logger } from "../core/dolla.js";
-import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
+import { type ViewElement, type ViewFunction } from "../core/nodes/view.js";
 import { createState, derive, type StopFunction } from "../core/state.js";
-import { assert, isFunction, isObject, isString } from "../typeChecking.js";
+import { IS_ROUTER } from "../core/symbols.js";
+import { assertObject, isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { shallowEqual } from "../utils.js";
 import { Passthrough } from "../views/passthrough.js";
@@ -134,13 +135,41 @@ export interface RouterOptions {
 
 // ----- Code ----- //
 
+export function createRouter(options: RouterOptions): Router {
+  // Returns an object you can mount in place of a root view to handle routing.
+  // Ideally none of the router code should be included in your bundle
+  // unless you import and call this function, as some apps don't need routes.
+  // The returned object should include methods for routing.
+
+  return new Router(options);
+}
+
+const ROUTER_MOUNT = Symbol.for("DollaRouterMountMethod");
+const ROUTER_UNMOUNT = Symbol.for("DollaRouterUnmountMethod");
+
+export function _isRouter(value: any): value is Router {
+  return value?.[IS_ROUTER] === true;
+}
+
+export async function _mountRouter(router: Router, dolla: Dolla) {
+  return router[ROUTER_MOUNT](dolla);
+}
+
+export async function _unmountRouter(router: Router) {
+  return router[ROUTER_UNMOUNT]();
+}
+
 export class Router {
-  #dolla: Dolla;
-  #logger: Logger;
+  [IS_ROUTER] = true;
+
+  #dolla?: Dolla;
+  #logger?: Logger;
 
   #layerId = 0;
   #activeLayers: ActiveLayer[] = [];
   #routes: ParsedRoute<RouteMeta>[] = [];
+
+  #isMounted = false;
 
   /**
    * Use hash routing when true. Configured in router options.
@@ -173,9 +202,8 @@ export class Router {
    */
   $query;
 
-  constructor(dolla: Dolla) {
-    this.#dolla = dolla;
-    this.#logger = dolla.createLogger("Dolla.router");
+  constructor(options: RouterOptions) {
+    assertObject(options, "Options must be an object. Got: %t");
 
     [this.#$match, this.#setMatch] = createState<RouteMatch>();
 
@@ -183,50 +211,6 @@ export class Router {
     this.$path = derive([this.#$match], (m) => m?.path ?? window.location.pathname);
     this.$params = derive([this.#$match], (m) => m?.params ?? {}, { equals: shallowEqual });
     this.$query = derive([this.#$match], (m) => m?.query ?? {}, { equals: shallowEqual });
-
-    dolla.beforeMount(async () => {
-      // Listen for popstate events and update route accordingly.
-      const onPopState = () => {
-        this.#updateRoute();
-      };
-      window.addEventListener("popstate", onPopState);
-      this.#cleanupCallbacks.push(() => window.removeEventListener("popstate", onPopState));
-
-      const rootElement = dolla.getRootElement()!;
-
-      // Listen for clicks on <a> tags within the app.
-      this.#cleanupCallbacks.push(
-        catchLinks(rootElement, (anchor) => {
-          let href = anchor.getAttribute("href")!;
-          this.#logger.info("intercepted click on <a> tag", anchor);
-
-          if (!/^https?:\/\/|^\//.test(href)) {
-            href = joinPath([window.location.pathname, href]);
-          }
-
-          this.#push(href);
-        }),
-      );
-      this.#logger.info("will intercept clicks on <a> tags within root element", rootElement);
-
-      // Setup initial route content.
-      await this.#updateRoute();
-    });
-
-    dolla.onUnmount(() => {
-      for (const callback of this.#cleanupCallbacks) {
-        callback();
-      }
-      this.#cleanupCallbacks = [];
-    });
-  }
-
-  async setup(options: RouterOptions) {
-    assert(options != null, "Options object must not be null. Got: %t");
-    assert(
-      !this.#dolla.isMounted,
-      "Dolla is already mounted. Dolla.router.setup() must be called before Dolla.mount().",
-    );
 
     if (options.hash) {
       this.#hash = true;
@@ -243,6 +227,47 @@ export class Router {
         })),
     );
     assertValidRedirects(this.#routes);
+  }
+
+  async [ROUTER_MOUNT](dolla: Dolla) {
+    this.#dolla = dolla;
+    this.#logger = dolla.createLogger("Dolla.router");
+
+    // Listen for popstate events and update route accordingly.
+    const onPopState = () => {
+      this.#updateRoute();
+    };
+    window.addEventListener("popstate", onPopState);
+    this.#cleanupCallbacks.push(() => window.removeEventListener("popstate", onPopState));
+
+    const rootElement = dolla.getRootElement()!;
+
+    // Listen for clicks on <a> tags within the app.
+    this.#cleanupCallbacks.push(
+      catchLinks(rootElement, (anchor) => {
+        let href = anchor.getAttribute("href")!;
+        this.#logger!.info("intercepted click on <a> tag", anchor);
+
+        if (!/^https?:\/\/|^\//.test(href)) {
+          href = joinPath([window.location.pathname, href]);
+        }
+
+        this.#push(href);
+      }),
+    );
+    this.#logger.info("will intercept clicks on <a> tags within root element", rootElement);
+
+    this.#isMounted = true;
+
+    // Setup initial route content.
+    await this.#updateRoute();
+  }
+
+  async [ROUTER_UNMOUNT]() {
+    for (const callback of this.#cleanupCallbacks) {
+      callback();
+    }
+    this.#cleanupCallbacks = [];
   }
 
   /**
@@ -293,14 +318,14 @@ export class Router {
   }
 
   #push(href: string, state?: any) {
-    this.#logger.info("(push)", href);
+    this.#logger?.info("(push)", href);
 
     window.history.pushState(state, "", this.#hash ? "/#" + href : href);
     this.#updateRoute(href);
   }
 
   #replace(href: string, state?: any) {
-    this.#logger.info("(replace)", href);
+    this.#logger?.info("(replace)", href);
 
     window.history.replaceState(state, "", this.#hash ? "/#" + href : href);
     this.#updateRoute(href);
@@ -320,6 +345,7 @@ export class Router {
    */
   async #updateRoute(href?: string) {
     const logger = this.#logger;
+    const rootView = this.#dolla?.getRootView();
     const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
 
     const { match, journey } = await this.#resolveRoute(url);
@@ -327,13 +353,13 @@ export class Router {
     for (const step of journey) {
       switch (step.kind) {
         case "match":
-          logger.info(`📍 ${step.message}`);
+          logger?.info(`📍 ${step.message}`);
           break;
         case "redirect":
-          logger.info(`↩️ ${step.message}`);
+          logger?.info(`↩️ ${step.message}`);
           break;
         case "miss":
-          logger.info(`💀 ${step.message}`);
+          logger?.info(`💀 ${step.message}`);
           break;
         default:
           break;
@@ -345,11 +371,14 @@ export class Router {
 
       this.#setMatch(match);
 
-      if (match.pattern !== currentPattern) {
-        this.#mountRoute(match);
+      if (rootView && match.pattern !== currentPattern) {
+        this.#mountRoute(rootView, match);
       }
     } else {
-      logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
+      // Only crash if routing has been configured.
+      if (this.#isMounted) {
+        logger!.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
+      }
     }
 
     return { match, journey };
@@ -421,7 +450,7 @@ export class Router {
   /**
    * Takes a matched route and mounts it.
    */
-  #mountRoute(match: RouteMatch<RouteMeta>) {
+  #mountRoute(rootView: ViewElement, match: RouteMatch<RouteMeta>) {
     const layers = match.meta.layers!;
 
     // Diff and update route layers.
@@ -435,7 +464,7 @@ export class Router {
         activeLayer?.view.unmount();
 
         const parentLayer = this.#activeLayers.at(-1);
-        const parent = parentLayer?.view ?? this.#dolla!.getRootView()!;
+        const parent = parentLayer?.view ?? rootView;
 
         const view = parent.setChildView(matchedLayer.view);
         this.#activeLayers.push({ id: matchedLayer.id, view });
@@ -540,7 +569,7 @@ const protocolLink = /^[\w-_]+:/;
  * @param callback - Function to call when a click event is intercepted
  * @param _window - (optional) Override for global window object
  */
-export function catchLinks(root: HTMLElement, callback: (anchor: HTMLAnchorElement) => void, _window = window) {
+export function catchLinks(root: Element, callback: (anchor: HTMLAnchorElement) => void, _window = window) {
   function traverse(node: HTMLElement | null): HTMLAnchorElement | null {
     if (!node || node === root) {
       return null;
@@ -580,10 +609,10 @@ export function catchLinks(root: HTMLElement, callback: (anchor: HTMLAnchorEleme
     callback(anchor);
   }
 
-  root.addEventListener("click", handler);
+  root.addEventListener("click", handler as any);
 
   return function cancel() {
-    root.removeEventListener("click", handler);
+    root.removeEventListener("click", handler as any);
   };
 }
 

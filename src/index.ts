@@ -6,7 +6,10 @@ export type { MaybeState, Setter, State, StopFunction } from "./core/state.js";
 export { createRef, isRef, type Ref } from "./core/ref.js";
 
 // Store
-export { createStore, type Store, type StoreFunction, type StoreFactory } from "./core/store.js";
+export { createStore, type Store, type StoreFactory, type StoreFunction } from "./core/store.js";
+
+// Router
+export { createRouter, type Router, type RouterOptions } from "./modules/router.js";
 
 // Equality checks (useful for states)
 export { deepEqual, shallowEqual, strictEqual } from "./utils.js";

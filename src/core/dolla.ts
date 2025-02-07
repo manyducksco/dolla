@@ -1,13 +1,13 @@
 import { Emitter } from "@manyducks.co/emitter";
 import { HTTP } from "../modules/http.js";
 import { I18n } from "../modules/i18n.js";
-import { Router } from "../modules/router.js";
+import { _isRouter, _mountRouter, _unmountRouter, type Router } from "../modules/router.js";
 import { assertInstanceOf, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 import { Batch } from "./batch.js";
-import { ContextEvent, type WildcardListenerMap, type ElementContext, type StorableContext } from "./context.js";
+import { ContextEvent, type ElementContext, type StorableContext, type WildcardListenerMap } from "./context.js";
 import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { createRef, isRef } from "./ref.js";
@@ -64,15 +64,15 @@ export class Dolla implements StorableContext {
 
   readonly http: HTTP;
   readonly i18n: I18n;
-  readonly router: Router;
 
   #isMounted = false;
   #env: Environment = "production";
-  #rootElement?: HTMLElement;
+  #rootElement?: Element;
   #rootView?: ViewElement;
   #crashView: ViewFunction<CrashViewProps> = DefaultCrashView;
 
   #watcher = createWatcher();
+  #router?: Router;
 
   #beforeMountCallbacks: Array<() => void | Promise<void>> = [];
   #onMountCallbacks: Array<() => void> = [];
@@ -106,7 +106,6 @@ export class Dolla implements StorableContext {
     this.stats = new Stats(this);
     this.http = new HTTP(this);
     this.i18n = new I18n(this);
-    this.router = new Router(this);
   }
 
   watch = this.#watcher.watch;
@@ -273,16 +272,18 @@ export class Dolla implements StorableContext {
     }
   }
 
-  async mount(selector: string, view?: ViewFunction<any>): Promise<void>;
-  async mount(element: HTMLElement, view?: ViewFunction<any>): Promise<void>;
+  async mount(selector: string, router: Router): Promise<void>;
+  async mount(selector: string, view: ViewFunction<any>): Promise<void>;
+  async mount(element: Element, router: Router): Promise<void>;
+  async mount(element: Element, view: ViewFunction<any>): Promise<void>;
 
-  async mount(target: string | HTMLElement, view?: ViewFunction<any>) {
+  async mount(target: string | Element, root: ViewFunction<any> | Router) {
     if (this.#isMounted) {
       throw new Error(`Dolla is already mounted.`);
     }
 
     if (isString(target)) {
-      const match = document.querySelector<HTMLElement>(target);
+      const match = document.querySelector<Element>(target);
       assertInstanceOf(HTMLElement, match, `Selector '${target}' did not match any element.`);
       this.#rootElement = match!;
     } else {
@@ -290,13 +291,23 @@ export class Dolla implements StorableContext {
       this.#rootElement = target;
     }
 
+    if (_isRouter(root)) {
+      this.#router = root;
+    }
+
+    const view = _isRouter(root) ? Passthrough : root;
+
     // First, initialize the root view. The router store needs this to connect the initial route.
-    const rootViewMarkup = createMarkup(view ?? Passthrough);
+    const rootViewMarkup = createMarkup(view);
     this.#rootView = this.constructView(rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
 
     // Register modules
     // TODO: Handle errors
     await Promise.all(this.#modules.map((register) => register()));
+
+    if (_isRouter(root)) {
+      await _mountRouter(root, this);
+    }
 
     // Run beforeMount
     // TODO: Handle errors
@@ -326,6 +337,10 @@ export class Dolla implements StorableContext {
     this.#rootView?.unmount(false);
 
     this.#watcher.stopAll();
+
+    if (this.#router) {
+      await _unmountRouter(this.#router);
+    }
 
     this.#isMounted = false;
 

@@ -6,3 +6,5 @@ export const IS_MARKUP_ELEMENT = Symbol.for("DollaMarkupElement");
 // export const IS_VIEW_TEMPLATE = Symbol.for("DollaViewTemplate");
 export const IS_STORE = Symbol.for("DollaStore");
 export const IS_STORE_FACTORY = Symbol.for("DollaStoreFactory");
+
+export const IS_ROUTER = Symbol.for("DollaRouter");
