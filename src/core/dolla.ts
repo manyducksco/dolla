@@ -84,6 +84,7 @@ export class Dolla implements StorableContext {
     data: {},
     emitter: new Emitter(),
     stores: new Map(),
+    viewName: "Dolla",
   };
 
   #loggles: Loggles = {
@@ -217,7 +218,11 @@ export class Dolla implements StorableContext {
    * Attaches a new store to this context.
    */
   attachStore(store: Store<any, any>): void {
-    store.attach(this.#rootElementContext);
+    const attached = store.attach(this.#rootElementContext);
+    if (!attached) {
+      let name = store.name ? `'${store.name}'` : "this store";
+      console.warn(`An instance of ${name} was already attached to this context.`);
+    }
   }
 
   /**
@@ -273,15 +278,15 @@ export class Dolla implements StorableContext {
     this.#rootView.mount(this.#rootElement);
     this.#isMounted = true;
 
+    // Run onMount for stores.
+    for (const store of this.#rootElementContext.stores.values()) {
+      store.handleMount();
+    }
+
     // Run onMount
     // TODO: Handle errors
     for (const callback of this.#onMountCallbacks) {
       callback();
-    }
-
-    // Run onMount for stores.
-    for (const store of this.#rootElementContext.stores.values()) {
-      store.handleMount();
     }
   }
 

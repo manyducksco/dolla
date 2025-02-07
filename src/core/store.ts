@@ -3,6 +3,7 @@ import { getUniqueId } from "../utils.js";
 import { ContextEvent, type ComponentContext, type ElementContext } from "./context.js";
 import type { Logger } from "./dolla.js";
 import { IS_STORE, IS_STORE_FACTORY } from "./symbols.js";
+import { createWatcher, type MaybeState, type StateValues, type StopFunction } from "./state.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
 
@@ -12,6 +13,11 @@ export type StoreFactory<Options, Value> = Options extends undefined
 
 export interface StoreContext extends Logger, ComponentContext {
   /**
+   * True while this store is attached to a context that is currently mounted in the view tree.
+   */
+  readonly isMounted: boolean;
+
+  /**
    * Registers a callback to run just after this store is mounted.
    */
   onMount(callback: () => void): void;
@@ -20,6 +26,12 @@ export interface StoreContext extends Logger, ComponentContext {
    * Registers a callback to run just after this store is unmounted.
    */
   onUnmount(callback: () => void): void;
+
+  /**
+   * Watch a set of states. The callback is called when any of the states receive a new value.
+   * Watchers will be automatically stopped when this store is unmounted.
+   */
+  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
 }
 
 interface Context<Options, Value> extends Logger {}
@@ -37,6 +49,10 @@ class Context<Options, Value> implements StoreContext {
         Object.defineProperty(this, key, descriptors[key]);
       }
     }
+  }
+
+  get isMounted() {
+    return this.__store.isMounted;
   }
 
   setName(name: string): StoreContext {
@@ -88,6 +104,32 @@ class Context<Options, Value> implements StoreContext {
   onUnmount(callback: () => void): void {
     this.__store._emitter.on("unmounted", callback);
   }
+
+  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction {
+    const view = this.__store;
+
+    if (view.isMounted) {
+      // If called when the component is connected, we assume this code is in a lifecycle hook
+      // where it will be triggered at some point again after the component is reconnected.
+      return view._watcher.watch(states, callback);
+    } else {
+      // This should only happen if called in the body of the component function.
+      // This code is not always re-run between when a component is unmounted and remounted.
+      let stop: StopFunction | undefined;
+      let isStopped = false;
+      view._emitter.on("mounted", () => {
+        if (!isStopped) {
+          stop = view._watcher.watch(states, callback);
+        }
+      });
+      return () => {
+        if (stop != null) {
+          isStopped = true;
+          stop();
+        }
+      };
+    }
+  }
 }
 
 type StoreEvents = {
@@ -106,9 +148,16 @@ export class Store<Options, Value> {
    */
   value!: Value;
 
+  isMounted = false;
+
   _elementContext!: ElementContext;
   _emitter = new Emitter<StoreEvents>();
   _logger!: Logger;
+  _watcher = createWatcher();
+
+  get name() {
+    return this._fn.name;
+  }
 
   constructor(key: string, fn: StoreFunction<Options, Value>, options: Options) {
     this.key = key;
@@ -116,7 +165,14 @@ export class Store<Options, Value> {
     this._options = options;
   }
 
-  attach(elementContext: ElementContext): void {
+  /**
+   * Attaches this Store to the elementContext.
+   * Returns false if there was already an instance attached, and true otherwise.
+   */
+  attach(elementContext: ElementContext): boolean {
+    if (elementContext.stores.has(this.key)) {
+      return false;
+    }
     this._elementContext = elementContext;
     this._logger = elementContext.root.createLogger(this._fn.name);
     this._emitter.on("error", (error, eventName, ...args) => {
@@ -130,15 +186,19 @@ export class Store<Options, Value> {
       this._logger.crash(error as Error);
     }
     elementContext.stores.set(this.key, this);
+    return true;
   }
 
   handleMount() {
+    this.isMounted = true;
     this._emitter.emit("mounted");
   }
 
   handleUnmount() {
+    this.isMounted = false;
     this._emitter.emit("unmounted");
     this._emitter.clear();
+    this._watcher.stopAll();
   }
 }
 

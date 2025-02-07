@@ -55,6 +55,11 @@ export interface ViewContext extends Logger, StorableContext {
   setName(name: string): ViewContext;
 
   /**
+   * True while this view is connected to the DOM.
+   */
+  readonly isMounted: boolean;
+
+  /**
    * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
    */
   beforeMount(callback: () => void): void;
@@ -139,6 +144,10 @@ class Context implements ViewContext {
     return this.__view.uniqueId;
   }
 
+  get isMounted() {
+    return this.__view.isMounted;
+  }
+
   setName(name: string): ViewContext {
     this.__view._logger.setName(name);
     this.__view._elementContext.viewName = name;
@@ -183,13 +192,18 @@ class Context implements ViewContext {
   }
 
   attachStore(store: Store<any, any>): void {
-    store.attach(this.__view._elementContext);
-    this.__view._emitter.on("mounted", () => {
-      store.handleMount();
-    });
-    this.__view._emitter.on("unmounted", () => {
-      store.handleUnmount();
-    });
+    const attached = store.attach(this.__view._elementContext);
+    if (attached) {
+      this.__view._emitter.on("mounted", () => {
+        store.handleMount();
+      });
+      this.__view._emitter.on("unmounted", () => {
+        store.handleUnmount();
+      });
+    } else {
+      let name = store.name ? `'${store.name}'` : "this store";
+      this.__view._logger.warn(`An instance of ${name} was already attached to this context.`);
+    }
   }
 
   useStore<Value>(factory: StoreFactory<any, Value>): Value {
@@ -302,7 +316,7 @@ export class View<P> implements ViewElement {
       emitter: new Emitter(),
       stores: new Map(),
     };
-    this._logger = elementContext.root.createLogger(view.name, { uid: this.uniqueId });
+    this._logger = elementContext.root.createLogger(view.name || "🌇 anonymous view", { uid: this.uniqueId });
     this._view = view;
     this._props = props;
 
@@ -398,11 +412,11 @@ export class View<P> implements ViewElement {
 
     let result: ViewResult;
     try {
+      result = this._view.call(context, this._props, context);
+
       if (this._childMarkup.length) {
         this._setChildren(constructMarkup(this._elementContext, this._childMarkup));
       }
-
-      result = this._view.call(context, this._props, context);
     } catch (error) {
       if (error instanceof Error) {
         this._logger.crash(error);

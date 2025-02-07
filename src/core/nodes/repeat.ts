@@ -162,6 +162,6 @@ interface RepeatItemProps {
 }
 
 function RepeatItemView({ $value, $index, renderFn }: RepeatItemProps, context: ViewContext) {
-  // ctx.setName("@RepeatItem");
+  context.setName("@RepeatItem");
   return renderFn.call(context, $value, $index, context);
 }
