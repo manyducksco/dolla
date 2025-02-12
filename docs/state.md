@@ -121,9 +121,9 @@ const $number = toState($count);
 ### In Views
 
 ```jsx
-import { derive, createView } from "@manyducks.co/dolla";
+import { derive } from "@manyducks.co/dolla";
 
-const UserNameView = createView(function (props) {
+function UserNameView(props, ctx) {
   const $name = derive([props.$user], (user) => user.name);
 
   return <span class={{ "user-name": true, "is-selected": props.$selected }}>{$name}</span>;

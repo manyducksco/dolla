@@ -3,9 +3,9 @@
 > TODO: Write about stores
 
 ```tsx
-import Dolla, { createStore, createState, createView } from "@manyducks.co/dolla";
+import Dolla, { createState } from "@manyducks.co/dolla";
 
-const CounterStore = createStore(function (initialValue: number) {
+function CounterStore (initialValue, ctx) {
   const [$count, setCount] = createState(initialValue);
 
   // Respond to context events which bubble up from views.
@@ -25,13 +25,12 @@ const CounterStore = createStore(function (initialValue: number) {
 });
 
 // Stores can be attached to the app itself.
-// createStore returns a factory function that is called with the store's options to create a new instance.
-Dolla.attachStore(CounterStore(0));
+Dolla.attachStore(CounterStore, 0);
 
-const CounterView = createView(function () {
+function CounterView(props, ctx) {
   // Store instances can also be attached at the view level to provide them to the current scope and those of child views.
   // Views that are not children of this CounterView will not be able to access this particular instance of CounterStore.
-  this.attachStore(CounterStore(0));
+  this.attachStore(CounterStore, 0);
 
   // Store return values can be accessed with `useStore`.
   // This method will traverse up the view tree to find the nearest attached instance.

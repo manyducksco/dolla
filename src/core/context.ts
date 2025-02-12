@@ -1,6 +1,6 @@
 import type { Emitter } from "@manyducks.co/emitter";
-import type { Store, StoreFactory } from "./store";
 import type { Dolla } from "./dolla";
+import type { Store, StoreFunction } from "./store";
 
 /*===========================*\
 ||       ElementContext      ||
@@ -26,7 +26,7 @@ export interface ElementContext {
   /**
    * Stores attached to this context.
    */
-  stores: Map<string, Store<any, any>>;
+  stores: Map<StoreFunction<any, any>, Store<any, any>>;
   /**
    * A reference to the parent context.
    */
@@ -90,12 +90,20 @@ export interface StorableContext extends ComponentContext {
   /**
    * Attaches a new store to this context.
    */
-  attachStore(store: Store<any, any>): void;
+  attachStore(store: StoreFunction<{}, any>): void;
+  /**
+   * Attaches a new store to this context.
+   */
+  attachStore(store: StoreFunction<undefined, any>): void;
+  /**
+   * Attaches a new store to this context.
+   */
+  attachStore<Options>(store: StoreFunction<Options, any>, options: Options): void;
 
   /**
    * Gets the closest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */
-  useStore<Value>(factory: StoreFactory<any, Value>): Value;
+  useStore<Value>(store: StoreFunction<any, Value>): Value;
 }
 
 /**

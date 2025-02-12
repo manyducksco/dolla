@@ -35,9 +35,9 @@ Dolla's goals include:
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
 ```js
-import Dolla, { createState, createView } from "@manyducks.co/dolla";
+import Dolla, { createState } from "@manyducks.co/dolla";
 
-const Counter = createView(function (props) {
+function Counter() {
   const [$count, setCount] = createState(0);
 
   function increment() {

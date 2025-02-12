@@ -1,5 +1,140 @@
 # Scratch Note
 
+Idea: Monomorphic app context. Replaces StoreContext, ViewContext, etc.
+
+Routes are baked into the app once again, but
+
+```jsx
+import { createRoot } from "@manyducks.co/dolla";
+import { example } from "./stores/example.js";
+
+const root = createRoot();
+
+root.use(example());
+
+async function auth(_, state, redirect) {
+  // route context
+  // Routes run through each callback until one resolves to a renderable value.
+  // If redirect is called, the route is re-matched and no further callbacks are run for this route.
+
+  if (state.auth == null) {
+    redirect("/login");
+  }
+}
+
+root.route("/users/*", auth, (C) => {
+  C.route("/{#id}/*", (C) => {
+    C.route("/", (C) => <UserDetailRoute userId={C.params.id} />);
+    C.route("*", "./");
+  });
+});
+
+root.route("/users/*", auth, (route) => {
+  route("/{#id}/*", (route) => {
+    // TODO: It's possible to reference the wrong 'route'
+    // Track active context and throw error if the one you call belongs to the wrong context?
+    route("/", (_, state) => <UserDetailView userId={state.params.id} />);
+    route("*", "./");
+  });
+});
+
+function ExampleView(props, ctx) {
+  // ctx.routes returns a special type of outlet that renders children based on
+  // the route segments that come after the ones at this ctx.
+
+  // The weakness of this idea is that routes can't be validated without initializing views.
+  return (
+    <div>
+      <Suspense fallback={<span>Loading...</span>}>
+        {ctx.routes((route) => {
+          route("/subroute", () => <OtherView />);
+
+          // Routes can be async.
+          route("/other", () => import("some-module"));
+        })}
+      </Suspense>
+    </div>
+  );
+
+  // Also Suspense. This can be simply implemented with events.
+  ctx.emit("suspense:begin", uniqueId);
+  // Then when done:
+  ctx.emit("suspense:end", uniqueId);
+
+  // The nearest Suspense view will track ids which are in suspense and show fallback content in the meantime.
+}
+
+function Suspense(props, ctx) {
+  const [$tracked, setTracked] = createState({});
+
+  ctx.on("suspense:begin", (e) => {
+    setTracked((tracked) => {
+      return {
+        ...tracked,
+        [e.detail]: new Date(),
+      };
+    });
+  });
+
+  ctx.on("suspense:end", (e) => {
+    setTracked((tracked) => {
+      const updated = Object.assign({}, tracked);
+      delete updated[e.detail];
+      return updated;
+    });
+  });
+
+  // TODO: Hide suspended view without unmounting it. This might take special logic.
+}
+
+// Can also pass markup directly if you don't need the context.
+root.route("/", auth, <HomeRoute />);
+
+// Static redirect.
+root.route("*", "/");
+
+// Programmatic redirect.
+root.route("*", (C) => {
+  C.log("hit wildcard");
+  C.redirect("/");
+});
+
+root.mount(document.body);
+
+// generate an HTML string for server side rendering.
+root.toString("/some/path");
+```
+
+---
+
+```js
+class ClockStore extends Store {
+
+
+  constructor() {
+
+  }
+}
+
+class CounterStore extends Store {
+  // Could have better name. This will catch any
+  // this.emit('counter:increment') or this.emit('counter:decrement') calls
+  // and update the state according to these functions.
+  value = new Emittable('counter', 0, {
+    increment: state => state + 1,
+    decrement: state => state - 1
+  });
+}
+
+type CounterEvents = {
+  increment: [amount: number];
+  decrement: [amount: number];
+}
+
+
+
+```
+
 ---
 
 Bring the $ back and the name full circle.

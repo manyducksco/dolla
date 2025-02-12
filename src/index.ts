@@ -6,7 +6,7 @@ export type { MaybeState, Setter, State, StopFunction } from "./core/state.js";
 export { createRef, isRef, type Ref } from "./core/ref.js";
 
 // Store
-export { createStore, type Store, type StoreFactory, type StoreFunction } from "./core/store.js";
+export { type StoreFunction, type StoreContext } from "./core/store.js";
 
 // Router
 export { createRouter, type Router, type RouterOptions } from "./modules/router.js";
@@ -17,9 +17,6 @@ export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
 // Markup
 export { cond, createMarkup, html, portal, repeat } from "./core/markup.js";
 export type { Markup, MarkupElement } from "./core/markup.js";
-
-// View
-export { createView } from "./core/nodes/view.js";
 
 import { Dolla } from "./core/dolla.js";
 const dolla = new Dolla();

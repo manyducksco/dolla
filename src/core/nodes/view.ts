@@ -1,7 +1,7 @@
 import { Emitter } from "@manyducks.co/emitter";
-import { isArrayOf, typeOf } from "../../typeChecking.js";
+import { isArrayOf, isFunction, typeOf } from "../../typeChecking.js";
 import { getUniqueId } from "../../utils.js";
-import { ContextEvent, type WildcardListenerMap, type ElementContext, type StorableContext } from "../context.js";
+import { ContextEvent, type ElementContext, type StorableContext, type WildcardListenerMap } from "../context.js";
 import type { Logger } from "../dolla.js";
 import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
 import {
@@ -14,7 +14,7 @@ import {
   type StopFunction,
 } from "../state.js";
 import { _onViewMounted, _onViewUnmounted } from "../stats.js";
-import { isStore, isStoreFactory, type Store, StoreError, type StoreFactory } from "../store.js";
+import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /*=====================================*\
@@ -89,16 +89,6 @@ export interface ViewContext extends Logger, StorableContext {
    * Returns a Markup element that displays this view's children.
    */
   outlet(): Markup;
-}
-
-/*=====================================*\
-||         Convenience Helpers         ||
-\*=====================================*/
-
-export function createView<Props extends Record<string, any> = Record<string, unknown>>(
-  fn: ViewFunction<Props>,
-): ViewFunction<Props> {
-  return fn;
 }
 
 /*=====================================*\
@@ -228,14 +218,15 @@ class Context implements ViewContext {
     return this.__view._elementContext.emitter.emit(eventName, new ContextEvent(eventName, detail));
   }
 
-  attachStore(store: Store<any, any>): void {
-    const attached = store.attach(this.__view._elementContext);
+  attachStore(store: StoreFunction<any, any>, options?: any): void {
+    const instance = new Store(store, options);
+    const attached = instance.attach(this.__view._elementContext);
     if (attached) {
       this.__view._emitter.on("mounted", () => {
-        store.handleMount();
+        instance.handleMount();
       });
       this.__view._emitter.on("unmounted", () => {
-        store.handleUnmount();
+        instance.handleUnmount();
       });
     } else {
       let name = store.name ? `'${store.name}'` : "this store";
@@ -243,28 +234,23 @@ class Context implements ViewContext {
     }
   }
 
-  useStore<Value>(factory: StoreFactory<any, Value>): Value {
-    if (isStoreFactory(factory)) {
-      const key = (factory as any).key as string; // The key assigned inside of createStore.
+  useStore<Value>(store: StoreFunction<any, Value>): Value {
+    if (isFunction(store)) {
       let context = this.__view._elementContext;
-      let store: Store<any, Value> | undefined;
+      let instance: Store<any, Value> | undefined;
       while (true) {
-        store = context.stores.get(key);
-        if (store == null && context.parent != null) {
+        instance = context.stores.get(store);
+        if (instance == null && context.parent != null) {
           context = context.parent;
         } else {
           break;
         }
       }
-      if (store == null) {
+      if (instance == null) {
         throw new StoreError(`Store not found on this context.`);
       } else {
-        return store.value;
+        return instance.value;
       }
-    } else if (isStore(factory)) {
-      throw new StoreError(
-        `Received a Store instance. Please pass the Store factory function to useStore without calling it.`,
-      );
     } else {
       throw new StoreError(`Invalid store.`);
     }

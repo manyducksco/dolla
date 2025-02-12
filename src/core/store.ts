@@ -1,9 +1,8 @@
 import { Emitter } from "@manyducks.co/emitter";
-import { getUniqueId } from "../utils.js";
-import { ContextEvent, type WildcardListenerMap, type ComponentContext, type ElementContext } from "./context.js";
+import { ContextEvent, type ComponentContext, type ElementContext, type WildcardListenerMap } from "./context.js";
 import type { Logger } from "./dolla.js";
-import { IS_STORE, IS_STORE_FACTORY } from "./symbols.js";
 import { createWatcher, type MaybeState, type StateValues, type StopFunction } from "./state.js";
+import { IS_STORE } from "./symbols.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
 
@@ -80,18 +79,6 @@ class Context<Options, Value> implements StoreContext {
 
     return null;
   }
-
-  // on<T = unknown>(eventName: string, listener: (...args: any) => void): void {
-  //   this.__store._elementContext.emitter.on(eventName, listener);
-  // }
-
-  // off<T = unknown>(eventName: string, listener: (...args: any) => void): void {
-  //   this.__store._elementContext.emitter.off(eventName, listener);
-  // }
-
-  // once<T = unknown>(eventName: string, listener: (...args: any) => void): void {
-  //   this.__store._elementContext.emitter.once(eventName, listener);
-  // }
 
   on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
     if (eventName === "*") {
@@ -175,9 +162,7 @@ type StoreEvents = {
 };
 
 export class Store<Options, Value> {
-  readonly key;
-
-  private _fn;
+  readonly fn;
   private _options;
 
   /**
@@ -194,12 +179,11 @@ export class Store<Options, Value> {
   _watcher = createWatcher();
 
   get name() {
-    return this._fn.name;
+    return this.fn.name;
   }
 
-  constructor(key: string, fn: StoreFunction<Options, Value>, options: Options) {
-    this.key = key;
-    this._fn = fn;
+  constructor(fn: StoreFunction<Options, Value>, options: Options) {
+    this.fn = fn;
     this._options = options;
   }
 
@@ -208,22 +192,22 @@ export class Store<Options, Value> {
    * Returns false if there was already an instance attached, and true otherwise.
    */
   attach(elementContext: ElementContext): boolean {
-    if (elementContext.stores.has(this.key)) {
+    if (elementContext.stores.has(this.fn)) {
       return false;
     }
     this._elementContext = elementContext;
-    this._logger = elementContext.root.createLogger(this._fn.name);
+    this._logger = elementContext.root.createLogger(this.fn.name);
     this._emitter.on("error", (error, eventName, ...args) => {
       console.log({ error, eventName, args });
       this._logger.crash(error as Error);
     });
     const context = new Context(this);
     try {
-      this.value = this._fn.call(context, this._options, context);
+      this.value = this.fn.call(context, this._options, context);
     } catch (error) {
       this._logger.crash(error as Error);
     }
-    elementContext.stores.set(this.key, this);
+    elementContext.stores.set(this.fn, this);
     return true;
   }
 
@@ -240,27 +224,8 @@ export class Store<Options, Value> {
   }
 }
 
-export function isStoreFactory<Options, Value>(value: any): value is StoreFactory<Options, Value> {
-  return value?.[IS_STORE_FACTORY] === true;
-}
-
 export function isStore<Options, Value>(value: any): value is Store<Options, Value> {
   return value?.[IS_STORE] === true;
-}
-
-/**
- * Defines a new store.
- */
-export function createStore<Options = undefined, Value = unknown>(
-  fn: StoreFunction<Options, Value>,
-): StoreFactory<Options, Value> {
-  const key = getUniqueId();
-  function factory(options?: any) {
-    return new Store(key, fn, options);
-  }
-  factory[IS_STORE_FACTORY] = true;
-  factory.key = key;
-  return factory as any;
 }
 
 export class StoreError extends Error {}

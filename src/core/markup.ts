@@ -17,6 +17,114 @@ import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
 ||           Markup          ||
 \*===========================*/
 
+export class _Markup implements Markup {
+  [IS_MARKUP] = true;
+
+  static text(value: MaybeState<string>) {
+    return new _Markup("$text", { value });
+  }
+
+  static from(renderable: Renderable) {
+    if (isMarkup(renderable)) {
+      return renderable;
+    }
+
+    if (renderable instanceof Node) {
+      return new _Markup("$node", { value: renderable });
+    }
+
+    if (isState(renderable)) {
+      return new _Markup("$observer", {
+        sources: [renderable],
+        renderFn: (value: Renderable) => value,
+      });
+    }
+
+    // fallback to displaying value as text
+    return new _Markup("$text", { value: renderable });
+  }
+
+  /**
+   * In the case of a view, type will be the View function itself. It can also hold an identifier for special nodes like "$cond", "$repeat", etc.
+   * DOM nodes can be created by name, such as HTML elements like "div", "ul" or "span", SVG elements like ""
+   */
+  type;
+  /**
+   * Data that will be passed to a new MarkupElement instance when it is constructed.
+   */
+  props;
+  /**
+   *
+   */
+  children: Markup[];
+
+  constructor(type: string | ViewFunction<any>, props?: Record<string, any>, children?: Renderable[]) {
+    this.type = type;
+    this.props = props;
+    this.children = children?.map(_Markup.from) ?? [];
+  }
+
+  toElement(context: ElementContext): MarkupElement {
+    if (isFunction(this.type)) {
+      return new View(context, this.type as ViewFunction<any>, this.props, this.children);
+    } else if (isString(this.type)) {
+      switch (this.type) {
+        case "$node": {
+          const attrs = this.props! as MarkupAttributes["$node"];
+          return new DOMNode(attrs.value);
+        }
+        case "$text": {
+          const attrs = this.props! as MarkupAttributes["$text"];
+          return new DOMNode(document.createTextNode(String(attrs.value)));
+        }
+        case "$repeat": {
+          const attrs = this.props! as MarkupAttributes["$repeat"];
+          return new Repeat({
+            $items: attrs.$items,
+            keyFn: attrs.keyFn,
+            renderFn: attrs.renderFn,
+            elementContext: context,
+          });
+        }
+        case "$observer": {
+          const attrs = this.props! as MarkupAttributes["$observer"];
+          return new Observer({
+            sources: attrs.sources,
+            renderFn: attrs.renderFn,
+            elementContext: context,
+          });
+        }
+        case "$outlet": {
+          const attrs = this.props! as MarkupAttributes["$outlet"];
+          return new Outlet(attrs.$children);
+        }
+        case "$portal": {
+          const attrs = this.props! as MarkupAttributes["$portal"];
+          return new Portal({
+            content: attrs.content,
+            parent: attrs.parent,
+            elementContext: context,
+          });
+        }
+        default:
+          if (this.type.startsWith("$")) {
+            throw new Error(`Unknown markup type: ${this.type}`);
+          }
+          return new HTML({
+            tag: this.type,
+            props: this.props ?? {},
+            children: this.children,
+            elementContext: context,
+          });
+      }
+    } else {
+      throw new TypeError(`Expected a string or view function. Got: ${this.type}`);
+    }
+  }
+
+  // toString(): string {}
+}
+
 /**
  * Markup is a set of element metadata that hasn't been constructed into a MarkupElement yet.
  */
@@ -151,11 +259,11 @@ class VNode<P extends Record<any, any>> implements Markup {
 export const html = htm.bind(createMarkup);
 
 /**
- * Displays content conditionally. When `predicate` holds a truthy value, `thenContent` is displayed; when `predicate` holds a falsy value, `elseContent` is displayed.
+ * Displays content conditionally. When `condition` holds a truthy value, `thenContent` is displayed; when `condition` holds a falsy value, `elseContent` is displayed.
  */
-export function cond(predicate: MaybeState<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
+export function cond(condition: MaybeState<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return createMarkup("$observer", {
-    sources: [predicate],
+    sources: [condition],
     renderFn: (value) => {
       if (value && thenContent) {
         return thenContent;

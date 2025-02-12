@@ -25,10 +25,10 @@ to your code (`router` store, `$params` readable). Below are some examples of pa
 Now, here are some route examples in the context of an app:
 
 ```js
-import Dolla from "@manyducks.co/dolla";
+import Dolla, { createRouter } from "@manyducks.co/dolla";
 import { ThingIndex, ThingDetails, ThingEdit, ThingDelete } from "./views.js";
 
-Dolla.router.setup({
+const router = createRouter({
   routes: [
     {
       // A `null` component with subroutes acts as a namespace for those subroutes.
@@ -46,6 +46,9 @@ Dolla.router.setup({
     { path: "*", redirect: "/things" },
   ],
 });
+
+// Mount the router in place of a view.
+Dolla.mount(document.body, router);
 ```
 
 When the URL matches a pattern the corresponding view is displayed. If we visit `/people/john`,
@@ -56,16 +59,16 @@ accessed from anywhere in the app through `Dolla.router`.
 import Dolla from "@manyducks.co/dolla";
 
 // Info about the current route is exported as a set of Readables. Query params are also Writable through $$query:
-const { $path, $pattern, $params, $query } = Dolla.router;
+const { $path, $pattern, $params, $query } = router;
 
-Dolla.router.back(); // Step back in the history to the previous route, if any.
-Dolla.router.back(2); // Hit the back button twice.
+router.back(); // Step back in the history to the previous route, if any.
+router.back(2); // Hit the back button twice.
 
-Dolla.router.forward(); // Step forward in the history to the next route, if any.
-Dolla.router.forward(4); // Hit the forward button 4 times.
+router.forward(); // Step forward in the history to the next route, if any.
+router.forward(4); // Hit the forward button 4 times.
 
-Dolla.router.go("/things/152"); // Navigate to another path within the same app.
-Dolla.router.go("https://www.example.com/another/site"); // Navigate to another domain entirely.
+router.go("/things/152"); // Navigate to another path within the same app.
+router.go("https://www.example.com/another/site"); // Navigate to another domain entirely.
 ```
 
 ---

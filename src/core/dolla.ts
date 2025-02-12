@@ -2,7 +2,7 @@ import { Emitter } from "@manyducks.co/emitter";
 import { HTTP } from "../modules/http.js";
 import { I18n } from "../modules/i18n.js";
 import { _isRouter, _mountRouter, _unmountRouter, type Router } from "../modules/router.js";
-import { assertInstanceOf, isString } from "../typeChecking.js";
+import { assertInstanceOf, isFunction, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
@@ -13,7 +13,7 @@ import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { createRef, isRef } from "./ref.js";
 import { createState, createWatcher, derive, isState, toState, toValue } from "./state.js";
 import { Stats } from "./stats.js";
-import { isStore, isStoreFactory, StoreError, type Store, type StoreFactory } from "./store.js";
+import { Store, StoreError, StoreFunction } from "./store.js";
 
 // Affects which log messages will print and how much debugging info is included in the DOM.
 export type Environment = "development" | "production";
@@ -243,8 +243,21 @@ export class Dolla implements StorableContext {
   /**
    * Attaches a new store to this context.
    */
-  attachStore(store: Store<any, any>): void {
-    const attached = store.attach(this.#rootElementContext);
+  attachStore(store: StoreFunction<{}, any>): void;
+
+  /**
+   * Attaches a new store to this context.
+   */
+  attachStore(store: StoreFunction<undefined, any>): void;
+
+  /**
+   * Attaches a new store to this context.
+   */
+  attachStore<Options>(store: StoreFunction<Options, any>, options: Options): void;
+
+  attachStore<Options>(store: StoreFunction<Options, any>, options?: Options): void {
+    const instance = new Store(store, options!);
+    const attached = instance.attach(this.#rootElementContext);
     if (!attached) {
       let name = store.name ? `'${store.name}'` : "this store";
       console.warn(`An instance of ${name} was already attached to this context.`);
@@ -254,19 +267,14 @@ export class Dolla implements StorableContext {
   /**
    * Gets the nearest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */
-  useStore<Value>(factory: StoreFactory<any, Value>): Value {
-    if (isStoreFactory(factory)) {
-      const key = (factory as any).key as string; // The key assigned inside of createStore.
-      const store = this.#rootElementContext.stores.get(key);
-      if (store == null) {
+  useStore<Value>(store: StoreFunction<any, Value>): Value {
+    if (isFunction(store)) {
+      const instance = this.#rootElementContext.stores.get(store);
+      if (instance == null) {
         throw new StoreError(`Store not found on this context.`);
       } else {
-        return store.value;
+        return instance.value;
       }
-    } else if (isStore(factory)) {
-      throw new StoreError(
-        `Received a Store instance. Please pass the Store factory function to useStore without calling it.`,
-      );
     } else {
       throw new StoreError(`Invalid store.`);
     }

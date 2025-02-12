@@ -1,10 +1,11 @@
-import { createMarkup } from "./core/markup";
+import { _Markup, createMarkup } from "./core/markup";
 export { Passthrough as Fragment } from "./views/passthrough";
 
 export function jsxDEV(element, props, key, isStaticChildren, source, self) {
   const attributes = { ...omit(["children", "key"], props) };
   const children = Array.isArray(props.children) ? props.children : [props.children];
 
+  // return new _Markup(element, attributes, children);
   return createMarkup(element, attributes, ...children);
 }
 

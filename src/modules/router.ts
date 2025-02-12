@@ -136,11 +136,6 @@ export interface RouterOptions {
 // ----- Code ----- //
 
 export function createRouter(options: RouterOptions): Router {
-  // Returns an object you can mount in place of a root view to handle routing.
-  // Ideally none of the router code should be included in your bundle
-  // unless you import and call this function, as some apps don't need routes.
-  // The returned object should include methods for routing.
-
   return new Router(options);
 }
 
@@ -288,8 +283,8 @@ export class Router {
    * Navigates to another route.
    *
    * @example
-   * Dolla.router.go("/login"); // navigate to `/login`
-   * Dolla.router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
+   * router.go("/login"); // navigate to `/login`
+   * router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
    */
   go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
     if (this.#dolla == null) {

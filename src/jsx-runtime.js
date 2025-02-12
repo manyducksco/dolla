@@ -5,6 +5,7 @@ export { Passthrough as Fragment } from "./views/passthrough";
  * JSX function for elements with dynamic children.
  */
 export function jsx(element, props, key) {
+  // return new _Markup(element, props ? { ...omit(["children", "key"], props) } : undefined, ...[props.children]);
   return createMarkup(element, props ? { ...omit(["children", "key"], props) } : undefined, ...[props.children]);
 }
 
@@ -12,6 +13,7 @@ export function jsx(element, props, key) {
  * JSX function for elements with static children.
  */
 export function jsxs(element, props, key) {
+  // return new _Markup(element, props ? { ...omit(["children", "key"], props) } : undefined, props.children);
   return createMarkup(element, props ? { ...omit(["children", "key"], props) } : undefined, props.children);
 }
 
