@@ -246,11 +246,11 @@ function ParentView(props, ctx) {
 }
 
 function ChildView(props, ctx) {
-  ctx.on("greeting", (event) => {
+  ctx.on("greeting", (event, { name, message }) => {
     // Let's perform some censorship.
-    // If propagation is stopped this event will not bubble any further and ParentView won't see it.
-    if (containsForbiddenKnowledge(event.message)) {
-      event.stopPropagation();
+    // If an event is stopped it not bubble any further and ParentView won't see it.
+    if (containsForbiddenKnowledge(message)) {
+      event.stop();
     }
   });
 

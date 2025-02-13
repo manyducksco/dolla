@@ -5,20 +5,42 @@
 A basic component.
 
 ```jsx
-import Dolla, { createState, derive } from "@manyducks.co/dolla";
+import { mount, state, derive, batch } from "@manyducks.co/dolla";
 
 function ExampleView(props, ctx) {
-  const [$count, setCount] = createState(5);
-  const $doubled = derive([$count], (n) => n * 2);
+  // Signals: state, derive, effect and batch
 
-  ctx.watch([$count], (count) => {
-    ctx.log("value of count is now %n", count);
+  const count = state(5);
+
+  const doubled = derive(() => count.value * 2);
+
+  batch(() => {
+    // Perform multiple updates in one go and commit at the end.
   });
 
-  return <p>{$count}</p>;
+  // If effect is called in the body of a view function it will be cleaned up automatically with the view.
+  ctx.effect(() => {
+    console.log(nested.value);
+  });
+
+  // Emit and listen for context events.
+  ctx.on("event", (e, ...args) => {
+    e.cancel();
+  });
+  ctx.emit("event", ...args);
+
+  // Get and set context values.
+  ctx.set("context value", 5);
+  ctx.get("context value");
+
+  // Provide and use a store.
+  const store = ctx.provide(someStore); // provide creates a new instance attached to this view and returns it.
+  const store = ctx.use(someStore);
+
+  return <p>{count}</p>;
 }
 
-Dolla.mount(document.body, ExampleView);
+mount(ExampleView, document.body);
 ```
 
 <details open>

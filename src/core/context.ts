@@ -7,7 +7,7 @@ import type { Store, StoreFunction } from "./store";
 \*===========================*/
 
 interface ContextEmitterEvents {
-  [eventName: string | symbol]: [ContextEvent<any>];
+  [eventName: string | symbol]: [ContextEvent, ...args: any[]];
 }
 
 export interface ElementContext {
@@ -47,8 +47,8 @@ export interface ElementContext {
  * ContextEvent objects already have the event name stored as `event.type`.
  */
 export type WildcardListenerMap = Map<
-  (event: ContextEvent<any>) => void,
-  (eventName: string | symbol, event: ContextEvent<any>) => void
+  (event: ContextEvent, ...args: any[]) => void,
+  (eventName: string | symbol, event: ContextEvent, ...args: any[]) => void
 >;
 
 export interface ComponentContext {
@@ -63,24 +63,24 @@ export interface ComponentContext {
   get<T>(key: string | symbol): T | null;
 
   /**
-   * Adds a listener to be called when `eventName` is emitted.
+   * Adds a listener to be called when an event with a matching `type` is emitted.
    */
-  on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void;
+  on<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
 
   /**
-   * Removes a listener from the list to be called when `eventName` is emitted.
+   * Removes a listener from the list to be called when an event with a matching `type` is emitted.
    */
-  off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void;
+  off<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
 
   /**
-   * Adds a listener to be called when `eventName` is emitted. The listener is immediately removed after being called once.
+   * Adds a listener to be called when an event with a matching `type` is emitted. The listener is immediately removed after being called once.
    */
-  once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void;
+  once<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
 
   /**
    * Emits a new event to all listeners.
    */
-  emit<T = unknown>(eventName: string, detail: T): boolean;
+  emit<T = unknown>(type: string, ...args: any[]): boolean;
 }
 
 /**
@@ -88,49 +88,48 @@ export interface ComponentContext {
  */
 export interface StorableContext extends ComponentContext {
   /**
-   * Attaches a new store to this context.
+   * Attaches a new store to this context and returns it.
    */
-  attachStore(store: StoreFunction<{}, any>): void;
+  provide<Value>(store: StoreFunction<{}, Value>): Value;
   /**
-   * Attaches a new store to this context.
+   * Attaches a new store to this context and returns it.
    */
-  attachStore(store: StoreFunction<undefined, any>): void;
+  provide<Value>(store: StoreFunction<undefined, Value>): Value;
   /**
-   * Attaches a new store to this context.
+   * Attaches a new store to this context and returns it.
    */
-  attachStore<Options>(store: StoreFunction<Options, any>, options: Options): void;
+  provide<Options, Value>(store: StoreFunction<Options, Value>, options: Options): Value;
 
   /**
    * Gets the closest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */
-  useStore<Value>(store: StoreFunction<any, Value>): Value;
+  use<Value>(store: StoreFunction<any, Value>): Value;
 }
 
 /**
  * An event emitted from and received by a Dolla context. These are separate from DOM events.
  */
-export class ContextEvent<T> {
-  type: string;
-  detail: T;
+export class ContextEvent {
+  #type;
+  #isStopped = false;
 
-  #propagationStopped = false;
-
-  get propagationStopped() {
-    return this.#propagationStopped;
+  constructor(type: string) {
+    this.#type = type;
   }
 
-  constructor(type: string, detail: T) {
-    this.type = type;
-    this.detail = detail;
+  get type() {
+    return this.#type;
   }
 
-  stopPropagation() {
-    this.#propagationStopped = true;
+  get isStopped() {
+    return this.#isStopped;
+  }
+
+  stop() {
+    this.#isStopped = true;
   }
 
   get [Symbol.toStringTag]() {
     return "ContextEvent";
   }
-
-  // stopImmediatePropagation() {}
 }

@@ -188,86 +188,89 @@ export class Dolla implements StorableContext {
   // }
 
   /**
-   * Adds a listener to be called when `eventName` is emitted.
+   * Adds a listener to be called when an event with a matching `type` is emitted.
    */
-  on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
-        listener(event);
+  on<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
+      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
+        listener(event, ...args);
       };
-      this.#rootElementContext.emitter.on(eventName, wrappedListener);
+      this.#rootElementContext.emitter.on(type, wrappedListener);
       this.#wildcardListeners.set(listener, wrappedListener);
     } else {
-      this.#rootElementContext.emitter.on(eventName, listener);
+      this.#rootElementContext.emitter.on(type, listener);
     }
   }
 
   /**
-   * Removes a listener from the list to be called when `eventName` is emitted.
+   * Removes a listener from the list to be called when an event with a matching `type` is emitted.
    */
-  off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
+  off<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
       const wrappedListener = this.#wildcardListeners.get(listener);
       if (wrappedListener) {
-        this.#rootElementContext.emitter.off(eventName, wrappedListener);
+        this.#rootElementContext.emitter.off(type, wrappedListener);
         this.#wildcardListeners.delete(listener);
       }
     } else {
-      this.#rootElementContext.emitter.off(eventName, listener);
+      this.#rootElementContext.emitter.off(type, listener);
     }
   }
 
   /**
-   * Adds a listener to be called when `eventName` is emitted. The listener is immediately removed after being called once.
+   * Adds a listener to be called when an event with a matching `type` is emitted. The listener is immediately removed after being called once.
    */
-  once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+  once<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
+      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
         this.#wildcardListeners.delete(listener);
-        listener(event);
+        listener(event, ...args);
       };
-      this.#rootElementContext.emitter.once(eventName, wrappedListener);
+      this.#rootElementContext.emitter.once(type, wrappedListener);
       this.#wildcardListeners.set(listener, wrappedListener);
     } else {
-      this.#rootElementContext.emitter.once(eventName, listener);
+      this.#rootElementContext.emitter.once(type, listener);
     }
   }
 
   /**
    * Emits a new event to all listeners.
    */
-  emit<T = unknown>(eventName: string, detail: T): boolean {
-    return this.#rootElementContext.emitter.emit(eventName, new ContextEvent(eventName, detail));
+  emit<T = unknown>(type: string, ...args: any[]): boolean {
+    return this.#rootElementContext.emitter.emit(type, new ContextEvent(type), ...args);
   }
 
   /**
    * Attaches a new store to this context.
    */
-  attachStore(store: StoreFunction<{}, any>): void;
+  provide<Value>(store: StoreFunction<{}, Value>): Value;
 
   /**
    * Attaches a new store to this context.
    */
-  attachStore(store: StoreFunction<undefined, any>): void;
+  provide<Value>(store: StoreFunction<undefined, Value>): Value;
 
   /**
    * Attaches a new store to this context.
    */
-  attachStore<Options>(store: StoreFunction<Options, any>, options: Options): void;
+  provide<Options, Value>(store: StoreFunction<Options, Value>, options: Options): Value;
 
-  attachStore<Options>(store: StoreFunction<Options, any>, options?: Options): void {
+  provide<Options, Value>(store: StoreFunction<Options, Value>, options?: Options): Value {
     const instance = new Store(store, options!);
     const attached = instance.attach(this.#rootElementContext);
     if (!attached) {
       let name = store.name ? `'${store.name}'` : "this store";
       console.warn(`An instance of ${name} was already attached to this context.`);
+      return this.use(store);
+    } else {
+      return instance.value;
     }
   }
 
   /**
    * Gets the nearest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */
-  useStore<Value>(store: StoreFunction<any, Value>): Value {
+  use<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
       const instance = this.#rootElementContext.stores.get(store);
       if (instance == null) {
@@ -529,7 +532,7 @@ export class Dolla implements StorableContext {
           crashPage.mount(self.#rootElement!);
         }
 
-        throw error;
+        // throw error;
       },
     };
   }

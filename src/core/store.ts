@@ -80,45 +80,45 @@ class Context<Options, Value> implements StoreContext {
     return null;
   }
 
-  on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
-        listener(event);
+  on(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
+      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
+        listener(event, ...args);
       };
-      this.__store._elementContext.emitter.on(eventName, wrappedListener);
+      this.__store._elementContext.emitter.on(type, wrappedListener);
       this.__store._wildcardListeners.set(listener, wrappedListener);
     } else {
-      this.__store._elementContext.emitter.on(eventName, listener);
+      this.__store._elementContext.emitter.on(type, listener);
     }
   }
 
-  off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
+  off(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
       const wrappedListener = this.__store._wildcardListeners.get(listener);
       if (wrappedListener) {
-        this.__store._elementContext.emitter.off(eventName, wrappedListener);
+        this.__store._elementContext.emitter.off(type, wrappedListener);
         this.__store._wildcardListeners.delete(listener);
       }
     } else {
-      this.__store._elementContext.emitter.off(eventName, listener);
+      this.__store._elementContext.emitter.off(type, listener);
     }
   }
 
-  once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+  once(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
+      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
         this.__store._wildcardListeners.delete(listener);
-        listener(event);
+        listener(event, ...args);
       };
-      this.__store._elementContext.emitter.once(eventName, wrappedListener);
+      this.__store._elementContext.emitter.once(type, wrappedListener);
       this.__store._wildcardListeners.set(listener, wrappedListener);
     } else {
-      this.__store._elementContext.emitter.once(eventName, listener);
+      this.__store._elementContext.emitter.once(type, listener);
     }
   }
 
-  emit<T = unknown>(eventName: string, detail: T): boolean {
-    return this.__store._elementContext.emitter.emit(eventName, new ContextEvent(eventName, detail));
+  emit(type: string, ...args: any[]): boolean {
+    return this.__store._elementContext.emitter.emit(type, new ContextEvent(type), ...args);
   }
 
   onMount(callback: () => void): void {

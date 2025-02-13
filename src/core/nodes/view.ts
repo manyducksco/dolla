@@ -165,60 +165,48 @@ class Context implements ViewContext {
     return null;
   }
 
-  // on<T = unknown>(eventName: string, listener: (...args: any) => void): void {
-  //   this.__view._elementContext.emitter.on(eventName, listener);
-  // }
-
-  // off<T = unknown>(eventName: string, listener: (...args: any) => void): void {
-  //   this.__view._elementContext.emitter.off(eventName, listener);
-  // }
-
-  // once<T = unknown>(eventName: string, listener: (...args: any) => void): void {
-  //   this.__view._elementContext.emitter.once(eventName, listener);
-  // }
-
-  on<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
-        listener(event);
+  on(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
+      const wrappedListener = (_eventName: any, event: ContextEvent, ...args: any[]) => {
+        listener(event, ...args);
       };
-      this.__view._elementContext.emitter.on(eventName, wrappedListener);
+      this.__view._elementContext.emitter.on(type, wrappedListener);
       this.__view._wildcardListeners.set(listener, wrappedListener);
     } else {
-      this.__view._elementContext.emitter.on(eventName, listener);
+      this.__view._elementContext.emitter.on(type, listener);
     }
   }
 
-  off<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
+  off(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
       const wrappedListener = this.__view._wildcardListeners.get(listener);
       if (wrappedListener) {
-        this.__view._elementContext.emitter.off(eventName, wrappedListener);
+        this.__view._elementContext.emitter.off(type, wrappedListener);
         this.__view._wildcardListeners.delete(listener);
       }
     } else {
-      this.__view._elementContext.emitter.off(eventName, listener);
+      this.__view._elementContext.emitter.off(type, listener);
     }
   }
 
-  once<T = unknown>(eventName: string, listener: (event: ContextEvent<T>) => void): void {
-    if (eventName === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent<T>) => {
+  once(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+    if (type === "*") {
+      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
         this.__view._wildcardListeners.delete(listener);
-        listener(event);
+        listener(event, ...args);
       };
-      this.__view._elementContext.emitter.once(eventName, wrappedListener);
+      this.__view._elementContext.emitter.once(type, wrappedListener);
       this.__view._wildcardListeners.set(listener, wrappedListener);
     } else {
-      this.__view._elementContext.emitter.once(eventName, listener);
+      this.__view._elementContext.emitter.once(type, listener);
     }
   }
 
-  emit<T = unknown>(eventName: string, detail: T): boolean {
-    return this.__view._elementContext.emitter.emit(eventName, new ContextEvent(eventName, detail));
+  emit(type: string, ...args: any[]): boolean {
+    return this.__view._elementContext.emitter.emit(type, new ContextEvent(type), ...args);
   }
 
-  attachStore(store: StoreFunction<any, any>, options?: any): void {
+  provide<Value>(store: StoreFunction<any, Value>, options?: any): Value {
     const instance = new Store(store, options);
     const attached = instance.attach(this.__view._elementContext);
     if (attached) {
@@ -228,13 +216,15 @@ class Context implements ViewContext {
       this.__view._emitter.on("unmounted", () => {
         instance.handleUnmount();
       });
+      return instance.value;
     } else {
       let name = store.name ? `'${store.name}'` : "this store";
       this.__view._logger.warn(`An instance of ${name} was already attached to this context.`);
+      return this.use(store);
     }
   }
 
-  useStore<Value>(store: StoreFunction<any, Value>): Value {
+  use<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
       let context = this.__view._elementContext;
       let instance: Store<any, Value> | undefined;
@@ -347,16 +337,17 @@ export class View<P> implements ViewElement {
     this._childMarkup = children;
     [this._$children, this._setChildren] = createState<MarkupElement[]>([]);
 
-    this._emitter.on("error", (error, eventName, ...args) => {
-      this._logger.error({ error, eventName, args });
+    this._emitter.on("error", (error, type, ...args) => {
+      console.error([error, type, ...args]);
+      // this._logger.error((error as Error).message, { error, type, args });
       this._logger.crash(error as Error);
     });
 
     // Bubble events by emitting them to parent.
-    this._elementContext.emitter.on("*", (eventName, event) => {
+    this._elementContext.emitter.on("*", (type, event) => {
       if (event instanceof ContextEvent) {
-        if (!event.propagationStopped) {
-          this._elementContext.parent?.emitter.emit(eventName, event);
+        if (!event.isStopped) {
+          this._elementContext.parent?.emitter.emit(type, event);
         }
       }
     });

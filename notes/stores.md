@@ -3,18 +3,16 @@
 Ideas for updating the API.
 
 ```js
-import { attachStore, useStore } from "@manyducks.co/dolla";
-
 function CounterStore(initialCount = 0, ctx) {
   const [$value, setValue] = createState(initialCount);
 
   ctx.on("counter:increment", (e) => {
-    e.stopPropagation(); // Stop this event from bubbling up to counters at higher levels (if any).
+    e.stop(); // Stop this event from bubbling up to counters at higher levels (if any).
     setValue((current) => current + 1);
   });
 
   ctx.on("counter:decrement", (e) => {
-    e.stopPropagation();
+    e.stop();
     setValue((current) => current - 1);
   });
 
@@ -34,17 +32,17 @@ function CounterStore(initialCount = 0, ctx) {
   ctx.get("context variable");
   ctx.set("context variable", "context variable value");
 
-  // Stores don't have to return anything, but if they do it becomes accessible by using `useStore(ctx, Store)`.
+  // Stores don't have to return anything, but if they do it becomes accessible with `ctx.use(Store)`.
   return $value;
 }
 
 // Attach it to the app.
-Dolla.attachStore(CounterStore, 0);
+Dolla.provide(CounterStore, 0);
 
 function ExampleView(props, ctx) {
-  // useStore lets you access the return value
+  // ctx.use lets you access the return value
   // but the events will still be received and handled regardless
-  const $count = ctx.useStore(Counter);
+  const $count = ctx.use(Counter);
 
   return html`
     <button onclick=${() => this.emit("counter:decrement")}>-1</button>
