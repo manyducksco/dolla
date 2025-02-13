@@ -344,10 +344,10 @@ export class View<P> implements ViewElement {
     });
 
     // Bubble events by emitting them to parent.
-    this._elementContext.emitter.on("*", (type, event) => {
+    this._elementContext.emitter.on("*", (type, event, ...args) => {
       if (event instanceof ContextEvent) {
         if (!event.isStopped) {
-          this._elementContext.parent?.emitter.emit(type, event);
+          this._elementContext.parent?.emitter.emit(type, event, ...args);
         }
       }
     });
