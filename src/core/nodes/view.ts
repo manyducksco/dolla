@@ -1,18 +1,19 @@
 import { Emitter } from "@manyducks.co/emitter";
 import { isArrayOf, isFunction, typeOf } from "../../typeChecking.js";
-import { getUniqueId } from "../../utils.js";
-import { ContextEvent, type ElementContext, type StorableContext, type WildcardListenerMap } from "../context.js";
+import { getUniqueId, noOp } from "../../utils.js";
+import {
+  type ComponentContext,
+  ContextEvent,
+  type ElementContext,
+  type GenericEvents,
+  type StoreProviderContext,
+  type StoreUserContext,
+  type WildcardListenerMap,
+} from "../context.js";
 import type { Logger } from "../dolla.js";
 import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
-import {
-  createState,
-  createWatcher,
-  isState,
-  type MaybeState,
-  type State,
-  type StateValues,
-  type StopFunction,
-} from "../state.js";
+import { atom, compose, Reactive, type EffectCallback, type UnsubscribeFunction } from "../reactive.js";
+import { createWatcher, isState, type MaybeState, type State, type StateValues, type StopFunction } from "../state.js";
 import { _onViewMounted, _onViewUnmounted } from "../stats.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
@@ -24,7 +25,7 @@ import { IS_MARKUP_ELEMENT } from "../symbols.js";
 /**
  * Any valid value that a View can return.
  */
-export type ViewResult = Node | State<any> | Markup | Markup[] | null;
+export type ViewResult = Node | Reactive<any> | State<any> | Markup | Markup[] | null;
 
 export type ViewFunction<P> = (this: ViewContext, props: P, context: ViewContext) => ViewResult;
 
@@ -38,26 +39,25 @@ export interface ViewElement extends MarkupElement {
   setChildView(view: ViewFunction<{}>): ViewElement;
 }
 
-export interface ViewContext extends Logger, StorableContext {
+export interface ViewContext<Events extends GenericEvents = GenericEvents>
+  extends Logger,
+    ComponentContext<Events>,
+    StoreProviderContext,
+    StoreUserContext {
   /**
    * An ID unique to this view.
    */
   readonly uid: string;
 
   /**
-   * Returns an object of all variables stored on this context.
+   * True while this view is connected to the DOM.
    */
-  // getAll(): Record<string | symbol, unknown>;
+  readonly isMounted: boolean;
 
   /**
    * Sets the name of the view's built in logger.
    */
   setName(name: string): ViewContext;
-
-  /**
-   * True while this view is connected to the DOM.
-   */
-  readonly isMounted: boolean;
 
   /**
    * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
@@ -84,6 +84,12 @@ export interface ViewContext extends Logger, StorableContext {
    * Watchers will be automatically stopped when this view is unmounted.
    */
   watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
+
+  /**
+   * Passes a getter function to `callback` that will track reactive states and return their current values.
+   * Callback will be run each time a tracked state gets a new value.
+   */
+  effect(callback: EffectCallback): UnsubscribeFunction;
 
   /**
    * Returns a Markup element that displays this view's children.
@@ -144,28 +150,7 @@ class Context implements ViewContext {
     return this;
   }
 
-  set<T>(key: string | symbol, value: T): T {
-    this.__view._elementContext.data[key] = value;
-    return value;
-  }
-
-  get<T>(key: string | symbol): T | null {
-    let ctx = this.__view._elementContext;
-
-    while (true) {
-      if (key in ctx.data) {
-        return ctx.data[key] as T;
-      } else if (ctx.parent) {
-        ctx = ctx.parent;
-      } else {
-        break;
-      }
-    }
-
-    return null;
-  }
-
-  on(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+  on(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
     if (type === "*") {
       const wrappedListener = (_eventName: any, event: ContextEvent, ...args: any[]) => {
         listener(event, ...args);
@@ -177,7 +162,7 @@ class Context implements ViewContext {
     }
   }
 
-  off(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+  off(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
     if (type === "*") {
       const wrappedListener = this.__view._wildcardListeners.get(listener);
       if (wrappedListener) {
@@ -189,7 +174,7 @@ class Context implements ViewContext {
     }
   }
 
-  once(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+  once(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
     if (type === "*") {
       const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
         this.__view._wildcardListeners.delete(listener);
@@ -202,7 +187,7 @@ class Context implements ViewContext {
     }
   }
 
-  emit(type: string, ...args: any[]): boolean {
+  emit(type: any, ...args: any[]): boolean {
     return this.__view._elementContext.emitter.emit(type, new ContextEvent(type), ...args);
   }
 
@@ -237,7 +222,7 @@ class Context implements ViewContext {
         }
       }
       if (instance == null) {
-        throw new StoreError(`Store not found on this context.`);
+        throw new StoreError(`Store '${store.name}' is not provided on this context.`);
       } else {
         return instance.value;
       }
@@ -288,8 +273,39 @@ class Context implements ViewContext {
     }
   }
 
+  effect(callback: EffectCallback) {
+    const view = this.__view;
+
+    // TODO: Set up effect in a more direct way? I'm just hacking compose here.
+
+    if (view.isMounted) {
+      // If called when the component is connected, we assume this code is in a lifecycle hook
+      // where it will be triggered at some point again after the component is reconnected.
+      const unsubscribe = compose<void>(callback).subscribe(noOp);
+      this.__view._unsubscribes.push(unsubscribe);
+      return unsubscribe;
+    } else {
+      // This should only happen if called in the body of the component function.
+      // This code is not always re-run between when a component is unmounted and remounted.
+      let unsubscribe: UnsubscribeFunction | undefined;
+      let disposed = false;
+      view._emitter.on("mounted", () => {
+        if (!disposed) {
+          unsubscribe = compose<void>(callback).subscribe(noOp);
+          this.__view._unsubscribes.push(unsubscribe);
+        }
+      });
+      return () => {
+        if (unsubscribe != null) {
+          disposed = true;
+          unsubscribe();
+        }
+      };
+    }
+  }
+
   outlet(): Markup {
-    return createMarkup("$outlet", { $children: this.__view._$children });
+    return createMarkup("$outlet", { children: this.__view._children });
   }
 }
 
@@ -314,10 +330,10 @@ export class View<P> implements ViewElement {
 
   _childMarkup;
 
-  _$children;
-  _setChildren;
+  _children = atom<MarkupElement[]>([]);
 
   _watcher = createWatcher();
+  _unsubscribes: UnsubscribeFunction[] = [];
   _emitter = new Emitter<ViewEvents>();
   _wildcardListeners: WildcardListenerMap = new Map();
 
@@ -335,11 +351,10 @@ export class View<P> implements ViewElement {
     this._props = props;
 
     this._childMarkup = children;
-    [this._$children, this._setChildren] = createState<MarkupElement[]>([]);
 
     this._emitter.on("error", (error, type, ...args) => {
       console.error([error, type, ...args]);
-      // this._logger.error((error as Error).message, { error, type, args });
+      this._logger.error((error as Error).message, { error, type, args });
       this._logger.crash(error as Error);
     });
 
@@ -408,13 +423,19 @@ export class View<P> implements ViewElement {
 
     // Clear elementContext's emitter as well? That was created in this constructor, so garbage collection should get it.
 
+    for (const unsubscribe of this._unsubscribes) {
+      unsubscribe();
+    }
+    this._unsubscribes.length = 0;
+
+    // TODO: Deprecated
     this._watcher.stopAll();
   }
 
   setChildView(fn: ViewFunction<{}>) {
     this._childMarkup = [];
     const node = new View(this._elementContext, fn, {});
-    this._setChildren([node]);
+    this._children.value = [node];
     return node;
   }
 
@@ -430,7 +451,7 @@ export class View<P> implements ViewElement {
       result = this._view.call(context, this._props, context);
 
       if (this._childMarkup.length) {
-        this._setChildren(constructMarkup(this._elementContext, this._childMarkup));
+        this._children.value = constructMarkup(this._elementContext, this._childMarkup);
       }
     } catch (error) {
       if (error instanceof Error) {

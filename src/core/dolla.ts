@@ -7,7 +7,12 @@ import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
 import { Batch } from "./batch.js";
-import { ContextEvent, type ElementContext, type StorableContext, type WildcardListenerMap } from "./context.js";
+import {
+  type ElementContext,
+  type StoreProviderContext,
+  type StoreUserContext,
+  type WildcardListenerMap,
+} from "./context.js";
 import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { createRef, isRef } from "./ref.js";
@@ -56,7 +61,7 @@ export type LoggerOptions = {
   uid?: string;
 };
 
-export class Dolla implements StorableContext {
+export class Dolla implements StoreProviderContext, StoreUserContext {
   readonly batch: Batch;
 
   // Remove `private` when there are public methods to call.
@@ -163,81 +168,6 @@ export class Dolla implements StorableContext {
    */
   getRootView() {
     return this.#rootView;
-  }
-
-  /**
-   * Sets a context variable and returns its value. Context variables are accessible on the app and in child views.
-   */
-  set<T>(key: string | symbol, value: T): T {
-    this.#rootElementContext.data[key] = value;
-    return value;
-  }
-
-  /**
-   * Gets the value of a context variable. Returns null if the variable is not set.
-   */
-  get<T>(key: string | symbol): T | null {
-    return (this.#rootElementContext.data[key] as T) ?? null;
-  }
-
-  /**
-   * Returns an object of all context variables stored at the app level.
-   */
-  // getAll(): Record<string | symbol, unknown> {
-  //   return { ...this.#rootElementContext.data };
-  // }
-
-  /**
-   * Adds a listener to be called when an event with a matching `type` is emitted.
-   */
-  on<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
-        listener(event, ...args);
-      };
-      this.#rootElementContext.emitter.on(type, wrappedListener);
-      this.#wildcardListeners.set(listener, wrappedListener);
-    } else {
-      this.#rootElementContext.emitter.on(type, listener);
-    }
-  }
-
-  /**
-   * Removes a listener from the list to be called when an event with a matching `type` is emitted.
-   */
-  off<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = this.#wildcardListeners.get(listener);
-      if (wrappedListener) {
-        this.#rootElementContext.emitter.off(type, wrappedListener);
-        this.#wildcardListeners.delete(listener);
-      }
-    } else {
-      this.#rootElementContext.emitter.off(type, listener);
-    }
-  }
-
-  /**
-   * Adds a listener to be called when an event with a matching `type` is emitted. The listener is immediately removed after being called once.
-   */
-  once<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
-        this.#wildcardListeners.delete(listener);
-        listener(event, ...args);
-      };
-      this.#rootElementContext.emitter.once(type, wrappedListener);
-      this.#wildcardListeners.set(listener, wrappedListener);
-    } else {
-      this.#rootElementContext.emitter.once(type, listener);
-    }
-  }
-
-  /**
-   * Emits a new event to all listeners.
-   */
-  emit<T = unknown>(type: string, ...args: any[]): boolean {
-    return this.#rootElementContext.emitter.emit(type, new ContextEvent(type), ...args);
   }
 
   /**

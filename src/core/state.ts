@@ -75,6 +75,8 @@ export function isState<T>(value: any): value is State<T> {
 
 /**
  * Retrieves a plain value from a variable that may be a state.
+ *
+ * @deprecated
  */
 export function toValue<T>(source: MaybeState<T>): T {
   if (isState(source)) {
@@ -86,6 +88,8 @@ export function toValue<T>(source: MaybeState<T>): T {
 
 /**
  * Ensures a variable that may be a state or plain value is a state.
+ *
+ * @deprecated
  */
 export function toState<T>(value: MaybeState<T>): State<T> {
   if (isState<T>(value)) {
@@ -192,11 +196,15 @@ export class Signal<T> implements State<T> {
 
 /**
  * Creates a state and setter.
+ *
+ * @deprecated
  */
 export function createState<T>(value: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>];
 
 /**
  * Creates a state and setter.
+ *
+ * @deprecated
  */
 export function createState<T>(
   value?: T,
@@ -205,6 +213,8 @@ export function createState<T>(
 
 /**
  * Creates a state and setter.
+ *
+ * @deprecated
  */
 export function createState<T>(value: T, options?: CreateStateOptions<T>): [State<T>, Setter<T>] {
   const holder = new ValueHolder(value, options);
@@ -414,6 +424,8 @@ export interface DeriveOptions {
  * @param sources - Array of source states to track.
  * @param fn - A function called to recompute the value when any tracked source states receive a new value.
  *
+ * @deprecated
+ *
  * @example
  * // With one source...
  * const [$count, setCount] = createState(5);
@@ -451,6 +463,9 @@ export interface StateWatcher {
   stopAll(): void;
 }
 
+/**
+ * @deprecated
+ */
 export function createWatcher(): StateWatcher {
   const stopFns: StopFunction[] = [];
 

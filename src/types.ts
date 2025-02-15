@@ -1,6 +1,7 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
 import type { State } from "./core/state.js";
+import { Reactive } from "./core/reactive.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -14,14 +15,17 @@ export type Renderable =
   | null
   | undefined
   | State<any>
-  | (string | number | Markup | false | null | undefined | State<any>)[];
+  | Reactive<any>
+  | (string | number | Markup | false | null | undefined | State<any> | Reactive<any>)[];
 
 export type Stringable = { toString(): string };
 
+type MaybeReactivish<T> = MaybeReactive<T> | MaybeState<T>;
+type MaybeReactive<T> = T | Reactive<T> | Reactive<T | undefined>;
 type MaybeState<T> = T | State<T> | State<T | undefined>;
 
-type OptionalProperty<T> = T | State<T> | State<T | undefined>;
-type RequiredProperty<T> = T | State<T>;
+type OptionalProperty<T> = MaybeReactivish<T>;
+type RequiredProperty<T> = T | State<T> | Reactive<T>;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -1462,7 +1466,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeState<any>;
+  [className: string]: MaybeReactivish<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -3088,7 +3092,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeState<string>;
+  sizes?: MaybeReactivish<string>;
 
   /**
    * The image URL.

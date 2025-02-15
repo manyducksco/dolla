@@ -41,6 +41,8 @@ export class Batch {
 
   /**
    * Queues a callback that runs before the next batch of writes.
+   *
+   * @deprecated
    */
   read(callback: () => void) {
     this.#reads.push(callback);
@@ -50,6 +52,8 @@ export class Batch {
   /**
    * Queues a callback to run in the next render batch.
    * Always put DOM mutations in a write callback when possible to help Dolla batch them efficiently.
+   *
+   * @deprecated
    */
   write(callback: () => void, key?: string) {
     if (key) {

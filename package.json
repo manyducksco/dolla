@@ -11,7 +11,7 @@
     "url": "git+https://github.com/manyducksco/dolla.git"
   },
   "scripts": {
-    "test": "npm run build && node --test",
+    "test": "vitest",
     "build:esbuild": "tsc && node build.js",
     "build": "vite build && tsc",
     "start": "tsc --watch",
@@ -48,6 +48,7 @@
     "prettier": "^3.4.2",
     "simple-color-hash": "^1.0.2",
     "typescript": "^5.7.3",
-    "vite": "^6.0.11"
+    "vite": "^6.0.11",
+    "vitest": "^3.0.5"
   }
 }

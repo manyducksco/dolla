@@ -1,5 +1,5 @@
 import type { Dolla, Logger } from "../core/dolla.js";
-import { createState, derive, type MaybeState, type State } from "../core/state.js";
+import { atom, compose, type MaybeReactive, type Reactive } from "../core/reactive.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -45,14 +45,19 @@ export interface TranslationConfig {
   locale: string;
 
   /**
-   * Path to a JSON file with translated strings for this language.
+   * An object with translated strings for this language.
    */
-  path?: string;
+  strings?: LocalizedStrings;
 
   /**
    * A callback function that returns a Promise that resolves to the translation object for this language.
    */
   fetch?: () => Promise<LocalizedStrings>;
+
+  /**
+   * Path to a JSON file with translated strings for this language.
+   */
+  path?: string;
 }
 
 export type I18nSetupOptions = {
@@ -68,12 +73,12 @@ export type TOptions = {
   /**
    *
    */
-  count?: MaybeState<number>;
+  count?: MaybeReactive<number>;
 
   /**
    *
    */
-  context?: MaybeState<string>;
+  context?: MaybeReactive<string>;
 
   /**
    * Override formats specified in the template with the ones in the array for each named variable.
@@ -86,9 +91,9 @@ export type TOptions = {
    *   }
    * });
    */
-  formatOverrides?: MaybeState<Record<string, Record<string, Format[]>>>;
+  formatOverrides?: MaybeReactive<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: MaybeState<any>;
+  [value: string]: MaybeReactive<any>;
 };
 
 export type Formatter = (locale: string, value: unknown, options: Record<string, any>) => string;
@@ -112,7 +117,9 @@ class Translation {
     let strings: LocalizedStrings | undefined;
 
     if (!this.#isLoaded) {
-      if (isFunction(this.config.fetch)) {
+      if (isObject(this.config.strings)) {
+        strings = this.config.strings;
+      } else if (isFunction(this.config.fetch)) {
         strings = await this.config.fetch();
         if (!isObject(strings)) {
           throw new Error(`Fetch function did not return an object of language strings: ${strings}`);
@@ -371,17 +378,14 @@ export class I18n {
 
   #initialLocale = "auto";
 
-  $locale: State<string | undefined>;
-  #setLocale;
+  #locale = atom<string>("");
+  get locale() {
+    return this.#locale;
+  }
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
     this.#logger = dolla.createLogger("Dolla.i18n");
-
-    const [$locale, setLocale] = createState<string>();
-
-    this.$locale = $locale;
-    this.#setLocale = setLocale;
 
     this.addFormat("number", (_, value, options) => {
       return this.#formatNumber(Number(value), options);
@@ -477,7 +481,7 @@ export class I18n {
       await translation.load();
 
       this.#cache = [];
-      this.#setLocale(realName);
+      this.#locale.value = realName;
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -496,33 +500,22 @@ export class I18n {
    * @example
    * const $value = t("your.key.here", { count: 5 });
    */
-  t(selector: string, options?: TOptions): State<string> {
+  t(selector: string, options?: TOptions): Reactive<string> {
     if (this === undefined) {
       throw new Error(
         `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
       );
     }
 
-    // Split keys and values so we can observe values which may be States.
-    let optionKeys = [];
-    let optionValues = [];
-    for (const key in options) {
-      optionKeys.push(key);
-      optionValues.push(options[key]);
-    }
+    return compose((get) => {
+      const values: Record<string, any> = {};
 
-    return derive([this.$locale, ...optionValues], (locale, ...currentValues) => {
-      if (locale == null) {
-        return "[NO LOCALE SET]";
+      // Track all option values.
+      for (const key in options) {
+        values[key] = get(options[key]);
       }
 
-      // Reassemble options now that State values are unwrapped.
-      const options: Record<string, any> = {};
-      for (let i = 0; i < currentValues.length; i++) {
-        options[optionKeys[i]] = currentValues[i];
-      }
-
-      return this.#getValue(locale, selector, options);
+      return this.#getValue(get(this.#locale), selector, values);
     });
   }
 
@@ -616,24 +609,27 @@ export class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
    */
   collator(options?: Intl.CollatorOptions) {
-    return new Intl.Collator(this.$locale.get(), options);
+    return new Intl.Collator(this.#locale.value, options);
   }
 
   /**
-   * Returns a State containing the number formatted for the current locale. Uses `Intl.NumberFormat` under the hood.
+   * Formats a number for the current locale. Uses `Intl.NumberFormat` under the hood.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
-  number(count: MaybeState<number | bigint>, options?: Intl.NumberFormatOptions): State<string> {
-    return derive([this.$locale, count], (_, value) => this.#formatNumber(value, options));
+  number(count: MaybeReactive<number | bigint>, options?: Intl.NumberFormatOptions): Reactive<string> {
+    return compose((get) => {
+      get(this.#locale); // track to update when locale changes
+      return this.#formatNumber(get(count), options);
+    });
   }
 
   #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
-    return new Intl.NumberFormat(this.$locale.get(), options).format(count);
+    return new Intl.NumberFormat(this.#locale.value, options).format(count);
   }
 
   /**
-   * Returns a State containing the date formatted for the current locale. Uses `Intl.DateTimeFormat` under the hood.
+   * Formats a date for the current locale. Uses `Intl.DateTimeFormat` under the hood.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat#options
    *
@@ -641,16 +637,22 @@ export class I18n {
    * const date = new Date();
    * const $formatted = Dolla.i18n.dateTime(date, { dateFormat: "short" });
    */
-  dateTime(date?: MaybeState<string | number | Date | undefined>, options?: Intl.DateTimeFormatOptions): State<string> {
-    return derive([this.$locale, date], (_, value) => this.#formatDateTime(value, options));
+  dateTime(
+    date?: MaybeReactive<string | number | Date | undefined>,
+    options?: Intl.DateTimeFormatOptions,
+  ): Reactive<string> {
+    return compose((get) => {
+      get(this.#locale); // track to update when locale changes
+      return this.#formatDateTime(get(date), options);
+    });
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat(this.$locale.get(), options).format(isString(date) ? new Date(date) : date);
+    return new Intl.DateTimeFormat(this.#locale.value, options).format(isString(date) ? new Date(date) : date);
   }
 
   /**
-   * Returns a State containing the date formatted for the current locale. Uses `Intl.DateTimeFormat` under the hood.
+   * Formats a list for the current locale. Uses `Intl.ListFormat` under the hood.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat#options
    *
@@ -658,12 +660,15 @@ export class I18n {
    * const list = new Date();
    * const $formatted = Dolla.i18n.list(list, {  });
    */
-  list(list: MaybeState<Iterable<string>>, options?: Intl.ListFormatOptions): State<string> {
-    return derive([this.$locale, list], (_, value) => this.#formatList(value, options));
+  list(list: MaybeReactive<Iterable<string>>, options?: Intl.ListFormatOptions): Reactive<string> {
+    return compose((get) => {
+      get(this.#locale); // track to update when locale changes
+      return this.#formatList(get(list), options);
+    });
   }
 
   #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {
-    return new Intl.ListFormat(this.$locale.get(), options).format(list);
+    return new Intl.ListFormat(this.#locale.value, options).format(list);
   }
 
   // relativeTime(): State<string> {

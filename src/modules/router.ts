@@ -1,5 +1,6 @@
 import type { Dolla, Logger } from "../core/dolla.js";
 import { type ViewElement, type ViewFunction } from "../core/nodes/view.js";
+import { atom, compose } from "../core/reactive.js";
 import { createState, derive, type StopFunction } from "../core/state.js";
 import { IS_ROUTER } from "../core/symbols.js";
 import { assertObject, isFunction, isObject, isString } from "../typeChecking.js";
@@ -177,35 +178,30 @@ export class Router {
   /**
    * The current match object.
    */
-  #$match;
-  #setMatch;
+  #match = atom<RouteMatch>();
 
   /**
    * The currently matched route pattern, if any.
    */
-  $pattern;
+  readonly pattern = compose((get) => get(this.#match)?.pattern);
+
   /**
    * The current URL path.
    */
-  $path;
+  readonly path = compose((get) => get(this.#match)?.path ?? window.location.pathname);
+
   /**
    * The current named path params.
    */
-  $params;
+  readonly params = compose((get) => get(this.#match)?.params ?? {}, { equals: shallowEqual });
+
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  $query;
+  readonly query = compose((get) => get(this.#match)?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
-
-    [this.#$match, this.#setMatch] = createState<RouteMatch>();
-
-    this.$pattern = derive([this.#$match], (m) => m?.pattern);
-    this.$path = derive([this.#$match], (m) => m?.path ?? window.location.pathname);
-    this.$params = derive([this.#$match], (m) => m?.params ?? {}, { equals: shallowEqual });
-    this.$query = derive([this.#$match], (m) => m?.query ?? {}, { equals: shallowEqual });
 
     if (options.hash) {
       this.#hash = true;
@@ -362,11 +358,9 @@ export class Router {
     }
 
     if (match) {
-      const currentPattern = this.$pattern.get();
+      this.#match.value = match;
 
-      this.#setMatch(match);
-
-      if (rootView && match.pattern !== currentPattern) {
+      if (rootView && match.pattern !== this.pattern.value) {
         this.#mountRoute(rootView, match);
       }
     } else {

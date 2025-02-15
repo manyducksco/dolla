@@ -23,6 +23,8 @@ export interface Ref<T> {
  *
  * @param value - An (optional) initial value to store.
  *
+ * @deprecated
+ *
  * @example
  * const ref = createRef(5);
  * ref(); // 5
@@ -42,6 +44,23 @@ export function createRef<T>(value?: T): Ref<T> {
   ref[IS_REF] = true;
 
   return ref;
+}
+
+/**
+ * A Ref is a function that returns the last argument it was called with.
+ * Calling it with no arguments will simply return the latest value.
+ * Calling it with an argument will store that value and immediately return it.
+ *
+ * @param value - An (optional) initial value to store.
+ *
+ * @example
+ * const number = ref(5);
+ * number(); // 5
+ * number(500);
+ * number(); // 500
+ */
+export function ref<T>(value?: T): Ref<T> {
+  return createRef(value);
 }
 
 export function isRef<T extends Node>(value: any): value is Ref<T> {

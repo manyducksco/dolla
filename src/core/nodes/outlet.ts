@@ -1,5 +1,6 @@
+import { isReactivish, MaybeReactivish, watch } from "../_reactivish.js";
 import { type MarkupElement } from "../markup.js";
-import { isState, type MaybeState, type StopFunction } from "../state.js";
+import { UnsubscribeFunction } from "../reactive.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
@@ -11,12 +12,12 @@ export class Outlet implements MarkupElement {
   node = document.createTextNode("");
   isMounted = false;
 
-  source: MaybeState<MarkupElement[]>;
+  source: MaybeReactivish<MarkupElement[]>;
   elements: MarkupElement[] = [];
 
-  stopCallback?: StopFunction;
+  unsubscribe?: UnsubscribeFunction;
 
-  constructor(source: MaybeState<MarkupElement[]>) {
+  constructor(source: MaybeReactivish<MarkupElement[]>) {
     this.source = source;
   }
 
@@ -26,8 +27,8 @@ export class Outlet implements MarkupElement {
 
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
-      if (isState<MarkupElement[]>(this.source)) {
-        this.stopCallback = this.source.watch((children) => {
+      if (isReactivish<MarkupElement[]>(this.source)) {
+        this.unsubscribe = watch(this.source, (children) => {
           this.update(children);
         });
       } else {
@@ -37,9 +38,9 @@ export class Outlet implements MarkupElement {
   }
 
   unmount(parentIsUnmounting = false) {
-    if (this.stopCallback) {
-      this.stopCallback();
-      this.stopCallback = undefined;
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = undefined;
     }
 
     if (this.isMounted) {

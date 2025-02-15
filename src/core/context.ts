@@ -1,13 +1,22 @@
 import type { Emitter } from "@manyducks.co/emitter";
 import type { Dolla } from "./dolla";
 import type { Store, StoreFunction } from "./store";
+import { EffectCallback } from "./reactive";
 
 /*===========================*\
 ||       ElementContext      ||
 \*===========================*/
 
-interface ContextEmitterEvents {
-  [eventName: string | symbol]: [ContextEvent, ...args: any[]];
+export interface GenericEvents {
+  [type: string]: [...args: any[]];
+}
+
+export interface GenericContextData {
+  [key: string | symbol]: any;
+}
+
+export interface ContextEmitterEvents {
+  [type: string | symbol]: [ContextEvent, ...args: any[]];
 }
 
 export interface ElementContext {
@@ -51,42 +60,35 @@ export type WildcardListenerMap = Map<
   (eventName: string | symbol, event: ContextEvent, ...args: any[]) => void
 >;
 
-export interface ComponentContext {
-  /**
-   * Sets a context variable and returns its value.
-   */
-  set<T>(key: string | symbol, value: T): T;
-
-  /**
-   * Gets the value of a context variable. Returns null if the variable is not set.
-   */
-  get<T>(key: string | symbol): T | null;
-
+export interface ComponentContext<
+  Events extends GenericEvents = GenericEvents,
+  // Data extends GenericContextData = GenericContextData,
+> {
   /**
    * Adds a listener to be called when an event with a matching `type` is emitted.
    */
-  on<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
+  on<T extends keyof Events>(type: T, listener: (event: ContextEvent, ...args: Events[T]) => void): void;
 
   /**
    * Removes a listener from the list to be called when an event with a matching `type` is emitted.
    */
-  off<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
+  off(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
 
   /**
    * Adds a listener to be called when an event with a matching `type` is emitted. The listener is immediately removed after being called once.
    */
-  once<T = unknown>(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void;
+  once<T extends keyof Events>(type: T, listener: (event: ContextEvent, ...args: Events[T]) => void): void;
 
   /**
    * Emits a new event to all listeners.
    */
-  emit<T = unknown>(type: string, ...args: any[]): boolean;
+  emit<T extends keyof Events>(type: T, ...args: Events[T]): boolean;
 }
 
 /**
- * A context capable of hosting stores.
+ * A context capable of providing stores.
  */
-export interface StorableContext extends ComponentContext {
+export interface StoreProviderContext {
   /**
    * Attaches a new store to this context and returns it.
    */
@@ -99,7 +101,9 @@ export interface StorableContext extends ComponentContext {
    * Attaches a new store to this context and returns it.
    */
   provide<Options, Value>(store: StoreFunction<Options, Value>, options: Options): Value;
+}
 
+export interface StoreUserContext {
   /**
    * Gets the closest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */

@@ -4,7 +4,10 @@ import { type ElementContext } from "../context.js";
 import { constructMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { isRef, type Ref } from "../ref.js";
 import { isState, type State, type StopFunction } from "../state.js";
+import { isReactive, Reactive } from "../reactive.js";
+import { isReactivish, MaybeReactivish, watch } from "../_reactivish.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
+import { UnsubscribeFunction } from "../reactive.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -23,7 +26,7 @@ export class HTML implements MarkupElement {
   props: Record<string, any>;
   childMarkup: Markup[] = [];
   children: MarkupElement[] = [];
-  stopCallbacks: StopFunction[] = [];
+  unsubscribers: UnsubscribeFunction[] = [];
   elementContext;
   uniqueId = getUniqueId();
 
@@ -96,8 +99,8 @@ export class HTML implements MarkupElement {
       }
 
       this.applyProps(this.node, this.props);
-      if (this.props.style) this.applyStyles(this.node, this.props.style, this.stopCallbacks);
-      if (this.props.class) this.applyClasses(this.node, this.props.class, this.stopCallbacks);
+      if (this.props.style) this.applyStyles(this.node, this.props.style, this.unsubscribers);
+      if (this.props.class) this.applyClasses(this.node, this.props.class, this.unsubscribers);
     }
 
     parent.insertBefore(this.node, after?.nextSibling ?? null);
@@ -123,10 +126,10 @@ export class HTML implements MarkupElement {
 
       this.canClickAway = false;
 
-      for (const stop of this.stopCallbacks) {
-        stop();
+      for (const unsubscribe of this.unsubscribers) {
+        unsubscribe();
       }
-      this.stopCallbacks = [];
+      this.unsubscribers.length = 0;
     }
   }
 
@@ -146,15 +149,19 @@ export class HTML implements MarkupElement {
     }
   }
 
-  attachProp<T>(value: State<T> | T, callback: (value: T) => void, updateKey: string) {
-    if (isState(value)) {
-      this.stopCallbacks.push(
+  attachProp<T>(value: MaybeReactivish<T>, callback: (value: T) => void, updateKey: string) {
+    if (isReactive(value)) {
+      // Don't need to batch because effects are already run in a microtask.
+      this.unsubscribers.push(value.subscribe(callback));
+    } else if (isState(value)) {
+      this.unsubscribers.push(
         value.watch((current) => {
           this._mutate(() => callback(current), updateKey);
         }),
       );
     } else {
-      this._mutate(() => callback(value), updateKey);
+      // Don't need to batch because the only time non-reactive values are set is before mount.
+      callback(value);
     }
   }
 
@@ -188,7 +195,7 @@ export class HTML implements MarkupElement {
 
           element.addEventListener(name, listener);
 
-          this.stopCallbacks.push(() => {
+          this.unsubscribers.push(() => {
             element.removeEventListener(name, listener);
           });
         }
@@ -207,7 +214,7 @@ export class HTML implements MarkupElement {
 
         window.addEventListener("click", listener, options);
 
-        this.stopCallbacks.push(() => {
+        this.unsubscribers.push(() => {
           window.removeEventListener("click", listener, options);
         });
       } else if (isCamelCaseEventName(key)) {
@@ -219,7 +226,7 @@ export class HTML implements MarkupElement {
 
         element.addEventListener(eventName, listener);
 
-        this.stopCallbacks.push(() => {
+        this.unsubscribers.push(() => {
           element.removeEventListener(eventName, listener);
         });
       } else if (key.includes("-")) {
@@ -342,10 +349,25 @@ export class HTML implements MarkupElement {
     }
   }
 
-  applyStyles(element: HTMLElement | SVGElement, styles: unknown, stopCallbacks: StopFunction[]) {
-    const propStopCallbacks: StopFunction[] = [];
+  applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFunction[]) {
+    const propUnsubscribers: StopFunction[] = [];
 
-    if (isState(styles)) {
+    if (isReactive(styles)) {
+      let unapply: () => void;
+
+      const unsubscribe = styles.subscribe((current) => {
+        // Don't need to _mutate because this always resolves in a microtask.
+
+        if (isFunction(unapply)) {
+          unapply();
+        }
+        element.style.cssText = "";
+        unapply = this.applyStyles(element, current, unsubscribers);
+      });
+
+      unsubscribers.push(unsubscribe);
+      propUnsubscribers.push(unsubscribe);
+    } else if (isState(styles)) {
       let unapply: () => void;
 
       const stop = styles.watch((current) => {
@@ -355,21 +377,32 @@ export class HTML implements MarkupElement {
               unapply();
             }
             element.style.cssText = "";
-            unapply = this.applyStyles(element, current, stopCallbacks);
+            unapply = this.applyStyles(element, current, unsubscribers);
           },
           this.getUpdateKey("styles", "*"),
         );
       });
 
-      stopCallbacks.push(stop);
-      propStopCallbacks.push(stop);
+      unsubscribers.push(stop);
+      propUnsubscribers.push(stop);
     } else {
       const mapped = getStyleMap(styles);
 
       for (const name in mapped) {
         const { value, priority } = mapped[name];
 
-        if (isState(value)) {
+        if (isReactive(value)) {
+          const unsubscribe = value.subscribe((current) => {
+            if (current) {
+              element.style.setProperty(name, String(current), priority);
+            } else {
+              element.style.removeProperty(name);
+            }
+          });
+
+          unsubscribers.push(unsubscribe);
+          propUnsubscribers.push(unsubscribe);
+        } else if (isState(value)) {
           const stop = value.watch((current) => {
             this._mutate(() => {
               if (current) {
@@ -380,8 +413,8 @@ export class HTML implements MarkupElement {
             }); // NOTE: Not keyed; all update callbacks must run to apply all properties.
           });
 
-          stopCallbacks.push(stop);
-          propStopCallbacks.push(stop);
+          unsubscribers.push(stop);
+          propUnsubscribers.push(stop);
         } else if (value != undefined) {
           element.style.setProperty(name, String(value));
         }
@@ -389,17 +422,32 @@ export class HTML implements MarkupElement {
     }
 
     return function unapply() {
-      for (const stop of propStopCallbacks) {
-        stop();
-        stopCallbacks.splice(stopCallbacks.indexOf(stop), 1);
+      for (const unsubscribe of propUnsubscribers) {
+        unsubscribe();
+        unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
       }
     };
   }
 
   applyClasses(element: HTMLElement | SVGElement, classes: unknown, stopCallbacks: StopFunction[]) {
-    const classStopCallbacks: StopFunction[] = [];
+    const classUnsubscribers: StopFunction[] = [];
 
-    if (isState(classes)) {
+    if (isReactive(classes)) {
+      let unapply: () => void;
+
+      const unsubscribe = classes.subscribe((current) => {
+        // No need to batch; resolved in microtask.
+
+        if (isFunction(unapply)) {
+          unapply();
+        }
+        element.removeAttribute("class");
+        unapply = this.applyClasses(element, current, stopCallbacks);
+      });
+
+      stopCallbacks.push(unsubscribe);
+      classUnsubscribers.push(unsubscribe);
+    } else if (isState(classes)) {
       let unapply: () => void;
 
       const stop = classes.watch((current) => {
@@ -416,14 +464,25 @@ export class HTML implements MarkupElement {
       });
 
       stopCallbacks.push(stop);
-      classStopCallbacks.push(stop);
+      classUnsubscribers.push(stop);
     } else {
       const mapped = getClassMap(classes);
 
       for (const name in mapped) {
         const value = mapped[name];
 
-        if (isState(value)) {
+        if (isReactive(value)) {
+          const unsubscribe = value.subscribe((current) => {
+            if (current) {
+              element.classList.add(name);
+            } else {
+              element.classList.remove(name);
+            }
+          });
+
+          stopCallbacks.push(unsubscribe);
+          classUnsubscribers.push(unsubscribe);
+        } else if (isState(value)) {
           const stop = value.watch((current) => {
             this._mutate(() => {
               if (current) {
@@ -435,7 +494,7 @@ export class HTML implements MarkupElement {
           });
 
           stopCallbacks.push(stop);
-          classStopCallbacks.push(stop);
+          classUnsubscribers.push(stop);
         } else if (value) {
           element.classList.add(name);
         }
@@ -443,9 +502,9 @@ export class HTML implements MarkupElement {
     }
 
     return function unapply() {
-      for (const stop of classStopCallbacks) {
-        stop();
-        stopCallbacks.splice(stopCallbacks.indexOf(stop), 1);
+      for (const unsubscribe of classUnsubscribers) {
+        unsubscribe();
+        stopCallbacks.splice(stopCallbacks.indexOf(unsubscribe), 1);
       }
     };
   }

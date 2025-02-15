@@ -1,8 +1,18 @@
 import { Emitter } from "@manyducks.co/emitter";
-import { ContextEvent, type ComponentContext, type ElementContext, type WildcardListenerMap } from "./context.js";
+import {
+  ContextEvent,
+  GenericEvents,
+  StoreUserContext,
+  type ComponentContext,
+  type ElementContext,
+  type WildcardListenerMap,
+} from "./context.js";
 import type { Logger } from "./dolla.js";
 import { createWatcher, type MaybeState, type StateValues, type StopFunction } from "./state.js";
 import { IS_STORE } from "./symbols.js";
+import { isFunction } from "../typeChecking.js";
+import { compose, EffectCallback, UnsubscribeFunction } from "./reactive.js";
+import { noOp } from "../utils.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
 
@@ -10,7 +20,10 @@ export type StoreFactory<Options, Value> = Options extends undefined
   ? () => Store<Options, Value>
   : (options: Options) => Store<Options, Value>;
 
-export interface StoreContext extends Logger, ComponentContext {
+export interface StoreContext<Events extends GenericEvents = GenericEvents>
+  extends Logger,
+    ComponentContext<Events>,
+    StoreUserContext {
   /**
    * True while this store is attached to a context that is currently mounted in the view tree.
    */
@@ -31,11 +44,17 @@ export interface StoreContext extends Logger, ComponentContext {
    * Watchers will be automatically stopped when this store is unmounted.
    */
   watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
+
+  /**
+   * Passes a getter function to `callback` that will track reactive states and return their current values.
+   * Callback will be run each time a tracked state gets a new value.
+   */
+  effect(callback: EffectCallback): UnsubscribeFunction;
 }
 
-interface Context<Options, Value> extends Logger {}
+interface Context<Options, Value, Events extends GenericEvents> extends Logger {}
 
-class Context<Options, Value> implements StoreContext {
+class Context<Options, Value, Events extends GenericEvents> implements StoreContext<Events>, StoreUserContext {
   __store;
 
   constructor(store: Store<Options, Value>) {
@@ -59,28 +78,7 @@ class Context<Options, Value> implements StoreContext {
     return this;
   }
 
-  set<T>(key: string | symbol, value: T): T {
-    this.__store._elementContext.data[key] = value;
-    return value;
-  }
-
-  get<T>(key: string | symbol): T | null {
-    let ctx = this.__store._elementContext;
-
-    while (true) {
-      if (key in ctx.data) {
-        return ctx.data[key] as T;
-      } else if (ctx.parent) {
-        ctx = ctx.parent;
-      } else {
-        break;
-      }
-    }
-
-    return null;
-  }
-
-  on(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+  on(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
     if (type === "*") {
       const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
         listener(event, ...args);
@@ -92,7 +90,7 @@ class Context<Options, Value> implements StoreContext {
     }
   }
 
-  off(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+  off(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
     if (type === "*") {
       const wrappedListener = this.__store._wildcardListeners.get(listener);
       if (wrappedListener) {
@@ -104,7 +102,7 @@ class Context<Options, Value> implements StoreContext {
     }
   }
 
-  once(type: string, listener: (event: ContextEvent, ...args: any[]) => void): void {
+  once(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
     if (type === "*") {
       const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
         this.__store._wildcardListeners.delete(listener);
@@ -117,8 +115,30 @@ class Context<Options, Value> implements StoreContext {
     }
   }
 
-  emit(type: string, ...args: any[]): boolean {
-    return this.__store._elementContext.emitter.emit(type, new ContextEvent(type), ...args);
+  emit<T extends keyof Events>(type: T, ...args: Events[T]): boolean {
+    return this.__store._elementContext.emitter.emit(type, new ContextEvent(type as string), ...args);
+  }
+
+  use<Value>(store: StoreFunction<any, Value>): Value {
+    if (isFunction(store)) {
+      let context = this.__store._elementContext;
+      let instance: Store<any, Value> | undefined;
+      while (true) {
+        instance = context.stores.get(store);
+        if (instance == null && context.parent != null) {
+          context = context.parent;
+        } else {
+          break;
+        }
+      }
+      if (instance == null) {
+        throw new StoreError(`Store '${store.name}' is not provided on this context.`);
+      } else {
+        return instance.value;
+      }
+    } else {
+      throw new StoreError(`Invalid store.`);
+    }
   }
 
   onMount(callback: () => void): void {
@@ -130,26 +150,57 @@ class Context<Options, Value> implements StoreContext {
   }
 
   watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction {
-    const view = this.__store;
+    const store = this.__store;
 
-    if (view.isMounted) {
+    if (store.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      return view._watcher.watch(states, callback);
+      return store._watcher.watch(states, callback);
     } else {
       // This should only happen if called in the body of the component function.
       // This code is not always re-run between when a component is unmounted and remounted.
       let stop: StopFunction | undefined;
       let isStopped = false;
-      view._emitter.on("mounted", () => {
+      store._emitter.on("mounted", () => {
         if (!isStopped) {
-          stop = view._watcher.watch(states, callback);
+          stop = store._watcher.watch(states, callback);
         }
       });
       return () => {
         if (stop != null) {
           isStopped = true;
           stop();
+        }
+      };
+    }
+  }
+
+  effect(callback: EffectCallback) {
+    const store = this.__store;
+
+    // TODO: Set up effect in a more direct way? I'm just hacking compose here.
+
+    if (store.isMounted) {
+      // If called when the component is connected, we assume this code is in a lifecycle hook
+      // where it will be triggered at some point again after the component is reconnected.
+      const unsubscribe = compose<void>(callback).subscribe(noOp);
+      store._unsubscribes.push(unsubscribe);
+      return unsubscribe;
+    } else {
+      // This should only happen if called in the body of the component function.
+      // This code is not always re-run between when a component is unmounted and remounted.
+      let unsubscribe: UnsubscribeFunction | undefined;
+      let disposed = false;
+      store._emitter.on("mounted", () => {
+        if (!disposed) {
+          unsubscribe = compose<void>(callback).subscribe(noOp);
+          store._unsubscribes.push(unsubscribe);
+        }
+      });
+      return () => {
+        if (unsubscribe != null) {
+          disposed = true;
+          unsubscribe();
         }
       };
     }
@@ -177,6 +228,7 @@ export class Store<Options, Value> {
   _wildcardListeners: WildcardListenerMap = new Map();
   _logger!: Logger;
   _watcher = createWatcher();
+  _unsubscribes: UnsubscribeFunction[] = [];
 
   get name() {
     return this.fn.name;
@@ -198,7 +250,7 @@ export class Store<Options, Value> {
     this._elementContext = elementContext;
     this._logger = elementContext.root.createLogger(this.fn.name);
     this._emitter.on("error", (error, eventName, ...args) => {
-      console.log({ error, eventName, args });
+      this._logger.error({ error, eventName, args });
       this._logger.crash(error as Error);
     });
     const context = new Context(this);
@@ -221,6 +273,11 @@ export class Store<Options, Value> {
     this._emitter.emit("unmounted");
     this._emitter.clear();
     this._watcher.stopAll();
+
+    for (const unsubscribe of this._unsubscribes) {
+      unsubscribe();
+    }
+    this._unsubscribes.length = 0;
   }
 }
 

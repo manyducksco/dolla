@@ -2,6 +2,13 @@
 export { createState, derive, isState, toState, toValue } from "./core/state.js";
 export type { MaybeState, Setter, State, StopFunction } from "./core/state.js";
 
+// Reactive
+export { atom, compose, unwrap, isReactive } from "./core/reactive.js";
+export type { Reactive, MaybeReactive, Atom } from "./core/reactive.js";
+
+// Equality checks
+export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
+
 // Ref
 export { createRef, isRef, type Ref } from "./core/ref.js";
 
@@ -11,11 +18,8 @@ export { type StoreFunction, type StoreContext } from "./core/store.js";
 // Router
 export { createRouter, type Router, type RouterOptions } from "./modules/router.js";
 
-// Equality checks (useful for states)
-export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
-
 // Markup
-export { cond, createMarkup, html, portal, repeat } from "./core/markup.js";
+export { cond, createMarkup, html, portal, repeat, list } from "./core/markup.js";
 export type { Markup, MarkupElement } from "./core/markup.js";
 
 import { Dolla } from "./core/dolla.js";
