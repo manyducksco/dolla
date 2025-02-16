@@ -76,13 +76,13 @@ export interface Atom<T> extends Reactive<T> {
 export interface Composed<T> extends Reactive<T> {}
 
 /**
- * Tracks a reactive as a dependency and returns its current value.
+ * Tracks a reactive as a dependency in a composed state or effect and returns its current value.
  */
-export type Getter = <T>(value: MaybeReactive<T>) => T;
+export type UseFunction = <T>(value: MaybeReactive<T>) => T;
 
-export type ComposeCallback<T> = (get: Getter) => T;
+export type ComposeCallback<T> = (get: UseFunction) => T | Reactive<T>;
 
-export type EffectCallback = (get: Getter) => void;
+export type EffectCallback = (get: UseFunction) => void;
 
 /*===================================*\
 ||             Subscriber            ||
@@ -349,7 +349,7 @@ class ComposedDelegate<T> implements ReactiveDelegate<T> {
       node._value = value;
       updateParents(node, tracked);
     } catch (error) {
-      console.error(error);
+      console.error(error, { composer: this.composer });
       // TODO: Handle error.
     }
 
@@ -394,7 +394,7 @@ class EffectDelegate implements ReactiveDelegate<any> {
       const [tracked] = track(this.callback);
       updateParents(node, tracked);
     } catch (error) {
-      console.error(error);
+      console.error(error, { callback: this.callback });
       // TODO: Handle error.
     }
 
@@ -419,8 +419,15 @@ function remove<T>(array: T[] | null, value: T) {
  * Runs a composer or effect callback. Returns the list of tracked nodes and the callback's return value.
  */
 function track<T>(fn: ComposeCallback<T>): [ReactiveNode<any>[], T] {
+  let tracking = true;
+
   const tracked = new Set<ReactiveNode<any>>();
-  const getter: Getter = (reactive) => {
+  const use: UseFunction = (reactive) => {
+    if (!tracking)
+      throw new Error(
+        `Dependencies cannot be tracked asynchronously. Please call \`use\` only in the body of the function.`,
+      );
+
     if (reactive instanceof ReactiveNode) {
       tracked.add(reactive);
       return reactive.value;
@@ -430,7 +437,15 @@ function track<T>(fn: ComposeCallback<T>): [ReactiveNode<any>[], T] {
     }
   };
 
-  const value = fn(getter);
+  let value = fn(use);
+
+  // If return value is reactive, track it as well and return its value.
+  if (isReactive(value)) {
+    tracked.add(value as ReactiveNode<T>);
+    value = value.value;
+  }
+
+  tracking = false; // Stop tracking after function body returns.
 
   return [Array.from(tracked.values()), value];
 }

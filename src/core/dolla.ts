@@ -10,13 +10,11 @@ import { Batch } from "./batch.js";
 import {
   type ElementContext,
   type StoreProviderContext,
-  type StoreUserContext,
+  type StoreConsumerContext,
   type WildcardListenerMap,
 } from "./context.js";
 import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
-import { createRef, isRef } from "./ref.js";
-import { createState, createWatcher, derive, isState, toState, toValue } from "./state.js";
 import { Stats } from "./stats.js";
 import { Store, StoreError, StoreFunction } from "./store.js";
 
@@ -61,7 +59,7 @@ export type LoggerOptions = {
   uid?: string;
 };
 
-export class Dolla implements StoreProviderContext, StoreUserContext {
+export class Dolla implements StoreProviderContext, StoreConsumerContext {
   readonly batch: Batch;
 
   // Remove `private` when there are public methods to call.
@@ -76,7 +74,6 @@ export class Dolla implements StoreProviderContext, StoreUserContext {
   #rootView?: ViewElement;
   #crashView: ViewFunction<CrashViewProps> = DefaultCrashView;
 
-  #watcher = createWatcher();
   #router?: Router;
 
   #beforeMountCallbacks: Array<() => void | Promise<void>> = [];
@@ -112,18 +109,6 @@ export class Dolla implements StoreProviderContext, StoreUserContext {
     this.http = new HTTP(this);
     this.i18n = new I18n(this);
   }
-
-  watch = this.#watcher.watch;
-
-  createState = createState;
-  toState = toState;
-  toValue = toValue;
-  isState = isState;
-  derive = derive;
-  createWatcher = createWatcher;
-
-  createRef = createRef;
-  isRef = isRef;
 
   /**
    * True when the app is connected to a DOM node and displayed to the user.
@@ -191,7 +176,7 @@ export class Dolla implements StoreProviderContext, StoreUserContext {
     if (!attached) {
       let name = store.name ? `'${store.name}'` : "this store";
       console.warn(`An instance of ${name} was already attached to this context.`);
-      return this.use(store);
+      return this.get(store);
     } else {
       return instance.value;
     }
@@ -200,7 +185,7 @@ export class Dolla implements StoreProviderContext, StoreUserContext {
   /**
    * Gets the nearest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */
-  use<Value>(store: StoreFunction<any, Value>): Value {
+  get<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
       const instance = this.#rootElementContext.stores.get(store);
       if (instance == null) {
@@ -276,8 +261,6 @@ export class Dolla implements StoreProviderContext, StoreUserContext {
     await Promise.all(this.#beforeUnmountCallbacks.map((callback) => callback()));
 
     this.#rootView?.unmount(false);
-
-    this.#watcher.stopAll();
 
     if (this.#router) {
       await _unmountRouter(this.#router);

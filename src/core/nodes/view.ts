@@ -7,11 +7,21 @@ import {
   type ElementContext,
   type GenericEvents,
   type StoreProviderContext,
-  type StoreUserContext,
+  type StoreConsumerContext,
   type WildcardListenerMap,
 } from "../context.js";
 import type { Logger } from "../dolla.js";
-import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
+import {
+  constructMarkup,
+  createMarkup,
+  groupElements,
+  isMarkup,
+  list,
+  cond,
+  portal,
+  type Markup,
+  type MarkupElement,
+} from "../markup.js";
 import { atom, compose, Reactive, type EffectCallback, type UnsubscribeFunction } from "../reactive.js";
 import { createWatcher, isState, type MaybeState, type State, type StateValues, type StopFunction } from "../state.js";
 import { _onViewMounted, _onViewUnmounted } from "../stats.js";
@@ -40,10 +50,10 @@ export interface ViewElement extends MarkupElement {
 }
 
 export interface ViewContext<Events extends GenericEvents = GenericEvents>
-  extends Logger,
+  extends Omit<Logger, "setName">,
     ComponentContext<Events>,
     StoreProviderContext,
-    StoreUserContext {
+    StoreConsumerContext {
   /**
    * An ID unique to this view.
    */
@@ -53,11 +63,6 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
    * True while this view is connected to the DOM.
    */
   readonly isMounted: boolean;
-
-  /**
-   * Sets the name of the view's built in logger.
-   */
-  setName(name: string): ViewContext;
 
   /**
    * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
@@ -82,6 +87,7 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
   /**
    * Watch a set of states. The callback is called when any of the states receive a new value.
    * Watchers will be automatically stopped when this view is unmounted.
+   * @deprecated
    */
   watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
 
@@ -92,9 +98,24 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
   effect(callback: EffectCallback): UnsubscribeFunction;
 
   /**
+   * Renders a list of reactive items.
+   */
+  list: typeof list;
+
+  /**
+   * Creates a reactive conditional; the second argument is displayed when the condition is true and the third is displayed when the condition is false.
+   */
+  if: typeof cond;
+
+  /**
    * Returns a Markup element that displays this view's children.
    */
   outlet(): Markup;
+
+  /**
+   * Displays an element as a child of another DOM node, rather than the position it would normally be mounted at.
+   */
+  portal: typeof portal;
 }
 
 /*=====================================*\
@@ -119,7 +140,7 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
 // }
 
 // Defines logger methods on context.
-interface Context extends Logger {}
+interface Context extends Omit<Logger, "setName"> {}
 
 class Context implements ViewContext {
   __view;
@@ -144,10 +165,13 @@ class Context implements ViewContext {
     return this.__view.isMounted;
   }
 
-  setName(name: string): ViewContext {
-    this.__view._logger.setName(name);
-    this.__view._elementContext.viewName = name;
-    return this;
+  get name() {
+    return this.__view._elementContext.viewName || this.__view.uniqueId;
+  }
+
+  set name(value) {
+    this.__view._elementContext.viewName = value;
+    this.__view._logger.setName(value);
   }
 
   on(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
@@ -205,11 +229,11 @@ class Context implements ViewContext {
     } else {
       let name = store.name ? `'${store.name}'` : "this store";
       this.__view._logger.warn(`An instance of ${name} was already attached to this context.`);
-      return this.use(store);
+      return this.get(store);
     }
   }
 
-  use<Value>(store: StoreFunction<any, Value>): Value {
+  get<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
       let context = this.__view._elementContext;
       let instance: Store<any, Value> | undefined;
@@ -303,6 +327,10 @@ class Context implements ViewContext {
       };
     }
   }
+
+  list = list;
+  if = cond;
+  portal = portal;
 
   outlet(): Markup {
     return createMarkup("$outlet", { children: this.__view._children });

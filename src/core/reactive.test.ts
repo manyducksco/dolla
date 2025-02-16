@@ -25,3 +25,28 @@ test("solves diamond problem", () => {
     unsubscribe();
   });
 });
+
+test("throws error if getter is called after function body returns", () => {
+  return new Promise<void>((resolve, reject) => {
+    const test = compose((get) => {
+      setTimeout(() => {
+        expect(() => {
+          get(true);
+        }).toThrowError();
+
+        resolve();
+      }, 0);
+      return true;
+    });
+
+    test.value;
+  });
+
+  // expect(() => {
+  //   compose((get) => {
+  //     setTimeout(() => {
+  //       get(true);
+  //     });
+  //   });
+  // }).toThrowError();
+});

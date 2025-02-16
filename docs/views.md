@@ -118,7 +118,7 @@ function ExampleView(props, ctx) {
 ```jsx
 function ExampleView(props, ctx) {
   // Set the name of this view's context. Console messages are prefixed with name.
-  ctx.setName("CustomName");
+  ctx.name = "CustomName";
 
   // Print messages to the console. These are suppressed by default in the app's "production" mode.
   // You can also change which of these are printed and filter messages from certain contexts in the `createApp` options object.

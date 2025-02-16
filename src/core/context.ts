@@ -65,6 +65,11 @@ export interface ComponentContext<
   // Data extends GenericContextData = GenericContextData,
 > {
   /**
+   * A name for debugging purposes. Prepended to log messages.
+   */
+  name: string;
+
+  /**
    * Adds a listener to be called when an event with a matching `type` is emitted.
    */
   on<T extends keyof Events>(type: T, listener: (event: ContextEvent, ...args: Events[T]) => void): void;
@@ -103,11 +108,11 @@ export interface StoreProviderContext {
   provide<Options, Value>(store: StoreFunction<Options, Value>, options: Options): Value;
 }
 
-export interface StoreUserContext {
+export interface StoreConsumerContext {
   /**
    * Gets the closest instance of a store. Throws an error if the store isn't provided higher in the tree.
    */
-  use<Value>(store: StoreFunction<any, Value>): Value;
+  get<Value>(store: StoreFunction<any, Value>): Value;
 }
 
 /**

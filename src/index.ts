@@ -10,7 +10,7 @@ export type { Reactive, MaybeReactive, Atom } from "./core/reactive.js";
 export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
 
 // Ref
-export { createRef, isRef, type Ref } from "./core/ref.js";
+export { ref, createRef, isRef, type Ref } from "./core/ref.js";
 
 // Store
 export { type StoreFunction, type StoreContext } from "./core/store.js";
@@ -19,8 +19,12 @@ export { type StoreFunction, type StoreContext } from "./core/store.js";
 export { createRouter, type Router, type RouterOptions } from "./modules/router.js";
 
 // Markup
-export { cond, createMarkup, html, portal, repeat, list } from "./core/markup.js";
+export { cond, createMarkup, html, portal, list } from "./core/markup.js";
 export type { Markup, MarkupElement } from "./core/markup.js";
+
+export function repeat(...args: any[]) {
+  console.warn("using deprecated repeat");
+}
 
 import { Dolla } from "./core/dolla.js";
 const dolla = new Dolla();

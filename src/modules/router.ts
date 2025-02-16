@@ -1,7 +1,6 @@
 import type { Dolla, Logger } from "../core/dolla.js";
-import { type ViewElement, type ViewFunction } from "../core/nodes/view.js";
-import { atom, compose } from "../core/reactive.js";
-import { createState, derive, type StopFunction } from "../core/state.js";
+import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
+import { atom, compose, type UnsubscribeFunction } from "../core/reactive.js";
 import { IS_ROUTER } from "../core/symbols.js";
 import { assertObject, isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
@@ -173,7 +172,7 @@ export class Router {
   #hash = false;
 
   // Callbacks that need to be called on unmount.
-  #cleanupCallbacks: StopFunction[] = [];
+  #unsubscribers: UnsubscribeFunction[] = [];
 
   /**
    * The current match object.
@@ -183,22 +182,22 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly pattern = compose((get) => get(this.#match)?.pattern);
+  readonly pattern = compose((use) => use(this.#match)?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly path = compose((get) => get(this.#match)?.path ?? window.location.pathname);
+  readonly path = compose((use) => use(this.#match)?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly params = compose((get) => get(this.#match)?.params ?? {}, { equals: shallowEqual });
+  readonly params = compose((use) => use(this.#match)?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  readonly query = compose((get) => get(this.#match)?.query ?? {}, { equals: shallowEqual });
+  readonly query = compose((use) => use(this.#match)?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
@@ -229,12 +228,12 @@ export class Router {
       this.#updateRoute();
     };
     window.addEventListener("popstate", onPopState);
-    this.#cleanupCallbacks.push(() => window.removeEventListener("popstate", onPopState));
+    this.#unsubscribers.push(() => window.removeEventListener("popstate", onPopState));
 
     const rootElement = dolla.getRootElement()!;
 
     // Listen for clicks on <a> tags within the app.
-    this.#cleanupCallbacks.push(
+    this.#unsubscribers.push(
       catchLinks(rootElement, (anchor) => {
         let href = anchor.getAttribute("href")!;
         this.#logger!.info("intercepted click on <a> tag", anchor);
@@ -255,10 +254,10 @@ export class Router {
   }
 
   async [ROUTER_UNMOUNT]() {
-    for (const callback of this.#cleanupCallbacks) {
+    for (const callback of this.#unsubscribers) {
       callback();
     }
-    this.#cleanupCallbacks = [];
+    this.#unsubscribers = [];
   }
 
   /**
@@ -358,9 +357,11 @@ export class Router {
     }
 
     if (match) {
+      const oldPattern = this.pattern.value;
+
       this.#match.value = match;
 
-      if (rootView && match.pattern !== this.pattern.value) {
+      if (rootView && match.pattern !== oldPattern) {
         this.#mountRoute(rootView, match);
       }
     } else {

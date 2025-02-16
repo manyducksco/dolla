@@ -50,13 +50,11 @@ export class List<T> implements MarkupElement {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
       this.unsubscribe = this.items.subscribe((value) => {
-        if (!this.isMounted) {
-          this._update(Array.from(value));
-        } else {
-          this.elementContext.root.batch.write(() => {
-            this._update(Array.from(value));
-          });
+        if (value == null) {
+          value = [];
+          console.log("list received empty value", value, this);
         }
+        this._update(Array.from(value));
       });
     }
   }
@@ -158,6 +156,6 @@ interface ListItemProps {
 }
 
 function ListItemView(props: ListItemProps, context: ViewContext) {
-  context.setName("@ListItem");
+  context.name = "@ListItem";
   return props.renderFn.call(context, props.item, props.index, context);
 }

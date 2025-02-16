@@ -32,18 +32,7 @@ export interface Ref<T> {
  * ref(); // 500
  */
 export function createRef<T>(value?: T): Ref<T> {
-  function ref() {
-    if (arguments.length === 1) {
-      value = arguments[0];
-    } else if (arguments.length > 1) {
-      throw new Error(`Too many arguments. Expected 0 or 1. Got: ${arguments.length}`);
-    }
-    return value;
-  }
-
-  ref[IS_REF] = true;
-
-  return ref;
+  return ref(value);
 }
 
 /**
@@ -60,7 +49,18 @@ export function createRef<T>(value?: T): Ref<T> {
  * number(); // 500
  */
 export function ref<T>(value?: T): Ref<T> {
-  return createRef(value);
+  function ref() {
+    if (arguments.length === 1) {
+      value = arguments[0];
+    } else if (arguments.length > 1) {
+      throw new Error(`Too many arguments. Expected 0 or 1. Got: ${arguments.length}`);
+    }
+    return value;
+  }
+
+  ref[IS_REF] = true;
+
+  return ref;
 }
 
 export function isRef<T extends Node>(value: any): value is Ref<T> {

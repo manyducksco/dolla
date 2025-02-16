@@ -2,7 +2,7 @@ import { Emitter } from "@manyducks.co/emitter";
 import {
   ContextEvent,
   GenericEvents,
-  StoreUserContext,
+  StoreConsumerContext,
   type ComponentContext,
   type ElementContext,
   type WildcardListenerMap,
@@ -12,7 +12,7 @@ import { createWatcher, type MaybeState, type StateValues, type StopFunction } f
 import { IS_STORE } from "./symbols.js";
 import { isFunction } from "../typeChecking.js";
 import { compose, EffectCallback, UnsubscribeFunction } from "./reactive.js";
-import { noOp } from "../utils.js";
+import { getUniqueId, noOp } from "../utils.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
 
@@ -21,9 +21,9 @@ export type StoreFactory<Options, Value> = Options extends undefined
   : (options: Options) => Store<Options, Value>;
 
 export interface StoreContext<Events extends GenericEvents = GenericEvents>
-  extends Logger,
+  extends Omit<Logger, "setName">,
     ComponentContext<Events>,
-    StoreUserContext {
+    StoreConsumerContext {
   /**
    * True while this store is attached to a context that is currently mounted in the view tree.
    */
@@ -52,9 +52,9 @@ export interface StoreContext<Events extends GenericEvents = GenericEvents>
   effect(callback: EffectCallback): UnsubscribeFunction;
 }
 
-interface Context<Options, Value, Events extends GenericEvents> extends Logger {}
+interface Context<Options, Value, Events extends GenericEvents> extends Omit<Logger, "setName"> {}
 
-class Context<Options, Value, Events extends GenericEvents> implements StoreContext<Events>, StoreUserContext {
+class Context<Options, Value, Events extends GenericEvents> implements StoreContext<Events>, StoreConsumerContext {
   __store;
 
   constructor(store: Store<Options, Value>) {
@@ -73,9 +73,13 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
     return this.__store.isMounted;
   }
 
-  setName(name: string): StoreContext {
-    this.__store._logger.setName(name);
-    return this;
+  get name() {
+    return this.__store._name;
+  }
+
+  set name(value) {
+    this.__store._name = value;
+    this.__store._logger.setName(value);
   }
 
   on(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
@@ -119,7 +123,7 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
     return this.__store._elementContext.emitter.emit(type, new ContextEvent(type as string), ...args);
   }
 
-  use<Value>(store: StoreFunction<any, Value>): Value {
+  get<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
       let context = this.__store._elementContext;
       let instance: Store<any, Value> | undefined;
@@ -229,13 +233,16 @@ export class Store<Options, Value> {
   _logger!: Logger;
   _watcher = createWatcher();
   _unsubscribes: UnsubscribeFunction[] = [];
+  _name;
+  _id = getUniqueId();
 
   get name() {
-    return this.fn.name;
+    return this._name || this._id;
   }
 
   constructor(fn: StoreFunction<Options, Value>, options: Options) {
     this.fn = fn;
+    this._name = fn.name;
     this._options = options;
   }
 
@@ -248,7 +255,7 @@ export class Store<Options, Value> {
       return false;
     }
     this._elementContext = elementContext;
-    this._logger = elementContext.root.createLogger(this.fn.name);
+    this._logger = elementContext.root.createLogger(this._name);
     this._emitter.on("error", (error, eventName, ...args) => {
       this._logger.error({ error, eventName, args });
       this._logger.crash(error as Error);
@@ -258,6 +265,7 @@ export class Store<Options, Value> {
       this.value = this.fn.call(context, this._options, context);
     } catch (error) {
       this._logger.crash(error as Error);
+      throw error;
     }
     elementContext.stores.set(this.fn, this);
     return true;

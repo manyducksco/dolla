@@ -13,8 +13,8 @@ import { List } from "./nodes/list.js";
 import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
-import { compose, isReactive, type Reactive } from "./reactive.js";
-import { isState, toState, type MaybeState, type State } from "./state.js";
+import { compose, isReactive, MaybeReactive, type Reactive } from "./reactive.js";
+import { isState, type MaybeState, type State } from "./state.js";
 import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
@@ -311,28 +311,13 @@ export function cond(condition: MaybeReactivish<any>, thenContent?: Renderable, 
 /**
  * Calls `renderFn` for each item in `items`. Dynamically adds and removes views as items change.
  * The result of `keyFn` is used to compare items and decide if item was added, removed or updated.
- *
- * @deprecated in favor of `list`
- */
-export function repeat<T>(
-  items: MaybeState<T[]>,
-  keyFn: (value: T, index: number) => string | number | symbol,
-  renderFn: ($value: State<T>, $index: State<number>, ctx: ViewContext) => ViewResult,
-): Markup {
-  const $items = toState(items);
-  return createMarkup("$repeat", { $items, keyFn, renderFn });
-}
-
-/**
- * Calls `renderFn` for each item in `items`. Dynamically adds and removes views as items change.
- * The result of `keyFn` is used to compare items and decide if item was added, removed or updated.
  */
 export function list<T>(
-  items: Reactive<T[]>,
+  items: MaybeReactive<T[]>,
   keyFn: (value: T, index: number) => string | number | symbol,
   renderFn: (item: Reactive<T>, index: Reactive<number>, ctx: ViewContext) => ViewResult,
 ): Markup {
-  return createMarkup("$list", { items, keyFn, renderFn });
+  return createMarkup("$list", { items: compose(() => items), keyFn, renderFn });
 }
 
 /**
