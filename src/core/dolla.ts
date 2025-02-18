@@ -6,7 +6,7 @@ import { assertInstanceOf, isFunction, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, noOp } from "../utils.js";
 import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
 import { Passthrough } from "../views/passthrough.js";
-import { Batch } from "./batch.js";
+// import { Batch } from "./batch.js";
 import {
   type ElementContext,
   type StoreProviderContext,
@@ -15,7 +15,6 @@ import {
 } from "./context.js";
 import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
-import { Stats } from "./stats.js";
 import { Store, StoreError, StoreFunction } from "./store.js";
 
 // Affects which log messages will print and how much debugging info is included in the DOM.
@@ -60,10 +59,7 @@ export type LoggerOptions = {
 };
 
 export class Dolla implements StoreProviderContext, StoreConsumerContext {
-  readonly batch: Batch;
-
-  // Remove `private` when there are public methods to call.
-  private readonly stats: Stats;
+  // readonly batch: Batch;
 
   readonly http: HTTP;
   readonly i18n: I18n;
@@ -104,8 +100,7 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
   #modules: (() => Promise<any>)[] = [];
 
   constructor() {
-    this.batch = new Batch(this);
-    this.stats = new Stats(this);
+    // this.batch = new Batch(this);
     this.http = new HTTP(this);
     this.i18n = new I18n(this);
   }

@@ -1,6 +1,5 @@
-import { isReactivish, MaybeReactivish, watch } from "../_reactivish.js";
 import { type MarkupElement } from "../markup.js";
-import { UnsubscribeFunction } from "../reactive.js";
+import { isReactive, get, effect, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
@@ -12,12 +11,12 @@ export class Outlet implements MarkupElement {
   node = document.createTextNode("");
   isMounted = false;
 
-  source: MaybeReactivish<MarkupElement[]>;
+  source: MaybeReactive<MarkupElement[]>;
   elements: MarkupElement[] = [];
 
   unsubscribe?: UnsubscribeFunction;
 
-  constructor(source: MaybeReactivish<MarkupElement[]>) {
+  constructor(source: MaybeReactive<MarkupElement[]>) {
     this.source = source;
   }
 
@@ -27,9 +26,9 @@ export class Outlet implements MarkupElement {
 
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
-      if (isReactivish<MarkupElement[]>(this.source)) {
-        this.unsubscribe = watch(this.source, (children) => {
-          this.update(children);
+      if (isReactive<MarkupElement[]>(this.source)) {
+        this.unsubscribe = effect(() => {
+          this.update(get(this.source));
         });
       } else {
         this.update(this.elements);

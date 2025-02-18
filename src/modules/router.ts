@@ -1,6 +1,6 @@
 import type { Dolla, Logger } from "../core/dolla.js";
 import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
-import { atom, compose, type UnsubscribeFunction } from "../core/reactive.js";
+import { atom, compose, type UnsubscribeFunction } from "../core/signals.js";
 import { IS_ROUTER } from "../core/symbols.js";
 import { assertObject, isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
@@ -182,22 +182,22 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly pattern = compose((use) => use(this.#match)?.pattern);
+  readonly pattern = compose(() => this.#match.value?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly path = compose((use) => use(this.#match)?.path ?? window.location.pathname);
+  readonly path = compose(() => this.#match.value?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly params = compose((use) => use(this.#match)?.params ?? {}, { equals: shallowEqual });
+  readonly params = compose(() => this.#match.value?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  readonly query = compose((use) => use(this.#match)?.query ?? {}, { equals: shallowEqual });
+  readonly query = compose(() => this.#match.value?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
@@ -375,6 +375,31 @@ export class Router {
   }
 
   /**
+   * Takes a matched route and mounts it.
+   */
+  #mountRoute(rootView: ViewElement, match: RouteMatch<RouteMeta>) {
+    const layers = match.meta.layers!;
+
+    // Diff and update route layers.
+    for (let i = 0; i < layers.length; i++) {
+      const matchedLayer = layers[i];
+      const activeLayer = this.#activeLayers[i];
+
+      if (activeLayer?.id !== matchedLayer.id) {
+        // Discard all previously active layers starting at this depth.
+        this.#activeLayers = this.#activeLayers.slice(0, i);
+        activeLayer?.view.unmount();
+
+        const parentLayer = this.#activeLayers.at(-1);
+        const parent = parentLayer?.view ?? rootView;
+
+        const view = parent.setChildView(matchedLayer.view);
+        this.#activeLayers.push({ id: matchedLayer.id, view });
+      }
+    }
+  }
+
+  /**
    * Takes a URL and finds a match, following redirects.
    */
   async #resolveRoute(
@@ -434,31 +459,6 @@ export class Router {
       ]);
     } else {
       return { match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] };
-    }
-  }
-
-  /**
-   * Takes a matched route and mounts it.
-   */
-  #mountRoute(rootView: ViewElement, match: RouteMatch<RouteMeta>) {
-    const layers = match.meta.layers!;
-
-    // Diff and update route layers.
-    for (let i = 0; i < layers.length; i++) {
-      const matchedLayer = layers[i];
-      const activeLayer = this.#activeLayers[i];
-
-      if (activeLayer?.id !== matchedLayer.id) {
-        // Discard all previously active layers starting at this depth.
-        this.#activeLayers = this.#activeLayers.slice(0, i);
-        activeLayer?.view.unmount();
-
-        const parentLayer = this.#activeLayers.at(-1);
-        const parent = parentLayer?.view ?? rootView;
-
-        const view = parent.setChildView(matchedLayer.view);
-        this.#activeLayers.push({ id: matchedLayer.id, view });
-      }
     }
   }
 

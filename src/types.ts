@@ -1,7 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
-import type { State } from "./core/state.js";
-import { Reactive } from "./core/reactive.js";
+import { Reactive } from "./core/signals.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -14,18 +13,15 @@ export type Renderable =
   | false
   | null
   | undefined
-  | State<any>
   | Reactive<any>
-  | (string | number | Markup | false | null | undefined | State<any> | Reactive<any>)[];
+  | (string | number | Markup | false | null | undefined | Reactive<any>)[];
 
 export type Stringable = { toString(): string };
 
-type MaybeReactivish<T> = MaybeReactive<T> | MaybeState<T>;
 type MaybeReactive<T> = T | Reactive<T> | Reactive<T | undefined>;
-type MaybeState<T> = T | State<T> | State<T | undefined>;
 
-type OptionalProperty<T> = MaybeReactivish<T>;
-type RequiredProperty<T> = T | State<T> | Reactive<T>;
+type OptionalProperty<T> = MaybeReactive<T>;
+type RequiredProperty<T> = T | Reactive<T>;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -148,12 +144,12 @@ export interface ElementProps {
   style?:
     | string
     | CSSProperties
-    | State<string>
-    | State<CSSProperties>
-    | State<string | CSSProperties>
-    | State<string | undefined>
-    | State<CSSProperties | undefined>
-    | State<string | CSSProperties | undefined>;
+    | Reactive<string>
+    | Reactive<CSSProperties>
+    | Reactive<string | CSSProperties>
+    | Reactive<string | undefined>
+    | Reactive<CSSProperties | undefined>
+    | Reactive<string | CSSProperties | undefined>;
 
   /*=================================*\
   ||              Events             ||
@@ -1466,7 +1462,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeReactivish<any>;
+  [className: string]: MaybeReactive<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -2501,14 +2497,14 @@ interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementP
     | MediaSource
     | Blob
     | File
-    | State<MediaStream>
-    | State<MediaStream | undefined>
-    | State<MediaSource>
-    | State<MediaSource | undefined>
-    | State<Blob>
-    | State<Blob | undefined>
-    | State<File>
-    | State<File | undefined>;
+    | Reactive<MediaStream>
+    | Reactive<MediaStream | undefined>
+    | Reactive<MediaSource>
+    | Reactive<MediaSource | undefined>
+    | Reactive<Blob>
+    | Reactive<Blob | undefined>
+    | Reactive<File>
+    | Reactive<File | undefined>;
 
   /**
    * The current audio volume of the media element. Must be a number between 0 and 1.
@@ -3092,7 +3088,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeReactivish<string>;
+  sizes?: MaybeReactive<string>;
 
   /**
    * The image URL.

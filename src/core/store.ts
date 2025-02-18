@@ -8,11 +8,10 @@ import {
   type WildcardListenerMap,
 } from "./context.js";
 import type { Logger } from "./dolla.js";
-import { createWatcher, type MaybeState, type StateValues, type StopFunction } from "./state.js";
 import { IS_STORE } from "./symbols.js";
 import { isFunction } from "../typeChecking.js";
-import { compose, EffectCallback, UnsubscribeFunction } from "./reactive.js";
-import { getUniqueId, noOp } from "../utils.js";
+import { effect, EffectCallback, UnsubscribeFunction } from "./signals.js";
+import { getUniqueId } from "../utils.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
 
@@ -38,12 +37,6 @@ export interface StoreContext<Events extends GenericEvents = GenericEvents>
    * Registers a callback to run just after this store is unmounted.
    */
   onUnmount(callback: () => void): void;
-
-  /**
-   * Watch a set of states. The callback is called when any of the states receive a new value.
-   * Watchers will be automatically stopped when this store is unmounted.
-   */
-  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
 
   /**
    * Passes a getter function to `callback` that will track reactive states and return their current values.
@@ -153,32 +146,6 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
     this.__store._emitter.on("unmounted", callback);
   }
 
-  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction {
-    const store = this.__store;
-
-    if (store.isMounted) {
-      // If called when the component is connected, we assume this code is in a lifecycle hook
-      // where it will be triggered at some point again after the component is reconnected.
-      return store._watcher.watch(states, callback);
-    } else {
-      // This should only happen if called in the body of the component function.
-      // This code is not always re-run between when a component is unmounted and remounted.
-      let stop: StopFunction | undefined;
-      let isStopped = false;
-      store._emitter.on("mounted", () => {
-        if (!isStopped) {
-          stop = store._watcher.watch(states, callback);
-        }
-      });
-      return () => {
-        if (stop != null) {
-          isStopped = true;
-          stop();
-        }
-      };
-    }
-  }
-
   effect(callback: EffectCallback) {
     const store = this.__store;
 
@@ -187,7 +154,7 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
     if (store.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = compose<void>(callback).subscribe(noOp);
+      const unsubscribe = effect(callback);
       store._unsubscribes.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -197,7 +164,7 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
       let disposed = false;
       store._emitter.on("mounted", () => {
         if (!disposed) {
-          unsubscribe = compose<void>(callback).subscribe(noOp);
+          unsubscribe = effect(callback);
           store._unsubscribes.push(unsubscribe);
         }
       });
@@ -231,7 +198,6 @@ export class Store<Options, Value> {
   _emitter = new Emitter<StoreEvents>();
   _wildcardListeners: WildcardListenerMap = new Map();
   _logger!: Logger;
-  _watcher = createWatcher();
   _unsubscribes: UnsubscribeFunction[] = [];
   _name;
   _id = getUniqueId();
@@ -280,7 +246,6 @@ export class Store<Options, Value> {
     this.isMounted = false;
     this._emitter.emit("unmounted");
     this._emitter.clear();
-    this._watcher.stopAll();
 
     for (const unsubscribe of this._unsubscribes) {
       unsubscribe();

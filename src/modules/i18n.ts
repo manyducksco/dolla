@@ -1,5 +1,5 @@
 import type { Dolla, Logger } from "../core/dolla.js";
-import { atom, compose, type MaybeReactive, type Reactive } from "../core/reactive.js";
+import { atom, compose, get, type MaybeReactive, type Reactive } from "../core/signals.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -507,15 +507,15 @@ export class I18n {
       );
     }
 
-    return compose((use) => {
+    return compose(() => {
       const values: Record<string, any> = {};
 
       // Track all option values.
       for (const key in options) {
-        values[key] = use(options[key]);
+        values[key] = get(options[key]);
       }
 
-      return this.#getValue(use(this.#locale), selector, values);
+      return this.#getValue(this.#locale.value, selector, values);
     });
   }
 
@@ -618,9 +618,9 @@ export class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
   number(count: MaybeReactive<number | bigint>, options?: Intl.NumberFormatOptions): Reactive<string> {
-    return compose((use) => {
-      use(this.#locale); // track to update when locale changes
-      return this.#formatNumber(use(count), options);
+    return compose(() => {
+      this.#locale.value; // track to update when locale changes
+      return this.#formatNumber(get(count), options);
     });
   }
 
@@ -641,9 +641,9 @@ export class I18n {
     date?: MaybeReactive<string | number | Date | undefined>,
     options?: Intl.DateTimeFormatOptions,
   ): Reactive<string> {
-    return compose((use) => {
-      use(this.#locale); // track to update when locale changes
-      return this.#formatDateTime(use(date), options);
+    return compose(() => {
+      this.#locale.value; // track to update when locale changes
+      return this.#formatDateTime(get(date), options);
     });
   }
 
@@ -661,9 +661,9 @@ export class I18n {
    * const $formatted = Dolla.i18n.list(list, {  });
    */
   list(list: MaybeReactive<Iterable<string>>, options?: Intl.ListFormatOptions): Reactive<string> {
-    return compose((use) => {
-      use(this.#locale); // track to update when locale changes
-      return this.#formatList(use(list), options);
+    return compose(() => {
+      this.#locale.value; // track to update when locale changes
+      return this.#formatList(get(list), options);
     });
   }
 

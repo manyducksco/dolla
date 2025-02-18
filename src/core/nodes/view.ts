@@ -1,30 +1,29 @@
 import { Emitter } from "@manyducks.co/emitter";
 import { isArrayOf, isFunction, typeOf } from "../../typeChecking.js";
-import { getUniqueId, noOp } from "../../utils.js";
+import { Renderable } from "../../types.js";
+import { getUniqueId } from "../../utils.js";
 import {
-  type ComponentContext,
   ContextEvent,
+  type ComponentContext,
   type ElementContext,
   type GenericEvents,
-  type StoreProviderContext,
   type StoreConsumerContext,
+  type StoreProviderContext,
   type WildcardListenerMap,
 } from "../context.js";
 import type { Logger } from "../dolla.js";
 import {
+  cond,
   constructMarkup,
   createMarkup,
   groupElements,
   isMarkup,
   list,
-  cond,
   portal,
   type Markup,
   type MarkupElement,
 } from "../markup.js";
-import { atom, compose, Reactive, type EffectCallback, type UnsubscribeFunction } from "../reactive.js";
-import { createWatcher, isState, type MaybeState, type State, type StateValues, type StopFunction } from "../state.js";
-import { _onViewMounted, _onViewUnmounted } from "../stats.js";
+import { atom, effect, isReactive, type EffectCallback, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
@@ -35,7 +34,7 @@ import { IS_MARKUP_ELEMENT } from "../symbols.js";
 /**
  * Any valid value that a View can return.
  */
-export type ViewResult = Node | Reactive<any> | State<any> | Markup | Markup[] | null;
+export type ViewResult = Node | Reactive<any> | Markup | Markup[] | null;
 
 export type ViewFunction<P> = (this: ViewContext, props: P, context: ViewContext) => ViewResult;
 
@@ -83,13 +82,6 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
    * Registers a callback to run just after this view is unmounted.
    */
   onUnmount(callback: () => void): void;
-
-  /**
-   * Watch a set of states. The callback is called when any of the states receive a new value.
-   * Watchers will be automatically stopped when this view is unmounted.
-   * @deprecated
-   */
-  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction;
 
   /**
    * Passes a getter function to `callback` that will track reactive states and return their current values.
@@ -271,32 +263,6 @@ class Context implements ViewContext {
     this.__view._emitter.on("unmounted", callback);
   }
 
-  watch<T extends MaybeState<any>[]>(states: [...T], callback: (...values: StateValues<T>) => void): StopFunction {
-    const view = this.__view;
-
-    if (view.isMounted) {
-      // If called when the component is connected, we assume this code is in a lifecycle hook
-      // where it will be triggered at some point again after the component is reconnected.
-      return view._watcher.watch(states, callback);
-    } else {
-      // This should only happen if called in the body of the component function.
-      // This code is not always re-run between when a component is unmounted and remounted.
-      let stop: StopFunction | undefined;
-      let isStopped = false;
-      view._emitter.on("mounted", () => {
-        if (!isStopped) {
-          stop = view._watcher.watch(states, callback);
-        }
-      });
-      return () => {
-        if (stop != null) {
-          isStopped = true;
-          stop();
-        }
-      };
-    }
-  }
-
   effect(callback: EffectCallback) {
     const view = this.__view;
 
@@ -305,7 +271,7 @@ class Context implements ViewContext {
     if (view.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = compose<void>(callback).subscribe(noOp);
+      const unsubscribe = effect(callback);
       this.__view._unsubscribes.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -315,7 +281,7 @@ class Context implements ViewContext {
       let disposed = false;
       view._emitter.on("mounted", () => {
         if (!disposed) {
-          unsubscribe = compose<void>(callback).subscribe(noOp);
+          unsubscribe = effect(callback);
           this.__view._unsubscribes.push(unsubscribe);
         }
       });
@@ -360,7 +326,6 @@ export class View<P> implements ViewElement {
 
   _children = atom<MarkupElement[]>([]);
 
-  _watcher = createWatcher();
   _unsubscribes: UnsubscribeFunction[] = [];
   _emitter = new Emitter<ViewEvents>();
   _wildcardListeners: WildcardListenerMap = new Map();
@@ -423,8 +388,6 @@ export class View<P> implements ViewElement {
     if (!wasConnected) {
       this.isMounted = true;
 
-      _onViewMounted();
-
       // TODO: Figure out why rAF is needed for updates to DOM nodes to work in onMount callbacks.
       requestAnimationFrame(() => {
         this._emitter.emit("mounted");
@@ -440,10 +403,6 @@ export class View<P> implements ViewElement {
       this._element.unmount(parentIsUnmounting);
     }
 
-    if (this.isMounted) {
-      _onViewUnmounted();
-    }
-
     this.isMounted = false;
 
     this._emitter.emit("unmounted");
@@ -455,9 +414,6 @@ export class View<P> implements ViewElement {
       unsubscribe();
     }
     this._unsubscribes.length = 0;
-
-    // TODO: Deprecated
-    this._watcher.stopAll();
   }
 
   setChildView(fn: ViewFunction<{}>) {
@@ -492,12 +448,12 @@ export class View<P> implements ViewElement {
       // Do nothing.
     } else if (result instanceof Node) {
       this._element = groupElements(constructMarkup(this._elementContext, createMarkup("$node", { value: result })));
+    } else if (isReactive(result)) {
+      this._element = groupElements(
+        constructMarkup(this._elementContext, createMarkup("$dynamic", { source: result as Reactive<Renderable> })),
+      );
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
       this._element = groupElements(constructMarkup(this._elementContext, result));
-    } else if (isState(result)) {
-      this._element = groupElements(
-        constructMarkup(this._elementContext, createMarkup("$observer", { sources: [result], renderFn: (x) => x })),
-      );
     } else {
       const error = new TypeError(
         `Expected '${

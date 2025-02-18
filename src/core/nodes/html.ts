@@ -3,11 +3,8 @@ import { getUniqueId, omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { constructMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { isRef, type Ref } from "../ref.js";
-import { isState, type State, type StopFunction } from "../state.js";
-import { isReactive, Reactive } from "../reactive.js";
-import { isReactivish, MaybeReactivish, watch } from "../_reactivish.js";
+import { effect, get, isReactive, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
-import { UnsubscribeFunction } from "../reactive.js";
 
 //const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -30,8 +27,6 @@ export class HTML implements MarkupElement {
   elementContext;
   uniqueId = getUniqueId();
 
-  _batchWrite;
-
   // Track the ref so we can nullify it on unmount.
   ref?: Ref<any>;
 
@@ -44,8 +39,6 @@ export class HTML implements MarkupElement {
 
   constructor({ tag, props, children, elementContext }: HTMLOptions) {
     elementContext = { ...elementContext };
-
-    this._batchWrite = elementContext.root.batch.write.bind(elementContext.root.batch);
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
@@ -137,30 +130,10 @@ export class HTML implements MarkupElement {
     return `${this.uniqueId}:${type}:${value}`;
   }
 
-  _mutate(callback: () => any, updateKey?: string) {
-    if (!this.isMounted) {
-      // DOM operations on nodes that aren't connected yet shouldn't cause any
-      // layout thrashing. Just execute now.
-      callback();
-    } else {
-      // If we are mounted we have to be more mindful of layout thrashing.
-      // These mutations get batched.
-      this._batchWrite(callback, updateKey);
-    }
-  }
-
-  attachProp<T>(value: MaybeReactivish<T>, callback: (value: T) => void, updateKey: string) {
+  attachProp<T>(value: MaybeReactive<T>, callback: (value: T) => void) {
     if (isReactive(value)) {
-      // Don't need to batch because effects are already run in a microtask.
-      this.unsubscribers.push(value.subscribe(callback));
-    } else if (isState(value)) {
-      this.unsubscribers.push(
-        value.watch((current) => {
-          this._mutate(() => callback(current), updateKey);
-        }),
-      );
+      this.unsubscribers.push(effect(() => callback(get(value))));
     } else {
-      // Don't need to batch because the only time non-reactive values are set is before mount.
       callback(value);
     }
   }
@@ -173,37 +146,19 @@ export class HTML implements MarkupElement {
         const values = value as Record<string, any>;
         // Set attributes directly without mapping props
         for (const name in values) {
-          this.attachProp(
-            values[name],
-            (current) => {
-              if (current == null) {
-                (element as any).removeAttribute(name);
-              } else {
-                (element as any).setAttribute(name, String(current));
-              }
-            },
-            this.getUpdateKey("attr", name),
-          );
-        }
-      } else if (key === "eventListeners") {
-        const values = value as Record<string, any>;
-
-        for (const name in values) {
-          const listener: (e: Event) => void = isState<(e: Event) => void>(value)
-            ? (e: Event) => value.get()(e)
-            : (value as (e: Event) => void);
-
-          element.addEventListener(name, listener);
-
-          this.unsubscribers.push(() => {
-            element.removeEventListener(name, listener);
+          this.attachProp(values[name], (current) => {
+            if (current == null) {
+              (element as any).removeAttribute(name);
+            } else {
+              (element as any).setAttribute(name, String(current));
+            }
           });
         }
       } else if (key === "onClickOutside" || key === "onclickoutside") {
         const listener = (e: Event) => {
           if (this.canClickAway && !element.contains(e.target as any)) {
-            if (isState<(e: Event) => void>(value)) {
-              value.get()(e);
+            if (isReactive<(e: Event) => void>(value)) {
+              value.value(e);
             } else {
               (value as (e: Event) => void)(e);
             }
@@ -220,8 +175,8 @@ export class HTML implements MarkupElement {
       } else if (isCamelCaseEventName(key)) {
         const eventName = key.slice(2).toLowerCase();
 
-        const listener: (e: Event) => void = isState<(e: Event) => void>(value)
-          ? (e: Event) => value.get()(e)
+        const listener: (e: Event) => void = isReactive<(e: Event) => void>(value)
+          ? (e: Event) => value.value(e)
           : (value as (e: Event) => void);
 
         element.addEventListener(eventName, listener);
@@ -231,68 +186,48 @@ export class HTML implements MarkupElement {
         });
       } else if (key.includes("-")) {
         // Names with dashes in them are not valid prop names, so they are treated as attributes.
-        this.attachProp(
-          value,
-          (current) => {
-            if (current == null) {
-              element.removeAttribute(key);
-            } else {
-              element.setAttribute(key, String(current));
-            }
-          },
-          this.getUpdateKey("attr", key),
-        );
+        this.attachProp(value, (current) => {
+          if (current == null) {
+            element.removeAttribute(key);
+          } else {
+            element.setAttribute(key, String(current));
+          }
+        });
       } else if (!privateProps.includes(key)) {
         if (this.elementContext.isSVG) {
-          this.attachProp(
-            value,
-            (current) => {
-              if (current != null) {
-                element.setAttribute(key, String(props[key]));
-              } else {
-                element.removeAttribute(key);
-              }
-            },
-            this.getUpdateKey("attr", key),
-          );
+          this.attachProp(value, (current) => {
+            if (current != null) {
+              element.setAttribute(key, String(props[key]));
+            } else {
+              element.removeAttribute(key);
+            }
+          });
         } else {
           switch (key) {
             case "contentEditable":
             case "value":
-              this.attachProp(
-                value,
-                (current) => {
-                  (element as any)[key] = String(current);
-                },
-                this.getUpdateKey("prop", key),
-              );
+              this.attachProp(value, (current) => {
+                (element as any)[key] = String(current);
+              });
               break;
 
             case "for":
-              this.attachProp(
-                value,
-                (current) => {
-                  (element as any).htmlFor = current;
-                },
-                this.getUpdateKey("prop", "htmlFor"),
-              );
+              this.attachProp(value, (current) => {
+                (element as any).htmlFor = current;
+              });
               break;
 
             case "checked":
-              this.attachProp(
-                value,
-                (current) => {
-                  (element as any).checked = current;
+              this.attachProp(value, (current) => {
+                (element as any).checked = current;
 
-                  // Set attribute also or styles don't take effect.
-                  if (current) {
-                    element.setAttribute("checked", "");
-                  } else {
-                    element.removeAttribute("checked");
-                  }
-                },
-                this.getUpdateKey("prop", "checked"),
-              );
+                // Set attribute also or styles don't take effect.
+                if (current) {
+                  element.setAttribute("checked", "");
+                } else {
+                  element.removeAttribute("checked");
+                }
+              });
               break;
 
             // Attribute-aliased props
@@ -302,45 +237,33 @@ export class HTML implements MarkupElement {
             case "type":
             case "title": {
               const _key = key.toLowerCase();
-              this.attachProp(
-                value,
-                (current) => {
-                  if (current == undefined) {
-                    element.removeAttribute(_key);
-                  } else {
-                    element.setAttribute(_key, String(current));
-                  }
-                },
-                this.getUpdateKey("attr", _key),
-              );
+              this.attachProp(value, (current) => {
+                if (current == undefined) {
+                  element.removeAttribute(_key);
+                } else {
+                  element.setAttribute(_key, String(current));
+                }
+              });
               break;
             }
 
             case "autocomplete":
             case "autocapitalize":
-              this.attachProp(
-                value,
-                (current) => {
-                  if (typeof current === "string") {
-                    (element as any).autocomplete = current;
-                  } else if (current) {
-                    (element as any).autocomplete = "on";
-                  } else {
-                    (element as any).autocomplete = "off";
-                  }
-                },
-                this.getUpdateKey("prop", key),
-              );
+              this.attachProp(value, (current) => {
+                if (typeof current === "string") {
+                  (element as any).autocomplete = current;
+                } else if (current) {
+                  (element as any).autocomplete = "on";
+                } else {
+                  (element as any).autocomplete = "off";
+                }
+              });
               break;
 
             default: {
-              this.attachProp(
-                value,
-                (current) => {
-                  (element as any)[key] = current;
-                },
-                this.getUpdateKey("prop", key),
-              );
+              this.attachProp(value, (current) => {
+                (element as any)[key] = current;
+              });
               break;
             }
           }
@@ -350,41 +273,21 @@ export class HTML implements MarkupElement {
   }
 
   applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFunction[]) {
-    const propUnsubscribers: StopFunction[] = [];
+    const propUnsubscribers: UnsubscribeFunction[] = [];
 
     if (isReactive(styles)) {
       let unapply: () => void;
 
-      const unsubscribe = styles.subscribe((current) => {
-        // Don't need to _mutate because this always resolves in a microtask.
-
+      const unsubscribe = effect(() => {
         if (isFunction(unapply)) {
           unapply();
         }
         element.style.cssText = "";
-        unapply = this.applyStyles(element, current, unsubscribers);
+        unapply = this.applyStyles(element, styles.value, unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
       propUnsubscribers.push(unsubscribe);
-    } else if (isState(styles)) {
-      let unapply: () => void;
-
-      const stop = styles.watch((current) => {
-        this._mutate(
-          () => {
-            if (isFunction(unapply)) {
-              unapply();
-            }
-            element.style.cssText = "";
-            unapply = this.applyStyles(element, current, unsubscribers);
-          },
-          this.getUpdateKey("styles", "*"),
-        );
-      });
-
-      unsubscribers.push(stop);
-      propUnsubscribers.push(stop);
     } else {
       const mapped = getStyleMap(styles);
 
@@ -392,9 +295,9 @@ export class HTML implements MarkupElement {
         const { value, priority } = mapped[name];
 
         if (isReactive(value)) {
-          const unsubscribe = value.subscribe((current) => {
-            if (current) {
-              element.style.setProperty(name, String(current), priority);
+          const unsubscribe = effect(() => {
+            if (value.value) {
+              element.style.setProperty(name, String(value.value), priority);
             } else {
               element.style.removeProperty(name);
             }
@@ -402,19 +305,6 @@ export class HTML implements MarkupElement {
 
           unsubscribers.push(unsubscribe);
           propUnsubscribers.push(unsubscribe);
-        } else if (isState(value)) {
-          const stop = value.watch((current) => {
-            this._mutate(() => {
-              if (current) {
-                element.style.setProperty(name, String(current), priority);
-              } else {
-                element.style.removeProperty(name);
-              }
-            }); // NOTE: Not keyed; all update callbacks must run to apply all properties.
-          });
-
-          unsubscribers.push(stop);
-          propUnsubscribers.push(stop);
         } else if (value != undefined) {
           element.style.setProperty(name, String(value));
         }
@@ -429,42 +319,22 @@ export class HTML implements MarkupElement {
     };
   }
 
-  applyClasses(element: HTMLElement | SVGElement, classes: unknown, stopCallbacks: StopFunction[]) {
-    const classUnsubscribers: StopFunction[] = [];
+  applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFunction[]) {
+    const classUnsubscribers: UnsubscribeFunction[] = [];
 
     if (isReactive(classes)) {
       let unapply: () => void;
 
-      const unsubscribe = classes.subscribe((current) => {
-        // No need to batch; resolved in microtask.
-
+      const unsubscribe = effect(() => {
         if (isFunction(unapply)) {
           unapply();
         }
         element.removeAttribute("class");
-        unapply = this.applyClasses(element, current, stopCallbacks);
+        unapply = this.applyClasses(element, classes.value, unsubscribers);
       });
 
-      stopCallbacks.push(unsubscribe);
+      unsubscribers.push(unsubscribe);
       classUnsubscribers.push(unsubscribe);
-    } else if (isState(classes)) {
-      let unapply: () => void;
-
-      const stop = classes.watch((current) => {
-        this._mutate(
-          () => {
-            if (isFunction(unapply)) {
-              unapply();
-            }
-            element.removeAttribute("class");
-            unapply = this.applyClasses(element, current, stopCallbacks);
-          },
-          this.getUpdateKey("attr", "class"),
-        );
-      });
-
-      stopCallbacks.push(stop);
-      classUnsubscribers.push(stop);
     } else {
       const mapped = getClassMap(classes);
 
@@ -472,29 +342,16 @@ export class HTML implements MarkupElement {
         const value = mapped[name];
 
         if (isReactive(value)) {
-          const unsubscribe = value.subscribe((current) => {
-            if (current) {
+          const unsubscribe = effect(() => {
+            if (value.value) {
               element.classList.add(name);
             } else {
               element.classList.remove(name);
             }
           });
 
-          stopCallbacks.push(unsubscribe);
+          unsubscribers.push(unsubscribe);
           classUnsubscribers.push(unsubscribe);
-        } else if (isState(value)) {
-          const stop = value.watch((current) => {
-            this._mutate(() => {
-              if (current) {
-                element.classList.add(name);
-              } else {
-                element.classList.remove(name);
-              }
-            }); // NOTE: Not keyed; all update callbacks must run to apply all classes.
-          });
-
-          stopCallbacks.push(stop);
-          classUnsubscribers.push(stop);
         } else if (value) {
           element.classList.add(name);
         }
@@ -504,7 +361,7 @@ export class HTML implements MarkupElement {
     return function unapply() {
       for (const unsubscribe of classUnsubscribers) {
         unsubscribe();
-        stopCallbacks.splice(stopCallbacks.indexOf(unsubscribe), 1);
+        unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
       }
     };
   }

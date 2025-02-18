@@ -2,10 +2,7 @@ import htm from "htm/mini";
 
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
-import type { MaybeReactivish, Reactivish } from "./_reactivish.js";
 import type { ElementContext } from "./context.js";
-import { Observer } from "./nodes/_observer.js";
-import { Repeat } from "./nodes/_repeat.js";
 import { DOMNode } from "./nodes/dom.js";
 import { Dynamic } from "./nodes/dynamic.js";
 import { HTML } from "./nodes/html.js";
@@ -13,8 +10,7 @@ import { List } from "./nodes/list.js";
 import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
-import { compose, isReactive, MaybeReactive, type Reactive } from "./reactive.js";
-import { isState, type MaybeState, type State } from "./state.js";
+import { compose, isReactive, MaybeReactive, type Reactive } from "./signals.js";
 import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
@@ -194,13 +190,6 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
         return createMarkup("$dynamic", { source: x });
       }
 
-      if (isState(x)) {
-        return createMarkup("$observer", {
-          sources: [x],
-          renderFn: (x) => x,
-        });
-      }
-
       // fallback to displaying value as text
       return createMarkup("$text", { value: x });
     });
@@ -208,12 +197,6 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
 
 export interface MarkupAttributes {
   $text: { value: any };
-  $repeat: {
-    // TODO: Deprecated
-    $items: State<any[]>;
-    keyFn: (value: any, index: number) => string | number | symbol;
-    renderFn: ($item: State<any>, $index: State<number>, c: ViewContext) => ViewResult;
-  };
   $list: {
     items: Reactive<any[]>;
     keyFn: (value: any, index: number) => string | number | symbol;
@@ -222,13 +205,8 @@ export interface MarkupAttributes {
   $dynamic: {
     source: Reactive<Renderable>;
   };
-  $observer: {
-    // TODO: Deprecated
-    sources: MaybeState<any>[];
-    renderFn: (...items: any) => Renderable;
-  };
   $outlet: {
-    children: Reactivish<MarkupElement[]>;
+    children: MaybeReactive<MarkupElement[]>;
   };
   $node: {
     value: Node;
@@ -279,33 +257,18 @@ export const html = htm.bind(createMarkup);
 /**
  * Displays content conditionally. When `condition` holds a truthy value, `thenContent` is displayed; when `condition` holds a falsy value, `elseContent` is displayed.
  */
-export function cond(condition: MaybeReactivish<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  if (isReactive(condition)) {
-    return createMarkup("$dynamic", {
-      source: compose((get) => {
-        const value = get(condition);
-        if (value && thenContent) {
-          return thenContent;
-        } else if (!value && elseContent) {
-          return elseContent;
-        }
-        return null;
-      }),
-    });
-  } else {
-    // State
-    return createMarkup("$observer", {
-      sources: [condition],
-      renderFn: (value) => {
-        if (value && thenContent) {
-          return thenContent;
-        } else if (!value && elseContent) {
-          return elseContent;
-        }
-        return null;
-      },
-    });
-  }
+export function cond(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
+  return createMarkup("$dynamic", {
+    source: compose((get) => {
+      const value = get(condition);
+      if (value && thenContent) {
+        return thenContent;
+      } else if (!value && elseContent) {
+        return elseContent;
+      }
+      return null;
+    }),
+  });
 }
 
 /**
@@ -366,25 +329,6 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
             elementContext,
           });
         }
-        case "$repeat": {
-          // TODO: Deprecated
-          const attrs = item.props! as MarkupAttributes["$repeat"];
-          return new Repeat({
-            $items: attrs.$items,
-            keyFn: attrs.keyFn,
-            renderFn: attrs.renderFn,
-            elementContext,
-          });
-        }
-        case "$observer": {
-          // TODO: Deprecated
-          const attrs = item.props! as MarkupAttributes["$observer"];
-          return new Observer({
-            sources: attrs.sources,
-            renderFn: attrs.renderFn,
-            elementContext,
-          });
-        }
         case "$outlet": {
           const attrs = item.props! as MarkupAttributes["$outlet"];
           return new Outlet(attrs.children);
@@ -433,7 +377,6 @@ export function isRenderable(value: unknown): value is Renderable {
     isNumber(value) ||
     isMarkup(value) ||
     isReactive(value) ||
-    isState(value) ||
     isArrayOf(isRenderable, value)
   );
 }

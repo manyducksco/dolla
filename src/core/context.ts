@@ -1,7 +1,6 @@
 import type { Emitter } from "@manyducks.co/emitter";
 import type { Dolla } from "./dolla";
 import type { Store, StoreFunction } from "./store";
-import { EffectCallback } from "./reactive";
 
 /*===========================*\
 ||       ElementContext      ||
