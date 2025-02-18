@@ -232,6 +232,9 @@ export class Atom<T> implements Reactive<T> {
   }
 }
 
+/**
+ * @deprecated
+ */
 type Getter = <T>(value: MaybeReactive<T>) => T;
 
 class Composed<T> implements Reactive<T> {
@@ -330,7 +333,7 @@ export function atom<T>(value?: T, options?: ReactiveOptions<T>) {
  * const count = atom(1);
  * const doubled = compose(() => count.value * 2);
  */
-export function compose<T>(fn: (get: Getter) => MaybeReactive<T>, options?: ReactiveOptions<T>): Composed<T> {
+export function compose<T>(fn: (previousValue?: T) => MaybeReactive<T>, options?: ReactiveOptions<T>): Composed<T> {
   return new Composed<T>({
     currentValue: undefined,
     equals: options?.equals ?? Object.is,
@@ -340,7 +343,7 @@ export function compose<T>(fn: (get: Getter) => MaybeReactive<T>, options?: Reac
     depsTail: undefined,
     flags: SubscriberFlags.Computed | SubscriberFlags.Dirty,
     getter: (cachedValue?: unknown) => {
-      let returned = fn(get);
+      let returned = fn(cachedValue as T | undefined);
 
       // If a reactive is returned, track it and return its value.
       if (isReactive(returned)) {
@@ -415,7 +418,7 @@ export function peek<T>(fnOrValue: (() => T) | MaybeReactive<T>) {
   return value;
 }
 
-export type EffectCallback = (getter: Getter) => void;
+export type EffectCallback = () => void;
 
 /**
  * Creates a tracked scope that re-runs whenever the values of any tracked reactives changes.
@@ -426,9 +429,7 @@ export type EffectCallback = (getter: Getter) => void;
  */
 export function effect(fn: EffectCallback): UnsubscribeFunction {
   const e: Effect = {
-    fn: () => {
-      fn(get);
-    },
+    fn,
     subs: undefined,
     subsTail: undefined,
     deps: undefined,

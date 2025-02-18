@@ -93,10 +93,10 @@ test("peek: prevents tracking", () => {
 test("solves diamond problem", () => {
   const count = atom(1);
 
-  const left = compose((get) => get(count) + 5);
-  const right = compose((get) => get(count) / 2);
+  const left = compose(() => count.value + 5);
+  const right = compose(() => count.value / 2);
 
-  const sum = compose((get) => get(left) + get(right));
+  const sum = compose(() => left.value + right.value);
 
   const fn = vi.fn(() => {
     sum.value;
@@ -116,4 +116,31 @@ test("solves diamond problem", () => {
       unsubscribe();
     });
   });
+});
+
+test("compose receives previous value", () => {
+  const count = atom(0);
+
+  const fn = vi.fn();
+  const composed = compose((previous) => {
+    fn(previous);
+    return count.value;
+  });
+
+  composed.value;
+
+  expect(fn).toBeCalledTimes(1);
+  expect(fn).toBeCalledWith(undefined);
+
+  count.value++;
+  composed.value;
+
+  expect(fn).toBeCalledTimes(2);
+  expect(fn).toBeCalledWith(0);
+
+  count.value++;
+  composed.value;
+
+  expect(fn).toBeCalledTimes(3);
+  expect(fn).toBeCalledWith(1);
 });
