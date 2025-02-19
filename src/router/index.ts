@@ -1,11 +1,11 @@
 import type { Dolla, Logger } from "../core/dolla.js";
 import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
-import { atom, compose, type UnsubscribeFunction } from "../core/signals.js";
+import { atom, get, compose, type UnsubscribeFunction } from "../core/signals.js";
 import { IS_ROUTER } from "../core/symbols.js";
 import { assertObject, isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { shallowEqual } from "../utils.js";
-import { Passthrough } from "../views/passthrough.js";
+import { Passthrough } from "../core/views/passthrough.js";
 import {
   joinPath,
   matchRoutes,
@@ -182,22 +182,22 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly pattern = compose(() => this.#match.value?.pattern);
+  readonly pattern = compose(() => get(this.#match)?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly path = compose(() => this.#match.value?.path ?? window.location.pathname);
+  readonly path = compose(() => get(this.#match)?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly params = compose(() => this.#match.value?.params ?? {}, { equals: shallowEqual });
+  readonly params = compose(() => get(this.#match)?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  readonly query = compose(() => this.#match.value?.query ?? {}, { equals: shallowEqual });
+  readonly query = compose(() => get(this.#match)?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");

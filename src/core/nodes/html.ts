@@ -2,7 +2,7 @@ import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { getUniqueId, omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { constructMarkup, type Markup, type MarkupElement } from "../markup.js";
-import { isRef, type Ref } from "../ref.js";
+import { type Ref } from "../ref.js";
 import { effect, get, isReactive, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
@@ -57,7 +57,7 @@ export class HTML implements MarkupElement {
     // }
 
     if (props.ref) {
-      if (isRef(props.ref)) {
+      if (isFunction(props.ref)) {
         this.ref = props.ref;
         this.ref(this.node);
       } else {
@@ -283,7 +283,7 @@ export class HTML implements MarkupElement {
           unapply();
         }
         element.style.cssText = "";
-        unapply = this.applyStyles(element, styles.value, unsubscribers);
+        unapply = this.applyStyles(element, get(styles), unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
@@ -296,7 +296,7 @@ export class HTML implements MarkupElement {
 
         if (isReactive(value)) {
           const unsubscribe = effect(() => {
-            if (value.value) {
+            if (get(value)) {
               element.style.setProperty(name, String(value.value), priority);
             } else {
               element.style.removeProperty(name);
@@ -330,7 +330,7 @@ export class HTML implements MarkupElement {
           unapply();
         }
         element.removeAttribute("class");
-        unapply = this.applyClasses(element, classes.value, unsubscribers);
+        unapply = this.applyClasses(element, get(classes), unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
@@ -343,7 +343,7 @@ export class HTML implements MarkupElement {
 
         if (isReactive(value)) {
           const unsubscribe = effect(() => {
-            if (value.value) {
+            if (get(value)) {
               element.classList.add(name);
             } else {
               element.classList.remove(name);

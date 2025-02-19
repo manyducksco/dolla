@@ -7,7 +7,7 @@
 
 Dolla is a batteries-included JavaScript frontend framework covering the needs of moderate-to-complex single page apps:
 
-- ⚡ Reactive DOM updates with [State](./docs/state.md). Inspired by Signals, but with explicit tracking.
+- ⚡ Reactive DOM updates with [Signals](./docs/state.md).
 - 📦 Reusable components with [Views](./docs/views.md).
 - 💾 Reusable state management with [Stores](./docs/stores.md).
 - 🔀 Built-in [routing](./docs/router.md) with nested routes and middleware support (check login status, preload data, etc).
@@ -35,22 +35,20 @@ Dolla's goals include:
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
 ```js
-import Dolla, { createState } from "@manyducks.co/dolla";
+import Dolla, { atom, html } from "@manyducks.co/dolla";
 
 function Counter() {
-  const [$count, setCount] = createState(0);
+  const count = atom(0);
 
-  function increment() {
-    setCount((count) => count + 1);
-  }
-
-  function decrement() {
-    setCount((count) => count - 1);
-  }
-
-  function reset() {
-    setCount(0);
-  }
+  return html`
+    <div>
+      <p>Counter: ${count}</p>
+      <div>
+        <button onclick=${() => count.value--}>-1</button>
+        <button onclick=${() => count.value++}>+1</button>
+      </div>
+    </div>
+  `;
 
   return (
     <div>

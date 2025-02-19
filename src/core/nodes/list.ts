@@ -1,6 +1,6 @@
 import { type ElementContext } from "../context.js";
 import { type MarkupElement } from "../markup.js";
-import { type Atom, atom, compose, effect, type Reactive, type UnsubscribeFunction } from "../signals.js";
+import { type Atom, atom, compose, effect, get, peek, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View, type ViewContext, type ViewResult } from "./view.js";
 
@@ -50,12 +50,13 @@ export class List<T> implements MarkupElement {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        let value = this.items.value;
+        let value = get(this.items);
 
         if (value == null) {
           value = [];
           console.log("list received empty value", value, this);
         }
+
         this._update(Array.from(value));
       });
     }

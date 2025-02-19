@@ -2,7 +2,7 @@ import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
 import type { ElementContext } from "../context.js";
 import { constructMarkup, isMarkupElement, isRenderable, toMarkup, type MarkupElement } from "../markup.js";
-import { effect, type Reactive, type UnsubscribeFunction } from "../signals.js";
+import { effect, get, peek, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface DynamicOptions {
@@ -38,7 +38,7 @@ export class Dynamic implements MarkupElement {
       parent.insertBefore(this.node, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        const content = this.source.value;
+        const content = get(this.source);
 
         if (!isRenderable(content)) {
           console.error(content);

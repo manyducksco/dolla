@@ -26,15 +26,15 @@ function SomeView(props, ctx) {
   const doubled = new Composed((get) => get(count) * 2);
 
   // Effects follow the same pattern as a Composed callback.
-  ctx.effect((get) => {
-    console.log(get(doubled));
+  ctx.effect(() => {
+    console.log(doubled.value);
   });
 
   const print = new Atom(false);
 
   // Dependency lists are rebuilt every time the callback is run.
   // Below, `value` will not be tracked as a dependency until `print` has changed to true.
-  ctx.effect((get) => {
+  ctx.effect(() => {
     if (get(print)) {
       console.log(get(value));
     }
@@ -55,29 +55,18 @@ function SomeView(props, ctx) {
 Refined API:
 
 ```js
-// atoms are the basic building blocks of state; you can get and set their values.
-const count = atom(5);
-count.value++;
-count.value; // 6
 
-// subscribe to values manually; don't forget to clean up.
-const unsubscribe = count.subscribe((value) => {
-  console.log("count is %d", value);
-});
-unsubscribe();
+const $count = atom(5);
+$count.value++;
+$count.value; // 6
 
-// compose atoms; use 'get' to track reactive values and update when they change.
-// composed values are read only.
-const doubled = compose((get) => get(count) * 2);
-const quadrupled = compose((get) => get(doubled) * 2);
+const $doubled = compose(() => get($count) * 2);
+const $quadrupled = compose(() => get($doubled) * 2);
 
-// contexts can manage effects and cleanup; same signature as compose but for side effects.
-ctx.effect((get) => {
-  // count is tracked by reading it with 'get'
-  if (get(count) > 25) {
-    console.log(doubled.value); // not tracked
-
-    get(quadrupled); // only tracked while count > 25 (this 'get' doesn't run otherwise)
+ctx.effect(() => {
+  if (get($count) > 25) {
+    console.log($doubled.value);
+    get($quadrupled);
   }
 });
 ```

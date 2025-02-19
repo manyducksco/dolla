@@ -1,5 +1,5 @@
 import { createReactiveSystem, type Dependency, type Subscriber, SubscriberFlags } from "alien-signals";
-import { isFunction } from "../typeChecking";
+import { assertInstanceOf, isFunction } from "../typeChecking";
 
 export interface Effect extends Subscriber, Dependency {
   fn(): void;
@@ -58,7 +58,13 @@ const {
     }
   },
   notifyEffect(e: Effect) {
-    return notifyEffect(e);
+    const flags = e.flags;
+    if (flags & SubscriberFlags.Dirty || (flags & SubscriberFlags.PendingComputed && updateDirtyFlag(e, flags))) {
+      queueEffect(e);
+    } else {
+      processPendingInnerEffects(e, e.flags);
+    }
+    return true;
   },
 });
 
@@ -66,10 +72,7 @@ const {
 ||        EFFECTS & TRACKING         ||
 \*===================================*/
 
-/**
- * If true, add all effects to PENDING_EFFECTS and flush them on the next microtask phase.
- */
-let batchEffects = true;
+let activeSub: Subscriber | undefined;
 
 const PENDING_EFFECTS: Effect[] = [];
 
@@ -82,7 +85,16 @@ function flushEffects(): void {
     queueMicrotask(() => {
       flushPending = false;
       for (let i = 0; i < PENDING_EFFECTS.length; i++) {
-        runEffect(PENDING_EFFECTS[i]);
+        const e = PENDING_EFFECTS[i];
+        const prevSub = activeSub;
+        activeSub = e;
+        startTracking(e);
+        try {
+          e.fn();
+        } finally {
+          activeSub = prevSub;
+          endTracking(e);
+        }
       }
       PENDING_EFFECTS.length = 0;
     });
@@ -94,66 +106,12 @@ function queueEffect(e: Effect) {
   flushEffects();
 }
 
-function cancelEffect(e: Effect) {
-  PENDING_EFFECTS.splice(PENDING_EFFECTS.indexOf(e), 1);
-}
-
-const pauseStack: (Subscriber | undefined)[] = [];
-
-// let batchDepth = 0;
-let activeSub: Subscriber | undefined;
-
-// export function startBatch() {
-//   ++batchDepth;
-// }
-
-// export function endBatch() {
-//   if (!--batchDepth) {
-//     processEffectNotifications();
-//   }
-// }
-
-export function pauseTracking() {
-  pauseStack.push(activeSub);
-  activeSub = undefined;
-}
-
-export function resumeTracking() {
-  activeSub = pauseStack.pop();
-}
-
-function runEffect(e: Effect): void {
-  const prevSub = activeSub;
-  activeSub = e;
-  startTracking(e);
-  try {
-    e.fn();
-  } finally {
-    activeSub = prevSub;
-    endTracking(e);
-  }
-}
-
-function notifyEffect(e: Effect): boolean {
-  const flags = e.flags;
-  if (flags & SubscriberFlags.Dirty || (flags & SubscriberFlags.PendingComputed && updateDirtyFlag(e, flags))) {
-    if (batchEffects) {
-      queueEffect(e);
-    } else {
-      runEffect(e);
-    }
-  } else {
-    processPendingInnerEffects(e, e.flags);
-  }
-  return true;
-}
-
-function effectStop(this: Subscriber): void {
+function stopEffect(this: Effect): void {
   startTracking(this);
   endTracking(this);
   // Cancel it after it receives its current value.
   queueMicrotask(() => {
-    cancelEffect(this as Effect);
+    PENDING_EFFECTS.splice(PENDING_EFFECTS.indexOf(this), 1);
   });
 }
 
@@ -212,9 +170,6 @@ export class Atom<T> implements Reactive<T> {
   }
 
   get value(): T {
-    if (activeSub !== undefined) {
-      link(this.#signal, activeSub);
-    }
     return this.#signal.currentValue;
   }
 
@@ -224,18 +179,11 @@ export class Atom<T> implements Reactive<T> {
       const subs = this.#signal.subs;
       if (subs !== undefined) {
         propagate(subs);
-        // if (!batchDepth) {
         processEffectNotifications();
-        // }
       }
     }
   }
 }
-
-/**
- * @deprecated
- */
-type Getter = <T>(value: MaybeReactive<T>) => T;
 
 class Composed<T> implements Reactive<T> {
   #computed;
@@ -265,17 +213,9 @@ class Composed<T> implements Reactive<T> {
     if (flags & (SubscriberFlags.Dirty | SubscriberFlags.PendingComputed)) {
       processComputedUpdate(computed, flags);
     }
-    if (activeSub !== undefined) {
-      link(computed, activeSub);
-    }
     return computed.currentValue!;
   }
 }
-
-// interface Atom<T> extends Reactive<T> {
-//   name?: string;
-//   value: T;
-// }
 
 /*===================================*\
 ||        Public API Functions       ||
@@ -325,15 +265,16 @@ export function atom<T>(value?: T, options?: ReactiveOptions<T>) {
   return new Atom({ currentValue: value as T, subs: undefined, subsTail: undefined }, options);
 }
 
+type ComposeCallback<T> = (previousValue?: T) => MaybeReactive<T>;
+
 /**
- * Creates a reactive container that derives its value from other reactive values.
- * A composed value will track any other reactives whose `value` property was accessed within the body of the function.
+ * Creates a reactive container that derives its value from other reactive values that it tracks.
  *
  * @example
  * const count = atom(1);
- * const doubled = compose(() => count.value * 2);
+ * const doubled = compose(() => get(count) * 2);
  */
-export function compose<T>(fn: (previousValue?: T) => MaybeReactive<T>, options?: ReactiveOptions<T>): Composed<T> {
+export function compose<T>(fn: ComposeCallback<T>, options?: ReactiveOptions<T>): Reactive<T> {
   return new Composed<T>({
     currentValue: undefined,
     equals: options?.equals ?? Object.is,
@@ -346,13 +287,17 @@ export function compose<T>(fn: (previousValue?: T) => MaybeReactive<T>, options?
       let returned = fn(cachedValue as T | undefined);
 
       // If a reactive is returned, track it and return its value.
-      if (isReactive(returned)) {
-        const dep = (returned as any)[DEPENDENCY] as Dependency;
-        if (activeSub !== undefined) {
-          link(dep, activeSub);
-        }
-        returned = returned.value;
-      }
+      returned = get(returned);
+
+      // if (activeSub !== undefined) {
+      //   if (activeSub.depsTail === undefined) {
+      //     const name = options?.name ?? fn.name;
+      //     console.warn(
+      //       `Compose function${name ? " '" + name + "'" : ""} has no tracked dependencies and will never update.`,
+      //       fn,
+      //     );
+      //   }
+      // }
 
       return returned;
     },
@@ -360,7 +305,27 @@ export function compose<T>(fn: (previousValue?: T) => MaybeReactive<T>, options?
 }
 
 /**
- * Gets the plain value from a (possibly) reactive value.
+ * Takes a new value to set, or a callback that receives the current value and returns a new value to set.
+ */
+type Setter<T> = (next: T | ((current: T) => T)) => void;
+
+export function set<T>(atom: Atom<T>): Setter<T>;
+export function set<T>(atom: Atom<T>, next: T | ((current: T) => T)): void;
+
+export function set<T>(atom: Atom<T>, next?: T | ((current: T) => T)) {
+  // assertInstanceOf(Atom, atom);
+  if (isFunction<(current: T) => T>(next)) {
+    atom.value = next(atom.value);
+  } else if (arguments.length > 1) {
+    atom.value = next as T;
+  } else {
+    return (next: T | ((current: T) => T)) => set(atom, next);
+  }
+}
+
+/**
+ * Returns the current value from a reactive _and track it_ if called in a `compose` or `effect` scope.
+ * If a non-reactive value is passed it will just be returned untracked.
  *
  * @example
  * const count = atom(1);
@@ -370,52 +335,33 @@ export function compose<T>(fn: (previousValue?: T) => MaybeReactive<T>, options?
  */
 export function get<T>(value: MaybeReactive<T>): T {
   if (isReactive(value)) {
+    if (activeSub !== undefined) {
+      const dep = (value as any)[DEPENDENCY] as Dependency;
+      link(dep, activeSub);
+    }
     return value.value;
   } else {
     return value;
   }
 }
 
-// export function peek<T>(value: Atom<T>): T;
-
 /**
- * Gets the plain value from a (possibly) reactive value _without tracking_.
+ * Returns the current value from a reactive (without tracking).
+ * If a non-reactive value is passed it will be returned.
  *
  * @example
  * ctx.effect(() => {
- *   const doubled = count.value * 2; // `count` will be tracked
+ *   const doubled = get(count) * 2; // `count` will be tracked
  *
  *   const doubled = peek(count) * 2; // `count` will NOT be tracked
  * });
  */
-export function peek<T>(value: MaybeReactive<T>): T;
-
-/**
- * Runs a callback `fn`. Anything that happens within it will not be tracked.
- *
- * @example
- * ctx.effect(() => {
- *   const sum = one.value + two.value; // `one` and `two` will be tracked
- *
- *   const sum = peek(() => {
- *     return one.value + two.value; // `one` and `two` will NOT be tracked
- *   });
- * })
- */
-export function peek<T>(fn: () => T): T;
-
-export function peek<T>(fnOrValue: (() => T) | MaybeReactive<T>) {
-  let value: T;
-
-  pauseTracking();
-  if (isFunction(fnOrValue)) {
-    value = fnOrValue();
+export function peek<T>(value: MaybeReactive<T>): T {
+  if (isReactive(value)) {
+    return value.value;
   } else {
-    value = get(fnOrValue);
+    return value;
   }
-  resumeTracking();
-
-  return value;
 }
 
 export type EffectCallback = () => void;
@@ -439,10 +385,6 @@ export function effect(fn: EffectCallback): UnsubscribeFunction {
   if (activeSub !== undefined) {
     link(e, activeSub);
   }
-  if (batchEffects) {
-    queueEffect(e);
-  } else {
-    runEffect(e);
-  }
-  return effectStop.bind(e);
+  queueEffect(e);
+  return stopEffect.bind(e);
 }

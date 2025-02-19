@@ -1,5 +1,5 @@
 import { type MarkupElement } from "../markup.js";
-import { isReactive, get, effect, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
+import { isReactive, get, effect, type MaybeReactive, type UnsubscribeFunction, peek } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**

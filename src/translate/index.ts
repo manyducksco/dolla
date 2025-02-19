@@ -515,7 +515,7 @@ export class I18n {
         values[key] = get(options[key]);
       }
 
-      return this.#getValue(this.#locale.value, selector, values);
+      return this.#getValue(get(this.#locale), selector, values);
     });
   }
 
@@ -619,7 +619,7 @@ export class I18n {
    */
   number(count: MaybeReactive<number | bigint>, options?: Intl.NumberFormatOptions): Reactive<string> {
     return compose(() => {
-      this.#locale.value; // track to update when locale changes
+      get(this.#locale); // track to update when locale changes
       return this.#formatNumber(get(count), options);
     });
   }
@@ -642,7 +642,7 @@ export class I18n {
     options?: Intl.DateTimeFormatOptions,
   ): Reactive<string> {
     return compose(() => {
-      this.#locale.value; // track to update when locale changes
+      get(this.#locale); // track to update when locale changes
       return this.#formatDateTime(get(date), options);
     });
   }
@@ -662,7 +662,7 @@ export class I18n {
    */
   list(list: MaybeReactive<Iterable<string>>, options?: Intl.ListFormatOptions): Reactive<string> {
     return compose(() => {
-      this.#locale.value; // track to update when locale changes
+      get(this.#locale); // track to update when locale changes
       return this.#formatList(get(list), options);
     });
   }

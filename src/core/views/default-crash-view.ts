@@ -1,4 +1,4 @@
-import { cond, html } from "../core/markup.js";
+import { cond, html } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.

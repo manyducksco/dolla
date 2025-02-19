@@ -10,7 +10,7 @@ import { List } from "./nodes/list.js";
 import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
-import { compose, isReactive, MaybeReactive, type Reactive } from "./signals.js";
+import { compose, get, isReactive, MaybeReactive, type Reactive } from "./signals.js";
 import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
@@ -259,7 +259,7 @@ export const html = htm.bind(createMarkup);
  */
 export function cond(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return createMarkup("$dynamic", {
-    source: compose((get) => {
+    source: compose(() => {
       const value = get(condition);
       if (value && thenContent) {
         return thenContent;

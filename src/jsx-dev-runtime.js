@@ -1,5 +1,5 @@
-import { _Markup, createMarkup } from "./core/markup";
-export { Passthrough as Fragment } from "./views/passthrough";
+import { createMarkup } from "./core/markup";
+export { Passthrough as Fragment } from "./core/views/passthrough";
 
 export function jsxDEV(element, props, key, isStaticChildren, source, self) {
   const attributes = { ...omit(["children", "key"], props) };

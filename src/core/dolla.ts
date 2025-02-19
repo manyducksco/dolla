@@ -1,11 +1,11 @@
 import { Emitter } from "@manyducks.co/emitter";
-import { HTTP } from "../modules/http.js";
-import { I18n } from "../modules/i18n.js";
-import { _isRouter, _mountRouter, _unmountRouter, type Router } from "../modules/router.js";
+import { HTTP } from "../http/index.js";
+import { I18n } from "../translate/index.js";
+import { _isRouter, _mountRouter, _unmountRouter, type Router } from "../router/index.js";
 import { assertInstanceOf, isFunction, isString } from "../typeChecking.js";
 import { colorFromString, createMatcher, noOp } from "../utils.js";
-import { DefaultCrashView, type CrashViewProps } from "../views/default-crash-view.js";
-import { Passthrough } from "../views/passthrough.js";
+import { DefaultCrashView, type CrashViewProps } from "./views/default-crash-view.js";
+import { Passthrough } from "./views/passthrough.js";
 // import { Batch } from "./batch.js";
 import {
   type ElementContext,
@@ -59,8 +59,7 @@ export type LoggerOptions = {
 };
 
 export class Dolla implements StoreProviderContext, StoreConsumerContext {
-  // readonly batch: Batch;
-
+  // TODO: Take these off the global Dolla object.
   readonly http: HTTP;
   readonly i18n: I18n;
 
@@ -93,15 +92,12 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
   };
   #match = createMatcher("*,-Dolla.*");
 
-  #wildcardListeners: WildcardListenerMap = new Map();
-
   // Registration functions for modules.
   // All modules will be registered before mount.
   #modules: (() => Promise<any>)[] = [];
 
   constructor() {
-    // this.batch = new Batch(this);
-    this.http = new HTTP(this);
+    this.http = new HTTP();
     this.i18n = new I18n(this);
   }
 
