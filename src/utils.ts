@@ -1,5 +1,5 @@
 import { isFunction, isObject, typeOf } from "./typeChecking.js";
-import _deepEqual from "fast-deep-equal/es6";
+import * as _deepEqual from "fast-deep-equal/es6";
 
 export const noOp = () => {};
 
