@@ -1,12 +1,12 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
-import { externalizeDeps } from "vite-plugin-externalize-deps";
+// import { externalizeDeps } from "vite-plugin-externalize-deps";
 
 export default defineConfig({
   build: {
     sourcemap: true,
     minify: false,
-    target: "esnext",
+    // target: "esnext",
 
     lib: {
       entry: {
@@ -19,5 +19,5 @@ export default defineConfig({
     },
   },
 
-  plugins: [externalizeDeps()],
+  // plugins: [externalizeDeps()],
 });
