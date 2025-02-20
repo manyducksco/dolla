@@ -80,23 +80,6 @@ export interface ViewContext
 ||              View Init              ||
 \*=====================================*/
 
-// class ViewTemplate<Props> {
-//   private _fn;
-
-//   constructor(fn: ViewFunction<Props>) {
-//     this._fn = fn;
-//   }
-
-//   create(ctx: ElementContext, props: Props, children: Markup[]): View<Props> {
-//     return new View(ctx, this._fn, props, children);
-//   }
-
-//   toString(ctx: ElementContext, props: Props, children: Markup[]): string {
-//     // TODO: Render this view's content as an HTML string.
-//     return "";
-//   }
-// }
-
 // Defines logger methods on context.
 interface Context extends Omit<Logger, "setName"> {}
 
@@ -124,7 +107,7 @@ class Context implements ViewContext {
   }
 
   get name() {
-    return this.view.elementContext.viewName || this.view.uniqueId;
+    return this.view.elementContext.viewName || this.uid;
   }
 
   set name(value) {

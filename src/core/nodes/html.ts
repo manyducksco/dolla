@@ -24,7 +24,6 @@ export class HTML implements MarkupElement {
   private children: MarkupElement[] = [];
   private unsubscribers: UnsubscribeFunction[] = [];
   private elementContext;
-  // private uniqueId = getUniqueId();
 
   // Track the ref so we can nullify it on unmount.
   private ref?: Ref<any>;
@@ -74,9 +73,7 @@ export class HTML implements MarkupElement {
       this.childMarkup = children;
     }
 
-    // this.children = children ? constructMarkup(elementContext, children) : [];
     this.elementContext = elementContext;
-    this.children = constructMarkup(this.elementContext, this.childMarkup);
   }
 
   mount(parent: Node, after?: Node) {
@@ -85,6 +82,10 @@ export class HTML implements MarkupElement {
     }
 
     if (!this.isMounted) {
+      if (this.childMarkup.length > 0) {
+        this.children = constructMarkup(this.elementContext, this.childMarkup);
+      }
+
       for (let i = 0; i < this.children.length; i++) {
         const child = this.children[i];
         const previous = i > 0 ? this.children[i - 1].node : undefined;

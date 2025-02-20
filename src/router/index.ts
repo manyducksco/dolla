@@ -282,10 +282,6 @@ export class Router {
    * router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
    */
   go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
-    if (this.#dolla == null) {
-      throw new Error(`Routa methods won't work until you register it: Dolla.use(Routa, { /* ...options */ })`);
-    }
-
     let joined: string;
 
     if (Array.isArray(path)) {
@@ -340,21 +336,21 @@ export class Router {
 
     const { match, journey } = await this.#resolveRoute(url);
 
-    for (const step of journey) {
-      switch (step.kind) {
-        case "match":
-          logger?.info(`📍 ${step.message}`);
-          break;
-        case "redirect":
-          logger?.info(`↩️ ${step.message}`);
-          break;
-        case "miss":
-          logger?.info(`💀 ${step.message}`);
-          break;
-        default:
-          break;
-      }
-    }
+    // for (const step of journey) {
+    //   switch (step.kind) {
+    //     case "match":
+    //       logger?.info(`📍 ${step.message}`);
+    //       break;
+    //     case "redirect":
+    //       logger?.info(`↩️ ${step.message}`);
+    //       break;
+    //     case "miss":
+    //       logger?.info(`💀 ${step.message}`);
+    //       break;
+    //     default:
+    //       break;
+    //   }
+    // }
 
     if (match) {
       const oldPattern = this.pattern.value;

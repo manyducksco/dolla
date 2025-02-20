@@ -43,7 +43,7 @@ export interface ElementProps {
   /**
    * Object of event listeners.
    */
-  eventListeners?: OptionalProperty<Record<string, EventHandler<Event>>>; // TODO: Define full types for events in this object.
+  // eventListeners?: OptionalProperty<Record<string, EventHandler<Event>>>; // TODO: Define full types for events in this object.
 
   /**
    * CSS classes to be applied to this element. In addition to the standard space-separated list of class names,

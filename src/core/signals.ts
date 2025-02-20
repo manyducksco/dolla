@@ -140,9 +140,6 @@ export class Atom<T> implements Reactive<T> {
   #signal;
   #equals;
 
-  /**
-   * A label for debugging purposes.
-   */
   name?: string;
 
   constructor(signal: Signal<T>, options?: ReactiveOptions<T>) {
@@ -153,19 +150,11 @@ export class Atom<T> implements Reactive<T> {
       this.name = options.name;
     }
 
-    Object.defineProperties(this, {
-      [IS_REACTIVE]: {
-        value: true,
-        configurable: false,
-        enumerable: false,
-        writable: false,
-      },
-      [DEPENDENCY]: {
-        value: signal,
-        configurable: false,
-        enumerable: false,
-        writable: false,
-      },
+    Object.defineProperty(this, DEPENDENCY, {
+      value: signal,
+      configurable: false,
+      enumerable: false,
+      writable: false,
     });
   }
 
@@ -186,29 +175,21 @@ export class Atom<T> implements Reactive<T> {
 }
 
 class Composed<T> implements Reactive<T> {
-  #computed;
+  private computed;
 
   constructor(computed: Computed<T>) {
-    this.#computed = computed;
+    this.computed = computed;
 
-    Object.defineProperties(this, {
-      [IS_REACTIVE]: {
-        value: true,
-        configurable: false,
-        enumerable: false,
-        writable: false,
-      },
-      [DEPENDENCY]: {
-        value: computed,
-        configurable: false,
-        enumerable: false,
-        writable: false,
-      },
+    Object.defineProperty(this, DEPENDENCY, {
+      value: computed,
+      configurable: false,
+      enumerable: false,
+      writable: false,
     });
   }
 
   get value(): T {
-    const computed = this.#computed;
+    const computed = this.computed;
     const flags = computed.flags;
     if (flags & (SubscriberFlags.Dirty | SubscriberFlags.PendingComputed)) {
       processComputedUpdate(computed, flags);
@@ -225,7 +206,7 @@ class Composed<T> implements Reactive<T> {
  * Determines if a value is reactive.
  */
 export function isReactive<T>(value: any): value is Reactive<T> {
-  return value != null && (value as any)[IS_REACTIVE] === true;
+  return value != null && (value as any)[DEPENDENCY] != null;
 }
 
 /**
@@ -313,7 +294,6 @@ export function set<T>(atom: Atom<T>): Setter<T>;
 export function set<T>(atom: Atom<T>, next: T | ((current: T) => T)): void;
 
 export function set<T>(atom: Atom<T>, next?: T | ((current: T) => T)) {
-  // assertInstanceOf(Atom, atom);
   if (isFunction<(current: T) => T>(next)) {
     atom.value = next(atom.value);
   } else if (arguments.length > 1) {

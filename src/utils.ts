@@ -5,7 +5,7 @@ export const noOp = () => {};
 
 // Guarantee unique ID by incrementing a global counter.
 let idCounter = 1;
-export function getUniqueId() {
+export function getUniqueId(): string {
   idCounter = (idCounter % Number.MAX_SAFE_INTEGER) + 1;
   return idCounter.toString(36) + Date.now().toString(36);
 }
