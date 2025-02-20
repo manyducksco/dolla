@@ -15,8 +15,8 @@ interface PortalConfig {
 export class Portal implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
-  config: PortalConfig;
-  element?: MarkupElement;
+  private config: PortalConfig;
+  private element?: MarkupElement;
 
   get isMounted() {
     if (!this.element) {

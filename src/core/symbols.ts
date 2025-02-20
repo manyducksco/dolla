@@ -1,5 +1,4 @@
 // Type symbols; these are used to quickly check if a value is the expected object.
-export const IS_REF = Symbol.for("DollaRef");
 export const IS_MARKUP = Symbol.for("DollaMarkup");
 export const IS_MARKUP_ELEMENT = Symbol.for("DollaMarkupElement");
 // export const IS_VIEW_TEMPLATE = Symbol.for("DollaViewTemplate");

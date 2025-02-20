@@ -6,7 +6,6 @@ import { type Ref } from "../ref.js";
 import { effect, get, isReactive, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
-//const eventHandlerProps = Object.values(eventPropsToEventNames).map((event) => "on" + event);
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 
 type HTMLOptions = {
@@ -20,29 +19,30 @@ export class HTML implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   node;
-  props: Record<string, any>;
-  childMarkup: Markup[] = [];
-  children: MarkupElement[] = [];
-  unsubscribers: UnsubscribeFunction[] = [];
-  elementContext;
-  uniqueId = getUniqueId();
+  private props: Record<string, any>;
+  private childMarkup: Markup[] = [];
+  private children: MarkupElement[] = [];
+  private unsubscribers: UnsubscribeFunction[] = [];
+  private elementContext;
+  // private uniqueId = getUniqueId();
 
   // Track the ref so we can nullify it on unmount.
-  ref?: Ref<any>;
+  private ref?: Ref<any>;
 
   // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
-  canClickAway = false;
+  private canClickAway = false;
 
   get isMounted() {
     return this.node.parentNode != null;
   }
 
   constructor({ tag, props, children, elementContext }: HTMLOptions) {
-    elementContext = { ...elementContext };
-
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
-      elementContext.isSVG = true;
+      elementContext = {
+        ...elementContext,
+        isSVG: true,
+      };
     }
 
     // Create node with the appropriate constructor.
@@ -52,9 +52,9 @@ export class HTML implements MarkupElement {
       this.node = document.createElement(tag);
     }
 
-    // if (elementContext.root.getEnv() === "development" && elementContext.viewName) {
-    //   this.node.dataset.view = elementContext.viewName;
-    // }
+    if (elementContext.root.getEnv() === "development" && elementContext.viewName) {
+      this.node.dataset.view = elementContext.viewName;
+    }
 
     if (props.ref) {
       if (isFunction(props.ref)) {
@@ -105,12 +105,12 @@ export class HTML implements MarkupElement {
 
   unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
-      for (const child of this.children) {
-        child.unmount(true);
-      }
-
       if (!parentIsUnmounting) {
         this.node.parentNode?.removeChild(this.node);
+      }
+
+      for (const child of this.children) {
+        child.unmount(true);
       }
 
       if (this.ref) {
@@ -126,11 +126,7 @@ export class HTML implements MarkupElement {
     }
   }
 
-  getUpdateKey(type: string, value: string | number) {
-    return `${this.uniqueId}:${type}:${value}`;
-  }
-
-  attachProp<T>(value: MaybeReactive<T>, callback: (value: T) => void) {
+  private attachProp<T>(value: MaybeReactive<T>, callback: (value: T) => void) {
     if (isReactive(value)) {
       this.unsubscribers.push(effect(() => callback(get(value))));
     } else {
@@ -138,7 +134,7 @@ export class HTML implements MarkupElement {
     }
   }
 
-  applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
+  private applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
     for (const key in props) {
       const value = props[key];
 
@@ -272,7 +268,7 @@ export class HTML implements MarkupElement {
     }
   }
 
-  applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFunction[]) {
+  private applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFunction[]) {
     const propUnsubscribers: UnsubscribeFunction[] = [];
 
     if (isReactive(styles)) {
@@ -319,7 +315,7 @@ export class HTML implements MarkupElement {
     };
   }
 
-  applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFunction[]) {
+  private applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFunction[]) {
     const classUnsubscribers: UnsubscribeFunction[] = [];
 
     if (isReactive(classes)) {

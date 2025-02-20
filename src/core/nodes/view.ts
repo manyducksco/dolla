@@ -1,28 +1,9 @@
-import { Emitter } from "@manyducks.co/emitter";
 import { isArrayOf, isFunction, typeOf } from "../../typeChecking.js";
 import { Renderable } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
-import {
-  ContextEvent,
-  type ComponentContext,
-  type ElementContext,
-  type GenericEvents,
-  type StoreConsumerContext,
-  type StoreProviderContext,
-  type WildcardListenerMap,
-} from "../context.js";
+import type { ComponentContext, ElementContext, StoreConsumerContext, StoreProviderContext } from "../context.js";
 import type { Logger } from "../dolla.js";
-import {
-  cond,
-  constructMarkup,
-  createMarkup,
-  groupElements,
-  isMarkup,
-  list,
-  portal,
-  type Markup,
-  type MarkupElement,
-} from "../markup.js";
+import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { atom, effect, isReactive, type EffectCallback, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
@@ -48,9 +29,9 @@ export interface ViewElement extends MarkupElement {
   setChildView(view: ViewFunction<{}>): ViewElement;
 }
 
-export interface ViewContext<Events extends GenericEvents = GenericEvents>
+export interface ViewContext
   extends Omit<Logger, "setName">,
-    ComponentContext<Events>,
+    ComponentContext,
     StoreProviderContext,
     StoreConsumerContext {
   /**
@@ -90,24 +71,9 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
   effect(callback: EffectCallback): UnsubscribeFunction;
 
   /**
-   * Renders a list of reactive items.
-   */
-  list: typeof list;
-
-  /**
-   * Creates a reactive conditional; the second argument is displayed when the condition is true and the third is displayed when the condition is false.
-   */
-  if: typeof cond;
-
-  /**
    * Returns a Markup element that displays this view's children.
    */
   outlet(): Markup;
-
-  /**
-   * Displays an element as a child of another DOM node, rather than the position it would normally be mounted at.
-   */
-  portal: typeof portal;
 }
 
 /*=====================================*\
@@ -135,13 +101,13 @@ export interface ViewContext<Events extends GenericEvents = GenericEvents>
 interface Context extends Omit<Logger, "setName"> {}
 
 class Context implements ViewContext {
-  __view;
+  private view;
 
   constructor(view: View<any>) {
-    this.__view = view;
+    this.view = view;
 
     // Copy logger methods from logger.
-    const descriptors = Object.getOwnPropertyDescriptors(this.__view._logger);
+    const descriptors = Object.getOwnPropertyDescriptors(this.view.logger);
     for (const key in descriptors) {
       if (key !== "setName") {
         Object.defineProperty(this, key, descriptors[key]);
@@ -150,84 +116,43 @@ class Context implements ViewContext {
   }
 
   get uid() {
-    return this.__view.uniqueId;
+    return this.view.uniqueId;
   }
 
   get isMounted() {
-    return this.__view.isMounted;
+    return this.view.isMounted;
   }
 
   get name() {
-    return this.__view._elementContext.viewName || this.__view.uniqueId;
+    return this.view.elementContext.viewName || this.view.uniqueId;
   }
 
   set name(value) {
-    this.__view._elementContext.viewName = value;
-    this.__view._logger.setName(value);
-  }
-
-  on(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = (_eventName: any, event: ContextEvent, ...args: any[]) => {
-        listener(event, ...args);
-      };
-      this.__view._elementContext.emitter.on(type, wrappedListener);
-      this.__view._wildcardListeners.set(listener, wrappedListener);
-    } else {
-      this.__view._elementContext.emitter.on(type, listener);
-    }
-  }
-
-  off(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = this.__view._wildcardListeners.get(listener);
-      if (wrappedListener) {
-        this.__view._elementContext.emitter.off(type, wrappedListener);
-        this.__view._wildcardListeners.delete(listener);
-      }
-    } else {
-      this.__view._elementContext.emitter.off(type, listener);
-    }
-  }
-
-  once(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
-        this.__view._wildcardListeners.delete(listener);
-        listener(event, ...args);
-      };
-      this.__view._elementContext.emitter.once(type, wrappedListener);
-      this.__view._wildcardListeners.set(listener, wrappedListener);
-    } else {
-      this.__view._elementContext.emitter.once(type, listener);
-    }
-  }
-
-  emit(type: any, ...args: any[]): boolean {
-    return this.__view._elementContext.emitter.emit(type, new ContextEvent(type), ...args);
+    this.view.elementContext.viewName = value;
+    this.view.logger.setName(value);
   }
 
   provide<Value>(store: StoreFunction<any, Value>, options?: any): Value {
     const instance = new Store(store, options);
-    const attached = instance.attach(this.__view._elementContext);
+    const attached = instance.attach(this.view.elementContext);
     if (attached) {
-      this.__view._emitter.on("mounted", () => {
+      this.view.lifecycleListeners.mount.push(() => {
         instance.handleMount();
       });
-      this.__view._emitter.on("unmounted", () => {
+      this.view.lifecycleListeners.unmount.push(() => {
         instance.handleUnmount();
       });
       return instance.value;
     } else {
       let name = store.name ? `'${store.name}'` : "this store";
-      this.__view._logger.warn(`An instance of ${name} was already attached to this context.`);
+      this.view.logger.warn(`An instance of ${name} was already attached to this context.`);
       return this.get(store);
     }
   }
 
   get<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
-      let context = this.__view._elementContext;
+      let context = this.view.elementContext;
       let instance: Store<any, Value> | undefined;
       while (true) {
         instance = context.stores.get(store);
@@ -248,41 +173,37 @@ class Context implements ViewContext {
   }
 
   beforeMount(callback: () => void): void {
-    this.__view._emitter.on("beforeMount", callback);
+    this.view.lifecycleListeners.beforeMount.push(callback);
   }
 
   onMount(callback: () => void): void {
-    this.__view._emitter.on("mounted", callback);
+    this.view.lifecycleListeners.mount.push(callback);
   }
 
   beforeUnmount(callback: () => void): void {
-    this.__view._emitter.on("beforeUnmount", callback);
+    this.view.lifecycleListeners.beforeUnmount.push(callback);
   }
 
   onUnmount(callback: () => void): void {
-    this.__view._emitter.on("unmounted", callback);
+    this.view.lifecycleListeners.unmount.push(callback);
   }
 
   effect(callback: EffectCallback) {
-    const view = this.__view;
-
-    // TODO: Set up effect in a more direct way? I'm just hacking compose here.
-
-    if (view.isMounted) {
+    if (this.view.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
       const unsubscribe = effect(callback);
-      this.__view._unsubscribes.push(unsubscribe);
+      this.view.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
       // This should only happen if called in the body of the component function.
       // This code is not always re-run between when a component is unmounted and remounted.
       let unsubscribe: UnsubscribeFunction | undefined;
       let disposed = false;
-      view._emitter.on("mounted", () => {
+      this.view.lifecycleListeners.mount.push(() => {
         if (!disposed) {
           unsubscribe = effect(callback);
-          this.__view._unsubscribes.push(unsubscribe);
+          this.view.lifecycleListeners.unmount.push(unsubscribe);
         }
       });
       return () => {
@@ -294,71 +215,46 @@ class Context implements ViewContext {
     }
   }
 
-  list = list;
-  if = cond;
-  portal = portal;
-
   outlet(): Markup {
-    return createMarkup("$outlet", { children: this.__view._children });
+    return createMarkup("$outlet", { children: this.view.children });
   }
 }
-
-type ViewEvents = {
-  beforeMount: [];
-  mounted: [];
-  beforeUnmount: [];
-  unmounted: [];
-};
 
 export class View<P> implements ViewElement {
   [IS_MARKUP_ELEMENT] = true;
 
   uniqueId = getUniqueId();
 
-  _elementContext: ElementContext;
-  _logger;
-  _view;
-  _props;
+  elementContext: ElementContext;
+  logger;
+  props;
+  fn;
 
-  _element?: MarkupElement;
+  element?: MarkupElement;
 
-  _childMarkup;
+  childMarkup;
 
-  _children = atom<MarkupElement[]>([]);
+  children = atom<MarkupElement[]>([]);
 
-  _unsubscribes: UnsubscribeFunction[] = [];
-  _emitter = new Emitter<ViewEvents>();
-  _wildcardListeners: WildcardListenerMap = new Map();
+  lifecycleListeners: {
+    beforeMount: (() => any)[];
+    mount: (() => any)[];
+    beforeUnmount: (() => any)[];
+    unmount: (() => any)[];
+  } = { beforeMount: [], mount: [], beforeUnmount: [], unmount: [] };
 
-  constructor(elementContext: ElementContext, view: ViewFunction<P>, props: P, children: Markup[] = []) {
-    this._elementContext = {
+  constructor(elementContext: ElementContext, fn: ViewFunction<P>, props: P, children: Markup[] = []) {
+    this.elementContext = {
       ...elementContext,
-      data: {},
       parent: elementContext,
-      viewName: view.name,
-      emitter: new Emitter(),
+      viewName: fn.name,
       stores: new Map(),
     };
-    this._logger = elementContext.root.createLogger(view.name || "🌇 anonymous view", { uid: this.uniqueId });
-    this._view = view;
-    this._props = props;
+    this.logger = elementContext.root.createLogger(fn.name || "🌇 anonymous view", { uid: this.uniqueId });
+    this.props = props;
+    this.fn = fn;
 
-    this._childMarkup = children;
-
-    this._emitter.on("error", (error, type, ...args) => {
-      console.error([error, type, ...args]);
-      this._logger.error((error as Error).message, { error, type, args });
-      this._logger.crash(error as Error);
-    });
-
-    // Bubble events by emitting them to parent.
-    this._elementContext.emitter.on("*", (type, event, ...args) => {
-      if (event instanceof ContextEvent) {
-        if (!event.isStopped) {
-          this._elementContext.parent?.emitter.emit(type, event, ...args);
-        }
-      }
-    });
+    this.childMarkup = children;
   }
 
   /*===============================*\
@@ -366,7 +262,7 @@ export class View<P> implements ViewElement {
   \*===============================*/
 
   get node() {
-    return this._element?.node!;
+    return this.element?.node!;
   }
 
   isMounted = false;
@@ -378,11 +274,13 @@ export class View<P> implements ViewElement {
 
     if (!wasConnected) {
       this._initialize();
-      this._emitter.emit("beforeMount");
+      for (const listener of this.lifecycleListeners.beforeMount) {
+        listener();
+      }
     }
 
-    if (this._element) {
-      this._element.mount(parent, after);
+    if (this.element) {
+      this.element.mount(parent, after);
     }
 
     if (!wasConnected) {
@@ -390,36 +288,39 @@ export class View<P> implements ViewElement {
 
       // TODO: Figure out why rAF is needed for updates to DOM nodes to work in onMount callbacks.
       requestAnimationFrame(() => {
-        this._emitter.emit("mounted");
+        for (const listener of this.lifecycleListeners.mount) {
+          listener();
+        }
       });
     }
   }
 
   unmount(parentIsUnmounting = false) {
-    this._emitter.emit("beforeUnmount");
+    for (const listener of this.lifecycleListeners.beforeUnmount) {
+      listener();
+    }
 
-    if (this._element) {
+    if (this.element) {
       // parentIsUnmounting is forwarded to the element because the view acts as a proxy for an element.
-      this._element.unmount(parentIsUnmounting);
+      this.element.unmount(parentIsUnmounting);
     }
 
     this.isMounted = false;
 
-    this._emitter.emit("unmounted");
-    this._emitter.clear();
-
-    // Clear elementContext's emitter as well? That was created in this constructor, so garbage collection should get it.
-
-    for (const unsubscribe of this._unsubscribes) {
-      unsubscribe();
+    for (const listener of this.lifecycleListeners.unmount) {
+      listener();
     }
-    this._unsubscribes.length = 0;
+
+    this.lifecycleListeners.beforeMount.length = 0;
+    this.lifecycleListeners.mount.length = 0;
+    this.lifecycleListeners.beforeUnmount.length = 0;
+    this.lifecycleListeners.unmount.length = 0;
   }
 
   setChildView(fn: ViewFunction<{}>) {
-    this._childMarkup = [];
-    const node = new View(this._elementContext, fn, {});
-    this._children.value = [node];
+    this.childMarkup = [];
+    const node = new View(this.elementContext, fn, {});
+    this.children.value = [node];
     return node;
   }
 
@@ -432,14 +333,14 @@ export class View<P> implements ViewElement {
 
     let result: ViewResult;
     try {
-      result = this._view.call(context, this._props, context);
+      result = this.fn.call(context, this.props, context);
 
-      if (this._childMarkup.length) {
-        this._children.value = constructMarkup(this._elementContext, this._childMarkup);
+      if (this.childMarkup.length) {
+        this.children.value = constructMarkup(this.elementContext, this.childMarkup);
       }
     } catch (error) {
       if (error instanceof Error) {
-        this._logger.crash(error);
+        this.logger.crash(error);
       }
       throw error;
     }
@@ -447,20 +348,20 @@ export class View<P> implements ViewElement {
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      this._element = groupElements(constructMarkup(this._elementContext, createMarkup("$node", { value: result })));
+      this.element = groupElements(constructMarkup(this.elementContext, createMarkup("$node", { value: result })));
     } else if (isReactive(result)) {
-      this._element = groupElements(
-        constructMarkup(this._elementContext, createMarkup("$dynamic", { source: result as Reactive<Renderable> })),
+      this.element = groupElements(
+        constructMarkup(this.elementContext, createMarkup("$dynamic", { source: result as Reactive<Renderable> })),
       );
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      this._element = groupElements(constructMarkup(this._elementContext, result));
+      this.element = groupElements(constructMarkup(this.elementContext, result));
     } else {
       const error = new TypeError(
         `Expected '${
-          this._view.name
+          this.fn.name
         }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
       );
-      this._logger.crash(error);
+      this.logger.crash(error);
     }
   }
 }

@@ -25,7 +25,7 @@ Dolla's goals include:
 
 > TODO: Write about why Dolla was started and what it's all about.
 
-- Borne of frustration using React and similar libs (useEffect, referential equality, a pain to integrate other libs into its lifecycle, need to hunt for libraries to move beyond Hello World).
+- Borne of frustration using React and similar libs (useEffect, referential equality, a pain to integrate other libs into its lifecycle, need to hunt for libraries to move much beyond Hello World).
 - Merges ideas from my favorite libraries and frameworks (Solid/Knockout, Choo, Svelte, i18next, etc) into one curated set designed to work well together.
 - Opinionated (with the _correct_ opinions).
 - Many mainstream libraries seem too big for what they do. The entirety of Dolla is less than half the size of [`react-router`](https://bundlephobia.com/package/react-router@7.1.5).
@@ -35,7 +35,7 @@ Dolla's goals include:
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
 ```js
-import Dolla, { atom, html } from "@manyducks.co/dolla";
+import Dolla, { atom, effect, get, html } from "@manyducks.co/dolla";
 
 function Counter() {
   const count = atom(0);
@@ -49,17 +49,6 @@ function Counter() {
       </div>
     </div>
   `;
-
-  return (
-    <div>
-      <p>Clicks: {$count}</p>
-      <div>
-        <button onClick={decrement}>-1</button>
-        <button onClick={reset}>Reset</button>
-        <button onClick={increment}>+1</button>
-      </div>
-    </div>
-  );
 });
 
 Dolla.mount(document.body, Counter);

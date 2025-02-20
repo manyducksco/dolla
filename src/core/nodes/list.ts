@@ -26,12 +26,17 @@ export class List<T> implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   node = document.createTextNode("");
-  items: Reactive<T[]>;
-  unsubscribe: UnsubscribeFunction | null = null;
-  connectedItems: ConnectedItem<T>[] = [];
-  elementContext;
-  renderFn: (this: ViewContext, value: Reactive<T>, index: Reactive<number>, context: ViewContext) => ViewResult;
-  keyFn: (value: T, index: number) => string | number | symbol;
+  private items: Reactive<T[]>;
+  private unsubscribe: UnsubscribeFunction | null = null;
+  private connectedItems: ConnectedItem<T>[] = [];
+  private elementContext;
+  private renderFn: (
+    this: ViewContext,
+    value: Reactive<T>,
+    index: Reactive<number>,
+    context: ViewContext,
+  ) => ViewResult;
+  private keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
     return this.node.parentNode != null;
@@ -75,14 +80,14 @@ export class List<T> implements MarkupElement {
     this._cleanup(parentIsUnmounting);
   }
 
-  _cleanup(parentIsUnmounting: boolean) {
+  private _cleanup(parentIsUnmounting: boolean) {
     for (const item of this.connectedItems) {
       item.element.unmount(parentIsUnmounting);
     }
     this.connectedItems = [];
   }
 
-  _update(value: T[]) {
+  private _update(value: T[]) {
     if (value.length === 0 || !this.isMounted) {
       return this._cleanup(false);
     }

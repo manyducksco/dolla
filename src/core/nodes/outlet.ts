@@ -11,10 +11,10 @@ export class Outlet implements MarkupElement {
   node = document.createTextNode("");
   isMounted = false;
 
-  source: MaybeReactive<MarkupElement[]>;
-  elements: MarkupElement[] = [];
+  private source: MaybeReactive<MarkupElement[]>;
+  private elements: MarkupElement[] = [];
 
-  unsubscribe?: UnsubscribeFunction;
+  private unsubscribe?: UnsubscribeFunction;
 
   constructor(source: MaybeReactive<MarkupElement[]>) {
     this.source = source;
@@ -48,14 +48,14 @@ export class Outlet implements MarkupElement {
     }
   }
 
-  cleanup(parentIsUnmounting: boolean) {
+  private cleanup(parentIsUnmounting: boolean) {
     for (const element of this.elements) {
       element.unmount(parentIsUnmounting);
     }
     this.elements = [];
   }
 
-  update(newElements: MarkupElement[]) {
+  private update(newElements: MarkupElement[]) {
     this.cleanup(false);
 
     if (newElements.length > 0) {

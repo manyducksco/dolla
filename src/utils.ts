@@ -1,4 +1,3 @@
-import colorHash from "simple-color-hash";
 import { isFunction, isObject, typeOf } from "./typeChecking.js";
 import _deepEqual from "fast-deep-equal/es6";
 
@@ -133,12 +132,15 @@ export function omit<O extends Record<any, any>>(keys: (keyof O)[], object: O): 
 ||         Object Utils        ||
 \*=============================*/
 
-export function colorFromString(value: string) {
-  return colorHash({
-    str: value,
-    sat: { min: 0.35, max: 0.55 },
-    light: { min: 0.6, max: 0.6 },
-  });
+/**
+ * Takes any string and returns an OKLCH color.
+ */
+export function okhash(value: string) {
+  let hue = 0;
+  for (let i = 0; i < value.length; i++) {
+    hue = (hue + value.charCodeAt(i) * 10) % 360;
+  }
+  return `oklch(0.68 0.15 ${hue}deg)`;
 }
 
 export type MatcherFunction = (value: string) => boolean;

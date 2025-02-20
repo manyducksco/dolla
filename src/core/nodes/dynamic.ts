@@ -18,11 +18,11 @@ export class Dynamic implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   node = document.createTextNode("");
-  children: MarkupElement[] = [];
-  elementContext: ElementContext;
+  private children: MarkupElement[] = [];
+  private elementContext: ElementContext;
 
-  source: Reactive<Renderable>;
-  unsubscribe?: UnsubscribeFunction;
+  private source: Reactive<Renderable>;
+  private unsubscribe?: UnsubscribeFunction;
 
   get isMounted() {
     return this.node.parentNode != null;
@@ -39,6 +39,8 @@ export class Dynamic implements MarkupElement {
 
       this.unsubscribe = effect(() => {
         const content = get(this.source);
+
+        console.log("dynamic updated", content, this.source);
 
         if (!isRenderable(content)) {
           console.error(content);

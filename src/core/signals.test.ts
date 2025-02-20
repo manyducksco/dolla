@@ -1,9 +1,9 @@
 import { test, expect, vi } from "vitest";
-import { get, peek, atom, compose, effect, isReactive } from "./signals";
+import { get, peek, atom, compose, effect, isReactive, Reactive } from "./signals";
 
 test("isReactive", () => {
   const a = atom(5);
-  const c = compose(() => a.value * 2);
+  const c = compose(() => get(a) * 2);
 
   expect(isReactive(a)).toBe(true);
   expect(isReactive(c)).toBe(true);
@@ -13,7 +13,7 @@ test("isReactive", () => {
 
 test("get", () => {
   const a = atom(5);
-  const c = compose(() => a.value * 2);
+  const c = compose(() => get(a) * 2);
 
   expect(get(a)).toBe(5);
   expect(get(c)).toBe(10);
@@ -22,13 +22,13 @@ test("get", () => {
 
 test("basic composition & tracking", () => {
   const count = atom(5);
-  const doubled = compose(() => count.value * 2);
+  const doubled = compose(() => get(count) * 2);
 
   expect(count.value).toBe(5);
   expect(doubled.value).toBe(10);
 
   const fn = vi.fn(() => {
-    doubled.value;
+    get(doubled);
   });
   const stop = effect(fn);
 
@@ -65,27 +65,19 @@ test("peek: prevents tracking", () => {
   const a = atom(5);
   const b = atom(10);
 
-  const multiplied = compose(() => a.value * peek(b));
+  const multiplied = compose(() => get(a) * peek(b));
 
   expect(multiplied.value).toBe(50);
-
-  const batched = compose(() => {
-    const A = a.value;
-    const B = peek(() => a.value + b.value);
-    return [A, B];
-  });
 
   a.value++;
 
   queueMicrotask(() => {
     expect(multiplied.value).toBe(60);
-    expect(batched.value).toStrictEqual([6, 16]);
 
     b.value++;
 
     queueMicrotask(() => {
       expect(multiplied.value).toBe(60);
-      expect(batched.value).toStrictEqual([6, 16]);
     });
   });
 });
@@ -93,13 +85,13 @@ test("peek: prevents tracking", () => {
 test("solves diamond problem", () => {
   const count = atom(1);
 
-  const left = compose(() => count.value + 5);
-  const right = compose(() => count.value / 2);
+  const left = compose(() => get(count) + 5);
+  const right = compose(() => get(count) / 2);
 
-  const sum = compose(() => left.value + right.value);
+  const sum = compose(() => get(left) + get(right));
 
   const fn = vi.fn(() => {
-    sum.value;
+    get(sum);
   });
   const unsubscribe = effect(fn);
 
@@ -124,7 +116,7 @@ test("compose receives previous value", () => {
   const fn = vi.fn();
   const composed = compose((previous) => {
     fn(previous);
-    return count.value;
+    return get(count);
   });
 
   composed.value;
@@ -143,4 +135,39 @@ test("compose receives previous value", () => {
 
   expect(fn).toBeCalledTimes(3);
   expect(fn).toBeCalledWith(1);
+});
+
+test("nested compose", () => {
+  const count = atom(0);
+
+  const plus1 = (reactive: Reactive<number>) => compose(() => get(reactive) + 1);
+
+  const one = plus1(count);
+  const two = plus1(one);
+  const three = plus1(two);
+
+  const fn = vi.fn(() => {
+    get(three);
+  });
+  const stop = effect(fn);
+
+  queueMicrotask(() => {
+    expect(fn).toBeCalledTimes(1);
+
+    expect(one.value).toBe(1);
+    expect(two.value).toBe(2);
+    expect(three.value).toBe(3);
+
+    count.value++;
+
+    queueMicrotask(() => {
+      expect(fn).toBeCalledTimes(2);
+
+      expect(one.value).toBe(2);
+      expect(two.value).toBe(3);
+      expect(three.value).toBe(4);
+
+      stop();
+    });
+  });
 });

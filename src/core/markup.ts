@@ -259,8 +259,11 @@ export const html = htm.bind(createMarkup);
  */
 export function cond(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return createMarkup("$dynamic", {
-    source: compose(() => {
+    source: compose<Renderable>(() => {
       const value = get(condition);
+
+      console.log("cond updated", value);
+
       if (value && thenContent) {
         return thenContent;
       } else if (!value && elseContent) {

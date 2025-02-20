@@ -1,12 +1,4 @@
-import { Emitter } from "@manyducks.co/emitter";
-import {
-  ContextEvent,
-  GenericEvents,
-  StoreConsumerContext,
-  type ComponentContext,
-  type ElementContext,
-  type WildcardListenerMap,
-} from "./context.js";
+import type { StoreConsumerContext, ComponentContext, ElementContext } from "./context.js";
 import type { Logger } from "./dolla.js";
 import { IS_STORE } from "./symbols.js";
 import { isFunction } from "../typeChecking.js";
@@ -19,10 +11,7 @@ export type StoreFactory<Options, Value> = Options extends undefined
   ? () => Store<Options, Value>
   : (options: Options) => Store<Options, Value>;
 
-export interface StoreContext<Events extends GenericEvents = GenericEvents>
-  extends Omit<Logger, "setName">,
-    ComponentContext<Events>,
-    StoreConsumerContext {
+export interface StoreContext extends Omit<Logger, "setName">, ComponentContext, StoreConsumerContext {
   /**
    * True while this store is attached to a context that is currently mounted in the view tree.
    */
@@ -45,16 +34,16 @@ export interface StoreContext<Events extends GenericEvents = GenericEvents>
   effect(callback: EffectCallback): UnsubscribeFunction;
 }
 
-interface Context<Options, Value, Events extends GenericEvents> extends Omit<Logger, "setName"> {}
+interface Context<Options, Value> extends Omit<Logger, "setName"> {}
 
-class Context<Options, Value, Events extends GenericEvents> implements StoreContext<Events>, StoreConsumerContext {
-  __store;
+class Context<Options, Value> implements StoreContext, StoreConsumerContext {
+  private store;
 
   constructor(store: Store<Options, Value>) {
-    this.__store = store;
+    this.store = store;
 
     // Copy logger methods from logger.
-    const descriptors = Object.getOwnPropertyDescriptors(this.__store._logger);
+    const descriptors = Object.getOwnPropertyDescriptors(this.store.logger);
     for (const key in descriptors) {
       if (key !== "setName") {
         Object.defineProperty(this, key, descriptors[key]);
@@ -63,62 +52,21 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
   }
 
   get isMounted() {
-    return this.__store.isMounted;
+    return this.store.isMounted;
   }
 
   get name() {
-    return this.__store._name;
+    return this.store.name || this.store.id;
   }
 
   set name(value) {
-    this.__store._name = value;
-    this.__store._logger.setName(value);
-  }
-
-  on(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
-        listener(event, ...args);
-      };
-      this.__store._elementContext.emitter.on(type, wrappedListener);
-      this.__store._wildcardListeners.set(listener, wrappedListener);
-    } else {
-      this.__store._elementContext.emitter.on(type, listener);
-    }
-  }
-
-  off(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = this.__store._wildcardListeners.get(listener);
-      if (wrappedListener) {
-        this.__store._elementContext.emitter.off(type, wrappedListener);
-        this.__store._wildcardListeners.delete(listener);
-      }
-    } else {
-      this.__store._elementContext.emitter.off(type, listener);
-    }
-  }
-
-  once(type: any, listener: (event: ContextEvent, ...args: any[]) => void): void {
-    if (type === "*") {
-      const wrappedListener = (_type: any, event: ContextEvent, ...args: any[]) => {
-        this.__store._wildcardListeners.delete(listener);
-        listener(event, ...args);
-      };
-      this.__store._elementContext.emitter.once(type, wrappedListener);
-      this.__store._wildcardListeners.set(listener, wrappedListener);
-    } else {
-      this.__store._elementContext.emitter.once(type, listener);
-    }
-  }
-
-  emit<T extends keyof Events>(type: T, ...args: Events[T]): boolean {
-    return this.__store._elementContext.emitter.emit(type, new ContextEvent(type as string), ...args);
+    this.store.name = value;
+    this.store.logger.setName(value);
   }
 
   get<Value>(store: StoreFunction<any, Value>): Value {
     if (isFunction(store)) {
-      let context = this.__store._elementContext;
+      let context = this.store.elementContext;
       let instance: Store<any, Value> | undefined;
       while (true) {
         instance = context.stores.get(store);
@@ -139,33 +87,31 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
   }
 
   onMount(callback: () => void): void {
-    this.__store._emitter.on("mounted", callback);
+    this.store.lifecycleListeners.mount.push(callback);
   }
 
   onUnmount(callback: () => void): void {
-    this.__store._emitter.on("unmounted", callback);
+    this.store.lifecycleListeners.unmount.push(callback);
   }
 
   effect(callback: EffectCallback) {
-    const store = this.__store;
-
-    // TODO: Set up effect in a more direct way? I'm just hacking compose here.
+    const store = this.store;
 
     if (store.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
       const unsubscribe = effect(callback);
-      store._unsubscribes.push(unsubscribe);
+      store.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
       // This should only happen if called in the body of the component function.
       // This code is not always re-run between when a component is unmounted and remounted.
       let unsubscribe: UnsubscribeFunction | undefined;
       let disposed = false;
-      store._emitter.on("mounted", () => {
+      store.lifecycleListeners.mount.push(() => {
         if (!disposed) {
           unsubscribe = effect(callback);
-          store._unsubscribes.push(unsubscribe);
+          store.lifecycleListeners.unmount.push(unsubscribe);
         }
       });
       return () => {
@@ -178,11 +124,6 @@ class Context<Options, Value, Events extends GenericEvents> implements StoreCont
   }
 }
 
-type StoreEvents = {
-  mounted: [];
-  unmounted: [];
-};
-
 export class Store<Options, Value> {
   readonly fn;
   private _options;
@@ -194,21 +135,20 @@ export class Store<Options, Value> {
 
   isMounted = false;
 
-  _elementContext!: ElementContext;
-  _emitter = new Emitter<StoreEvents>();
-  _wildcardListeners: WildcardListenerMap = new Map();
-  _logger!: Logger;
-  _unsubscribes: UnsubscribeFunction[] = [];
-  _name;
-  _id = getUniqueId();
+  elementContext!: ElementContext;
 
-  get name() {
-    return this._name || this._id;
-  }
+  lifecycleListeners: {
+    mount: (() => any)[];
+    unmount: (() => any)[];
+  } = { mount: [], unmount: [] };
+
+  logger!: Logger;
+  id = getUniqueId();
+  name;
 
   constructor(fn: StoreFunction<Options, Value>, options: Options) {
     this.fn = fn;
-    this._name = fn.name;
+    this.name = fn.name;
     this._options = options;
   }
 
@@ -220,17 +160,17 @@ export class Store<Options, Value> {
     if (elementContext.stores.has(this.fn)) {
       return false;
     }
-    this._elementContext = elementContext;
-    this._logger = elementContext.root.createLogger(this._name);
-    this._emitter.on("error", (error, eventName, ...args) => {
-      this._logger.error({ error, eventName, args });
-      this._logger.crash(error as Error);
-    });
+    this.elementContext = elementContext;
+    this.logger = elementContext.root.createLogger(this.name);
+    // this._emitter.on("error", (error, eventName, ...args) => {
+    //   this._logger.error({ error, eventName, args });
+    //   this._logger.crash(error as Error);
+    // });
     const context = new Context(this);
     try {
       this.value = this.fn.call(context, this._options, context);
     } catch (error) {
-      this._logger.crash(error as Error);
+      this.logger.crash(error as Error);
       throw error;
     }
     elementContext.stores.set(this.fn, this);
@@ -239,18 +179,20 @@ export class Store<Options, Value> {
 
   handleMount() {
     this.isMounted = true;
-    this._emitter.emit("mounted");
+
+    for (const listener of this.lifecycleListeners.mount) {
+      listener();
+    }
+    this.lifecycleListeners.mount.length = 0;
   }
 
   handleUnmount() {
     this.isMounted = false;
-    this._emitter.emit("unmounted");
-    this._emitter.clear();
 
-    for (const unsubscribe of this._unsubscribes) {
-      unsubscribe();
+    for (const listener of this.lifecycleListeners.unmount) {
+      listener();
     }
-    this._unsubscribes.length = 0;
+    this.lifecycleListeners.unmount.length = 0;
   }
 }
 

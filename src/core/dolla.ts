@@ -1,21 +1,14 @@
-import { Emitter } from "@manyducks.co/emitter";
 import { HTTP } from "../http/index.js";
-import { I18n } from "../translate/index.js";
 import { _isRouter, _mountRouter, _unmountRouter, type Router } from "../router/index.js";
+import { I18n } from "../translate/index.js";
 import { assertInstanceOf, isFunction, isString } from "../typeChecking.js";
-import { colorFromString, createMatcher, noOp } from "../utils.js";
-import { DefaultCrashView, type CrashViewProps } from "./views/default-crash-view.js";
-import { Passthrough } from "./views/passthrough.js";
-// import { Batch } from "./batch.js";
-import {
-  type ElementContext,
-  type StoreProviderContext,
-  type StoreConsumerContext,
-  type WildcardListenerMap,
-} from "./context.js";
+import { okhash, createMatcher, noOp } from "../utils.js";
+import type { ElementContext, StoreConsumerContext, StoreProviderContext } from "./context.js";
 import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { Store, StoreError, StoreFunction } from "./store.js";
+import { DefaultCrashView, type CrashViewProps } from "./views/default-crash-view.js";
+import { Passthrough } from "./views/passthrough.js";
 
 // Affects which log messages will print and how much debugging info is included in the DOM.
 export type Environment = "development" | "production";
@@ -78,8 +71,6 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
 
   #rootElementContext: ElementContext = {
     root: this,
-    data: {},
-    emitter: new Emitter(),
     stores: new Map(),
     viewName: "Dolla",
   };
@@ -315,113 +306,50 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
     const _console = options?.console ?? getDefaultConsole();
 
     const self = this;
+    const loggles = this.#loggles;
+
+    const bind = (method: keyof Loggles) => {
+      if (
+        loggles[method] === false ||
+        (isString(loggles[method]) && loggles[method] !== self.getEnv()) ||
+        !this.#match(name)
+      ) {
+        return noOp;
+      } else {
+        let label = `%c${name}`;
+        if (options?.uid) {
+          label += ` %c[uid: %c${options.uid}%c]`;
+        } else {
+          label += `%c%c%c`;
+        }
+        return _console[method].bind(
+          _console,
+          label,
+          `color:${okhash(label)};font-weight:bold`,
+          `color:#777`,
+          `color:#aaa`,
+          `color:#777`,
+        );
+      }
+    };
 
     return {
       setName(newName: string) {
         name = newName;
         return this;
       },
-
       get info() {
-        if (
-          self.#loggles.info === false ||
-          (isString(self.#loggles.info) && self.#loggles.info !== self.getEnv()) ||
-          !self.#match(name)
-        ) {
-          return noOp;
-        } else {
-          let label = `%c${name}`;
-          if (options?.uid) {
-            label += ` %c[uid: %c${options.uid}%c]`;
-          } else {
-            label += `%c%c%c`;
-          }
-          return _console.info.bind(
-            _console,
-            label,
-            `color:${colorFromString(label)};font-weight:bold`,
-            `color:#777`,
-            `color:#aaa`,
-            `color:#777`,
-          );
-        }
+        return bind("info");
       },
-
       get log() {
-        if (
-          self.#loggles.log === false ||
-          (isString(self.#loggles.log) && self.#loggles.log !== self.getEnv()) ||
-          !self.#match(name)
-        ) {
-          return noOp;
-        } else {
-          let label = `%c${name}`;
-          if (options?.uid) {
-            label += ` %c[uid: %c${options.uid}%c]`;
-          } else {
-            label += `%c%c%c`;
-          }
-          return _console.log.bind(
-            _console,
-            label,
-            `color:${colorFromString(label)};font-weight:bold`,
-            `color:#777`,
-            `color:#aaa`,
-            `color:#777`,
-          );
-        }
+        return bind("log");
       },
-
       get warn() {
-        if (
-          self.#loggles.warn === false ||
-          (isString(self.#loggles.warn) && self.#loggles.warn !== self.getEnv()) ||
-          !self.#match(name)
-        ) {
-          return noOp;
-        } else {
-          let label = `%c${name}`;
-          if (options?.uid) {
-            label += ` %c[uid: %c${options.uid}%c]`;
-          } else {
-            label += `%c%c%c`;
-          }
-          return _console.warn.bind(
-            _console,
-            label,
-            `color:${colorFromString(label)};font-weight:bold`,
-            `color:#777`,
-            `color:#aaa`,
-            `color:#777`,
-          );
-        }
+        return bind("warn");
       },
-
       get error() {
-        if (
-          self.#loggles.error === false ||
-          (isString(self.#loggles.error) && self.#loggles.error !== self.getEnv()) ||
-          !self.#match(name)
-        ) {
-          return noOp;
-        } else {
-          let label = `%c${name}`;
-          if (options?.uid) {
-            label += ` %c[uid: %c${options.uid}%c]`;
-          } else {
-            label += `%c%c%c`;
-          }
-          return _console.error.bind(
-            _console,
-            label,
-            `color:${colorFromString(label)};font-weight:bold`,
-            `color:#777`,
-            `color:#aaa`,
-            `color:#777`,
-          );
-        }
+        return bind("error");
       },
-
       crash(error: Error) {
         if (self.isMounted) {
           // Unmount the app.
