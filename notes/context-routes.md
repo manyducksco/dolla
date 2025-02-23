@@ -4,7 +4,7 @@ I had an idea to integrate routing back into views instead of having a separate 
 
 Here's how it might look:
 
-```js
+```jsx
 function Example(props, ctx) {
   return <div>
     <header>

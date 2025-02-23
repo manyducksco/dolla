@@ -1,6 +1,6 @@
 import htm from "htm/mini";
 
-import { isArray, isArrayOf, isFunction, isNumber, isString, typeOf } from "../typeChecking.js";
+import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
 import type { ElementContext } from "./context.js";
 import { DOMNode } from "./nodes/dom.js";
@@ -11,7 +11,7 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
 import { compose, get, isReactive, MaybeReactive, type Reactive } from "./signals.js";
-import { IS_MARKUP, IS_MARKUP_ELEMENT } from "./symbols.js";
+import { IS_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
 ||           Markup          ||

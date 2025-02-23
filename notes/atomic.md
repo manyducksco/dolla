@@ -55,7 +55,6 @@ function SomeView(props, ctx) {
 Refined API:
 
 ```js
-
 const $count = atom(5);
 $count.value++;
 $count.value; // 6
@@ -143,4 +142,68 @@ const me = compose((get) => {
 });
 
 const $me = derive([$userId, $users], (id, users) => users?.find((u) => u.id === id));
+```
+
+```js
+const Counter = view("Counter", function () {
+  const count = atom(0);
+
+  return html`
+    <div>
+      <span>${count}</span>
+
+      <button onclick=${() => count.value++}>Increment</button>
+      <button onclick=${() => count.value--}>Decrement</button>
+    </div>
+  `;
+});
+
+const Routes = view("Routes", function () {
+  this.onMount(function () {
+    // this still refers to view context
+    this.log("hello!");
+  });
+
+  return html`
+    <div>
+      ${this.router(function () {
+        this.route("/path", View);
+
+        this.route("/nested", Layout, function () {
+          this.route("/test", Nested); // RouterOutlet passed as children
+        });
+      })}
+    </div>
+  `;
+});
+
+const CounterStore = store("Counter", function () {
+  const count = atom(0);
+
+  return {
+    count: compose(() => get(count)),
+
+    increment() {
+      count.value++;
+    },
+    decrement() {
+      count.value--;
+    },
+  };
+});
+
+const Counter = view("Counter", function () {
+  const counter = this.attach(CounterStore);
+
+  // const { count, increment, decrement } = this.get(CounterStore);
+
+  return html`
+    <div>
+      <span>${counter.count}</span>
+
+      <button onclick=${counter.increment}>Increment</button>
+      <button onclick=${counter.decrement}>Decrement</button>
+    </div>
+  `;
+});
 ```

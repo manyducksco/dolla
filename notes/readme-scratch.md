@@ -1,5 +1,21 @@
 # README
 
+```jsx
+import { mount, atom, html } from "@manyducks.co/atomic";
+
+function Home() {
+  return html` <h1>This is the home page!</h1> `;
+}
+
+// mount to DOM element
+mount(Home, document.body);
+
+// render to string
+const string = await render(Home, "/the/path/here");
+```
+
+---
+
 > This note will eventually become the new README. Here I'm laying out my ideal framework API.
 
 A basic component.

@@ -10,9 +10,9 @@ Dolla is a batteries-included JavaScript frontend framework covering the needs o
 - ⚡ Reactive DOM updates with [Signals](./docs/state.md).
 - 📦 Reusable components with [Views](./docs/views.md).
 - 💾 Reusable state management with [Stores](./docs/stores.md).
-- 🔀 Built-in [routing](./docs/router.md) with nested routes and middleware support (check login status, preload data, etc).
+- 🔀 Client side [routing](./docs/router.md) with nested routes and middleware support (check login status, preload data, etc).
 - 🐕 Built-in [HTTP](./docs/http.md) client with middleware support (set auth headers, etc).
-- 📍 Built-in [localization](./docs/i18n.md) system (store translated strings in JSON files and call the `t` function to get them).
+- 📍 Lightweight [localization](./docs/i18n.md) system (store translated strings in JSON files and call the `t` function to get them).
 - 🍳 Build system optional. [Write views in JSX](./docs/setup.md) or use `html` tagged template literals.
 
 Dolla's goals include:

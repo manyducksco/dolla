@@ -2,7 +2,7 @@ import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
 import type { ElementContext } from "../context.js";
 import { constructMarkup, isMarkupElement, isRenderable, toMarkup, type MarkupElement } from "../markup.js";
-import { effect, get, type Reactive, type UnsubscribeFunction } from "../signals.js";
+import { effect, get, pauseTracking, resumeTracking, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface DynamicOptions {
@@ -47,7 +47,9 @@ export class Dynamic implements MarkupElement {
           );
         }
 
+        pauseTracking();
         this.update(isArray(content) ? content : [content]);
+        resumeTracking();
       });
     }
   }

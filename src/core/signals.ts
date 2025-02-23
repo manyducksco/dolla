@@ -115,6 +115,17 @@ function stopEffect(this: Effect): void {
   });
 }
 
+const pauseStack: (Subscriber | undefined)[] = [];
+
+export function pauseTracking() {
+  pauseStack.push(activeSub);
+  activeSub = undefined;
+}
+
+export function resumeTracking() {
+  activeSub = pauseStack.pop();
+}
+
 /*===================================*\
 ||        Types & Core Classes       ||
 \*===================================*/
@@ -285,6 +296,27 @@ export function compose<T>(fn: ComposeCallback<T>, options?: ReactiveOptions<T>)
   });
 }
 
+// type SourceValues<I extends MaybeReactive<any>[]> = {
+//   [Index in keyof I]: I[Index] extends Reactive<infer T> ? T : I[Index];
+// };
+// function derive<I extends [...MaybeReactive<any>], O>(sources: I, fn: (...values: SourceValues<I>) => O): Reactive<O> {
+//   return compose(() => {
+//     const values = sources.map((s) => s.get()) as SourceValues<I>;
+//     pauseTracking();
+//     const returned = fn(...values); // Nothing in fn is tracked
+//     resumeTracking();
+//     return get(returned);
+//   });
+// }
+
+// function createState<T>(initialValue: T) {
+//   const value = atom(initialValue);
+//   return [value as Reactive<T>, set(value)] as const;
+// }
+
+// const [$count, setCount] = createState(0);
+// const $doubled = derive([$count], () => $count.value * 2);
+
 /**
  * Takes a new value to set, or a callback that receives the current value and returns a new value to set.
  */
@@ -343,6 +375,12 @@ export function peek<T>(value: MaybeReactive<T>): T {
     return value;
   }
 }
+
+// export function untrack(fn: () => void) {
+//   pauseTracking();
+//   fn();
+//   resumeTracking();
+// }
 
 export type EffectCallback = () => void;
 
