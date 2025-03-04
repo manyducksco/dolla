@@ -1,5 +1,5 @@
 // Reactive
-export { atom, compose, effect, get, set, peek } from "./core/signals.js";
+export { atom, compose, effect, get, set, peek, getTracked } from "./core/signals.js";
 export type { Reactive, MaybeReactive, Atom } from "./core/signals.js";
 
 // Equality checks

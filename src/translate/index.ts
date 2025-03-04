@@ -481,7 +481,7 @@ export class I18n {
       await translation.load();
 
       this.#cache = [];
-      this.#locale.value = realName;
+      this.#locale.set(realName);
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -515,7 +515,7 @@ export class I18n {
         values[key] = get(options[key]);
       }
 
-      return this.#getValue(get(this.#locale), selector, values);
+      return this.#getValue(this.#locale.get(), selector, values);
     });
   }
 
@@ -604,12 +604,12 @@ export class I18n {
 
   /**
    * Creates an `Intl.Collator` configured for the current locale.
-   * NOTE: The Collator remains bound to the locale it was created with, even when the app's locale changes.
+   * NOTE: The locale is tracked if called within a signal tracking context.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
    */
   collator(options?: Intl.CollatorOptions) {
-    return new Intl.Collator(this.#locale.value, options);
+    return new Intl.Collator(this.#locale.get(), options);
   }
 
   /**
@@ -618,14 +618,12 @@ export class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
   number(count: MaybeReactive<number | bigint>, options?: Intl.NumberFormatOptions): Reactive<string> {
-    return compose(() => {
-      get(this.#locale); // track to update when locale changes
-      return this.#formatNumber(get(count), options);
-    });
+    return compose(() => this.#formatNumber(get(count), options));
   }
 
   #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
-    return new Intl.NumberFormat(this.#locale.value, options).format(count);
+    // NOTE: Locale is tracked if called within a tracking context.
+    return new Intl.NumberFormat(this.#locale.get(), options).format(count);
   }
 
   /**
@@ -641,14 +639,12 @@ export class I18n {
     date?: MaybeReactive<string | number | Date | undefined>,
     options?: Intl.DateTimeFormatOptions,
   ): Reactive<string> {
-    return compose(() => {
-      get(this.#locale); // track to update when locale changes
-      return this.#formatDateTime(get(date), options);
-    });
+    return compose(() => this.#formatDateTime(get(date), options));
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
-    return new Intl.DateTimeFormat(this.#locale.value, options).format(isString(date) ? new Date(date) : date);
+    // NOTE: Locale is tracked if called within a tracking context.
+    return new Intl.DateTimeFormat(this.#locale.get(), options).format(isString(date) ? new Date(date) : date);
   }
 
   /**
@@ -661,14 +657,12 @@ export class I18n {
    * const $formatted = Dolla.i18n.list(list, {  });
    */
   list(list: MaybeReactive<Iterable<string>>, options?: Intl.ListFormatOptions): Reactive<string> {
-    return compose(() => {
-      get(this.#locale); // track to update when locale changes
-      return this.#formatList(get(list), options);
-    });
+    return compose(() => this.#formatList(get(list), options));
   }
 
   #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {
-    return new Intl.ListFormat(this.#locale.value, options).format(list);
+    // NOTE: Locale is tracked if called within a tracking context.
+    return new Intl.ListFormat(this.#locale.get(), options).format(list);
   }
 
   // relativeTime(): State<string> {

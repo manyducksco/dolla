@@ -18,7 +18,7 @@ type HTMLOptions = {
 export class HTML implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
-  node;
+  domNode;
   private props: Record<string, any>;
   private childMarkup: Markup[] = [];
   private children: MarkupElement[] = [];
@@ -32,7 +32,7 @@ export class HTML implements MarkupElement {
   private canClickAway = false;
 
   get isMounted() {
-    return this.node.parentNode != null;
+    return this.domNode.parentNode != null;
   }
 
   constructor({ tag, props, children, elementContext }: HTMLOptions) {
@@ -46,19 +46,19 @@ export class HTML implements MarkupElement {
 
     // Create node with the appropriate constructor.
     if (elementContext.isSVG) {
-      this.node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      this.domNode = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
-      this.node = document.createElement(tag);
+      this.domNode = document.createElement(tag);
     }
 
     if (elementContext.root.getEnv() === "development" && elementContext.viewName) {
-      this.node.dataset.view = elementContext.viewName;
+      this.domNode.dataset.view = elementContext.viewName;
     }
 
     if (props.ref) {
       if (isFunction(props.ref)) {
         this.ref = props.ref;
-        this.ref(this.node);
+        this.ref(this.domNode);
       } else {
         throw new Error("Expected ref to be a function. Got: " + props.ref);
       }
@@ -88,16 +88,16 @@ export class HTML implements MarkupElement {
 
       for (let i = 0; i < this.children.length; i++) {
         const child = this.children[i];
-        const previous = i > 0 ? this.children[i - 1].node : undefined;
-        child.mount(this.node, previous);
+        const previous = i > 0 ? this.children[i - 1].domNode : undefined;
+        child.mount(this.domNode, previous);
       }
 
-      this.applyProps(this.node, this.props);
-      if (this.props.style) this.applyStyles(this.node, this.props.style, this.unsubscribers);
-      if (this.props.class) this.applyClasses(this.node, this.props.class, this.unsubscribers);
+      this.applyProps(this.domNode, this.props);
+      if (this.props.style) this.applyStyles(this.domNode, this.props.style, this.unsubscribers);
+      if (this.props.class) this.applyClasses(this.domNode, this.props.class, this.unsubscribers);
     }
 
-    parent.insertBefore(this.node, after?.nextSibling ?? null);
+    parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
     setTimeout(() => {
       this.canClickAway = true;
@@ -107,7 +107,7 @@ export class HTML implements MarkupElement {
   unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
       if (!parentIsUnmounting) {
-        this.node.parentNode?.removeChild(this.node);
+        this.domNode.parentNode?.removeChild(this.domNode);
       }
 
       for (const child of this.children) {
@@ -129,7 +129,7 @@ export class HTML implements MarkupElement {
 
   private attachProp<T>(value: MaybeReactive<T>, callback: (value: T) => void) {
     if (isReactive(value)) {
-      this.unsubscribers.push(effect(() => callback(get(value))));
+      this.unsubscribers.push(effect(() => callback(value.get())));
     } else {
       callback(value);
     }
@@ -155,7 +155,7 @@ export class HTML implements MarkupElement {
         const listener = (e: Event) => {
           if (this.canClickAway && !element.contains(e.target as any)) {
             if (isReactive<(e: Event) => void>(value)) {
-              value.value(e);
+              value.peek()(e);
             } else {
               (value as (e: Event) => void)(e);
             }
@@ -173,7 +173,7 @@ export class HTML implements MarkupElement {
         const eventName = key.slice(2).toLowerCase();
 
         const listener: (e: Event) => void = isReactive<(e: Event) => void>(value)
-          ? (e: Event) => value.value(e)
+          ? (e: Event) => value.peek()(e)
           : (value as (e: Event) => void);
 
         element.addEventListener(eventName, listener);
@@ -293,8 +293,8 @@ export class HTML implements MarkupElement {
 
         if (isReactive(value)) {
           const unsubscribe = effect(() => {
-            if (get(value)) {
-              element.style.setProperty(name, String(value.value), priority);
+            if (value.get()) {
+              element.style.setProperty(name, String(value.get()), priority);
             } else {
               element.style.removeProperty(name);
             }

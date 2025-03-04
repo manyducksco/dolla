@@ -17,7 +17,7 @@ interface DynamicOptions {
 export class Dynamic implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
-  node = document.createTextNode("");
+  domNode = document.createTextNode("");
   private children: MarkupElement[] = [];
   private elementContext: ElementContext;
 
@@ -25,7 +25,7 @@ export class Dynamic implements MarkupElement {
   private unsubscribe?: UnsubscribeFunction;
 
   get isMounted() {
-    return this.node.parentNode != null;
+    return this.domNode.parentNode != null;
   }
 
   constructor(options: DynamicOptions) {
@@ -35,10 +35,10 @@ export class Dynamic implements MarkupElement {
 
   mount(parent: Node, after?: Node) {
     if (!this.isMounted) {
-      parent.insertBefore(this.node, after?.nextSibling ?? null);
+      parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        const content = get(this.source);
+        const content = this.source.get();
 
         if (!isRenderable(content)) {
           console.error(content);
@@ -59,7 +59,7 @@ export class Dynamic implements MarkupElement {
 
     if (this.isMounted) {
       this.cleanup(parentIsUnmounting);
-      this.node.parentNode?.removeChild(this.node);
+      this.domNode.parentNode?.removeChild(this.domNode);
     }
   }
 
@@ -86,14 +86,14 @@ export class Dynamic implements MarkupElement {
     });
 
     for (const element of newElements) {
-      const previous = this.children.at(-1)?.node || this.node;
-      element.mount(this.node.parentNode!, previous);
+      const previous = this.children.at(-1)?.domNode || this.domNode;
+      element.mount(this.domNode.parentNode!, previous);
       this.children.push(element);
     }
 
     // Move marker node to end.
-    const parent = this.node.parentNode!;
-    const lastChildNextSibling = this.children.at(-1)?.node?.nextSibling ?? null;
-    parent.insertBefore(this.node, lastChildNextSibling);
+    const parent = this.domNode.parentNode!;
+    const lastChildNextSibling = this.children.at(-1)?.domNode?.nextSibling ?? null;
+    parent.insertBefore(this.domNode, lastChildNextSibling);
   }
 }

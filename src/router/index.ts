@@ -182,22 +182,22 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly pattern = compose(() => get(this.#match)?.pattern);
+  readonly pattern = compose(() => this.#match.get()?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly path = compose(() => get(this.#match)?.path ?? window.location.pathname);
+  readonly path = compose(() => this.#match.get()?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly params = compose(() => get(this.#match)?.params ?? {}, { equals: shallowEqual });
+  readonly params = compose(() => this.#match.get()?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  readonly query = compose(() => get(this.#match)?.query ?? {}, { equals: shallowEqual });
+  readonly query = compose(() => this.#match.get()?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
@@ -336,26 +336,26 @@ export class Router {
 
     const { match, journey } = await this.#resolveRoute(url);
 
-    // for (const step of journey) {
-    //   switch (step.kind) {
-    //     case "match":
-    //       logger?.info(`📍 ${step.message}`);
-    //       break;
-    //     case "redirect":
-    //       logger?.info(`↩️ ${step.message}`);
-    //       break;
-    //     case "miss":
-    //       logger?.info(`💀 ${step.message}`);
-    //       break;
-    //     default:
-    //       break;
-    //   }
-    // }
+    for (const step of journey) {
+      switch (step.kind) {
+        case "match":
+          logger?.info(`📍 ${step.message}`);
+          break;
+        case "redirect":
+          logger?.info(`↩️ ${step.message}`);
+          break;
+        case "miss":
+          logger?.info(`💀 ${step.message}`);
+          break;
+        default:
+          break;
+      }
+    }
 
     if (match) {
-      const oldPattern = this.pattern.value;
+      const oldPattern = this.pattern.peek();
 
-      this.#match.value = match;
+      this.#match.set(match);
 
       if (rootView && match.pattern !== oldPattern) {
         this.#mountRoute(rootView, match);

@@ -11,6 +11,11 @@ function Example(props, ctx) {
       <h1>Some kind of layout.</h1>
     </header>
     <main>
+      {this.router(function () {
+        this.route("something/*", SomethingView);
+        this.redirect("*", "./something/*");
+      })}
+
       {ctx.router([
         // Route path is relative to parent routes.
         // Nested route definitions are a thing of the past.
@@ -53,4 +58,4 @@ ctx.forward();
 
 - Would eliminate the need for `ctx.outlet()`. Can pass children directly via `children` prop now.
 - Would eliminate the need for `ViewElement` and `setChildView` method because a top level router no longer needs to call it.
-- Couldn't do the current routing strategy to combining all routes into one flat list at the top level.
+- Couldn't do the current routing strategy of combining all routes into one flat list at the top level.

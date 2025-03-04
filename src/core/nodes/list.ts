@@ -5,7 +5,6 @@ import {
   atom,
   compose,
   effect,
-  get,
   pauseTracking,
   type Reactive,
   resumeTracking,
@@ -35,7 +34,7 @@ type ConnectedItem<T> = {
 export class List<T> implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
-  node = document.createTextNode("");
+  domNode = document.createTextNode("");
   private items: Reactive<T[]>;
   private unsubscribe: UnsubscribeFunction | null = null;
   private connectedItems: ConnectedItem<T>[] = [];
@@ -49,7 +48,7 @@ export class List<T> implements MarkupElement {
   private keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
-    return this.node.parentNode != null;
+    return this.domNode.parentNode != null;
   }
 
   constructor({ elementContext, items, renderFn, keyFn }: ListOptions<T>) {
@@ -62,19 +61,21 @@ export class List<T> implements MarkupElement {
 
   mount(parent: Node, after?: Node) {
     if (!this.isMounted) {
-      parent.insertBefore(this.node, after?.nextSibling ?? null);
+      parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        let value = get(this.items);
+        let value = this.items.get();
 
         if (value == null) {
           value = [];
           console.log("list received empty value", value, this);
         }
 
-        pauseTracking();
-        this._update(Array.from(value));
-        resumeTracking();
+        requestAnimationFrame(() => {
+          pauseTracking();
+          this._update(Array.from(value));
+          resumeTracking();
+        });
       });
     }
   }
@@ -86,7 +87,7 @@ export class List<T> implements MarkupElement {
     }
 
     if (!parentIsUnmounting && this.isMounted) {
-      this.node.parentNode?.removeChild(this.node);
+      this.domNode.parentNode?.removeChild(this.domNode);
     }
 
     this._cleanup(parentIsUnmounting);
@@ -133,8 +134,8 @@ export class List<T> implements MarkupElement {
       const connected = this.connectedItems.find((item) => item.key === potential.key);
 
       if (connected) {
-        connected.item.value = potential.value;
-        connected.index.value = potential.index;
+        connected.item.set(potential.value);
+        connected.index.set(potential.index);
         newItems[potential.index] = connected;
       } else {
         const item = atom(potential.value);
@@ -145,7 +146,7 @@ export class List<T> implements MarkupElement {
           item,
           index,
           element: new View(this.elementContext, ListItemView, {
-            item: compose(() => item.value),
+            item: compose(() => item.get()),
             index,
             renderFn: this.renderFn,
           }),
@@ -157,15 +158,15 @@ export class List<T> implements MarkupElement {
     // TODO: Use a smarter inline reordering method. This causes scrollbars to jump.
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
-      const previous = newItems[i - 1]?.element.node ?? this.node;
-      item.element.mount(this.node.parentNode!, previous);
+      const previous = newItems[i - 1]?.element.domNode ?? this.domNode;
+      item.element.mount(this.domNode.parentNode!, previous);
     }
 
     this.connectedItems = newItems;
 
     // Move marker node to end.
-    const lastItem = newItems.at(-1)?.element.node ?? this.node;
-    this.node.parentNode?.insertBefore(this.node, lastItem.nextSibling);
+    const lastItem = newItems.at(-1)?.element.domNode ?? this.domNode;
+    this.domNode.parentNode?.insertBefore(this.domNode, lastItem.nextSibling);
   }
 }
 

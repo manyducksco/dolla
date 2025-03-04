@@ -1,5 +1,4 @@
 import { isObject } from "../typeChecking.js";
-// import type { Dolla, Logger } from "../core/dolla.js";
 
 /**
  * A simple HTTP client with middleware support. Middleware applies to all requests made through this store,

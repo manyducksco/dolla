@@ -7,23 +7,23 @@ import { IS_MARKUP_ELEMENT } from "../symbols";
 export class DOMNode implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
-  node: Node;
+  domNode: Node;
 
   get isMounted() {
-    return this.node.parentNode != null;
+    return this.domNode.parentNode != null;
   }
 
   constructor(node: Node) {
-    this.node = node;
+    this.domNode = node;
   }
 
   mount(parent: Node, after?: Node) {
-    parent.insertBefore(this.node, after?.nextSibling ?? null);
+    parent.insertBefore(this.domNode, after?.nextSibling ?? null);
   }
 
   unmount(parentIsUnmounting = false) {
-    if (this.node.parentNode && !parentIsUnmounting) {
-      this.node.parentNode.removeChild(this.node);
+    if (this.domNode.parentNode && !parentIsUnmounting) {
+      this.domNode.parentNode.removeChild(this.domNode);
     }
   }
 }

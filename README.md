@@ -40,21 +40,86 @@ import Dolla, { atom, html } from "@manyducks.co/dolla";
 function Counter() {
   const count = atom(0);
 
+  this.effect(() => {
+    console.log(`Count is: ${count.get()}`);
+  });
+
+  function increment() {
+    count.set(count.get() + 1);
+  }
+
+  function decrement() {
+    // alternative to `set(get() - 1)`
+    count.update((value) => value - 1);
+  }
+
   return html`
     <div>
       <p>Counter: ${count}</p>
       <div>
-        <button onclick=${() => count.value--}>-1</button>
-        <button onclick=${() => count.value++}>+1</button>
+        <button onclick=${increment}>+1</button>
+        <button onclick=${decrement}>-1</button>
       </div>
     </div>
   `;
-});
+}
 
 Dolla.mount(document.body, Counter);
 ```
 
 > TODO: Show small examples for routing and stores.
+
+```js
+function MessageStore() {
+  const message = atom("message", "Hello world!");
+
+  this.effect(() => {
+    this.log(`Message is now: ${get(message)}`);
+    // Calling `get()` inside an effect (or compose) function will track that reactive value as a dependency.
+    // Effects will re-run when a dependency updates.
+  });
+  // `this` refers to the context object; StoreContext in a store and ViewContext in a view.
+  // Context objects contain methods for controlling the component, logging and attaching lifecycle hooks.
+
+  return {
+    message: compose("message:readonly", () => get(message)),
+    // Creates a read-only reactive of the message value.
+    // Composed values update when their dependencies update.
+
+    setMessage: set(message),
+    // Creates a setter function to update the original message atom.
+  };
+}
+
+function App() {
+  const { message, setMessage } = this.provide(MessageStore);
+  // Provides a MessageStore on this context and any child contexts.
+  // When a store is provided its value is returned right away.
+
+  return html`
+    <div>
+      <${MessageView} />
+      <${MessageView} />
+      <${MessageView} />
+
+      <input
+        type="text"
+        value=${message}
+        oninput=${(e) => {
+          setMessage(e.currentTarget.value);
+        }}
+      />
+    </div>
+  `;
+}
+
+function MessageView() {
+  const { message } = this.get(MessageStore);
+  // Gets the nearest instance of MessageStore. In this case the one provided at the parent.
+
+  return html`<span>${message}</span>`;
+}
+```
 
 For more detail [check out the Docs](./docs/index.md).
 

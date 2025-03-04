@@ -1,9 +1,9 @@
 import { test, expect, vi } from "vitest";
-import { get, peek, atom, compose, effect, isReactive, Reactive } from "./signals";
+import { get, peek, atom, compose, effect, isReactive, Reactive, getTracked } from "./signals";
 
 test("isReactive", () => {
   const a = atom(5);
-  const c = compose(() => get(a) * 2);
+  const c = compose(() => a.get() * 2);
 
   expect(isReactive(a)).toBe(true);
   expect(isReactive(c)).toBe(true);
@@ -22,13 +22,13 @@ test("get", () => {
 
 test("basic composition & tracking", () => {
   const count = atom(5);
-  const doubled = compose(() => get(count) * 2);
+  const doubled = compose(() => count.get() * 2);
 
-  expect(count.value).toBe(5);
-  expect(doubled.value).toBe(10);
+  expect(count.get()).toBe(5);
+  expect(doubled.get()).toBe(10);
 
   const fn = vi.fn(() => {
-    get(doubled);
+    doubled.get();
   });
   const stop = effect(fn);
 
@@ -54,30 +54,30 @@ test("compose: returning reactives", () => {
   const count = atom(5);
   const doubled = compose(() => count);
 
-  expect(doubled.value).toBe(5);
+  expect(doubled.get()).toBe(5);
 
   count.value++;
 
-  expect(doubled.value).toBe(6);
+  expect(doubled.get()).toBe(6);
 });
 
 test("peek: prevents tracking", () => {
   const a = atom(5);
   const b = atom(10);
 
-  const multiplied = compose(() => get(a) * peek(b));
+  const multiplied = compose(() => a.get() * b.peek());
 
-  expect(multiplied.value).toBe(50);
+  expect(multiplied.get()).toBe(50);
 
   a.value++;
 
   queueMicrotask(() => {
-    expect(multiplied.value).toBe(60);
+    expect(multiplied.get()).toBe(60);
 
     b.value++;
 
     queueMicrotask(() => {
-      expect(multiplied.value).toBe(60);
+      expect(multiplied.get()).toBe(60);
     });
   });
 });
@@ -138,15 +138,20 @@ test("compose receives previous value", () => {
 });
 
 test("nested compose", () => {
-  const count = atom(0);
+  const count = atom(0, { name: "count" });
 
-  const plus1 = (reactive: Reactive<number>) => compose(() => get(reactive) + 1);
+  const plus1 = (reactive: Reactive<number>) => {
+    return compose(() => get(reactive) + 1, {
+      name: "plus1:" + reactive.peek(),
+    });
+  };
 
   const one = plus1(count);
   const two = plus1(one);
   const three = plus1(two);
 
   const fn = vi.fn(() => {
+    getTracked((tracked) => console.log(tracked));
     get(three);
   });
   const stop = effect(fn);
@@ -170,4 +175,22 @@ test("nested compose", () => {
       stop();
     });
   });
+});
+
+test("getTracked", () => {
+  const count = atom(0, { name: "count" });
+  const doubled = compose(() => count.get() * 2, { name: "doubled" });
+
+  const fn = vi.fn((tracked: Reactive<unknown>[]) => {
+    // console.log(tracked);
+  });
+  const quadrupled = compose(() => {
+    getTracked(fn);
+    return doubled.get() * 2;
+  });
+
+  quadrupled.get();
+
+  expect(fn).toBeCalledTimes(1);
+  expect(fn).toBeCalledWith([doubled]);
 });

@@ -40,7 +40,7 @@ export interface Markup {
  * A DOM node that has been constructed from a Markup object.
  */
 export interface MarkupElement {
-  readonly node?: Node;
+  readonly domNode?: Node;
 
   readonly isMounted: boolean;
 

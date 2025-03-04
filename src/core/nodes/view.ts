@@ -244,8 +244,8 @@ export class View<P> implements ViewElement {
   ||         "Public" API          ||
   \*===============================*/
 
-  get node() {
-    return this.element?.node!;
+  get domNode() {
+    return this.element?.domNode!;
   }
 
   isMounted = false;
@@ -303,7 +303,7 @@ export class View<P> implements ViewElement {
   setChildView(fn: ViewFunction<{}>) {
     this.childMarkup = [];
     const node = new View(this.elementContext, fn, {});
-    this.children.value = [node];
+    this.children.set([node]);
     return node;
   }
 
@@ -319,7 +319,7 @@ export class View<P> implements ViewElement {
       result = this.fn.call(context, this.props, context);
 
       if (this.childMarkup.length) {
-        this.children.value = constructMarkup(this.elementContext, this.childMarkup);
+        this.children.set(constructMarkup(this.elementContext, this.childMarkup));
       }
     } catch (error) {
       if (error instanceof Error) {

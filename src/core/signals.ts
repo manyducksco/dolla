@@ -1,5 +1,5 @@
 import { createReactiveSystem, type Dependency, type Subscriber, SubscriberFlags } from "alien-signals";
-import { assertInstanceOf, isFunction } from "../typeChecking";
+import { isFunction } from "../typeChecking";
 
 export interface Effect extends Subscriber, Dependency {
   fn(): void;
@@ -19,16 +19,32 @@ export interface Signal<T = any> extends Dependency {
  */
 export interface Reactive<T> {
   /**
+   * A name provided at the creation of this reactive.
+   */
+  readonly name?: string;
+
+  /**
+   * Returns the current value. Tracks this reactive as a dependency if called within `effect` or `compose`.
+   */
+  get(): T;
+
+  /**
+   * Returns the current value without tracking this reactive as a dependency when called within `effect` or `compose`.
+   */
+  peek(): T;
+
+  /**
    * The current value.
+   * @deprecated use `get()` and `set()`
    */
   readonly value: T;
 }
 
-const IS_REACTIVE = Symbol.for("DollaReactive");
-const DEPENDENCY = Symbol("dependency");
-
 export type MaybeReactive<T> = Reactive<T> | T;
 export type UnsubscribeFunction = () => void;
+
+let getTrackedFn: ((tracked: Reactive<unknown>[]) => void) | undefined;
+let trackedInThisCycle: Reactive<unknown>[] = [];
 
 const {
   link,
@@ -43,6 +59,7 @@ const {
   updateComputed(computed: Computed): boolean {
     const prevSub = activeSub;
     activeSub = computed;
+    trackedInThisCycle.length = 0;
     startTracking(computed);
     try {
       const oldValue = computed.currentValue;
@@ -54,6 +71,10 @@ const {
       return false;
     } finally {
       activeSub = prevSub;
+      if (getTrackedFn !== undefined) {
+        getTrackedFn(trackedInThisCycle);
+        getTrackedFn = undefined;
+      }
       endTracking(computed);
     }
   },
@@ -88,12 +109,17 @@ function flushEffects(): void {
         const e = PENDING_EFFECTS[i];
         const prevSub = activeSub;
         activeSub = e;
+        trackedInThisCycle.length = 0;
         startTracking(e);
         try {
           e.fn();
         } finally {
           activeSub = prevSub;
           endTracking(e);
+          if (getTrackedFn !== undefined) {
+            getTrackedFn(trackedInThisCycle);
+            getTrackedFn = undefined;
+          }
         }
       }
       PENDING_EFFECTS.length = 0;
@@ -148,32 +174,51 @@ export interface ReactiveOptions<T> {
 }
 
 export class Atom<T> implements Reactive<T> {
-  #signal;
+  #signal: Signal<T>;
   #equals;
 
-  name?: string;
+  readonly name?: string;
 
-  constructor(signal: Signal<T>, options?: ReactiveOptions<T>) {
-    this.#signal = signal;
+  constructor(value: T, options?: ReactiveOptions<T>) {
+    this.#signal = {
+      currentValue: value as T,
+      subs: undefined,
+      subsTail: undefined,
+    };
     this.#equals = options?.equals ?? Object.is;
 
     if (options?.name) {
       this.name = options.name;
     }
-
-    Object.defineProperty(this, DEPENDENCY, {
-      value: signal,
-      configurable: false,
-      enumerable: false,
-      writable: false,
-    });
   }
 
-  get value(): T {
+  /**
+   * Returns the latest value. The signal is tracked as a dependency if called within `effect` or `compose`.
+   */
+  get(): T {
+    if (activeSub !== undefined) {
+      link(this.#signal, activeSub);
+      trackedInThisCycle.push(this);
+    }
     return this.#signal.currentValue;
   }
 
-  set value(next: T) {
+  /**
+   * Returns the latest value. The signal is NOT tracked if called within `effect` or `compose`.
+   */
+  peek(): T {
+    return this.#signal.currentValue;
+  }
+
+  /**
+   * Replaces the current value with `next`.
+   *
+   * @example
+   * const count = atom(0);
+   * count.set(2);
+   * count.set(count.get() + 1);
+   */
+  set(next: T): void {
     if (!this.#equals(this.#signal.currentValue, next)) {
       this.#signal.currentValue = next;
       const subs = this.#signal.subs;
@@ -183,29 +228,114 @@ export class Atom<T> implements Reactive<T> {
       }
     }
   }
+
+  /**
+   * Passes the current value to `fn` and sets the return value as the next value.
+   *
+   * @example
+   * const count = atom(0);
+   * count.update((current) => current + 1);
+   * count.update((current) => current * 5);
+   *
+   * // Also works very well with Immer `produce` for complex objects.
+   * const items = atom([{ name: "Alice", age: 26 }, { name: "Bob", age: 33 }]);
+   *
+   * // Without Immer:
+   * items.update((current) => {
+   *   // Return a new array with Bob's age increased by 1.
+   *   const newItems = [...current];
+   *   newItems[1] = {
+   *     ...newItems[1],
+   *     age: newItems[1].age + 1
+   *   };
+   *   return newItems;
+   * });
+   *
+   * // With Immer:
+   * import { produce } from "immer";
+   *
+   * items.update(produce((draft) => {
+   *   // Mutate draft to increase Bob's age by 1.
+   *   // Results in a new object with this patch applied.
+   *   draft[1].age++;
+   * }));
+   */
+  update(fn: (current: T) => T) {
+    this.set(fn(this.peek()));
+  }
+
+  /**
+   * @deprecated use `get()`
+   */
+  get value(): T {
+    return this.peek();
+  }
+
+  /**
+   * @deprecated use `set()`
+   */
+  set value(next: T) {
+    this.set(next);
+  }
 }
 
 class Composed<T> implements Reactive<T> {
-  private computed;
+  #computed: Computed<T>;
+  #fn: ComposeCallback<T>;
 
-  constructor(computed: Computed<T>) {
-    this.computed = computed;
+  readonly name?: string;
 
-    Object.defineProperty(this, DEPENDENCY, {
-      value: computed,
-      configurable: false,
-      enumerable: false,
-      writable: false,
-    });
+  constructor(fn: ComposeCallback<T>, options?: ReactiveOptions<T>) {
+    this.#fn = fn;
+    this.#computed = {
+      currentValue: undefined,
+      equals: options?.equals ?? Object.is,
+      subs: undefined,
+      subsTail: undefined,
+      deps: undefined,
+      depsTail: undefined,
+      flags: SubscriberFlags.Computed | SubscriberFlags.Dirty,
+      getter: this.#getter.bind(this),
+    };
+
+    if (options?.name) {
+      this.name = options.name;
+    }
   }
 
-  get value(): T {
-    const computed = this.computed;
+  #getter(cachedValue?: T) {
+    let returned = this.#fn(cachedValue as T | undefined);
+
+    // If a reactive is returned, track it and return its value.
+    if (isReactive(returned)) {
+      returned = returned.get();
+    }
+
+    return returned;
+  }
+
+  get(): T {
+    if (activeSub !== undefined) {
+      link(this.#computed, activeSub);
+      trackedInThisCycle.push(this);
+    }
+    return this.peek();
+  }
+
+  peek(): T {
+    const computed = this.#computed;
     const flags = computed.flags;
     if (flags & (SubscriberFlags.Dirty | SubscriberFlags.PendingComputed)) {
       processComputedUpdate(computed, flags);
     }
     return computed.currentValue!;
+  }
+
+  /**
+   * @deprecated use `get()`
+   */
+  get value(): T {
+    return this.peek();
   }
 }
 
@@ -217,7 +347,7 @@ class Composed<T> implements Reactive<T> {
  * Determines if a value is reactive.
  */
 export function isReactive<T>(value: any): value is Reactive<T> {
-  return value != null && (value as any)[DEPENDENCY] != null;
+  return value instanceof Atom || value instanceof Composed;
 }
 
 /**
@@ -225,9 +355,9 @@ export function isReactive<T>(value: any): value is Reactive<T> {
  * Atom values can be read and updated with the `value` property
  *
  * @example
- * const count = atom(1);
- * count.value++;
- * count.value; // 2
+ * const count = atom<number>();
+ * count.set(5);
+ * count.get(); // 5
  */
 export function atom<T>(): Atom<T | undefined>;
 
@@ -237,8 +367,8 @@ export function atom<T>(): Atom<T | undefined>;
  *
  * @example
  * const count = atom(1);
- * count.value++;
- * count.value; // 2
+ * count.set(count.get() + 1);
+ * count.get(); // 2
  */
 export function atom<T>(value: T, options?: ReactiveOptions<T>): Atom<T>;
 
@@ -254,7 +384,7 @@ export function atom<T>(value: T, options?: ReactiveOptions<T>): Atom<T>;
 export function atom<T>(value?: T, options?: ReactiveOptions<T>): Atom<T | undefined>;
 
 export function atom<T>(value?: T, options?: ReactiveOptions<T>) {
-  return new Atom({ currentValue: value as T, subs: undefined, subsTail: undefined }, options);
+  return new Atom(value as T, options);
 }
 
 type ComposeCallback<T> = (previousValue?: T) => MaybeReactive<T>;
@@ -264,58 +394,11 @@ type ComposeCallback<T> = (previousValue?: T) => MaybeReactive<T>;
  *
  * @example
  * const count = atom(1);
- * const doubled = compose(() => get(count) * 2);
+ * const doubled = compose(() => count.get() * 2);
  */
 export function compose<T>(fn: ComposeCallback<T>, options?: ReactiveOptions<T>): Reactive<T> {
-  return new Composed<T>({
-    currentValue: undefined,
-    equals: options?.equals ?? Object.is,
-    subs: undefined,
-    subsTail: undefined,
-    deps: undefined,
-    depsTail: undefined,
-    flags: SubscriberFlags.Computed | SubscriberFlags.Dirty,
-    getter: (cachedValue?: unknown) => {
-      let returned = fn(cachedValue as T | undefined);
-
-      // If a reactive is returned, track it and return its value.
-      returned = get(returned);
-
-      // if (activeSub !== undefined) {
-      //   if (activeSub.depsTail === undefined) {
-      //     const name = options?.name ?? fn.name;
-      //     console.warn(
-      //       `Compose function${name ? " '" + name + "'" : ""} has no tracked dependencies and will never update.`,
-      //       fn,
-      //     );
-      //   }
-      // }
-
-      return returned;
-    },
-  });
+  return new Composed<T>(fn, options);
 }
-
-// type SourceValues<I extends MaybeReactive<any>[]> = {
-//   [Index in keyof I]: I[Index] extends Reactive<infer T> ? T : I[Index];
-// };
-// function derive<I extends [...MaybeReactive<any>], O>(sources: I, fn: (...values: SourceValues<I>) => O): Reactive<O> {
-//   return compose(() => {
-//     const values = sources.map((s) => s.get()) as SourceValues<I>;
-//     pauseTracking();
-//     const returned = fn(...values); // Nothing in fn is tracked
-//     resumeTracking();
-//     return get(returned);
-//   });
-// }
-
-// function createState<T>(initialValue: T) {
-//   const value = atom(initialValue);
-//   return [value as Reactive<T>, set(value)] as const;
-// }
-
-// const [$count, setCount] = createState(0);
-// const $doubled = derive([$count], () => $count.value * 2);
 
 /**
  * Takes a new value to set, or a callback that receives the current value and returns a new value to set.
@@ -327,9 +410,9 @@ export function set<T>(atom: Atom<T>, next: T | ((current: T) => T)): void;
 
 export function set<T>(atom: Atom<T>, next?: T | ((current: T) => T)) {
   if (isFunction<(current: T) => T>(next)) {
-    atom.value = next(atom.value);
+    atom.update(next);
   } else if (arguments.length > 1) {
-    atom.value = next as T;
+    atom.set(next as T);
   } else {
     return (next: T | ((current: T) => T)) => set(atom, next);
   }
@@ -347,11 +430,7 @@ export function set<T>(atom: Atom<T>, next?: T | ((current: T) => T)) {
  */
 export function get<T>(value: MaybeReactive<T>): T {
   if (isReactive(value)) {
-    if (activeSub !== undefined) {
-      const dep = (value as any)[DEPENDENCY] as Dependency;
-      link(dep, activeSub);
-    }
-    return value.value;
+    return value.get();
   } else {
     return value;
   }
@@ -370,7 +449,7 @@ export function get<T>(value: MaybeReactive<T>): T {
  */
 export function peek<T>(value: MaybeReactive<T>): T {
   if (isReactive(value)) {
-    return value.value;
+    return value.peek();
   } else {
     return value;
   }
@@ -381,6 +460,13 @@ export function peek<T>(value: MaybeReactive<T>): T {
 //   fn();
 //   resumeTracking();
 // }
+
+/**
+ * Registers a callback that will receive a list of dependencies that were tracked within the scope this function was called in.
+ */
+export function getTracked(fn: (tracked: Reactive<unknown>[]) => void) {
+  getTrackedFn = fn;
+}
 
 export type EffectCallback = () => void;
 

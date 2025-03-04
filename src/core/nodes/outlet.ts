@@ -17,7 +17,7 @@ import { IS_MARKUP_ELEMENT } from "../symbols.js";
 export class Outlet implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
-  node = document.createTextNode("");
+  domNode = document.createTextNode("");
   isMounted = false;
 
   private source: MaybeReactive<MarkupElement[]>;
@@ -33,7 +33,7 @@ export class Outlet implements MarkupElement {
     if (!this.isMounted) {
       this.isMounted = true;
 
-      parent.insertBefore(this.node, after?.nextSibling ?? null);
+      parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       if (isReactive<MarkupElement[]>(this.source)) {
         this.unsubscribe = effect(() => {
@@ -74,11 +74,11 @@ export class Outlet implements MarkupElement {
       for (let i = 0; i < newElements.length; i++) {
         const element = newElements[i];
         const previous = i > 0 ? this.elements[i - 1] : undefined;
-        element.mount(this.node.parentElement!, previous?.node);
+        element.mount(this.domNode.parentElement!, previous?.domNode);
         this.elements.push(element);
       }
 
-      this.node.parentNode?.insertBefore(this.node, this.elements.at(-1)?.node ?? null);
+      this.domNode.parentNode?.insertBefore(this.domNode, this.elements.at(-1)?.domNode ?? null);
     }
   }
 }
