@@ -1,15 +1,6 @@
 import { type ElementContext } from "../context.js";
 import { type MarkupElement } from "../markup.js";
-import {
-  type Atom,
-  atom,
-  compose,
-  effect,
-  pauseTracking,
-  type Reactive,
-  resumeTracking,
-  type UnsubscribeFunction,
-} from "../signals.js";
+import { type Atom, atom, compose, effect, untrack, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View, type ViewContext, type ViewResult } from "./view.js";
 
@@ -71,10 +62,8 @@ export class List<T> implements MarkupElement {
           console.log("list received empty value", value, this);
         }
 
-        requestAnimationFrame(() => {
-          pauseTracking();
+        untrack(() => {
           this._update(Array.from(value));
-          resumeTracking();
         });
       });
     }

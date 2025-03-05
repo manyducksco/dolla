@@ -36,6 +36,21 @@ type InputModeValues = "decimal" | "email" | "none" | "numeric" | "search" | "te
  */
 export interface ElementProps {
   /**
+   * Sets the value as an HTML attribute.
+   */
+  [key: `attr:${string}`]: OptionalProperty<any>;
+
+  /**
+   * Sets the value directly on the HTMLElement as a property.
+   */
+  [key: `prop:${string}`]: OptionalProperty<any>;
+
+  /**
+   * Attaches an event listener to the element (with `addEventListener`).
+   */
+  [key: `on:${string}`]: OptionalProperty<EventHandler<Event>>;
+
+  /**
    * HTML attributes to assign to the element.
    */
   attributes?: OptionalProperty<Record<string, any>>;

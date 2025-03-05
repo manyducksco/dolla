@@ -1,5 +1,5 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
-import { getUniqueId, omit } from "../../utils.js";
+import { omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { constructMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { type Ref } from "../ref.js";
@@ -129,7 +129,11 @@ export class HTML implements MarkupElement {
 
   private attachProp<T>(value: MaybeReactive<T>, callback: (value: T) => void) {
     if (isReactive(value)) {
-      this.unsubscribers.push(effect(() => callback(value.get())));
+      this.unsubscribers.push(
+        effect(() => {
+          callback(value.get());
+        }),
+      );
     } else {
       callback(value);
     }
@@ -139,19 +143,9 @@ export class HTML implements MarkupElement {
     for (const key in props) {
       const value = props[key];
 
-      if (key === "attributes") {
-        const values = value as Record<string, any>;
-        // Set attributes directly without mapping props
-        for (const name in values) {
-          this.attachProp(values[name], (current) => {
-            if (current == null) {
-              (element as any).removeAttribute(name);
-            } else {
-              (element as any).setAttribute(name, String(current));
-            }
-          });
-        }
-      } else if (key === "onClickOutside" || key === "onclickoutside") {
+      // TODO: If key starts with 'attr:' it is applied with .setAttribute, if 'prop:' it is set directly on the element. If 'on:' it is applied with .addEventListener
+
+      if (key === "on:clickoutside" || key === "onClickOutside" || key === "onclickoutside") {
         const listener = (e: Event) => {
           if (this.canClickAway && !element.contains(e.target as any)) {
             if (isReactive<(e: Event) => void>(value)) {
@@ -227,40 +221,54 @@ export class HTML implements MarkupElement {
               });
               break;
 
-            // Attribute-aliased props
-            case "exportParts":
-            case "part":
-            case "translate":
-            case "type":
-            case "title": {
-              const _key = key.toLowerCase();
-              this.attachProp(value, (current) => {
-                if (current == undefined) {
-                  element.removeAttribute(_key);
-                } else {
-                  element.setAttribute(_key, String(current));
-                }
-              });
-              break;
-            }
-
             case "autocomplete":
             case "autocapitalize":
               this.attachProp(value, (current) => {
                 if (typeof current === "string") {
-                  (element as any).autocomplete = current;
+                  (element as any)[key] = current;
                 } else if (current) {
-                  (element as any).autocomplete = "on";
+                  (element as any)[key] = "on";
                 } else {
-                  (element as any).autocomplete = "off";
+                  (element as any)[key] = "off";
                 }
               });
               break;
 
             default: {
-              this.attachProp(value, (current) => {
-                (element as any)[key] = current;
-              });
+              if (key.startsWith("prop:")) {
+                const _key = key.substring(5);
+                this.attachProp(value, (current) => {
+                  (element as any)[_key] = current;
+                });
+              } else if (key.startsWith("on:")) {
+                const _key = key.substring(3);
+                let _prev: EventListener | undefined;
+                this.attachProp(value as MaybeReactive<EventListener>, (current) => {
+                  if (!current && _prev) {
+                    element.removeEventListener(_key, _prev);
+                  } else if (current != null) {
+                    if (_prev && _prev !== current) {
+                      element.removeEventListener(_key, _prev);
+                    }
+                    element.addEventListener(_key, current);
+                  }
+                  _prev = current;
+                });
+              } else if (key.startsWith("attr:")) {
+                const _key = key.substring(5).toLowerCase();
+                this.attachProp(value, (current) => {
+                  if (current != null) {
+                    element.setAttribute(_key, String(current));
+                  } else {
+                    element.removeAttribute(_key);
+                  }
+                });
+              } else {
+                this.attachProp(value, (current) => {
+                  (element as any)[key] = current;
+                });
+              }
+
               break;
             }
           }

@@ -1,14 +1,5 @@
 import { type MarkupElement } from "../markup.js";
-import {
-  isReactive,
-  get,
-  effect,
-  type MaybeReactive,
-  type UnsubscribeFunction,
-  peek,
-  pauseTracking,
-  resumeTracking,
-} from "../signals.js";
+import { isReactive, get, effect, type MaybeReactive, type UnsubscribeFunction, untrack } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
@@ -38,9 +29,9 @@ export class Outlet implements MarkupElement {
       if (isReactive<MarkupElement[]>(this.source)) {
         this.unsubscribe = effect(() => {
           const value = get(this.source);
-          pauseTracking();
-          this.update(value);
-          resumeTracking();
+          untrack(() => {
+            this.update(value);
+          });
         });
       } else {
         this.update(this.elements);

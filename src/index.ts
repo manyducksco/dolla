@@ -1,5 +1,5 @@
 // Reactive
-export { atom, compose, effect, get, set, peek, getTracked } from "./core/signals.js";
+export { atom, compose, effect, get, set, peek, untrack, getTracked } from "./core/signals.js";
 export type { Reactive, MaybeReactive, Atom } from "./core/signals.js";
 
 // Equality checks
@@ -24,6 +24,9 @@ const dolla = new Dolla();
 export default dolla;
 
 export const t = dolla.i18n.t.bind(dolla.i18n);
+export const http = dolla.http;
+
+export const createLogger = dolla.createLogger.bind(dolla);
 
 // Other types
 export type { Dolla, Environment, Logger, LoggerErrorContext, LoggerOptions, Loggles } from "./core/dolla.js";

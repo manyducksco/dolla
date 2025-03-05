@@ -34,7 +34,7 @@ Dolla's goals include:
 
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
-```js
+```jsx
 import Dolla, { atom, html } from "@manyducks.co/dolla";
 
 function Counter() {

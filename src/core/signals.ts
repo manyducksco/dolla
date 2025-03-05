@@ -143,12 +143,12 @@ function stopEffect(this: Effect): void {
 
 const pauseStack: (Subscriber | undefined)[] = [];
 
-export function pauseTracking() {
+function pauseTracking() {
   pauseStack.push(activeSub);
   activeSub = undefined;
 }
 
-export function resumeTracking() {
+function resumeTracking() {
   activeSub = pauseStack.pop();
 }
 
@@ -455,11 +455,11 @@ export function peek<T>(value: MaybeReactive<T>): T {
   }
 }
 
-// export function untrack(fn: () => void) {
-//   pauseTracking();
-//   fn();
-//   resumeTracking();
-// }
+export function untrack(fn: () => void) {
+  pauseTracking();
+  fn();
+  resumeTracking();
+}
 
 /**
  * Registers a callback that will receive a list of dependencies that were tracked within the scope this function was called in.

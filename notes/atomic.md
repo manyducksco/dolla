@@ -1,209 +1,384 @@
-# Atomic API
+# ATOMIC
+
+- New library; core is just signals, templates and views.
+- Router released as companion library.
+- Localize released as companion library.
+- CSS components as new companion library.
+
+Goals:
+
+- Easy drop-in script tag to get started. Feasible to start with a CDN for prototyping and introduce build step later.
+- Server side rendering support. `html` templates should create intermediate data structure that can be turned into DOM nodes or a string.
+
+## Signals
 
 ```js
-function SomeView(props, ctx) {
-  // Atoms are the basic building block of state.
-  const count = new Atom(5);
+import { atom, memo, createScope, $effect } from "@manyducks.co/atomic";
 
-  count.value; // returns the value
-  count.value = 12; // replaces the value
-  count.update((value) => value + 1); // updates the value. You can use Immer here for complex objects.
+// Atoms are hybrid getter/setter functions. Call without a value to get, call with a value to set.
+const count = atom(0);
 
-  // or you could just implement an update function yourself with Immer. Probably gonna cut it.
-  function update(atom, callback) {
-    atom.value = produce(atom.value, callback);
-  }
-  update(count, (value) => value + 1);
+// Basic computed properties are just functions. Taking advantage of the fact that functions called in functions will still be tracked.
+const doubled = () => count() * 2;
 
-  // Listen for changes. Callback will be run the next time the value changes and each time again afterwards.
-  const unsubscribe = count.subscribe((value) => {
-    console.log(value);
+// Use memo to make a memoized value for more expensive calculations.
+const quadrupled = memo(() => doubled() * 2);
+```
+
+### Scopes
+
+> NOTE: Views and directives are called within a scope.
+
+```js
+// Functions starting with $ can be called within a scope.
+// Scopes will clean up all effects created within them when they are disconnected.
+const scope = createScope(() => {
+  $effect(() => {
+    // Atoms and memos called within an $effect are automatically tracked.
+    console.log(`count is ${count()} (doubled: ${doubled()})`);
   });
 
-  // Composed is a state that depends on one or more other states.
-  // The callback takes a getter function that will track that state as a dependency and return its current value.
-  // We recompute if any tracked dependency receives a new value.
-  const doubled = new Composed((get) => get(count) * 2);
+  // Changing tracked values will trigger effects to run again.
+  count(1);
 
-  // Effects follow the same pattern as a Composed callback.
-  ctx.effect(() => {
-    console.log(doubled.value);
+  // $effects are called immediately once, then again each time one or more dependencies change.
+  // Effects are settled in queueMicrotask(), effectively batching them.
+
+  count(2);
+  count(3);
+  count(4);
+  // Multiple synchronous calls in a row like this will only trigger the effect once.
+});
+
+// ----- Scope Functions ----- //
+
+$effect(() => {
+  // Tracks dependencies. This function will run again when any of them change.
+});
+
+$connected(() => {
+  // Runs when scope is connected.
+  // In views and directives this happens in the next microtask after DOM nodes are attached.
+});
+
+$disconnected(() => {
+  // Runs when scope is disconnected.
+  // In views and directives this happens in the next microtask after DOM nodes are disconnected.
+});
+
+// ----- Scope API ----- //
+
+const scope = createScope(() => {
+  /* ... */
+});
+
+// Connect starts all $effects and runs $connected callbacks.
+scope.connect();
+
+// Disconnect disposes all $effects and runs $disconnected callbacks.
+scope.disconnect();
+```
+
+## Templates
+
+```js
+// Provide directives and views in a config object.
+const template = html({
+  directives: { custom: customDirective },
+  views: { SomeView },
+})`
+  <div>
+    <SomeView *custom=${x} prop=${value} />
+  </div>
+`;
+
+// Or put the views and directives at the end?
+const template = html`
+  <div>
+    <p>Counter: ${count}</p>
+
+    <!-- bind events with @name -->
+    <div>
+      <button @click=${increment}>+1</button>
+      <button @click=${decrement}>-1</button>
+    </div>
+
+    <!-- apply directives with *name -->
+    <div *ref=${refAtom} *if=${x} *unless=${x} *show=${x} *hide=${x} *classes=${x} *styles=${x} *custom=${whatever} />
+
+    <!-- bind properties with .name -->
+    <span .textContent=${x} />
+
+    <!-- two-way bind atoms with :value -->
+    <input :value=${valueAtom} />
+
+    <ul *if=${hasValues}>
+      <!-- render iterables from signals with list() -->
+      ${list(values, (value, index) => {
+        // Render views into HTML templates with view()
+        return html`<li><SomeView item=${value} /></li>`.withViews({ SomeView });
+      })}
+    </ul>
+  </div>
+`
+  .withDirectives({ custom: customDirective })
+  .withViews({ SomeView });
+
+// Key
+// @ for event listeners
+// * for directives
+// . for properties
+// :value for two-way value binding
+// no prefix for attributes
+```
+
+### Event modifiers
+
+```js
+html`<button
+  @click.stop.prevent.throttle[250]=${() => {
+    // stopPropagation & preventDefault already called
+    // Listener will be triggered a maximum of once every 250 milliseconds.
+  }}
+>
+  Click Me
+</button>`;
+```
+
+You can chain modifiers on event handlers. Inspired by [`Mizu.js`](https://mizu.sh/#event).
+
+#### `.prevent`
+
+Calls event.preventDefault() when triggered.
+
+#### `.stop`
+
+Calls event.stopPropagation() when triggered.
+
+#### `.once`
+
+Register listener with { once: true }. If present the listener is removed after being triggered once.
+
+#### `.passive`
+
+Register listener with { passive: true }.
+
+#### `.capture`
+
+Register listener with { capture: true }.
+
+#### `.self`
+
+Trigger listener only if event.target is the element itself.
+
+#### `.attach[element | window | document]`
+
+> `@click.attach[document]=${...}`
+
+Attach listener to a different target.
+
+#### `.throttle[duration≈250ms]`
+
+Prevent listener from being called more than once during the specified time frame. Duration value is in milliseconds.
+
+#### `.debounce[duration≈250ms]`
+
+Delay listener execution until the specified time frame has passed without any activity. Duration value is in milliseconds.
+
+### Lists
+
+```js
+list(values, (value, index) => {
+  return html`<li>${view(SomeComponent, value)}</li>`;
+});
+```
+
+### Custom Directives
+
+```js
+function myDirective(element, value, modifiers) {
+  // Directives are called inside a scope.
+  $disconnected(() => {
+    // Cleanup
   });
-
-  const print = new Atom(false);
-
-  // Dependency lists are rebuilt every time the callback is run.
-  // Below, `value` will not be tracked as a dependency until `print` has changed to true.
-  ctx.effect(() => {
-    if (get(print)) {
-      console.log(get(value));
-    }
-  });
-
-  // get() is also the ONLY way to track dependencies.
-  // You're free to use the state's own getter if you want the value without actually tracking it.
-  ctx.effect((get) => {
-    if (get(value) > 5) {
-      console.log(doubled.get()); // will not be tracked
-    }
-  });
-
-  // ALSO: Need to track sets and updates so we can throw an error if a set was committed in the same scope that value is tracked. Otherwise this will cause an infinite loop.
 }
 ```
 
-Refined API:
+## Full Example
 
 ```js
-const $count = atom(5);
-$count.value++;
-$count.value; // 6
+import { atom, memo, html, connect, $effect } from "@manyducks.co/atomic";
 
-const $doubled = compose(() => get($count) * 2);
-const $quadrupled = compose(() => get($doubled) * 2);
+// Functions starting with $ can only be called in the body of a component function.
 
-ctx.effect(() => {
-  if (get($count) > 25) {
-    console.log($doubled.value);
-    get($quadrupled);
+// IDEA: CSS components. Ref counted and added to head while used at least once on the page.
+const button = css`
+  color: "red";
+
+  &:hover {
+    color: "blue";
   }
-});
-```
+`;
 
-vs old API:
+function Counter() {
+  const debug = logger("Component");
 
-```js
-// ----- Basic State ----- //
-
-// Old
-const [$count, setCount] = createState(5);
-setCount((count) => count + 1);
-$count.get(); // 6
-
-// New
-const count = atom(5);
-count.value++;
-count.value; // 6
-
-// ----- Derived State ----- //
-
-// Old
-const $doubled = derive([$count], (count) => count * 2);
-const $quadrupled = derive([$doubled], (doubled) => doubled * 2);
-
-// New
-const doubled = compose((get) => get(count) * 2);
-const quadrupled = compose((get) => get(doubled) * 2);
-
-// ----- Side Effects ----- //
-
-// Old
-ctx.watch([$count, $quadrupled], (count, quadrupled) => {
-  if (count > 25) {
-    console.log($doubled.get()); // not tracked
-
-    console.log(quadrupled);
-    // changes to $quadrupled will trigger this callback to re-run, even if count is still <= 25
-  }
-});
-
-// New
-ctx.effect((get) => {
-  // count is tracked by reading it with 'get'
-  if (get(count) > 25) {
-    console.log(doubled.value); // not tracked
-
-    get(quadrupled); // only tracked while count > 25 (this 'get' doesn't run otherwise)
-    // changes to 'quadrupled' will NOT trigger this callback to re-run unless 'count' is already >= 25
-  }
-});
-```
-
-Atoms and composed values implement the `Reactive<T>` interface for TypeScript purposes. There is also `Atom<T>` and `Composed<T>` if you want to be specific.
-
-The API above is a remix of Preact signals, Jotai and the TC39 Signals proposal. I strongly dislike automatic dependency tracking. I think the developer should explicitly describe what they want instead of having the language assume what they want and making them opt out with `untrack` and such. Madness.
-
-It's also unintuitive what's a tracked scope and what isn't. There's nothing to tell you that at a glance. It's left up to the framework conventions. With this API you know; if you're in a function scope and you have a getter, you're in a tracking-capable scope. Doing that tracking is then left up to you. You can explicitly see that things are being tracked by reading the code. There is no background knowledge needed and no side effects required.
-
-Further API:
-
-```js
-// If count is reactive we get its current value. Otherwise we get it as is.
-const value = unwrap(count);
-
-// If count is reactive we get it as is (typed as Reactive<T>). Otherwise we get it wrapped as a Reactive<T>.
-const value = reactive(count);
-```
-
-```js
-const me = compose((get) => {
-  const id = get(userId);
-  return get(users)_?.find((u) => u.id === id);
-});
-
-const $me = derive([$userId, $users], (id, users) => users?.find((u) => u.id === id));
-```
-
-```js
-const Counter = view("Counter", function () {
   const count = atom(0);
 
-  return html`
-    <div>
-      <span>${count}</span>
+  // Simple computed value; computation runs each time function is called
+  const doubled = () => count() * 2;
 
-      <button onclick=${() => count.value++}>Increment</button>
-      <button onclick=${() => count.value--}>Decrement</button>
-    </div>
-  `;
-});
+  // Memoized; computation only runs when one of its dependencies changes
+  const quadrupled = memo((previousValue) => doubled() * 2, { equals: deepEqual });
+  // memos pass their previous to their callback
+  // memos can have an equality function specified (as can atoms)
 
-const Routes = view("Routes", function () {
-  this.onMount(function () {
-    // this still refers to view context
-    this.log("hello!");
+  $effect(() => {
+    // Dependencies are tracked when getters are called in a tracked scope.
+    // Tracked scopes are the body of a `memo` or `effect` callback.
+    debug.log(`Count is: ${count()}`);
+
+    // untrack
+    const value = peek(count);
+    const doubled = peek(() => {
+      return count() * 2;
+    });
   });
 
-  return html`
-    <div>
-      ${this.router(function () {
-        this.route("/path", View);
+  $connected(() => {
+    // Runs when component is connected.
+  });
 
-        this.route("/nested", Layout, function () {
-          this.route("/test", Nested); // RouterOutlet passed as children
-        });
-      })}
-    </div>
-  `;
-});
+  $disconnected(() => {
+    // Runs when component is disconnected.
+  });
 
-const CounterStore = store("Counter", function () {
-  const count = atom(0);
+  function increment() {
+    // Set new value
+    count(count() + 1);
+  }
 
-  return {
-    count: compose(() => get(count)),
+  function decrement() {
+    count(count() - 1);
+  }
 
-    increment() {
-      count.value++;
-    },
-    decrement() {
-      count.value--;
-    },
-  };
-});
-
-const Counter = view("Counter", function () {
-  const counter = this.attach(CounterStore);
-
-  // const { count, increment, decrement } = this.get(CounterStore);
+  const hasValues = () => values().length > 0;
 
   return html`
     <div>
-      <span>${counter.count}</span>
+      <p>Counter: ${count}</p>
+      <div>
+        <button @click=${increment}>+1</button>
+        <button @click=${decrement}>-1</button>
+      </div>
 
-      <button onclick=${counter.increment}>Increment</button>
-      <button onclick=${counter.decrement}>Decrement</button>
+      <div *ref=${refAtom} *if=${x} *unless=${x} *show=${x} *hide=${x} *classes=${x} *styles=${x} *custom=${whatever} />
+
+      <!-- Property binding -->
+      <span .textContent=${x} />
+
+      <!-- Two way binding of atoms -->
+      <input :value=${valueAtom} />
+
+      <ul *if=${hasValues}>
+        ${list(values, (value, index) => {
+          return html`<li>${view(SomeComponent, value)}</li>`;
+        })}
+      </ul>
     </div>
-  `;
+  `.withDirectives({ custom: customDirective });
+}
+
+// In another file...
+
+function refDirective(element, fn) {
+  fn(element);
+  $disconnected(() => {
+    fn(undefined);
+  });
+}
+
+function ifDirective(element, condition) {
+  // directives run in microtask immediately after element is attached to parent, before next paint
+
+  const placeholder = document.createComment("");
+
+  // $functions work in directives; they hook into the lifecycle of the element
+  $effect(() => {
+    if (condition()) {
+      // show element
+      if (!element.parentNode && placeholder.parentNode) {
+        element.insertBefore(placeholder.parentNode);
+        placeholder.parentNode.removeChild(placeholder);
+      }
+    } else {
+      // hide element
+      if (element.parentNode && !placeholder.parentNode) {
+        placeholder.insertBefore(element.parentNode);
+        element.parentNode.removeChild(element);
+      }
+    }
+  });
+}
+
+function unlessDirective(element, condition) {
+  return ifDirective(element, () => !condition());
+}
+
+function showDirective(element, condition) {
+  // Store the element's current value.
+  let value = element.style.display;
+
+  $effect(() => {
+    if (condition()) {
+      // Apply the stored value when truthy.
+      element.style.display = value;
+    } else {
+      // Store value and hide when falsy.
+      value = element.style.display;
+      element.style.display = "none !important";
+    }
+  });
+}
+
+function hideDirective(element, condition) {
+  return showDirective(element, () => !condition());
+}
+
+function classesDirective(element, classes) {
+  // TODO: Applies an object of class names and values, where the values may be signals or plain values.
+  // Truthy means "apply this class" while falsy means don't.
+}
+
+function stylesDirective(element, styles) {
+  // TODO: Same idea as *classes but for styles.
+}
+
+connect(Component, document.body);
+
+// Easy custom elements? Could be another library.
+element("my-counter", function () {
+  // Runs just after connectedCallback. `this` is bound to the custom HTMLElement class.
+  const shadow = this.attachShadow({ mode: "closed" });
+
+  return html`<div></div>`;
 });
+
+// function css(strings, values) {
+//   return {
+//     type: "css",
+
+//   }
+// }
+```
+
+```ts
+interface TemplateNode {
+  mount(parent: Node, after?: Node): void;
+  unmount(skipDOM?: boolean): void;
+}
+
+interface TemplateDirective {
+  (element: Element, value: unknown): Node | TemplateNode;
+}
 ```

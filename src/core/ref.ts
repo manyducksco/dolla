@@ -29,7 +29,7 @@ export interface Ref<T> {
  */
 export function ref<T>(value?: T): Ref<T> {
   // NOTE: `arguments` only works with a function declaration.
-  return function () {
+  return function _ref() {
     if (arguments.length === 1) {
       value = arguments[0];
     } else if (arguments.length > 1) {

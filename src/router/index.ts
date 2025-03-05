@@ -238,11 +238,7 @@ export class Router {
         let href = anchor.getAttribute("href")!;
         this.#logger!.info("intercepted click on <a> tag", anchor);
 
-        if (!/^https?:\/\/|^\//.test(href)) {
-          href = joinPath([window.location.pathname, href]);
-        }
-
-        this.#push(href);
+        this.go(href);
       }),
     );
     this.#logger.info("will intercept clicks on <a> tags within root element", rootElement);
