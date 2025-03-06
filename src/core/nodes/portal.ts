@@ -43,7 +43,8 @@ export class Portal implements MarkupElement {
 
   unmount(parentIsUnmounting = false) {
     if (this.element?.isMounted) {
-      this.element.unmount(parentIsUnmounting);
+      // Portals MUST unmount DOM nodes because they won't be removed by parents unmounting.
+      this.element.unmount(false);
     }
   }
 }
