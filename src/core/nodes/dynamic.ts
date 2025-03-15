@@ -13,6 +13,8 @@ interface DynamicOptions {
 /**
  * Displays dynamic children without a parent element.
  * Renders a Reactive value via a render function.
+ *
+ * This is probably the most used element type aside from HTML.
  */
 export class Dynamic implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;

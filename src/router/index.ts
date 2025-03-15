@@ -385,7 +385,7 @@ export class Router {
         const parentLayer = this.#activeLayers.at(-1);
         const parent = parentLayer?.view ?? rootView;
 
-        const view = parent.setChildView(matchedLayer.view);
+        const view = parent.setRouteView(matchedLayer.view);
         this.#activeLayers.push({ id: matchedLayer.id, view });
       }
     }

@@ -1,9 +1,13 @@
-# ATOMIC
+# ATOMIC overhaul
 
-- New library; core is just signals, templates and views.
-- Router released as companion library.
-- Localize released as companion library.
-- CSS components as new companion library.
+Overhaul of Dolla as Atomic.
+
+Diff:
+
+- Change signals to plain functions.
+- Access component context things with $functions in the component body.
+- Split `router` and `localize` into companion packages.
+- No top-level app; just `mount` a view.
 
 Goals:
 
@@ -13,7 +17,7 @@ Goals:
 ## Signals
 
 ```js
-import { atom, memo, createScope, $effect } from "@manyducks.co/atomic";
+import { atom, memo } from "@manyducks.co/atomic";
 
 // Atoms are hybrid getter/setter functions. Call without a value to get, call with a value to set.
 const count = atom(0);
@@ -23,6 +27,70 @@ const doubled = () => count() * 2;
 
 // Use memo to make a memoized value for more expensive calculations.
 const quadrupled = memo(() => doubled() * 2);
+```
+
+## Scopes
+
+Provided are certain functions that start with a `$` character. These are scope functions. They only work inside a component scope, which is to say, inside the body of a View or Store function.
+
+ViewContext and StoreContext cease to be something the user worries about. Just import and call scope functions. This also provides TypeScript autocomplete for stores and things in plain JS.
+
+```js
+function Example() {
+  // Lifecycle
+  $mount(() => {
+    // ...
+  });
+  $unmount(() => {
+    // ...
+  });
+
+  // Logger
+  const debug = $debug();
+  const debug = $debug("my-custom-prefix"); // Optionally pass a prefix (replaces ctx.name = "...")
+
+  // Signal effects
+  const count = atom(0);
+  $effect(() => {
+    debug.log("count has changed: %d", count());
+
+    return () => {
+      // Cleanup function. Runs between effect invocations or on unmount.
+    };
+  });
+
+  // Context/Stores
+  $provide(SomeStore);
+  const some = $use(SomeStore);
+
+  // Router lib:
+  const router = $router();
+  router.pattern; // full pattern up to this point in the tree (merged from nested parent routers)
+  router.path; // full path up to this point
+  router.params; // merged params
+  router.query; // parsed query params
+  // Router navigation:
+  router.go("/somewhere/else");
+  router.back();
+  router.forward();
+
+  // .on() returns an outlet on which you can chain more .on() to define subroutes.
+  // This goes directly into your template to render those routes.
+  const outlet = router
+    .on("/example/route/one/*", SomeView)
+    .on("/example/route/two/*", OtherView)
+    .on("/example/route/three/*", AnotherView);
+
+  // Localize lib:
+  const { t } = $localize();
+
+  // Special internal function. Returns the actual internal context object.
+  // This could be exported for extension purposes.
+  const ctx = $$context();
+
+  // TODO: Need another way to render children. Children should be passed to the view (as Markup).
+  // So maybe just passing them into your template would work.
+}
 ```
 
 ### Scopes

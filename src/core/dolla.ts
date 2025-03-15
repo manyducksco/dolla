@@ -4,7 +4,7 @@ import { I18n } from "../translate/index.js";
 import { assertInstanceOf, isFunction, isString } from "../typeChecking.js";
 import { okhash, createMatcher, noOp } from "../utils.js";
 import type { ElementContext, StoreConsumerContext, StoreProviderContext } from "./context.js";
-import { constructMarkup, createMarkup, groupElements, type Markup, type MarkupElement } from "./markup.js";
+import { constructMarkup, markup, groupElements, type Markup, type MarkupElement } from "./markup.js";
 import { View, type ViewElement, type ViewFunction } from "./nodes/view.js";
 import { Store, StoreError, StoreFunction } from "./store.js";
 import { DefaultCrashView, type CrashViewProps } from "./views/default-crash-view.js";
@@ -206,7 +206,7 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
     const view = _isRouter(root) ? Passthrough : root;
 
     // First, initialize the root view. The router store needs this to connect the initial route.
-    const rootViewMarkup = createMarkup(view);
+    const rootViewMarkup = markup(view);
     this.#rootView = this.constructView(rootViewMarkup.type as ViewFunction<any>, rootViewMarkup.props);
 
     // Register modules

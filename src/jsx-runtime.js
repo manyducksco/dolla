@@ -1,20 +1,18 @@
-import { createMarkup } from "./core/markup";
-export { Passthrough as Fragment } from "./core/views/passthrough";
+import { markup } from "./core/markup";
+export { Fragment } from "./core/views/fragment";
 
 /**
  * JSX function for elements with dynamic children.
  */
 export function jsx(element, props, key) {
-  // return new _Markup(element, props ? { ...omit(["children", "key"], props) } : undefined, ...[props.children]);
-  return createMarkup(element, props ? { ...omit(["children", "key"], props) } : undefined, ...[props.children]);
+  return markup(element, props ? { ...omit(["children", "key"], props) } : undefined, ...[props.children]);
 }
 
 /**
  * JSX function for elements with static children.
  */
 export function jsxs(element, props, key) {
-  // return new _Markup(element, props ? { ...omit(["children", "key"], props) } : undefined, props.children);
-  return createMarkup(element, props ? { ...omit(["children", "key"], props) } : undefined, props.children);
+  return markup(element, props ? { ...omit(["children", "key"], props) } : undefined, props.children);
 }
 
 function omit(keys, object) {

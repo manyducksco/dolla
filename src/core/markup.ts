@@ -1,4 +1,4 @@
-import htm from "htm/mini";
+// import htm from "htm/mini";
 
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
 import type { Renderable } from "../types.js";
@@ -7,11 +7,12 @@ import { DOMNode } from "./nodes/dom.js";
 import { Dynamic } from "./nodes/dynamic.js";
 import { HTML } from "./nodes/html.js";
 import { List } from "./nodes/list.js";
-import { Outlet } from "./nodes/outlet.js";
+import { Fragment } from "./nodes/fragment.js";
 import { Portal } from "./nodes/portal.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
 import { compose, get, isReactive, MaybeReactive, type Reactive } from "./signals.js";
 import { IS_MARKUP_ELEMENT } from "./symbols.js";
+import { Outlet } from "./nodes/outlet.js";
 
 /*===========================*\
 ||           Markup          ||
@@ -33,7 +34,7 @@ export interface Markup {
   /**
    *
    */
-  children?: Markup[];
+  children?: any[];
 }
 
 /**
@@ -75,15 +76,15 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
       }
 
       if (x instanceof Node) {
-        return createMarkup("$node", { value: x });
+        return markup("$node", { value: x });
       }
 
       if (isReactive<Renderable>(x)) {
-        return createMarkup("$dynamic", { source: x });
+        return markup("$dynamic", { source: x });
       }
 
       // fallback to displaying value as text
-      return createMarkup("$text", { value: x });
+      return markup("$text", { value: x });
     });
 }
 
@@ -98,6 +99,9 @@ export interface MarkupAttributes {
     source: Reactive<Renderable>;
   };
   $outlet: {
+    view: Reactive<View<{}> | undefined>;
+  };
+  $fragment: {
     children: MaybeReactive<MarkupElement[]>;
   };
   $node: {
@@ -111,15 +115,15 @@ export interface MarkupAttributes {
   [tag: string]: Record<string, any>;
 }
 
-export function createMarkup<T extends keyof MarkupAttributes>(
+export function markup<T extends keyof MarkupAttributes>(
   type: T,
   attributes: MarkupAttributes[T],
   ...children: Renderable[]
 ): Markup;
 
-export function createMarkup<I>(type: ViewFunction<I>, attributes?: I, ...children: Renderable[]): Markup;
+export function markup<I>(type: ViewFunction<I>, attributes?: I, ...children: any[]): Markup;
 
-export function createMarkup<P>(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
+export function markup<P>(type: string | ViewFunction<P>, props?: P, ...children: any[]) {
   return new VNode(type, props as any, ...children);
 }
 
@@ -131,7 +135,7 @@ class VNode<P extends Record<any, any>> implements Markup {
   constructor(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
     this.type = type;
     this.props = props;
-    this.children = toMarkup(children);
+    this.children = children;
   }
 }
 
@@ -142,13 +146,13 @@ class VNode<P extends Record<any, any>> implements Markup {
 /**
  * Generate markup with HTML in a tagged template literal.
  */
-export const html = htm.bind(createMarkup);
+// export const html = htm.bind(createMarkup);
 
 /**
  * Displays content conditionally. When `condition` holds a truthy value, `thenContent` is displayed; when `condition` holds a falsy value, `elseContent` is displayed.
  */
 export function cond(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  return createMarkup("$dynamic", {
+  return markup("$dynamic", {
     source: compose<Renderable>(() => {
       const value = get(condition);
 
@@ -171,15 +175,19 @@ export function list<T>(
   keyFn: (value: T, index: number) => string | number | symbol,
   renderFn: (item: Reactive<T>, index: Reactive<number>, ctx: ViewContext) => ViewResult,
 ): Markup {
-  return createMarkup("$list", { items: compose(() => items), keyFn, renderFn });
+  return markup("$list", { items: compose(() => items), keyFn, renderFn });
 }
 
 /**
  * Renders `content` into a `parent` node anywhere in the page, rather than its usual position in the view.
  */
 export function portal(parent: Node, content: Renderable): Markup {
-  return createMarkup("$portal", { parent, content });
+  return markup("$portal", { parent, content });
 }
+
+// export function outlet() {
+//   return createMarkup("$outlet", {});
+// }
 
 /*===========================*\
 ||           Render          ||
@@ -220,9 +228,13 @@ export function constructMarkup(elementContext: ElementContext, markup: Markup |
             elementContext,
           });
         }
+        case "$fragment": {
+          const attrs = item.props! as MarkupAttributes["$fragment"];
+          return new Fragment(attrs.children);
+        }
         case "$outlet": {
           const attrs = item.props! as MarkupAttributes["$outlet"];
-          return new Outlet(attrs.children);
+          return new Outlet(attrs.view);
         }
         case "$portal": {
           const attrs = item.props! as MarkupAttributes["$portal"];
@@ -257,7 +269,7 @@ export function groupElements(elements: MarkupElement[]): MarkupElement {
     return elements[0];
   }
 
-  return new Outlet(elements);
+  return new Fragment(elements);
 }
 
 export function isRenderable(value: unknown): value is Renderable {

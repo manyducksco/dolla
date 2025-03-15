@@ -3,7 +3,7 @@ import { Renderable } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import type { ComponentContext, ElementContext, StoreConsumerContext, StoreProviderContext } from "../context.js";
 import type { Logger } from "../dolla.js";
-import { constructMarkup, createMarkup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
+import { constructMarkup, markup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { atom, effect, isReactive, type EffectCallback, type Reactive, type UnsubscribeFunction } from "../signals.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
@@ -26,7 +26,9 @@ export interface ViewElement extends MarkupElement {
   /**
    * Take a ViewFunction and render it as a child of this view.
    */
-  setChildView(view: ViewFunction<{}>): ViewElement;
+  // setChildView(view: ViewFunction<{}>): ViewElement;
+
+  setRouteView(view: ViewFunction<{}>): ViewElement;
 }
 
 export interface ViewContext
@@ -71,7 +73,7 @@ export interface ViewContext
   effect(callback: EffectCallback): UnsubscribeFunction;
 
   /**
-   * Returns a Markup element that displays this view's children.
+   * Displays this view's subroutes if mounted as a router view.
    */
   outlet(): Markup;
 }
@@ -199,7 +201,8 @@ class Context implements ViewContext {
   }
 
   outlet(): Markup {
-    return createMarkup("$outlet", { children: this.view.children });
+    return markup("$outlet", { view: this.view.elementContext.route! });
+    // return createMarkup("$fragment", { children: this.view.children });
   }
 }
 
@@ -215,10 +218,6 @@ export class View<P> implements ViewElement {
 
   element?: MarkupElement;
 
-  childMarkup;
-
-  children = atom<MarkupElement[]>([]);
-
   lifecycleListeners: {
     beforeMount: (() => any)[];
     mount: (() => any)[];
@@ -226,18 +225,20 @@ export class View<P> implements ViewElement {
     unmount: (() => any)[];
   } = { beforeMount: [], mount: [], beforeUnmount: [], unmount: [] };
 
-  constructor(elementContext: ElementContext, fn: ViewFunction<P>, props: P, children: Markup[] = []) {
+  constructor(elementContext: ElementContext, fn: ViewFunction<P>, props: P, children?: Markup[]) {
     this.elementContext = {
       ...elementContext,
       parent: elementContext,
       viewName: fn.name,
       stores: new Map(),
+      route: atom<View<{}>>(),
     };
     this.logger = elementContext.root.createLogger(fn.name || "🌇 anonymous view", { uid: this.uniqueId });
-    this.props = props;
+    this.props = {
+      ...props,
+      children,
+    };
     this.fn = fn;
-
-    this.childMarkup = children;
   }
 
   /*===============================*\
@@ -300,10 +301,11 @@ export class View<P> implements ViewElement {
     this.lifecycleListeners.unmount.length = 0;
   }
 
-  setChildView(fn: ViewFunction<{}>) {
-    this.childMarkup = [];
+  setRouteView(fn: ViewFunction<{}>) {
     const node = new View(this.elementContext, fn, {});
-    this.children.set([node]);
+
+    this.elementContext.route!.set(node);
+
     return node;
   }
 
@@ -318,9 +320,9 @@ export class View<P> implements ViewElement {
     try {
       result = this.fn.call(context, this.props, context);
 
-      if (this.childMarkup.length) {
-        this.children.set(constructMarkup(this.elementContext, this.childMarkup));
-      }
+      // if (this.childMarkup.length) {
+      //   this.children.set(constructMarkup(this.elementContext, this.childMarkup));
+      // }
     } catch (error) {
       if (error instanceof Error) {
         this.logger.crash(error);
@@ -331,10 +333,10 @@ export class View<P> implements ViewElement {
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      this.element = groupElements(constructMarkup(this.elementContext, createMarkup("$node", { value: result })));
+      this.element = groupElements(constructMarkup(this.elementContext, markup("$node", { value: result })));
     } else if (isReactive(result)) {
       this.element = groupElements(
-        constructMarkup(this.elementContext, createMarkup("$dynamic", { source: result as Reactive<Renderable> })),
+        constructMarkup(this.elementContext, markup("$dynamic", { source: result as Reactive<Renderable> })),
       );
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
       this.element = groupElements(constructMarkup(this.elementContext, result));

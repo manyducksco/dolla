@@ -1,4 +1,6 @@
 import type { Dolla } from "./dolla";
+import type { View, ViewElement } from "./nodes/view";
+import type { Atom } from "./signals";
 import type { Store, StoreFunction } from "./store";
 
 /*===========================*\
@@ -26,6 +28,10 @@ export interface ElementContext {
    * The name of the nearest parent view.
    */
   viewName?: string;
+  /**
+   * Current route layer of the nearest view.
+   */
+  route?: Atom<View<{}> | undefined>;
 }
 
 export interface ComponentContext {

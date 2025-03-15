@@ -1,9 +1,10 @@
 import { type MarkupElement } from "../markup.js";
-import { isReactive, get, effect, type MaybeReactive, type UnsubscribeFunction, untrack } from "../signals.js";
+import { Atom, effect, Reactive, type UnsubscribeFunction, untrack } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
+import { View } from "./view.js";
 
 /**
- * Manages several MarkupElements as one.
+ * Renders the subroute of the nearest view.
  */
 export class Outlet implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
@@ -11,13 +12,13 @@ export class Outlet implements MarkupElement {
   domNode = document.createTextNode("");
   isMounted = false;
 
-  private source: MaybeReactive<MarkupElement[]>;
-  private elements: MarkupElement[] = [];
+  private view: Reactive<View<{}> | undefined>;
+  private mountedView?: View<{}>;
 
   private unsubscribe?: UnsubscribeFunction;
 
-  constructor(source: MaybeReactive<MarkupElement[]>) {
-    this.source = source;
+  constructor(view: Reactive<View<{}> | undefined>) {
+    this.view = view;
   }
 
   mount(parent: Node, after?: Node | undefined) {
@@ -26,16 +27,12 @@ export class Outlet implements MarkupElement {
 
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
-      if (isReactive<MarkupElement[]>(this.source)) {
-        this.unsubscribe = effect(() => {
-          const value = get(this.source);
-          untrack(() => {
-            this.update(value);
-          });
+      this.unsubscribe = effect(() => {
+        const view = this.view.get();
+        untrack(() => {
+          this.update(view);
         });
-      } else {
-        this.update(this.elements);
-      }
+      });
     }
   }
 
@@ -52,24 +49,18 @@ export class Outlet implements MarkupElement {
   }
 
   private cleanup(parentIsUnmounting: boolean) {
-    for (const element of this.elements) {
-      element.unmount(parentIsUnmounting);
+    if (this.mountedView) {
+      this.mountedView.unmount(parentIsUnmounting);
     }
-    this.elements = [];
+    this.mountedView = undefined;
   }
 
-  private update(newElements: MarkupElement[]) {
+  private update(view?: View<{}>) {
     this.cleanup(false);
 
-    if (newElements.length > 0) {
-      for (let i = 0; i < newElements.length; i++) {
-        const element = newElements[i];
-        const previous = i > 0 ? this.elements[i - 1] : undefined;
-        element.mount(this.domNode.parentElement!, previous?.domNode);
-        this.elements.push(element);
-      }
-
-      this.domNode.parentNode?.insertBefore(this.domNode, this.elements.at(-1)?.domNode ?? null);
+    if (view) {
+      view.mount(this.domNode.parentElement!, this.domNode);
+      this.mountedView = view;
     }
   }
 }

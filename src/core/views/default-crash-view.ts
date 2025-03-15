@@ -1,4 +1,4 @@
-import { cond, html } from "../markup.js";
+import { cond, markup as m } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.
@@ -21,34 +21,41 @@ export type CrashViewProps = {
 };
 
 export function DefaultCrashView(props: CrashViewProps) {
-  return html`
-    <div
-      style=${{
+  return m(
+    "div",
+    {
+      style: {
         backgroundColor: "#880000",
         color: "#fff",
         padding: "2rem",
         position: "fixed",
         inset: 0,
         fontSize: "20px",
-      }}
-    >
-      <h1 style=${{ marginBottom: "0.5rem" }}>The app has crashed</h1>
-      <p style=${{ marginBottom: "0.25rem" }}>
-        <span style=${{ fontFamily: "monospace" }}>${props.loggerName}</span>
-        ${cond(props.uid, html`<span style=${{ fontFamily: "monospace", opacity: 0.5 }}> [uid: ${props.uid}]</span>`)}
-        ${" "}says:
-      </p>
-      <blockquote
-        style=${{
+      },
+    },
+    m("h1", { style: { marginBottom: "0.5rem" } }, "The app has crashed"),
+    m(
+      "p",
+      { style: { marginBottom: "0.25rem" } },
+      m("span", { style: { fontFamily: "monospace" } }, props.loggerName),
+      cond(props.uid, m("span", { style: { fontFamily: "monospace", opacity: 0.5 } }, ` [uid: ${props.uid}]`)),
+      " says:",
+    ),
+    m(
+      "blockquote",
+      {
+        style: {
           backgroundColor: "#991111",
           padding: "0.25em",
           borderRadius: "6px",
           fontFamily: "monospace",
           marginBottom: "1rem",
-        }}
-      >
-        <span
-          style=${{
+        },
+      },
+      m(
+        "span",
+        {
+          style: {
             display: "inline-block",
             backgroundColor: "red",
             padding: "0.1em 0.4em",
@@ -56,14 +63,12 @@ export function DefaultCrashView(props: CrashViewProps) {
             borderRadius: "4px",
             fontSize: "0.9em",
             fontWeight: "bold",
-          }}
-        >
-          ${props.error.name}
-        </span>
-        ${props.error.message}
-      </blockquote>
-
-      <p>Please see the browser console for details.</p>
-    </div>
-  `;
+          },
+        },
+        props.error.name,
+      ),
+      props.error.message,
+    ),
+    m("p", {}, "Please see the browser console for details."),
+  );
 }

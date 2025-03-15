@@ -1,7 +1,7 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
-import { constructMarkup, type Markup, type MarkupElement } from "../markup.js";
+import { constructMarkup, toMarkup, type Markup, type MarkupElement } from "../markup.js";
 import { type Ref } from "../ref.js";
 import { effect, get, isReactive, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
@@ -12,7 +12,7 @@ type HTMLOptions = {
   elementContext: ElementContext;
   tag: string;
   props: Record<string, any>;
-  children?: Markup[];
+  children?: any[];
 };
 
 export class HTML implements MarkupElement {
@@ -70,7 +70,7 @@ export class HTML implements MarkupElement {
     };
 
     if (children) {
-      this.childMarkup = children;
+      this.childMarkup = toMarkup(children);
     }
 
     this.elementContext = elementContext;
@@ -207,6 +207,15 @@ export class HTML implements MarkupElement {
                 (element as any).htmlFor = current;
               });
               break;
+
+            case "title":
+              this.attachProp(value, (current) => {
+                if (current == null) {
+                  (element as any).removeAttribute(key);
+                } else {
+                  (element as any).setAttribute(key, String(current));
+                }
+              });
 
             case "checked":
               this.attachProp(value, (current) => {
