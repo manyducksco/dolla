@@ -3,8 +3,16 @@ import { Renderable } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import type { ComponentContext, ElementContext, StoreConsumerContext, StoreProviderContext } from "../context.js";
 import type { Logger } from "../dolla.js";
-import { constructMarkup, markup, groupElements, isMarkup, type Markup, type MarkupElement } from "../markup.js";
-import { atom, effect, isReactive, type EffectCallback, type Reactive, type UnsubscribeFunction } from "../signals.js";
+import { constructMarkup, groupElements, isMarkup, markup, type Markup, type MarkupElement } from "../markup.js";
+import {
+  atom,
+  effect,
+  isReactive,
+  type EffectCallback,
+  type EffectOptions,
+  type Reactive,
+  type UnsubscribeFunction,
+} from "../signals.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
@@ -23,11 +31,6 @@ export type ViewFunction<P> = (this: ViewContext, props: P, context: ViewContext
  * A view that has been constructed into DOM nodes.
  */
 export interface ViewElement extends MarkupElement {
-  /**
-   * Take a ViewFunction and render it as a child of this view.
-   */
-  // setChildView(view: ViewFunction<{}>): ViewElement;
-
   setRouteView(view: ViewFunction<{}>): ViewElement;
 }
 
@@ -70,7 +73,7 @@ export interface ViewContext
    * Passes a getter function to `callback` that will track reactive states and return their current values.
    * Callback will be run each time a tracked state gets a new value.
    */
-  effect(callback: EffectCallback): UnsubscribeFunction;
+  effect(callback: EffectCallback, options?: EffectOptions): UnsubscribeFunction;
 
   /**
    * Displays this view's subroutes if mounted as a router view.
@@ -173,11 +176,11 @@ class Context implements ViewContext {
     this.view.lifecycleListeners.unmount.push(callback);
   }
 
-  effect(callback: EffectCallback) {
+  effect(callback: EffectCallback, options?: EffectOptions) {
     if (this.view.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = effect(callback);
+      const unsubscribe = effect(callback, options);
       this.view.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -187,7 +190,7 @@ class Context implements ViewContext {
       let disposed = false;
       this.view.lifecycleListeners.mount.push(() => {
         if (!disposed) {
-          unsubscribe = effect(callback);
+          unsubscribe = effect(callback, options);
           this.view.lifecycleListeners.unmount.push(unsubscribe);
         }
       });
@@ -270,7 +273,6 @@ export class View<P> implements ViewElement {
     if (!wasConnected) {
       this.isMounted = true;
 
-      // TODO: Figure out why rAF is needed for updates to DOM nodes to work in onMount callbacks.
       requestAnimationFrame(() => {
         for (const listener of this.lifecycleListeners.mount) {
           listener();

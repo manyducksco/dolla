@@ -96,6 +96,10 @@ export class Dynamic implements MarkupElement {
     // Move marker node to end.
     const parent = this.domNode.parentNode!;
     const lastChildNextSibling = this.children.at(-1)?.domNode?.nextSibling ?? null;
-    parent.insertBefore(this.domNode, lastChildNextSibling);
+    if ("moveBefore" in parent) {
+      (parent.moveBefore as any)(this.domNode, lastChildNextSibling);
+    } else {
+      parent.insertBefore(this.domNode, lastChildNextSibling);
+    }
   }
 }

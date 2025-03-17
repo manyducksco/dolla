@@ -1,5 +1,5 @@
 import { createReactiveSystem, type Dependency, type Subscriber, SubscriberFlags } from "alien-signals";
-import { isFunction } from "../typeChecking";
+import { isFunction, typeOf } from "../typeChecking";
 
 export interface Effect extends Subscriber, Dependency {
   fn(): void;
@@ -56,16 +56,16 @@ const {
   processComputedUpdate,
   processPendingInnerEffects,
 } = createReactiveSystem({
-  updateComputed(computed: Computed): boolean {
+  updateComputed(c: Computed): boolean {
     const prevSub = activeSub;
-    activeSub = computed;
+    activeSub = c;
     trackedInThisCycle.length = 0;
-    startTracking(computed);
+    startTracking(c);
     try {
-      const oldValue = computed.currentValue;
-      const newValue = computed.getter(oldValue);
-      if (!computed.equals(oldValue, newValue)) {
-        computed.currentValue = newValue;
+      const oldValue = c.currentValue;
+      const newValue = c.getter(oldValue);
+      if (!c.equals(oldValue, newValue)) {
+        c.currentValue = newValue;
         return true;
       }
       return false;
@@ -75,7 +75,7 @@ const {
         getTrackedFn(trackedInThisCycle);
         getTrackedFn = undefined;
       }
-      endTracking(computed);
+      endTracking(c);
     }
   },
   notifyEffect(e: Effect) {
@@ -176,8 +176,15 @@ export interface ReactiveOptions<T> {
 export class Atom<T> implements Reactive<T> {
   #signal: Signal<T>;
   #equals;
+  #name?: string;
 
-  readonly name?: string;
+  get name() {
+    return this.#name || `anonymous ${this[Symbol.toStringTag]}`;
+  }
+
+  get [Symbol.toStringTag]() {
+    return `Atom<${typeOf(this.#signal.currentValue)}>`;
+  }
 
   constructor(value: T, options?: ReactiveOptions<T>) {
     this.#signal = {
@@ -188,7 +195,7 @@ export class Atom<T> implements Reactive<T> {
     this.#equals = options?.equals ?? Object.is;
 
     if (options?.name) {
-      this.name = options.name;
+      this.#name = options.name;
     }
   }
 
@@ -282,8 +289,15 @@ export class Atom<T> implements Reactive<T> {
 class Composed<T> implements Reactive<T> {
   #computed: Computed<T>;
   #fn: ComposeCallback<T>;
+  #name?: string;
 
-  readonly name?: string;
+  get name() {
+    return this.#name || `anonymous ${this[Symbol.toStringTag]}`;
+  }
+
+  get [Symbol.toStringTag]() {
+    return `Composed<${typeOf(this.#computed.currentValue)}>`;
+  }
 
   constructor(fn: ComposeCallback<T>, options?: ReactiveOptions<T>) {
     this.#fn = fn;
@@ -299,7 +313,7 @@ class Composed<T> implements Reactive<T> {
     };
 
     if (options?.name) {
-      this.name = options.name;
+      this.#name = options.name;
     }
   }
 
@@ -469,6 +483,7 @@ export function getTracked(fn: (tracked: Reactive<unknown>[]) => void) {
 }
 
 export type EffectCallback = () => void;
+export type EffectOptions = {};
 
 /**
  * Creates a tracked scope that re-runs whenever the values of any tracked reactives changes.
@@ -477,7 +492,7 @@ export type EffectCallback = () => void;
  * NOTE: You must call the unsubscribe function to stop watching for changes.
  * If you are using an effect inside a View or Store, use `ctx.effect` instead, which cleans up automatically when the component unmounts.
  */
-export function effect(fn: EffectCallback): UnsubscribeFunction {
+export function effect(fn: EffectCallback, options?: EffectOptions): UnsubscribeFunction {
   const e: Effect = {
     fn,
     subs: undefined,

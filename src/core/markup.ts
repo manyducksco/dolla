@@ -150,6 +150,7 @@ class VNode<P extends Record<any, any>> implements Markup {
 
 /**
  * Displays content conditionally. When `condition` holds a truthy value, `thenContent` is displayed; when `condition` holds a falsy value, `elseContent` is displayed.
+ * @deprecated
  */
 export function cond(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return markup("$dynamic", {
@@ -164,6 +165,20 @@ export function cond(condition: MaybeReactive<any>, thenContent?: Renderable, el
       return null;
     }),
   });
+}
+
+/**
+ * Displays `thenContent` when `condition` is truthy and `elseContent` when falsy.
+ */
+export function when(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
+  return cond(condition, thenContent, elseContent);
+}
+
+/**
+ * Inverted `when`. Displays `thenContent` when `condition` is falsy and `elseContent` when truthy.
+ */
+export function unless(condition: MaybeReactive<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
+  return cond(condition, elseContent, thenContent);
 }
 
 /**

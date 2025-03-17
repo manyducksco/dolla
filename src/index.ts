@@ -8,8 +8,6 @@ export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
 // Ref
 export { ref, type Ref } from "./core/ref.js";
 
-// export { For } from "./core/views/for.js";
-
 // Store
 export { type StoreContext, type StoreFunction } from "./core/store.js";
 
@@ -17,7 +15,7 @@ export { type StoreContext, type StoreFunction } from "./core/store.js";
 export { createRouter, type Router, type RouterOptions } from "./router/index.js";
 
 // Markup
-export { cond, list, markup, portal } from "./core/markup.js";
+export { cond, list, markup, portal, unless, when } from "./core/markup.js";
 export type { Markup, MarkupElement } from "./core/markup.js";
 
 import { Dolla } from "./core/dolla.js";
