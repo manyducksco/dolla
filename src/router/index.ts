@@ -355,6 +355,12 @@ export class Router {
 
       this.#match.set(match);
 
+      // Update the URL if matched path differs from navigator path.
+      // This happens if route resolution involved redirects.
+      if (rootView && match.path !== location.pathname) {
+        window.history.replaceState(null, "", this.#hash ? "/#" + match.path : match.path);
+      }
+
       if (rootView && match.pattern !== oldPattern) {
         this.#mountRoute(rootView, match);
       }
