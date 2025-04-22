@@ -2,7 +2,7 @@ import type { Dolla, Logger } from "../core/dolla.js";
 import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
 import { atom, get, compose, type UnsubscribeFunction } from "../core/signals.js";
 import { IS_ROUTER } from "../core/symbols.js";
-import { assertObject, isFunction, isObject, isString, typeOf } from "../typeChecking.js";
+import { assertObject, isArray, isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { shallowEqual } from "../utils.js";
 import { Passthrough } from "../core/views/passthrough.js";
@@ -122,8 +122,10 @@ export interface NavigateOptions {
 
   /**
    * Preserve existing query params (if any) when navigating. Defaults to false.
+   * If true, all existing query params are preserved and merged with new ones.
+   * If an array of strings is passed only those keys will be preserved, then merged with any new ones.
    */
-  preserveQuery?: boolean;
+  preserveQuery?: boolean | string[];
 }
 
 export interface RouterOptions {
@@ -227,7 +229,7 @@ export class Router {
 
     // Listen for popstate events and update route accordingly.
     const onPopState = () => {
-      this.#updateRoute();
+      this.#updateRoute(undefined, {});
     };
     window.addEventListener("popstate", onPopState);
     this.#unsubscribers.push(() => window.removeEventListener("popstate", onPopState));
@@ -240,7 +242,11 @@ export class Router {
         let href = anchor.getAttribute("href")!;
         this.#logger!.info("intercepted click on <a> tag", anchor);
 
-        this.go(href);
+        const preserve = anchor.getAttribute("data-router-preserve-query");
+
+        this.go(href, {
+          preserveQuery: parsePreserveQueryAttribute(preserve),
+        });
       }),
     );
     this.#logger.info("will intercept clicks on <a> tags within root element", rootElement);
@@ -248,7 +254,7 @@ export class Router {
     this.#isMounted = true;
 
     // Setup initial route content.
-    await this.#updateRoute();
+    await this.#updateRoute(undefined, {});
   }
 
   async [ROUTER_UNMOUNT]() {
@@ -290,29 +296,53 @@ export class Router {
 
     joined = resolvePath(window.location.pathname, joined);
 
-    if (options.preserveQuery) {
-      joined += window.location.search;
-    }
-
     if (options.replace) {
-      this.#replace(joined);
+      this.#replace(joined, options);
     } else {
-      this.#push(joined);
+      this.#push(joined, options);
     }
   }
 
-  #push(href: string, state?: any) {
+  /**
+   * Updates query params, keeping existing ones and applying new ones. Removes the query param if value is set to `null`.
+   */
+  updateQuery(values: Record<string, string>) {
+    const match = this.#match.get()!;
+    const query = { ...this.query.get() };
+
+    for (const key in values) {
+      const value = values[key];
+      if (value === null) {
+        delete query[key];
+      } else {
+        query[key] = value;
+      }
+    }
+
+    let queryParts: string[] = [];
+
+    for (const key in query) {
+      queryParts.push(`${key}=${query[key]}`);
+    }
+    const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
+
+    this.#match.set({ ...match, query });
+
+    window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
+  }
+
+  #push(href: string, options: NavigateOptions) {
     this.#logger?.info("(push)", href);
 
-    window.history.pushState(state, "", this.#hash ? "/#" + href : href);
-    this.#updateRoute(href);
+    window.history.pushState(null, "", this.#hash ? "/#" + href : href);
+    this.#updateRoute(href, options);
   }
 
-  #replace(href: string, state?: any) {
+  #replace(href: string, options: NavigateOptions) {
     this.#logger?.info("(replace)", href);
 
-    window.history.replaceState(state, "", this.#hash ? "/#" + href : href);
-    this.#updateRoute(href);
+    window.history.replaceState(null, "", this.#hash ? "/#" + href : href);
+    this.#updateRoute(href, options);
   }
 
   #getCurrentURL(): URL {
@@ -327,7 +357,7 @@ export class Router {
    * Run when the location changes. Diffs and mounts new routes and updates
    * the $path, $route, $params and $query states accordingly.
    */
-  async #updateRoute(href?: string) {
+  async #updateRoute(href: string | undefined, options: NavigateOptions) {
     const logger = this.#logger;
     const rootView = this.#dolla?.getRootView();
     const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
@@ -353,12 +383,34 @@ export class Router {
     if (match) {
       const oldPattern = this.pattern.peek();
 
-      this.#match.set(match);
+      // Merge query params.
+      let query = match.query;
+      let queryParts: string[] = [];
+
+      if (options.preserveQuery === true) {
+        query = Object.assign({}, this.query.get(), match.query);
+      } else if (isArray(options.preserveQuery)) {
+        const preserved: Record<string, any> = {};
+        const current = this.query.get();
+        for (const key in current) {
+          if (options.preserveQuery.includes(key)) {
+            preserved[key] = current[key];
+          }
+        }
+        query = Object.assign({}, preserved, match.query);
+      }
+
+      for (const key in query) {
+        queryParts.push(`${key}=${query[key]}`);
+      }
+      const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
+
+      this.#match.set({ ...match, query });
 
       // Update the URL if matched path differs from navigator path.
       // This happens if route resolution involved redirects.
-      if (rootView && match.path !== location.pathname) {
-        window.history.replaceState(null, "", this.#hash ? "/#" + match.path : match.path);
+      if (rootView && (match.path !== location.pathname || location.search !== queryString)) {
+        window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
       }
 
       if (rootView && match.pattern !== oldPattern) {
@@ -572,6 +624,31 @@ function assertValidRedirects(routes: ParsedRoute<RouteMeta>[]) {
         throw new TypeError(`Expected a string or redirect function. Got: ${route.meta.redirect}`);
       }
     }
+  }
+}
+
+/**
+ * Parses the data-router-preserve-query attribute from a link.
+ */
+function parsePreserveQueryAttribute(value: null | string | boolean): boolean | string[] {
+  if (value === null) {
+    return false;
+  } else if (value === true || value === false) {
+    return value;
+  } else if (typeof value === "string") {
+    value = value.trim();
+    if (value === "" || value === "true") {
+      return true;
+    } else if (value === "false") {
+      return false;
+    }
+
+    return value
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+  } else {
+    throw new Error(`Invalid type for data-router-preserve-query attribute: ${typeof value} (value: ${value})`);
   }
 }
 

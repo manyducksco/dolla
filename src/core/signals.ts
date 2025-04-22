@@ -2,7 +2,12 @@ import { createReactiveSystem, type Dependency, type Subscriber, SubscriberFlags
 import { isFunction, typeOf } from "../typeChecking";
 
 export interface Effect extends Subscriber, Dependency {
-  fn(): void;
+  /**
+   * Effect function. Can return an optional cleanup callback to be invoked before the next fn() call.
+   */
+  fn(): (() => void) | void;
+
+  cleanup?: () => void;
 }
 
 export interface Computed<T = any> extends Signal<T | undefined>, Subscriber {
@@ -112,7 +117,12 @@ function flushEffects(): void {
         trackedInThisCycle.length = 0;
         startTracking(e);
         try {
-          e.fn();
+          if (e.cleanup) {
+            pauseTracking();
+            e.cleanup();
+            resumeTracking();
+          }
+          e.cleanup = e.fn() ?? undefined;
         } finally {
           activeSub = prevSub;
           endTracking(e);
@@ -138,6 +148,9 @@ function stopEffect(this: Effect): void {
   // Cancel it after it receives its current value.
   queueMicrotask(() => {
     PENDING_EFFECTS.splice(PENDING_EFFECTS.indexOf(this), 1);
+    if (this.cleanup) {
+      this.cleanup();
+    }
   });
 }
 
@@ -482,7 +495,10 @@ export function getTracked(fn: (tracked: Reactive<unknown>[]) => void) {
   getTrackedFn = fn;
 }
 
-export type EffectCallback = () => void;
+/**
+ * Function to be invoked for the effect. Can return an optional cleanup function to be called between invocations.
+ */
+export type EffectCallback = () => void | (() => void);
 export type EffectOptions = {};
 
 /**
