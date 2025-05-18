@@ -2,8 +2,7 @@ import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { constructMarkup, toMarkup, type Markup, type MarkupElement } from "../markup.js";
-import { type Ref } from "../ref.js";
-import { effect, get, isReactive, type MaybeReactive, type UnsubscribeFunction } from "../signals.js";
+import { get, effect, type MaybeSignal, type Signal, type UnsubscribeFunction, type Source } from "../signals-api.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -26,7 +25,7 @@ export class HTML implements MarkupElement {
   private elementContext;
 
   // Track the ref so we can nullify it on unmount.
-  private ref?: Ref<any>;
+  private ref?: Source<any>;
 
   // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
   private canClickAway = false;
@@ -72,6 +71,8 @@ export class HTML implements MarkupElement {
     if (children) {
       this.childMarkup = toMarkup(children);
     }
+
+    console.log(this.domNode, { children, childMarkup: this.childMarkup });
 
     this.elementContext = elementContext;
   }
@@ -127,11 +128,11 @@ export class HTML implements MarkupElement {
     }
   }
 
-  private attachProp<T>(value: MaybeReactive<T>, callback: (value: T) => void) {
-    if (isReactive(value)) {
+  private attachProp<T>(value: MaybeSignal<T>, callback: (value: T) => void) {
+    if (isFunction(value)) {
       this.unsubscribers.push(
         effect(() => {
-          callback(value.get());
+          callback((value as Signal<T>)());
         }),
       );
     } else {
@@ -148,11 +149,7 @@ export class HTML implements MarkupElement {
       if (key === "on:clickoutside" || key === "onClickOutside" || key === "onclickoutside") {
         const listener = (e: Event) => {
           if (this.canClickAway && !element.contains(e.target as any)) {
-            if (isReactive<(e: Event) => void>(value)) {
-              value.peek()(e);
-            } else {
-              (value as (e: Event) => void)(e);
-            }
+            (value as (e: Event) => void)(e);
           }
         };
 
@@ -163,17 +160,21 @@ export class HTML implements MarkupElement {
         this.unsubscribers.push(() => {
           window.removeEventListener("click", listener, options);
         });
-      } else if (isCamelCaseEventName(key)) {
+      } else if (isFunction(value) && isCamelCaseEventName(key)) {
         const eventName = key.slice(2).toLowerCase();
 
-        const listener: (e: Event) => void = isReactive<(e: Event) => void>(value)
-          ? (e: Event) => value.peek()(e)
-          : (value as (e: Event) => void);
+        const listener: (e: Event) => void = value as (e: Event) => void;
 
         element.addEventListener(eventName, listener);
 
         this.unsubscribers.push(() => {
           element.removeEventListener(eventName, listener);
+        });
+      } else if (isFunction(value) && eventProps.includes(key)) {
+        const _key = key.substring(2);
+        element.addEventListener(_key, value as EventListener);
+        this.unsubscribers.push(() => {
+          element.removeEventListener(_key, value as EventListener);
         });
       } else if (key.includes("-")) {
         // Names with dashes in them are not valid prop names, so they are treated as attributes.
@@ -252,17 +253,24 @@ export class HTML implements MarkupElement {
               } else if (key.startsWith("on:")) {
                 const _key = key.substring(3);
                 let _prev: EventListener | undefined;
-                this.attachProp(value as MaybeReactive<EventListener>, (current) => {
-                  if (!current && _prev) {
-                    element.removeEventListener(_key, _prev);
-                  } else if (current != null) {
-                    if (_prev && _prev !== current) {
+                if (isFunction(value)) {
+                  element.addEventListener(_key, value as EventListener);
+                  this.unsubscribers.push(() => {
+                    element.removeEventListener(_key, value as EventListener);
+                  });
+                } else {
+                  this.attachProp(value as MaybeSignal<EventListener>, (current) => {
+                    if (!current && _prev) {
                       element.removeEventListener(_key, _prev);
+                    } else if (current != null) {
+                      if (_prev && _prev !== current) {
+                        element.removeEventListener(_key, _prev);
+                      }
+                      element.addEventListener(_key, current);
                     }
-                    element.addEventListener(_key, current);
-                  }
-                  _prev = current;
-                });
+                    _prev = current;
+                  });
+                }
               } else if (key.startsWith("attr:")) {
                 const _key = key.substring(5).toLowerCase();
                 this.attachProp(value, (current) => {
@@ -289,7 +297,7 @@ export class HTML implements MarkupElement {
   private applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFunction[]) {
     const propUnsubscribers: UnsubscribeFunction[] = [];
 
-    if (isReactive(styles)) {
+    if (isFunction(styles)) {
       let unapply: () => void;
 
       const unsubscribe = effect(() => {
@@ -308,10 +316,10 @@ export class HTML implements MarkupElement {
       for (const name in mapped) {
         const { value, priority } = mapped[name];
 
-        if (isReactive(value)) {
+        if (isFunction(value)) {
           const unsubscribe = effect(() => {
-            if (value.get()) {
-              element.style.setProperty(name, String(value.get()), priority);
+            if (get(value)) {
+              element.style.setProperty(name, String(get(value)), priority);
             } else {
               element.style.removeProperty(name);
             }
@@ -336,7 +344,7 @@ export class HTML implements MarkupElement {
   private applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFunction[]) {
     const classUnsubscribers: UnsubscribeFunction[] = [];
 
-    if (isReactive(classes)) {
+    if (isFunction(classes)) {
       let unapply: () => void;
 
       const unsubscribe = effect(() => {
@@ -355,7 +363,7 @@ export class HTML implements MarkupElement {
       for (const name in mapped) {
         const value = mapped[name];
 
-        if (isReactive(value)) {
+        if (isFunction(value)) {
           const unsubscribe = effect(() => {
             if (get(value)) {
               element.classList.add(name);
@@ -460,3 +468,5 @@ export function camelToKebab(value: string): string {
 
 // Attributes in this list will not be forwarded to the DOM node.
 const privateProps = ["ref", "children", "class", "style", "data"];
+
+const eventProps = ["onsubmit", "onclick", "ontransitionend"];

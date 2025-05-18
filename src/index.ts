@@ -1,12 +1,9 @@
-// Reactive
-export { atom, compose, effect, get, getTracked, peek, set, untrack } from "./core/signals.js";
-export type { Atom, MaybeReactive, Reactive } from "./core/signals.js";
+// Signals
+export { $, effect, get, peek } from "./core/signals-api.js";
+export type { MaybeSignal, Signal, Source } from "./core/signals-api.js";
 
 // Equality checks
 export { deepEqual, shallowEqual, strictEqual } from "./utils.js";
-
-// Ref
-export { ref, type Ref } from "./core/ref.js";
 
 // Store
 export { type StoreContext, type StoreFunction } from "./core/store.js";
@@ -15,7 +12,7 @@ export { type StoreContext, type StoreFunction } from "./core/store.js";
 export { createRouter, type Router, type RouterOptions } from "./router/index.js";
 
 // Markup
-export { cond, list, markup, portal, unless, when } from "./core/markup.js";
+export { markup, portal, repeat, unless, when } from "./core/markup.js";
 export type { Markup, MarkupElement } from "./core/markup.js";
 
 import { Dolla } from "./core/dolla.js";
@@ -24,6 +21,7 @@ const dolla = new Dolla();
 export default dolla;
 
 export const t = dolla.i18n.t.bind(dolla.i18n);
+export const i18n = dolla.i18n;
 export const http = dolla.http;
 
 export const createLogger = dolla.createLogger.bind(dolla);

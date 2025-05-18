@@ -56,7 +56,7 @@ test("add and match routes", () => {
 
   expect(match2).toBeTruthy();
   expect(match2!.meta.testId).toBe(2);
-  expect(match2!.params).toStrictEqual({ id: 123 });
+  expect(match2!.params).toStrictEqual({ id: "123" });
 
   expect(match3).toBeTruthy();
   expect(match3!.meta.testId).toBe(3);
@@ -64,9 +64,8 @@ test("add and match routes", () => {
 
   expect(match4).toBeTruthy();
   expect(match4!.meta.testId).toBe(4);
-  expect(match4!.params).toStrictEqual({ id: 123, action: "edit" });
-  // Numeric strings and boolean "true" and "false" strings are parsed into their JS type:
-  expect(match4!.query).toStrictEqual({ example: 5, other_thing: "test", yes: true });
+  expect(match4!.params).toStrictEqual({ id: "123", action: "edit" });
+  expect(match4!.query).toStrictEqual({ example: "5", other_thing: "test", yes: "true" });
 
   expect(match5).toBeTruthy();
   expect(match5!.meta.testId).toBe(5);

@@ -1,5 +1,6 @@
+import { isFunction } from "../../typeChecking.js";
 import { type MarkupElement } from "../markup.js";
-import { isReactive, get, effect, type MaybeReactive, type UnsubscribeFunction, untrack } from "../signals.js";
+import { effect, get, peek, type MaybeSignal, type UnsubscribeFunction } from "../signals-api.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
@@ -11,12 +12,12 @@ export class Fragment implements MarkupElement {
   domNode = document.createTextNode("");
   isMounted = false;
 
-  private source: MaybeReactive<MarkupElement[]>;
+  private source: MaybeSignal<MarkupElement[]>;
   private elements: MarkupElement[] = [];
 
   private unsubscribe?: UnsubscribeFunction;
 
-  constructor(source: MaybeReactive<MarkupElement[]>) {
+  constructor(source: MaybeSignal<MarkupElement[]>) {
     this.source = source;
   }
 
@@ -26,10 +27,10 @@ export class Fragment implements MarkupElement {
 
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
-      if (isReactive<MarkupElement[]>(this.source)) {
+      if (isFunction(this.source)) {
         this.unsubscribe = effect(() => {
           const value = get(this.source);
-          untrack(() => {
+          peek(() => {
             this.update(value);
           });
         });

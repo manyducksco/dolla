@@ -1,5 +1,5 @@
 import { type MarkupElement } from "../markup.js";
-import { Atom, effect, Reactive, type UnsubscribeFunction, untrack } from "../signals.js";
+import { effect, peek, type Signal, type UnsubscribeFunction } from "../signals-api.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View } from "./view.js";
 
@@ -12,12 +12,12 @@ export class Outlet implements MarkupElement {
   domNode = document.createTextNode("");
   isMounted = false;
 
-  private view: Reactive<View<{}> | undefined>;
+  private view: Signal<View<{}> | undefined>;
   private mountedView?: View<{}>;
 
   private unsubscribe?: UnsubscribeFunction;
 
-  constructor(view: Reactive<View<{}> | undefined>) {
+  constructor(view: Signal<View<{}> | undefined>) {
     this.view = view;
   }
 
@@ -28,8 +28,8 @@ export class Outlet implements MarkupElement {
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        const view = this.view.get();
-        untrack(() => {
+        const view = this.view();
+        peek(() => {
           this.update(view);
         });
       });

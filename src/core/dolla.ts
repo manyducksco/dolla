@@ -213,21 +213,23 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
     // TODO: Handle errors
     await Promise.all(this.#modules.map((register) => register()));
 
-    if (_isRouter(root)) {
-      await _mountRouter(root, this);
-    }
+    // TODO: Run effects for stores
 
     // Run beforeMount
     // TODO: Handle errors
     await Promise.all(this.#beforeMountCallbacks.map((callback) => callback()));
 
-    this.#rootView.mount(this.#rootElement);
-    this.#isMounted = true;
-
     // Run onMount for stores.
     for (const store of this.#rootElementContext.stores.values()) {
       store.handleMount();
     }
+
+    if (_isRouter(root)) {
+      await _mountRouter(root, this);
+    }
+
+    this.#rootView.mount(this.#rootElement);
+    this.#isMounted = true;
 
     // Run onMount
     // TODO: Handle errors

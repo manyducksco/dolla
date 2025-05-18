@@ -2,11 +2,11 @@ import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
 import type { ElementContext } from "../context.js";
 import { constructMarkup, isMarkupElement, isRenderable, toMarkup, type MarkupElement } from "../markup.js";
-import { effect, untrack, type Reactive, type UnsubscribeFunction } from "../signals.js";
+import { effect, get, peek, Signal, type UnsubscribeFunction } from "../signals-api.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface DynamicOptions {
-  source: Reactive<Renderable>;
+  source: Signal<Renderable>;
   elementContext: ElementContext;
 }
 
@@ -23,7 +23,7 @@ export class Dynamic implements MarkupElement {
   private children: MarkupElement[] = [];
   private elementContext: ElementContext;
 
-  private source: Reactive<Renderable>;
+  private source: Signal<Renderable>;
   private unsubscribe?: UnsubscribeFunction;
 
   get isMounted() {
@@ -40,7 +40,9 @@ export class Dynamic implements MarkupElement {
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        const content = this.source.get();
+        const content = this.source();
+
+        console.log("$dynamic effect", content, this.source);
 
         if (!isRenderable(content)) {
           console.error(content);
@@ -49,7 +51,7 @@ export class Dynamic implements MarkupElement {
           );
         }
 
-        untrack(() => {
+        peek(() => {
           this.update(isArray(content) ? content : [content]);
         });
       });
@@ -86,6 +88,8 @@ export class Dynamic implements MarkupElement {
         return constructMarkup(this.elementContext, toMarkup(c));
       }
     });
+
+    console.log("$dynamic update", newElements, children);
 
     for (const element of newElements) {
       const previous = this.children.at(-1)?.domNode || this.domNode;

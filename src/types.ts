@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
-import { Reactive } from "./core/signals.js";
+import { Signal } from "./core/signals-api.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -13,15 +13,15 @@ export type Renderable =
   | false
   | null
   | undefined
-  | Reactive<any>
-  | (string | number | Markup | false | null | undefined | Reactive<any>)[];
+  | Signal<any>
+  | (string | number | Markup | false | null | undefined | Signal<any>)[];
 
 export type Stringable = { toString(): string };
 
-type MaybeReactive<T> = T | Reactive<T> | Reactive<T | undefined>;
+type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined>;
 
-type OptionalProperty<T> = MaybeReactive<T>;
-type RequiredProperty<T> = T | Reactive<T>;
+type OptionalProperty<T> = MaybeSignal<T>;
+type RequiredProperty<T> = T | Signal<T>;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -159,12 +159,12 @@ export interface ElementProps {
   style?:
     | string
     | CSSProperties
-    | Reactive<string>
-    | Reactive<CSSProperties>
-    | Reactive<string | CSSProperties>
-    | Reactive<string | undefined>
-    | Reactive<CSSProperties | undefined>
-    | Reactive<string | CSSProperties | undefined>;
+    | Signal<string>
+    | Signal<CSSProperties>
+    | Signal<string | CSSProperties>
+    | Signal<string | undefined>
+    | Signal<CSSProperties | undefined>
+    | Signal<string | CSSProperties | undefined>;
 
   /*=================================*\
   ||              Events             ||
@@ -1477,7 +1477,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeReactive<any>;
+  [className: string]: MaybeSignal<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -2512,14 +2512,14 @@ interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementP
     | MediaSource
     | Blob
     | File
-    | Reactive<MediaStream>
-    | Reactive<MediaStream | undefined>
-    | Reactive<MediaSource>
-    | Reactive<MediaSource | undefined>
-    | Reactive<Blob>
-    | Reactive<Blob | undefined>
-    | Reactive<File>
-    | Reactive<File | undefined>;
+    | Signal<MediaStream>
+    | Signal<MediaStream | undefined>
+    | Signal<MediaSource>
+    | Signal<MediaSource | undefined>
+    | Signal<Blob>
+    | Signal<Blob | undefined>
+    | Signal<File>
+    | Signal<File | undefined>;
 
   /**
    * The current audio volume of the media element. Must be a number between 0 and 1.
@@ -3103,7 +3103,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeReactive<string>;
+  sizes?: MaybeSignal<string>;
 
   /**
    * The image URL.

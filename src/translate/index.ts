@@ -1,5 +1,5 @@
 import type { Dolla, Logger } from "../core/dolla.js";
-import { atom, compose, get, type MaybeReactive, type Reactive } from "../core/signals.js";
+import { $, get, type MaybeSignal, type Signal } from "../core/signals-api.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -73,12 +73,12 @@ export type TOptions = {
   /**
    *
    */
-  count?: MaybeReactive<number>;
+  count?: MaybeSignal<number>;
 
   /**
    *
    */
-  context?: MaybeReactive<string>;
+  context?: MaybeSignal<string>;
 
   /**
    * Override formats specified in the template with the ones in the array for each named variable.
@@ -91,9 +91,9 @@ export type TOptions = {
    *   }
    * });
    */
-  formatOverrides?: MaybeReactive<Record<string, Record<string, Format[]>>>;
+  formatOverrides?: MaybeSignal<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: MaybeReactive<any>;
+  [value: string]: MaybeSignal<any>;
 };
 
 export type Formatter = (locale: string, value: unknown, options: Record<string, any>) => string;
@@ -378,10 +378,9 @@ export class I18n {
 
   #initialLocale = "auto";
 
-  #locale = atom<string>("");
-  get locale() {
-    return this.#locale;
-  }
+  #locale = $<string>("");
+
+  readonly locale = $(this.#locale);
 
   constructor(dolla: Dolla) {
     this.#dolla = dolla;
@@ -481,7 +480,7 @@ export class I18n {
       await translation.load();
 
       this.#cache = [];
-      this.#locale.set(realName);
+      this.#locale(realName);
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -500,14 +499,14 @@ export class I18n {
    * @example
    * const $value = t("your.key.here", { count: 5 });
    */
-  t(selector: string, options?: TOptions): Reactive<string> {
+  t(selector: string, options?: TOptions): Signal<string> {
     if (this === undefined) {
       throw new Error(
         `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
       );
     }
 
-    return compose(() => {
+    return $(() => {
       const values: Record<string, any> = {};
 
       // Track all option values.
@@ -515,7 +514,7 @@ export class I18n {
         values[key] = get(options[key]);
       }
 
-      return this.#getValue(this.#locale.get(), selector, values);
+      return this.#getValue(this.#locale(), selector, values);
     });
   }
 
@@ -609,7 +608,7 @@ export class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
    */
   collator(options?: Intl.CollatorOptions) {
-    return new Intl.Collator(this.#locale.get(), options);
+    return new Intl.Collator(this.#locale(), options);
   }
 
   /**
@@ -617,13 +616,13 @@ export class I18n {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
-  number(count: MaybeReactive<number | bigint>, options?: Intl.NumberFormatOptions): Reactive<string> {
-    return compose(() => this.#formatNumber(get(count), options));
+  number(count: MaybeSignal<number | bigint>, options?: Intl.NumberFormatOptions): Signal<string> {
+    return $(() => this.#formatNumber(get(count), options));
   }
 
   #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
     // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.NumberFormat(this.#locale.get(), options).format(count);
+    return new Intl.NumberFormat(this.#locale(), options).format(count);
   }
 
   /**
@@ -636,15 +635,15 @@ export class I18n {
    * const $formatted = Dolla.i18n.dateTime(date, { dateFormat: "short" });
    */
   dateTime(
-    date?: MaybeReactive<string | number | Date | undefined>,
+    date?: MaybeSignal<string | number | Date | undefined>,
     options?: Intl.DateTimeFormatOptions,
-  ): Reactive<string> {
-    return compose(() => this.#formatDateTime(get(date), options));
+  ): Signal<string> {
+    return $(() => this.#formatDateTime(get(date), options));
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
     // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.DateTimeFormat(this.#locale.get(), options).format(isString(date) ? new Date(date) : date);
+    return new Intl.DateTimeFormat(this.#locale(), options).format(isString(date) ? new Date(date) : date);
   }
 
   /**
@@ -656,13 +655,13 @@ export class I18n {
    * const list = new Date();
    * const $formatted = Dolla.i18n.list(list, {  });
    */
-  list(list: MaybeReactive<Iterable<string>>, options?: Intl.ListFormatOptions): Reactive<string> {
-    return compose(() => this.#formatList(get(list), options));
+  list(list: MaybeSignal<Iterable<string>>, options?: Intl.ListFormatOptions): Signal<string> {
+    return $(() => this.#formatList(get(list), options));
   }
 
   #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {
     // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.ListFormat(this.#locale.get(), options).format(list);
+    return new Intl.ListFormat(this.#locale(), options).format(list);
   }
 
   // relativeTime(): State<string> {

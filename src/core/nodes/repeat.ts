@@ -1,48 +1,44 @@
+import { deepEqual } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { type MarkupElement } from "../markup.js";
-import { type Atom, atom, compose, effect, untrack, type Reactive, type UnsubscribeFunction } from "../signals.js";
+import { $, effect, peek, type Signal, type Source, type UnsubscribeFunction } from "../signals-api.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View, type ViewContext, type ViewResult } from "./view.js";
 
 // ----- Types ----- //
 
-interface ListOptions<T> {
+interface RepeatOptions<T> {
   elementContext: ElementContext;
-  items: Reactive<T[]>;
+  items: Signal<T[]>;
   keyFn: (item: T, index: number) => string | number | symbol;
-  renderFn: (item: Reactive<T>, index: Reactive<number>, ctx: ViewContext) => ViewResult;
+  renderFn: (item: Signal<T>, index: Signal<number>, ctx: ViewContext) => ViewResult;
 }
 
 type ConnectedItem<T> = {
   key: any;
-  item: Atom<T>;
-  index: Atom<number>;
+  item: Source<T>;
+  index: Source<number>;
   element: MarkupElement;
 };
 
 // ----- Code ----- //
 
-export class List<T> implements MarkupElement {
+export class Repeat<T> implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   domNode = document.createTextNode("");
-  private items: Reactive<T[]>;
+  private items: Signal<T[]>;
   private unsubscribe: UnsubscribeFunction | null = null;
   private connectedItems: ConnectedItem<T>[] = [];
   private elementContext;
-  private renderFn: (
-    this: ViewContext,
-    value: Reactive<T>,
-    index: Reactive<number>,
-    context: ViewContext,
-  ) => ViewResult;
+  private renderFn: (this: ViewContext, value: Signal<T>, index: Signal<number>, context: ViewContext) => ViewResult;
   private keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
     return this.domNode.parentNode != null;
   }
 
-  constructor({ elementContext, items, renderFn, keyFn }: ListOptions<T>) {
+  constructor({ elementContext, items, renderFn, keyFn }: RepeatOptions<T>) {
     this.elementContext = elementContext;
 
     this.items = items;
@@ -55,14 +51,14 @@ export class List<T> implements MarkupElement {
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        let value = this.items.get();
+        let value = this.items();
 
         if (value == null) {
           value = [];
-          console.log("list received empty value", value, this);
+          console.log("repeat received empty value", value, this);
         }
 
-        untrack(() => {
+        peek(() => {
           this._update(Array.from(value));
         });
       });
@@ -123,20 +119,21 @@ export class List<T> implements MarkupElement {
       const connected = this.connectedItems.find((item) => item.key === potential.key);
 
       if (connected) {
-        connected.item.set(potential.value);
-        connected.index.set(potential.index);
+        connected.item(potential.value);
+        connected.index(potential.index);
         newItems[potential.index] = connected;
       } else {
-        const item = atom(potential.value);
-        const index = atom(potential.index);
+        // deepEqual avoids running update code again if the data is equivalent. In list updates this happens a lot.
+        const item = $(potential.value, { equals: deepEqual });
+        const index = $(potential.index);
 
         newItems[potential.index] = {
           key: potential.key,
           item,
           index,
-          element: new View(this.elementContext, ListItemView, {
-            item: compose(() => item.get()),
-            index,
+          element: new View(this.elementContext, RepeatItemView, {
+            item: () => item(),
+            index: () => index(),
             renderFn: this.renderFn,
           }),
         };
@@ -160,12 +157,12 @@ export class List<T> implements MarkupElement {
 }
 
 interface ListItemProps {
-  item: Reactive<any>;
-  index: Reactive<number>;
-  renderFn: (item: Reactive<any>, index: Reactive<number>, context: ViewContext) => ViewResult;
+  item: Signal<any>;
+  index: Signal<number>;
+  renderFn: (item: Signal<any>, index: Signal<number>, context: ViewContext) => ViewResult;
 }
 
-function ListItemView(props: ListItemProps, context: ViewContext) {
-  context.name = "@ListItem";
+function RepeatItemView(props: ListItemProps, context: ViewContext) {
+  context.name = "@RepeatItem";
   return props.renderFn.call(context, props.item, props.index, context);
 }

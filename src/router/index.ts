@@ -1,20 +1,20 @@
 import type { Dolla, Logger } from "../core/dolla.js";
 import type { ViewElement, ViewFunction } from "../core/nodes/view.js";
-import { atom, get, compose, type UnsubscribeFunction } from "../core/signals.js";
+import { $, peek, type UnsubscribeFunction } from "../core/signals-api.js";
 import { IS_ROUTER } from "../core/symbols.js";
-import { assertObject, isArray, isFunction, isObject, isString, typeOf } from "../typeChecking.js";
+import { Passthrough } from "../core/views/passthrough.js";
+import { assertObject, isArray, isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { shallowEqual } from "../utils.js";
-import { Passthrough } from "../core/views/passthrough.js";
 import {
+  catchLinks,
   joinPath,
   matchRoutes,
   patternToFragments,
+  replaceParams,
   resolvePath,
   sortRoutes,
   splitPath,
-  catchLinks,
-  replaceParams,
   type ParsedRoute,
   type RouteMatch,
 } from "./router.utils.js";
@@ -22,10 +22,20 @@ import {
 // ----- Types ----- //
 
 export interface RouteMatchContext {
+  path: string;
+  pattern: string;
+  params: Record<string, string>;
+  query: Record<string, string>;
+
   /**
    * Redirects the user to a different route instead of matching the current one.
    */
   redirect(path: string): void;
+
+  /**
+   * Triggers the next beforeMatch function, or mounts the route.
+   */
+  next(): void;
 }
 
 export interface Route {
@@ -59,7 +69,7 @@ export interface RouteMeta {
   redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
   pattern?: string;
   layers?: RouteLayer[];
-  beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
+  beforeMatch?: ((ctx: RouteMatchContext) => void | Promise<void>)[];
 }
 
 export interface RouteConfig {
@@ -97,12 +107,12 @@ export interface RouteRedirectContext {
   /**
    * Named route params parsed from `path`.
    */
-  params: Record<string, string | number | undefined>;
+  params: Record<string, string>;
 
   /**
    * Query params parsed from `path`.
    */
-  query: Record<string, string | number | boolean | undefined>;
+  query: Record<string, string>;
 }
 
 /**
@@ -181,27 +191,27 @@ export class Router {
   /**
    * The current match object.
    */
-  #match = atom<RouteMatch>();
+  #match = $<RouteMatch>();
 
   /**
    * The currently matched route pattern, if any.
    */
-  readonly pattern = compose(() => this.#match.get()?.pattern);
+  readonly pattern = $(() => this.#match()?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly path = compose(() => this.#match.get()?.path ?? window.location.pathname);
+  readonly path = $(() => this.#match()?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly params = compose(() => this.#match.get()?.params ?? {}, { equals: shallowEqual });
+  readonly params = $(() => this.#match()?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params. Changes to this object will be reflected in the URL.
    */
-  readonly query = compose(() => this.#match.get()?.query ?? {}, { equals: shallowEqual });
+  readonly query = $(() => this.#match()?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
@@ -220,6 +230,8 @@ export class Router {
           fragments: patternToFragments(route.pattern),
         })),
     );
+
+    console.log({ routes: options.routes, prepared: this.#routes });
     assertValidRedirects(this.#routes);
   }
 
@@ -306,16 +318,16 @@ export class Router {
   /**
    * Updates query params, keeping existing ones and applying new ones. Removes the query param if value is set to `null`.
    */
-  updateQuery(values: Record<string, string>) {
-    const match = this.#match.get()!;
-    const query = { ...this.query.get() };
+  updateQuery(values: Record<string, Stringable | null>) {
+    const match = this.#match()!;
+    const query = { ...this.query() };
 
     for (const key in values) {
       const value = values[key];
       if (value === null) {
         delete query[key];
       } else {
-        query[key] = value;
+        query[key] = value.toString();
       }
     }
 
@@ -326,7 +338,7 @@ export class Router {
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    this.#match.set({ ...match, query });
+    this.#match({ ...match, query });
 
     window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
   }
@@ -381,17 +393,17 @@ export class Router {
     }
 
     if (match) {
-      const oldPattern = this.pattern.peek();
+      const oldPattern = peek(this.pattern);
 
       // Merge query params.
       let query = match.query;
       let queryParts: string[] = [];
 
       if (options.preserveQuery === true) {
-        query = Object.assign({}, this.query.get(), match.query);
+        query = Object.assign({}, this.query(), match.query);
       } else if (isArray(options.preserveQuery)) {
         const preserved: Record<string, any> = {};
-        const current = this.query.get();
+        const current = this.query();
         for (const key in current) {
           if (options.preserveQuery.includes(key)) {
             preserved[key] = current[key];
@@ -405,7 +417,7 @@ export class Router {
       }
       const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-      this.#match.set({ ...match, query });
+      this.#match({ ...match, query });
 
       // Update the URL if matched path differs from navigator path.
       // This happens if route resolution involved redirects.
@@ -461,57 +473,89 @@ export class Router {
     match: RouteMatch<RouteMeta> | null;
     journey: JourneyStep[];
   }> {
-    const match = matchRoutes(this.#routes, url.pathname);
+    return new Promise((resolve, reject) => {
+      const match = matchRoutes(this.#routes, url.pathname);
 
-    if (!match) {
-      return {
-        match: null,
-        journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
-      };
-    }
-
-    let redirect = match.meta.redirect;
-
-    if (match.meta.beforeMatch) {
-      await match.meta.beforeMatch({
-        // TODO: Allow setting context variables from here? Would apply to the context of the matched view.
-        redirect: (path) => {
-          redirect = path;
-        },
-      });
-    }
-
-    if (redirect != null) {
-      let path: string;
-
-      if (isString(redirect)) {
-        path = replaceParams(redirect, match.params);
-      } else if (isFunction(redirect)) {
-        const redirectContext: RouteRedirectContext = {
-          path: match.path,
-          pattern: match.pattern,
-          params: match.params,
-          query: match.query,
-        };
-        path = await redirect(redirectContext);
-        if (!isString(path)) {
-          throw new Error(`Redirect function must return a path to redirect to.`);
-        }
-        if (!path.startsWith("/")) {
-          // Not absolute. Resolve against matched path.
-          path = resolvePath(match.path, path);
-        }
-      } else {
-        throw new TypeError(`Redirect must either be a path string or a function.`);
+      if (!match) {
+        return resolve({
+          match: null,
+          journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
+        });
       }
 
-      return this.#resolveRoute(new URL(path, window.location.origin), [
-        ...journey,
-        { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
-      ]);
-    } else {
-      return { match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] };
-    }
+      let redirect = match.meta.redirect;
+
+      const finalize = async () => {
+        if (redirect != null) {
+          let path: string;
+
+          if (isString(redirect)) {
+            path = replaceParams(redirect, match.params);
+          } else if (isFunction(redirect)) {
+            const redirectContext: RouteRedirectContext = {
+              path: match.path,
+              pattern: match.pattern,
+              params: match.params,
+              query: match.query,
+            };
+            path = await redirect(redirectContext);
+            if (!isString(path)) {
+              return reject(new Error(`Redirect function must return a path to redirect to.`));
+            }
+            if (!path.startsWith("/")) {
+              // Not absolute. Resolve against matched path.
+              path = resolvePath(match.path, path);
+            }
+          } else {
+            return reject(new TypeError(`Redirect must either be a path string or a function.`));
+          }
+
+          resolve(
+            this.#resolveRoute(new URL(path, window.location.origin), [
+              ...journey,
+              { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
+            ]),
+          );
+        } else {
+          resolve({ match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] });
+        }
+      };
+
+      if (match.meta.beforeMatch?.length) {
+        const callbacks = match.meta.beforeMatch;
+        let i = -1;
+        const next = () => {
+          i++;
+          console.warn("blep", { i, callbacks });
+          if (i === callbacks.length) {
+            // Mount route
+            finalize();
+          } else {
+            // Next callback
+            callbacks[i]({
+              path: match.path,
+              pattern: match.pattern,
+              params: match.params,
+              query: match.query,
+
+              // TODO: Allow setting context variables from here? Would apply to the context of the matched view.
+              redirect: (path) => {
+                redirect = path;
+                finalize();
+              },
+
+              next,
+            });
+          }
+        };
+
+        next();
+
+        // TODO: Show warning after timeout if next hasn't been called?
+      } else {
+        finalize();
+      }
+    });
   }
 
   /**
@@ -590,7 +634,10 @@ export class Router {
         meta: {
           pattern: route.path,
           layers: [...layers, layer],
-          beforeMatch: route.beforeMatch,
+          beforeMatch: parents
+            .flatMap((parent) => parent.beforeMatch)
+            .concat(route.beforeMatch)
+            .filter((x) => x != null),
         },
       });
     }

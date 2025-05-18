@@ -2,7 +2,7 @@ import { isFunction } from "../typeChecking.js";
 import { getUniqueId } from "../utils.js";
 import type { ComponentContext, ElementContext, StoreConsumerContext } from "./context.js";
 import type { Logger } from "./dolla.js";
-import { effect, type EffectCallback, type EffectOptions, type UnsubscribeFunction } from "./signals.js";
+import { effect, type EffectCallback, type UnsubscribeFunction } from "./signals-api.js";
 import { IS_STORE } from "./symbols.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
@@ -31,7 +31,7 @@ export interface StoreContext extends Omit<Logger, "setName">, ComponentContext,
    * Passes a getter function to `callback` that will track reactive states and return their current values.
    * Callback will be run each time a tracked state gets a new value.
    */
-  effect(callback: EffectCallback, options?: EffectOptions): UnsubscribeFunction;
+  effect(callback: EffectCallback): UnsubscribeFunction;
 }
 
 interface Context<Options, Value> extends Omit<Logger, "setName"> {}
@@ -94,13 +94,13 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
     this.store.lifecycleListeners.unmount.push(callback);
   }
 
-  effect(callback: EffectCallback, options?: EffectOptions) {
+  effect(callback: EffectCallback) {
     const store = this.store;
 
     if (store.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = effect(callback, options);
+      const unsubscribe = effect(callback);
       store.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -110,7 +110,7 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
       let disposed = false;
       store.lifecycleListeners.mount.push(() => {
         if (!disposed) {
-          unsubscribe = effect(callback, options);
+          unsubscribe = effect(callback);
           store.lifecycleListeners.unmount.push(unsubscribe);
         }
       });

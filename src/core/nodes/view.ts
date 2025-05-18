@@ -4,15 +4,7 @@ import { getUniqueId } from "../../utils.js";
 import type { ComponentContext, ElementContext, StoreConsumerContext, StoreProviderContext } from "../context.js";
 import type { Logger } from "../dolla.js";
 import { constructMarkup, groupElements, isMarkup, markup, type Markup, type MarkupElement } from "../markup.js";
-import {
-  atom,
-  effect,
-  isReactive,
-  type EffectCallback,
-  type EffectOptions,
-  type Reactive,
-  type UnsubscribeFunction,
-} from "../signals.js";
+import { type Signal, effect, type EffectCallback, type UnsubscribeFunction, $ } from "../signals-api.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
@@ -23,7 +15,7 @@ import { IS_MARKUP_ELEMENT } from "../symbols.js";
 /**
  * Any valid value that a View can return.
  */
-export type ViewResult = Node | Reactive<any> | Markup | Markup[] | null;
+export type ViewResult = Node | Signal<any> | Markup | Markup[] | null;
 
 export type ViewFunction<P> = (this: ViewContext, props: P, context: ViewContext) => ViewResult;
 
@@ -73,7 +65,7 @@ export interface ViewContext
    * Passes a getter function to `callback` that will track reactive states and return their current values.
    * Callback will be run each time a tracked state gets a new value.
    */
-  effect(callback: EffectCallback, options?: EffectOptions): UnsubscribeFunction;
+  effect(callback: EffectCallback): UnsubscribeFunction;
 
   /**
    * Displays this view's subroutes if mounted as a router view.
@@ -176,11 +168,11 @@ class Context implements ViewContext {
     this.view.lifecycleListeners.unmount.push(callback);
   }
 
-  effect(callback: EffectCallback, options?: EffectOptions) {
+  effect(callback: EffectCallback) {
     if (this.view.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = effect(callback, options);
+      const unsubscribe = effect(callback);
       this.view.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -190,7 +182,7 @@ class Context implements ViewContext {
       let disposed = false;
       this.view.lifecycleListeners.mount.push(() => {
         if (!disposed) {
-          unsubscribe = effect(callback, options);
+          unsubscribe = effect(callback);
           this.view.lifecycleListeners.unmount.push(unsubscribe);
         }
       });
@@ -234,7 +226,7 @@ export class View<P> implements ViewElement {
       parent: elementContext,
       viewName: fn.name,
       stores: new Map(),
-      route: atom<View<{}>>(),
+      route: $<View<{}>>(),
     };
     this.logger = elementContext.root.createLogger(fn.name || "🌇 anonymous view", { uid: this.uniqueId });
     this.props = {
@@ -306,7 +298,7 @@ export class View<P> implements ViewElement {
   setRouteView(fn: ViewFunction<{}>) {
     const node = new View(this.elementContext, fn, {});
 
-    this.elementContext.route!.set(node);
+    this.elementContext.route!(node);
 
     return node;
   }
@@ -321,10 +313,6 @@ export class View<P> implements ViewElement {
     let result: ViewResult;
     try {
       result = this.fn.call(context, this.props, context);
-
-      // if (this.childMarkup.length) {
-      //   this.children.set(constructMarkup(this.elementContext, this.childMarkup));
-      // }
     } catch (error) {
       if (error instanceof Error) {
         this.logger.crash(error);
@@ -336,9 +324,9 @@ export class View<P> implements ViewElement {
       // Do nothing.
     } else if (result instanceof Node) {
       this.element = groupElements(constructMarkup(this.elementContext, markup("$node", { value: result })));
-    } else if (isReactive(result)) {
+    } else if (isFunction(result)) {
       this.element = groupElements(
-        constructMarkup(this.elementContext, markup("$dynamic", { source: result as Reactive<Renderable> })),
+        constructMarkup(this.elementContext, markup("$dynamic", { source: result as Signal<Renderable> })),
       );
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
       this.element = groupElements(constructMarkup(this.elementContext, result));
@@ -346,7 +334,7 @@ export class View<P> implements ViewElement {
       const error = new TypeError(
         `Expected '${
           this.fn.name
-        }' function to return a DOM node, Markup element, Readable or null. Got: ${typeOf(result)}`,
+        }' function to return a DOM node, Markup element, Signal or null. Got: ${typeOf(result)}`,
       );
       this.logger.crash(error);
     }

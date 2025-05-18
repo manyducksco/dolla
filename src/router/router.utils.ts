@@ -14,12 +14,12 @@ export type RouteMatch<T = Record<string, any>> = {
   /**
    * Named params as parsed from `path`.
    */
-  params: Record<string, string | number>;
+  params: Record<string, string>;
 
   /**
    * Query params as parsed from `path`.
    */
-  query: Record<string, string | number | boolean>;
+  query: Record<string, string>;
 
   /**
    * Metadata registered to this route.
@@ -144,7 +144,7 @@ export function resolvePath(base: string, part: string | null) {
   return joinPath([resolved, part]);
 }
 
-export function parseQueryParams(query: string): Record<string, string | number | boolean> {
+export function parseQueryParams(query: string): Record<string, string> {
   if (!query) return {};
 
   if (query.startsWith("?")) {
@@ -154,24 +154,12 @@ export function parseQueryParams(query: string): Record<string, string | number 
   const entries = query
     .split("&")
     .filter((x) => x.trim() !== "")
-    .map((entry) => {
-      const [key, value] = entry.split("=").map((x) => x.trim());
-
-      if (value.toLowerCase() === "true") {
-        return [key, true] as const;
-      }
-
-      if (value.toLowerCase() === "false") {
-        return [key, false] as const;
-      }
-
-      // Return value as a number if it parses as one.
-      if (!isNaN(Number(value))) {
-        return [key, Number(value)] as const;
-      }
-
-      return [key, value] as const;
-    });
+    .map((entry) =>
+      entry
+        .split("=")
+        .map((x) => x.trim())
+        .slice(0, 2),
+    );
 
   return Object.fromEntries(entries);
 }
@@ -228,7 +216,7 @@ export function matchRoutes<T>(
           break fragments;
         case FragTypes.NumericParam:
           if (!isNaN(Number(part))) {
-            matched.push({ ...frag, value: Number(part) });
+            matched.push({ ...frag, value: part });
             break;
           } else {
             continue routes;
@@ -238,7 +226,7 @@ export function matchRoutes<T>(
       }
     }
 
-    const params: Record<string, string | number> = {};
+    const params: Record<string, string> = {};
 
     for (const frag of matched) {
       if (frag.type === FragTypes.Param) {
@@ -246,7 +234,7 @@ export function matchRoutes<T>(
       }
 
       if (frag.type === FragTypes.NumericParam) {
-        params[frag.name] = frag.value as number;
+        params[frag.name] = String(frag.value);
       }
 
       if (frag.type === FragTypes.Wildcard) {

@@ -35,31 +35,51 @@ Dolla's goals include:
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
 ```jsx
-import Dolla, { atom } from "@manyducks.co/dolla";
+import Dolla, { $ } from "@manyducks.co/dolla";
 
 function Counter(props, ctx) {
-  const count = atom(0);
+  const count = $(0);
 
+  // An effect will re-run whenever any signal value accessed inside it changes.
   ctx.effect(() => {
-    console.log(`Count is: ${count.get()}`);
+    console.log(`Count is: ${count()}`);
   });
 
   function increment() {
-    count.set(count.get() + 1);
+    // Call signal function with a new value to set it...
+    count(count() + 1);
   }
 
   function decrement() {
-    count.update((value) => value - 1);
-    // alternative to `set(get() - 1)`
+    // ... or pass a function that takes the current value and returns the next.
+    count((value) => value - 1);
   }
 
   return (
     <div>
-      <p>Counter: {counter}</p>
+      {/* Signals can be slotted into the DOM to render them */}
+      <p>Counter: {count}</p>
       <div>
         <button on:click={increment}>+1</button>
         <button on:click={decrement}>-1</button>
       </div>
+
+      {/* We can derive a new signal on the fly and conditionally render something based on that condition */}
+      {when(
+        $(() => count() > 10),
+        <span>That's a lot of clicks!</span>,
+      )}
+
+      {/* ALT: Or slot a getter function into the DOM and have it conditionally render an element */}
+      {() => {
+        // DEV NOTE
+        // If we get Dynamic to track its rendered elements and diff them by keys
+        // then we may be able to do away with repeat and when and just do things like:
+        //    <ul>{() => items().map(item => <li>{item}</li>)}</ul>
+        if (count() > 10) {
+          return <span>That's a lot of clicks!</span>;
+        }
+      }}
     </div>
   );
 }
@@ -71,10 +91,10 @@ Dolla.mount(document.body, Counter);
 
 ```js
 function MessageStore(options, ctx) {
-  const message = atom("Hello world!");
+  const message = $("Hello world!");
 
   ctx.effect(() => {
-    ctx.log(`Message is now: ${get(message)}`);
+    ctx.log(`Message is now: ${message()}`);
     // Calling `get()` inside an effect (or compose) function will track that reactive value as a dependency.
     // Effects will re-run when a dependency updates.
   });
@@ -82,12 +102,8 @@ function MessageStore(options, ctx) {
   // Context objects contain methods for controlling the component, logging and attaching lifecycle hooks.
 
   return {
-    message: compose(() => message.get()),
-    // Creates a read-only reactive of the message value.
-    // Composed values update when their dependencies update.
-
-    setMessage: set(message),
-    // Creates a setter function to update the original message atom.
+    message: $(() => message()),
+    setMessage: (value: string) => message(value),
   };
 }
 

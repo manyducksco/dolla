@@ -1,4 +1,4 @@
-import { cond, markup as m } from "../markup.js";
+import { when, markup as m } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.
@@ -38,7 +38,7 @@ export function DefaultCrashView(props: CrashViewProps) {
       "p",
       { style: { marginBottom: "0.25rem" } },
       m("span", { style: { fontFamily: "monospace" } }, props.loggerName),
-      cond(props.uid, m("span", { style: { fontFamily: "monospace", opacity: 0.5 } }, ` [uid: ${props.uid}]`)),
+      when(props.uid, m("span", { style: { fontFamily: "monospace", opacity: 0.5 } }, ` [uid: ${props.uid}]`)),
       " says:",
     ),
     m(
