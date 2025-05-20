@@ -42,7 +42,7 @@ export class Dynamic implements MarkupElement {
       this.unsubscribe = effect(() => {
         const content = this.source();
 
-        console.log("$dynamic effect", content, this.source);
+        // console.log("$dynamic effect", content, this.source);
 
         if (!isRenderable(content)) {
           console.error(content);
@@ -89,7 +89,7 @@ export class Dynamic implements MarkupElement {
       }
     });
 
-    console.log("$dynamic update", newElements, children);
+    // console.log("$dynamic update", newElements, children);
 
     for (const element of newElements) {
       const previous = this.children.at(-1)?.domNode || this.domNode;

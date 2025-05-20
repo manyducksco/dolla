@@ -526,7 +526,6 @@ export class Router {
         let i = -1;
         const next = () => {
           i++;
-          console.warn("blep", { i, callbacks });
           if (i === callbacks.length) {
             // Mount route
             finalize();

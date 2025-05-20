@@ -72,7 +72,7 @@ export class HTML implements MarkupElement {
       this.childMarkup = toMarkup(children);
     }
 
-    console.log(this.domNode, { children, childMarkup: this.childMarkup });
+    // console.log(this.domNode, { children, childMarkup: this.childMarkup });
 
     this.elementContext = elementContext;
   }

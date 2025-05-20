@@ -1,4 +1,4 @@
-## ⚡ Reactive Updates with `State`
+## ⚡ Reactive Updates with `Signals`
 
 Dolla sets out to solve the challenge of keeping your UI in sync with your data. All apps have state that changes at runtime, and your UI must update itself to stay in sync with that state as it changes. JavaScript frameworks all have their own ways of doing this, but there are two main ones; virtual DOM and signals. Dolla follows the Signals philosophy.
 
