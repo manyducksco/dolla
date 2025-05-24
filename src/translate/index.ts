@@ -378,7 +378,7 @@ export class I18n {
 
   #initialLocale = "auto";
 
-  #locale = $<string>("");
+  #locale = $<string>("en");
 
   readonly locale = $(this.#locale);
 

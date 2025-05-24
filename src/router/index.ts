@@ -319,7 +319,7 @@ export class Router {
    * Updates query params, keeping existing ones and applying new ones. Removes the query param if value is set to `null`.
    */
   updateQuery(values: Record<string, Stringable | null>) {
-    const match = this.#match()!;
+    const match = peek(this.#match)!;
     const query = { ...this.query() };
 
     for (const key in values) {
