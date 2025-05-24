@@ -72,7 +72,6 @@ export class Dolla implements StoreProviderContext, StoreConsumerContext {
   #rootElementContext: ElementContext = {
     root: this,
     stores: new Map(),
-    viewName: "Dolla",
   };
 
   #loggles: Loggles = {

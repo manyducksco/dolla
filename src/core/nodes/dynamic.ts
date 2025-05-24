@@ -40,20 +40,24 @@ export class Dynamic implements MarkupElement {
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        const content = this.source();
+        try {
+          const content = this.source();
 
-        // console.log("$dynamic effect", content, this.source);
+          if (!isRenderable(content)) {
+            console.error(content);
+            throw new TypeError(
+              `Dynamic received invalid value to render. Got type: ${typeOf(content)}, value: ${content}`,
+            );
+          }
 
-        if (!isRenderable(content)) {
-          console.error(content);
-          throw new TypeError(
-            `Dynamic received invalid value to render. Got type: ${typeOf(content)}, value: ${content}`,
-          );
+          peek(() => {
+            this.update(isArray(content) ? content : [content]);
+          });
+        } catch (error) {
+          const logger = this.elementContext.view!.logger;
+          logger.error(error);
+          logger.crash(error as Error);
         }
-
-        peek(() => {
-          this.update(isArray(content) ? content : [content]);
-        });
       });
     }
   }

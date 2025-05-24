@@ -24,6 +24,8 @@ export class HTML implements MarkupElement {
   private unsubscribers: UnsubscribeFunction[] = [];
   private elementContext;
 
+  private logger;
+
   // Track the ref so we can nullify it on unmount.
   private ref?: Source<any>;
 
@@ -43,6 +45,9 @@ export class HTML implements MarkupElement {
       };
     }
 
+    // this.logger = elementContext.root.createLogger(`<${tag}>`);
+    this.logger = elementContext.view!.logger;
+
     // Create node with the appropriate constructor.
     if (elementContext.isSVG) {
       this.domNode = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -50,8 +55,8 @@ export class HTML implements MarkupElement {
       this.domNode = document.createElement(tag);
     }
 
-    if (elementContext.root.getEnv() === "development" && elementContext.viewName) {
-      this.domNode.dataset.view = elementContext.viewName;
+    if (elementContext.root.getEnv() === "development" && elementContext.view!.name) {
+      this.domNode.dataset.view = elementContext.view!.name;
     }
 
     if (props.ref) {
@@ -132,7 +137,12 @@ export class HTML implements MarkupElement {
     if (isFunction(value)) {
       this.unsubscribers.push(
         effect(() => {
-          callback((value as Signal<T>)());
+          try {
+            callback((value as Signal<T>)());
+          } catch (error) {
+            this.logger.error(error);
+            this.logger.crash(error as Error);
+          }
         }),
       );
     } else {

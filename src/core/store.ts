@@ -97,10 +97,25 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
   effect(callback: EffectCallback) {
     const store = this.store;
 
+    const fn = () => {
+      try {
+        callback();
+      } catch (error) {
+        if (error instanceof Error) {
+          this.crash(error);
+        } else if (typeof error === "string") {
+          this.crash(new Error(error));
+        } else {
+          this.error(error);
+          this.crash(new Error(`Unknown error thrown in effect callback`));
+        }
+      }
+    };
+
     if (store.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = effect(callback);
+      const unsubscribe = effect(fn);
       store.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -110,7 +125,7 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
       let disposed = false;
       store.lifecycleListeners.mount.push(() => {
         if (!disposed) {
-          unsubscribe = effect(callback);
+          unsubscribe = effect(fn);
           store.lifecycleListeners.unmount.push(unsubscribe);
         }
       });

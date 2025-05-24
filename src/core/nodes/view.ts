@@ -104,11 +104,11 @@ class Context implements ViewContext {
   }
 
   get name() {
-    return this.view.elementContext.viewName || this.uid;
+    return this.view.name || this.uid;
   }
 
   set name(value) {
-    this.view.elementContext.viewName = value;
+    this.view.name = value;
     this.view.logger.setName(value);
   }
 
@@ -169,10 +169,25 @@ class Context implements ViewContext {
   }
 
   effect(callback: EffectCallback) {
+    const fn = () => {
+      try {
+        callback();
+      } catch (error) {
+        this.error(error);
+        if (error instanceof Error) {
+          this.crash(error);
+        } else if (typeof error === "string") {
+          this.crash(new Error(error));
+        } else {
+          this.crash(new Error(`Unknown error thrown in effect callback`));
+        }
+      }
+    };
+
     if (this.view.isMounted) {
       // If called when the component is connected, we assume this code is in a lifecycle hook
       // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = effect(callback);
+      const unsubscribe = effect(fn);
       this.view.lifecycleListeners.unmount.push(unsubscribe);
       return unsubscribe;
     } else {
@@ -182,7 +197,7 @@ class Context implements ViewContext {
       let disposed = false;
       this.view.lifecycleListeners.mount.push(() => {
         if (!disposed) {
-          unsubscribe = effect(callback);
+          unsubscribe = effect(fn);
           this.view.lifecycleListeners.unmount.push(unsubscribe);
         }
       });
@@ -213,6 +228,9 @@ export class View<P> implements ViewElement {
 
   element?: MarkupElement;
 
+  name;
+  context: Context;
+
   lifecycleListeners: {
     beforeMount: (() => any)[];
     mount: (() => any)[];
@@ -221,19 +239,21 @@ export class View<P> implements ViewElement {
   } = { beforeMount: [], mount: [], beforeUnmount: [], unmount: [] };
 
   constructor(elementContext: ElementContext, fn: ViewFunction<P>, props: P, children?: Markup[]) {
+    this.name = fn.name || "🌇 anonymous view";
     this.elementContext = {
       ...elementContext,
       parent: elementContext,
-      viewName: fn.name,
+      view: this,
       stores: new Map(),
       route: $<View<{}>>(),
     };
-    this.logger = elementContext.root.createLogger(fn.name || "🌇 anonymous view", { uid: this.uniqueId });
+    this.logger = elementContext.root.createLogger(this.name, { uid: this.uniqueId });
     this.props = {
       ...props,
       children,
     };
     this.fn = fn;
+    this.context = new Context(this);
   }
 
   /*===============================*\
@@ -308,7 +328,7 @@ export class View<P> implements ViewElement {
   \*===============================*/
 
   private _initialize() {
-    const context = new Context(this);
+    const { context } = this;
 
     let result: ViewResult;
     try {

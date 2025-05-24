@@ -1,5 +1,5 @@
 import type { Dolla } from "./dolla";
-import type { View } from "./nodes/view";
+import type { View, ViewContext } from "./nodes/view";
 import type { Source } from "./signals-api";
 import type { Store, StoreFunction } from "./store";
 
@@ -17,6 +17,10 @@ export interface ElementContext {
    */
   stores: Map<StoreFunction<any, any>, Store<any, any>>;
   /**
+   * The nearest view.
+   */
+  view?: View<any>;
+  /**
    * A reference to the parent context.
    */
   parent?: ElementContext;
@@ -27,7 +31,11 @@ export interface ElementContext {
   /**
    * The name of the nearest parent view.
    */
-  viewName?: string;
+  // viewName?: string;
+  /**
+   * The context of the nearest parent view.
+   */
+  // viewContext?: ViewContext;
   /**
    * Current route layer of the nearest view.
    */
