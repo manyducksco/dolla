@@ -131,3 +131,28 @@ test("nested compose", () => {
     });
   });
 });
+
+test("effect runs cleanup function", () => {
+  const fn = vi.fn();
+  const count = $(0);
+  const stop = effect(() => {
+    count();
+    return fn;
+  });
+
+  queueMicrotask(() => {
+    expect(fn).toBeCalledTimes(0);
+
+    count(2);
+
+    queueMicrotask(() => {
+      expect(fn).toBeCalledTimes(1);
+
+      count(3);
+
+      queueMicrotask(() => {
+        expect(fn).toBeCalledTimes(2);
+      });
+    });
+  });
+});

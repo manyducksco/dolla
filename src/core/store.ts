@@ -99,7 +99,8 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
 
     const fn = () => {
       try {
-        callback();
+        // Return callback so cleanup function passes through
+        return callback();
       } catch (error) {
         if (error instanceof Error) {
           this.crash(error);

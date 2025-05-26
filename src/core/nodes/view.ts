@@ -171,7 +171,8 @@ class Context implements ViewContext {
   effect(callback: EffectCallback) {
     const fn = () => {
       try {
-        callback();
+        // Return callback so cleanup function passes through
+        return callback();
       } catch (error) {
         this.error(error);
         if (error instanceof Error) {
