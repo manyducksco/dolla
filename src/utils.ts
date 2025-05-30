@@ -177,7 +177,7 @@ export function omit<O extends Record<any, any>>(keys: (keyof O)[], object: O): 
 }
 
 /*=============================*\
-||         Object Utils        ||
+||          Misc Utils         ||
 \*=============================*/
 
 /**

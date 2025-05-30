@@ -1,7 +1,7 @@
 import { deepEqual } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { type MarkupElement } from "../markup.js";
-import { $, effect, peek, type Signal, type Source, type UnsubscribeFunction } from "../signals-api.js";
+import { $, effect, peek, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View, type ViewContext, type ViewResult } from "./view.js";
 
@@ -28,7 +28,7 @@ export class Repeat<T> implements MarkupElement {
 
   domNode = document.createTextNode("");
   private items: Signal<T[]>;
-  private unsubscribe: UnsubscribeFunction | null = null;
+  private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: ConnectedItem<T>[] = [];
   private elementContext;
   private renderFn: (this: ViewContext, value: Signal<T>, index: Signal<number>, context: ViewContext) => ViewResult;

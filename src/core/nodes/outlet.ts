@@ -1,5 +1,5 @@
 import { type MarkupElement } from "../markup.js";
-import { effect, peek, type Signal, type UnsubscribeFunction } from "../signals-api.js";
+import { effect, peek, type Signal, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 import { View } from "./view.js";
 
@@ -15,7 +15,7 @@ export class Outlet implements MarkupElement {
   private view: Signal<View<{}> | undefined>;
   private mountedView?: View<{}>;
 
-  private unsubscribe?: UnsubscribeFunction;
+  private unsubscribe?: UnsubscribeFn;
 
   constructor(view: Signal<View<{}> | undefined>) {
     this.view = view;

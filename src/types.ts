@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
-import { Signal } from "./core/signals-api.js";
+import { Signal } from "./core/signals.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -15,6 +15,16 @@ export type Renderable =
   | undefined
   | Signal<any>
   | (string | number | Markup | false | null | undefined | Signal<any>)[];
+
+export interface Mountable {
+  mount(parent: Node, after?: Node): void;
+  unmount(parentIsUnmounting?: boolean): void;
+}
+
+export interface AsyncMountable {
+  mount(parent: Node, after?: Node): Promise<void>;
+  unmount(parentIsUnmounting?: boolean): Promise<void>;
+}
 
 export type Stringable = { toString(): string };
 

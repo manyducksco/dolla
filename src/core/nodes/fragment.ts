@@ -1,6 +1,6 @@
 import { isFunction } from "../../typeChecking.js";
 import { type MarkupElement } from "../markup.js";
-import { effect, get, peek, type MaybeSignal, type UnsubscribeFunction } from "../signals-api.js";
+import { effect, get, peek, type MaybeSignal, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /**
@@ -15,7 +15,7 @@ export class Fragment implements MarkupElement {
   private source: MaybeSignal<MarkupElement[]>;
   private elements: MarkupElement[] = [];
 
-  private unsubscribe?: UnsubscribeFunction;
+  private unsubscribe?: UnsubscribeFn;
 
   constructor(source: MaybeSignal<MarkupElement[]>) {
     this.source = source;

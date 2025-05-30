@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { $, get, peek, effect, type Signal } from "./signals-api";
+import { $, get, peek, effect, type Signal } from "./signals";
 
 test("basic composition & tracking", () => {
   const count = $(5);

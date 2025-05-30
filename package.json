@@ -28,7 +28,19 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "types": "./index.d.ts"
+      "types": "./dist/core/index.d.ts"
+    },
+    "./router": {
+      "import": "./dist/router.js",
+      "types": "./dist/router/index.d.ts"
+    },
+    "./http": {
+      "import": "./dist/http.js",
+      "types": "./dist/http/index.d.ts"
+    },
+    "./i18n": {
+      "import": "./dist/i18n.js",
+      "types": "./dist/i18n/index.d.ts"
     },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",

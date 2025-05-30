@@ -1,16 +1,17 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
-// import { externalizeDeps } from "vite-plugin-externalize-deps";
 
 export default defineConfig({
   build: {
     sourcemap: true,
     minify: true,
-    // target: "esnext",
 
     lib: {
       entry: {
-        index: resolve(__dirname, "src/index.ts"),
+        index: resolve(__dirname, "src/core/index.ts"),
+        http: resolve(__dirname, "src/http/index.ts"),
+        i18n: resolve(__dirname, "src/i18n/index.ts"),
+        router: resolve(__dirname, "src/router/index.ts"),
         "jsx-runtime": resolve(__dirname, "src/jsx-runtime.js"),
         "jsx-dev-runtime": resolve(__dirname, "src/jsx-dev-runtime.js"),
       },
@@ -18,6 +19,4 @@ export default defineConfig({
       formats: ["es"],
     },
   },
-
-  // plugins: [externalizeDeps()],
 });

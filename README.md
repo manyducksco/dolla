@@ -35,30 +35,34 @@ Dolla's goals include:
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
 ```jsx
-import Dolla, { $ } from "@manyducks.co/dolla";
+import { $, when, mount } from "@manyducks.co/dolla";
 
 function Counter(props, ctx) {
-  const count = $(0);
+  const $count = $(0);
 
   // An effect will re-run whenever any signal value accessed inside it changes.
   ctx.effect(() => {
-    console.log(`Count is: ${count()}`);
+    console.log(`Count is: ${$count()}`);
   });
 
   function increment() {
-    // Call signal function with a new value to set it...
-    count(count() + 1);
+    // Pass a function that takes the current value and returns a new one.
+    $count((x) => x + 1);
   }
 
   function decrement() {
-    // ... or pass a function that takes the current value and returns the next.
-    count((value) => value - 1);
+    $count((x) => x - 1);
+  }
+
+  function reset() {
+    // Set state directly by passing a (non-function) value.
+    $count(0);
   }
 
   return (
     <div>
       {/* Signals can be slotted into the DOM to render them */}
-      <p>Counter: {count}</p>
+      <p>Counter: {$count}</p>
       <div>
         <button on:click={increment}>+1</button>
         <button on:click={decrement}>-1</button>
@@ -66,7 +70,7 @@ function Counter(props, ctx) {
 
       {/* We can derive a new signal on the fly and conditionally render something based on that condition */}
       {when(
-        $(() => count() > 10),
+        $(() => $count() > 10),
         <span>That's a lot of clicks!</span>,
       )}
 
@@ -76,7 +80,7 @@ function Counter(props, ctx) {
         // If we get Dynamic to track its rendered elements and diff them by keys
         // then we may be able to do away with repeat and when and just do things like:
         //    <ul>{() => items().map(item => <li>{item}</li>)}</ul>
-        if (count() > 10) {
+        if ($count() > 10) {
           return <span>That's a lot of clicks!</span>;
         }
       }}
@@ -84,7 +88,7 @@ function Counter(props, ctx) {
   );
 }
 
-Dolla.mount(document.body, Counter);
+mount(document.body, Counter);
 ```
 
 > TODO: Show small examples for routing and stores.

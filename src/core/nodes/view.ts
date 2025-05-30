@@ -1,10 +1,24 @@
-import { isArrayOf, isFunction, typeOf } from "../../typeChecking.js";
+import { isArray, isArrayOf, isFunction, isObject, typeOf } from "../../typeChecking.js";
 import { Renderable } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
-import type { ComponentContext, ElementContext, StoreConsumerContext, StoreProviderContext } from "../context.js";
-import type { Logger } from "../dolla.js";
-import { constructMarkup, groupElements, isMarkup, markup, type Markup, type MarkupElement } from "../markup.js";
-import { type Signal, effect, type EffectCallback, type UnsubscribeFunction, $ } from "../signals-api.js";
+import {
+  globalStores,
+  type ComponentContext,
+  type ElementContext,
+  type StoreConsumerContext,
+  type StoreProviderContext,
+} from "../context.js";
+import { createLogger, type Logger } from "../logger.js";
+import {
+  groupElements,
+  isMarkup,
+  markup,
+  toMarkup,
+  toMarkupElements,
+  type Markup,
+  type MarkupElement,
+} from "../markup.js";
+import { $, effect, peek, type EffectFn, type Signal, type UnsubscribeFn } from "../signals.js";
 import { Store, StoreError, StoreFunction } from "../store.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
@@ -65,7 +79,7 @@ export interface ViewContext
    * Passes a getter function to `callback` that will track reactive states and return their current values.
    * Callback will be run each time a tracked state gets a new value.
    */
-  effect(callback: EffectCallback): UnsubscribeFunction;
+  effect(callback: EffectFn): UnsubscribeFn;
 
   /**
    * Displays this view's subroutes if mounted as a router view.
@@ -104,12 +118,11 @@ class Context implements ViewContext {
   }
 
   get name() {
-    return this.view.name || this.uid;
+    return peek(this.view.name) || this.uid;
   }
 
   set name(value) {
-    this.view.name = value;
-    this.view.logger.setName(value);
+    this.view.name(value);
   }
 
   provide<Value>(store: StoreFunction<any, Value>, options?: any): Value {
@@ -168,7 +181,7 @@ class Context implements ViewContext {
     this.view.lifecycleListeners.unmount.push(callback);
   }
 
-  effect(callback: EffectCallback) {
+  effect(callback: EffectFn) {
     const fn = () => {
       try {
         // Return callback so cleanup function passes through
@@ -194,7 +207,7 @@ class Context implements ViewContext {
     } else {
       // This should only happen if called in the body of the component function.
       // This code is not always re-run between when a component is unmounted and remounted.
-      let unsubscribe: UnsubscribeFunction | undefined;
+      let unsubscribe: UnsubscribeFn | undefined;
       let disposed = false;
       this.view.lifecycleListeners.mount.push(() => {
         if (!disposed) {
@@ -229,7 +242,7 @@ export class View<P> implements ViewElement {
 
   element?: MarkupElement;
 
-  name;
+  name = $("");
   context: Context;
 
   lifecycleListeners: {
@@ -240,7 +253,7 @@ export class View<P> implements ViewElement {
   } = { beforeMount: [], mount: [], beforeUnmount: [], unmount: [] };
 
   constructor(elementContext: ElementContext, fn: ViewFunction<P>, props: P, children?: Markup[]) {
-    this.name = fn.name || "🌇 anonymous view";
+    this.name(fn.name || "🌇 anonymous view");
     this.elementContext = {
       ...elementContext,
       parent: elementContext,
@@ -248,7 +261,7 @@ export class View<P> implements ViewElement {
       stores: new Map(),
       route: $<View<{}>>(),
     };
-    this.logger = elementContext.root.createLogger(this.name, { uid: this.uniqueId });
+    this.logger = createLogger(this.name, { uid: this.uniqueId });
     this.props = {
       ...props,
       children,
@@ -344,13 +357,13 @@ export class View<P> implements ViewElement {
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      this.element = groupElements(constructMarkup(this.elementContext, markup("$node", { value: result })));
+      this.element = groupElements(toMarkupElements(this.elementContext, markup("$node", { value: result })));
     } else if (isFunction(result)) {
       this.element = groupElements(
-        constructMarkup(this.elementContext, markup("$dynamic", { source: result as Signal<Renderable> })),
+        toMarkupElements(this.elementContext, markup("$dynamic", { source: result as Signal<Renderable> })),
       );
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      this.element = groupElements(constructMarkup(this.elementContext, result));
+      this.element = groupElements(toMarkupElements(this.elementContext, result));
     } else {
       const error = new TypeError(
         `Expected '${
@@ -359,5 +372,40 @@ export class View<P> implements ViewElement {
       );
       this.logger.crash(error);
     }
+  }
+}
+
+const rootElementContext: ElementContext = {
+  stores: globalStores,
+};
+
+export function constructView<P>(view: ViewFunction<P>, props: P, children?: Renderable[]): ViewElement;
+export function constructView(view: ViewFunction<{}>, children?: Renderable[]): ViewElement;
+export function constructView<P>(
+  context: ElementContext,
+  view: ViewFunction<P>,
+  props: P,
+  children?: Renderable[],
+): ViewElement;
+export function constructView(context: ElementContext, view: ViewFunction<{}>, children?: Renderable[]): ViewElement;
+
+export function constructView(...args: any): ViewElement {
+  if (isFunction(args[0])) {
+    const view = args[0] as ViewFunction<any>;
+    const props = isArray(args[1]) ? {} : args[1];
+    const children = (isArray(args[2]) ? args[2] : isArray(args[1]) ? args[1] : []) as Renderable[];
+
+    return new View(rootElementContext, view, props, toMarkup(children));
+  } else if (isObject(args[0]) && isFunction(args[1])) {
+    const context = args[0] as unknown as ElementContext;
+    const view = args[1] as ViewFunction<any>;
+    const props = isArray(args[2]) ? {} : args[2];
+    const children = (isArray(args[3]) ? args[3] : isArray(args[2]) ? args[2] : []) as Renderable[];
+
+    return new View(context, view, props, children ? toMarkup(children) : []);
+  } else {
+    throw new TypeError(
+      "Unexpected arguments; expected view, props and children, or context, view, props and children.",
+    );
   }
 }

@@ -1,6 +1,5 @@
-import type { Dolla } from "./dolla";
-import type { View, ViewContext } from "./nodes/view";
-import type { Source } from "./signals-api";
+import type { View } from "./nodes/view";
+import type { Source } from "./signals";
 import type { Store, StoreFunction } from "./store";
 
 /*===========================*\
@@ -11,7 +10,7 @@ export interface ElementContext {
   /**
    * The root Dolla instance this element belongs to.
    */
-  root: Dolla;
+  // root: Dolla;
   /**
    * Stores attached to this context.
    */
@@ -73,3 +72,9 @@ export interface StoreConsumerContext {
    */
   get<Value>(store: StoreFunction<any, Value>): Value;
 }
+
+type StoreMap = Map<any, any>;
+export const globalStores: StoreMap = new Map();
+export const rootElementContext = {
+  stores: globalStores,
+};

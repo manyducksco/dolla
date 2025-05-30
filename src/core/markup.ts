@@ -1,6 +1,6 @@
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
-import type { Renderable } from "../types.js";
-import type { ElementContext } from "./context.js";
+import type { Mountable, Renderable } from "../types.js";
+import { rootElementContext, type ElementContext } from "./context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { Dynamic } from "./nodes/dynamic.js";
 import { Fragment } from "./nodes/fragment.js";
@@ -9,7 +9,7 @@ import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
 import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
-import { $, type MaybeSignal, type Signal, get } from "./signals-api.js";
+import { $, get, type MaybeSignal, type Signal } from "./signals.js";
 import { IS_MARKUP_ELEMENT } from "./symbols.js";
 
 /*===========================*\
@@ -38,18 +38,10 @@ export interface Markup {
 /**
  * A DOM node that has been constructed from a Markup object.
  */
-export interface MarkupElement {
+export interface MarkupElement extends Mountable {
   readonly domNode?: Node;
 
   readonly isMounted: boolean;
-
-  mount(parent: Node, after?: Node): void;
-
-  /**
-   * Disconnect from the DOM and clean up. If parentIsUnmounting, DOM operations are skipped.
-   * parentIsUnmounting is set for all children by HTML nodes when they unmount.
-   */
-  unmount(parentIsUnmounting?: boolean): void;
 }
 
 export function isMarkup(value: any): value is Markup {
@@ -97,6 +89,10 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
   }
 
   return results;
+}
+
+export function constructMarkup(markup: Markup | Markup[]): MarkupElement {
+  return groupElements(toMarkupElements(rootElementContext, markup));
 }
 
 export enum MarkupType {
@@ -215,7 +211,7 @@ export function portal(parent: Node, content: Renderable): Markup {
 /**
  * Construct Markup metadata into a set of MarkupElements.
  */
-export function constructMarkup(elementContext: ElementContext, markup: Markup | Markup[]): MarkupElement[] {
+export function toMarkupElements(elementContext: ElementContext, markup: Markup | Markup[]): MarkupElement[] {
   const items = isArray(markup) ? markup : [markup];
 
   return items.map((item) => {

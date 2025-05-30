@@ -1,5 +1,5 @@
-import type { Dolla, Logger } from "../core/dolla.js";
-import { $, get, type MaybeSignal, type Signal } from "../core/signals-api.js";
+import { createLogger, type Logger } from "../core/logger.js";
+import { $, get, type MaybeSignal, type Signal } from "../core/signals.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -101,16 +101,14 @@ export type Formatter = (locale: string, value: unknown, options: Record<string,
 // ----- Code ----- //
 
 class Translation {
-  dolla: Dolla;
   config: TranslationConfig;
 
   #isLoaded = false;
 
   #templates = new Map<string, StringTemplate>();
 
-  constructor(config: TranslationConfig, dolla: Dolla) {
+  constructor(config: TranslationConfig) {
     this.config = config;
-    this.dolla = dolla;
   }
 
   async load(): Promise<void> {
@@ -369,8 +367,7 @@ class Translation {
 /**
  * Dolla's I(nternationalizatio)n module. Manages language translations and locale-based formatting.
  */
-export class I18n {
-  #dolla: Dolla;
+class I18n {
   #logger: Logger;
   #translations = new Map<string, Translation>();
   #cache: [key: string, values: Record<string, any> | undefined, output: string][] = [];
@@ -380,11 +377,10 @@ export class I18n {
 
   #locale = $<string>("en");
 
-  readonly locale = $(this.#locale);
+  readonly $locale = $(this.#locale);
 
-  constructor(dolla: Dolla) {
-    this.#dolla = dolla;
-    this.#logger = dolla.createLogger("Dolla.i18n");
+  constructor() {
+    this.#logger = createLogger("Dolla.i18n");
 
     this.addFormat("number", (_, value, options) => {
       return this.#formatNumber(Number(value), options);
@@ -395,25 +391,16 @@ export class I18n {
     this.addFormat("list", (_, value, options) => {
       return this.#formatList(value as any, options);
     });
-
-    /**
-     * Load language before the app mounts.
-     */
-    dolla.beforeMount(async () => {
-      if (this.#translations.size > 0) {
-        await this.setLocale(this.#initialLocale);
-      }
-    });
   }
 
   get locales() {
     return [...this.#translations.keys()];
   }
 
-  setup(options: I18nSetupOptions) {
+  async setup(options: I18nSetupOptions) {
     // Convert languages into Language instances.
     options.translations.forEach((entry) => {
-      this.#translations.set(entry.locale, new Translation(entry, this.#dolla));
+      this.#translations.set(entry.locale, new Translation(entry));
     });
 
     // Check that initialLanguage is actually registered.
@@ -428,6 +415,10 @@ export class I18n {
     this.#logger.info(
       `${this.#translations.size} language${this.#translations.size === 1 ? "" : "s"} supported: '${[...this.#translations.keys()].join("', '")}'`,
     );
+
+    if (this.#translations.size > 0) {
+      await this.setLocale(this.#initialLocale);
+    }
   }
 
   async setLocale(name: string) {
@@ -695,3 +686,6 @@ function resolve(object: any, key: string) {
 
   return value;
 }
+
+export const i18n = new I18n();
+export const t = i18n.t.bind(i18n);

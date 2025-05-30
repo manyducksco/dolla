@@ -1,8 +1,8 @@
 import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
 import type { ElementContext } from "../context.js";
-import { constructMarkup, isMarkupElement, isRenderable, toMarkup, type MarkupElement } from "../markup.js";
-import { effect, get, peek, Signal, type UnsubscribeFunction } from "../signals-api.js";
+import { isMarkupElement, isRenderable, toMarkup, toMarkupElements, type MarkupElement } from "../markup.js";
+import { effect, peek, Signal, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface DynamicOptions {
@@ -24,7 +24,7 @@ export class Dynamic implements MarkupElement {
   private elementContext: ElementContext;
 
   private source: Signal<Renderable>;
-  private unsubscribe?: UnsubscribeFunction;
+  private unsubscribe?: UnsubscribeFn;
 
   get isMounted() {
     return this.domNode.parentNode != null;
@@ -89,7 +89,7 @@ export class Dynamic implements MarkupElement {
       if (isMarkupElement(c)) {
         return c as MarkupElement;
       } else {
-        return constructMarkup(this.elementContext, toMarkup(c));
+        return toMarkupElements(this.elementContext, toMarkup(c));
       }
     });
 

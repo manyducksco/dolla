@@ -1,8 +1,14 @@
 import { isFunction } from "../typeChecking.js";
 import { getUniqueId } from "../utils.js";
-import type { ComponentContext, ElementContext, StoreConsumerContext } from "./context.js";
-import type { Logger } from "./dolla.js";
-import { effect, type EffectCallback, type UnsubscribeFunction } from "./signals-api.js";
+import {
+  rootElementContext,
+  type ComponentContext,
+  type ElementContext,
+  type StoreConsumerContext,
+  type StoreProviderContext,
+} from "./context.js";
+import { createLogger, type Logger } from "./logger.js";
+import { $, effect, peek, type EffectFn, type UnsubscribeFn } from "./signals.js";
 import { IS_STORE } from "./symbols.js";
 
 export type StoreFunction<Options, Value> = (this: StoreContext, options: Options, context: StoreContext) => Value;
@@ -31,7 +37,7 @@ export interface StoreContext extends Omit<Logger, "setName">, ComponentContext,
    * Passes a getter function to `callback` that will track reactive states and return their current values.
    * Callback will be run each time a tracked state gets a new value.
    */
-  effect(callback: EffectCallback): UnsubscribeFunction;
+  effect(callback: EffectFn): UnsubscribeFn;
 }
 
 interface Context<Options, Value> extends Omit<Logger, "setName"> {}
@@ -56,12 +62,11 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
   }
 
   get name() {
-    return this.store.name || this.store.id;
+    return peek(this.store.name) || this.store.id;
   }
 
   set name(value) {
-    this.store.name = value;
-    this.store.logger.setName(value);
+    this.store.name(value);
   }
 
   get<Value>(store: StoreFunction<any, Value>): Value {
@@ -94,7 +99,7 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
     this.store.lifecycleListeners.unmount.push(callback);
   }
 
-  effect(callback: EffectCallback) {
+  effect(callback: EffectFn) {
     const store = this.store;
 
     const fn = () => {
@@ -122,7 +127,7 @@ class Context<Options, Value> implements StoreContext, StoreConsumerContext {
     } else {
       // This should only happen if called in the body of the component function.
       // This code is not always re-run between when a component is unmounted and remounted.
-      let unsubscribe: UnsubscribeFunction | undefined;
+      let unsubscribe: UnsubscribeFn | undefined;
       let disposed = false;
       store.lifecycleListeners.mount.push(() => {
         if (!disposed) {
@@ -160,11 +165,11 @@ export class Store<Options, Value> {
 
   logger!: Logger;
   id = getUniqueId();
-  name;
+  name = $("");
 
   constructor(fn: StoreFunction<Options, Value>, options: Options) {
     this.fn = fn;
-    this.name = fn.name;
+    this.name(fn.name);
     this._options = options;
   }
 
@@ -177,7 +182,7 @@ export class Store<Options, Value> {
       return false;
     }
     this.elementContext = elementContext;
-    this.logger = elementContext.root.createLogger(this.name);
+    this.logger = createLogger(this.name, { uid: this.id });
     const context = new Context(this);
     try {
       this.value = this.fn.call(context, this._options, context);
@@ -213,3 +218,35 @@ export function isStore<Options, Value>(value: any): value is Store<Options, Val
 }
 
 export class StoreError extends Error {}
+
+export type Stores = StoreProviderContext & StoreConsumerContext;
+
+/**
+ * Global store registry.
+ */
+export const Stores: Stores = Object.freeze({
+  provide(store: any, options?: any) {
+    const instance = new Store(store, options!);
+    const attached = instance.attach(rootElementContext);
+    if (!attached) {
+      let name = store.name ? `'${store.name}'` : "this store";
+      console.warn(`An instance of ${name} is already attached.`);
+      return this.get(store);
+    } else {
+      return instance.value;
+    }
+  },
+  get<T>(store: any): T {
+    if (isFunction(store)) {
+      const instance = rootElementContext.stores.get(store);
+      if (instance == null) {
+        let name = store.name ? `'${store.name}'` : "this store";
+        throw new StoreError(`No instance of ${name} is provided.`);
+      } else {
+        return instance.value;
+      }
+    } else {
+      throw new StoreError(`Invalid store.`);
+    }
+  },
+});

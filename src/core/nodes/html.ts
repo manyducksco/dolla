@@ -1,8 +1,9 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
-import { constructMarkup, toMarkup, type Markup, type MarkupElement } from "../markup.js";
-import { get, effect, type MaybeSignal, type Signal, type UnsubscribeFunction, type Source } from "../signals-api.js";
+import { getEnv } from "../env.js";
+import { toMarkup, toMarkupElements, type Markup, type MarkupElement } from "../markup.js";
+import { effect, get, peek, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -21,7 +22,7 @@ export class HTML implements MarkupElement {
   private props: Record<string, any>;
   private childMarkup: Markup[] = [];
   private children: MarkupElement[] = [];
-  private unsubscribers: UnsubscribeFunction[] = [];
+  private unsubscribers: UnsubscribeFn[] = [];
   private elementContext;
 
   private logger;
@@ -45,7 +46,6 @@ export class HTML implements MarkupElement {
       };
     }
 
-    // this.logger = elementContext.root.createLogger(`<${tag}>`);
     this.logger = elementContext.view!.logger;
 
     // Create node with the appropriate constructor.
@@ -55,8 +55,8 @@ export class HTML implements MarkupElement {
       this.domNode = document.createElement(tag);
     }
 
-    if (elementContext.root.getEnv() === "development" && elementContext.view!.name) {
-      this.domNode.dataset.view = elementContext.view!.name;
+    if (getEnv() === "development" && peek(elementContext.view!.name)) {
+      this.domNode.dataset.view = peek(elementContext.view!.name);
     }
 
     if (props.ref) {
@@ -89,7 +89,7 @@ export class HTML implements MarkupElement {
 
     if (!this.isMounted) {
       if (this.childMarkup.length > 0) {
-        this.children = constructMarkup(this.elementContext, this.childMarkup);
+        this.children = toMarkupElements(this.elementContext, this.childMarkup);
       }
 
       for (let i = 0; i < this.children.length; i++) {
@@ -304,8 +304,8 @@ export class HTML implements MarkupElement {
     }
   }
 
-  private applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFunction[]) {
-    const propUnsubscribers: UnsubscribeFunction[] = [];
+  private applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFn[]) {
+    const propUnsubscribers: UnsubscribeFn[] = [];
 
     if (isFunction(styles)) {
       let unapply: () => void;
@@ -351,8 +351,8 @@ export class HTML implements MarkupElement {
     };
   }
 
-  private applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFunction[]) {
-    const classUnsubscribers: UnsubscribeFunction[] = [];
+  private applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFn[]) {
+    const classUnsubscribers: UnsubscribeFn[] = [];
 
     if (isFunction(classes)) {
       let unapply: () => void;

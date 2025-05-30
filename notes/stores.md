@@ -2,6 +2,32 @@
 
 Ideas for updating the API.
 
+---
+
+What about a global stores registry? Basically just a global object you can import and register stores on, then get them later. Global (not scoped to views). You can still use `provide` and `get` on view contexts in the same exact way if you want scoped stores.
+
+This is a replacement for the current way of providing global stores on the Dolla object. The Dolla object is going away in future API versions.
+
+```ts
+import { Stores, Views } from "@manyducks.co/dolla";
+
+Stores.provide(SomeStore, {
+  /* options */
+});
+
+const some = Stores.get(SomeStore);
+
+const SomeStore = Stores.define(() => {});
+
+// Could also have views be defined this way.
+const SomeView = Views.define<SomeProps>((props, ctx) => {});
+
+// Register as a custom element.
+Views.register("some-view", SomeView);
+```
+
+---
+
 ```js
 function CounterStore(initialCount = 0, ctx) {
   const [$value, setValue] = createState(initialCount);
