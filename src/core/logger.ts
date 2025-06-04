@@ -20,9 +20,14 @@ export interface Logger {
 
 export interface LoggerOptions {
   /**
-   * Unique ID to print with logs. Makes it easier to track down messages from specific view instances.
+   * Tag value to print with logs.
    */
-  uid?: string;
+  tag?: string;
+
+  /**
+   * Label for tag value. Will be printed without a label if not specified.
+   */
+  tagName?: string;
 
   /**
    * Console object to use for logging (mostly for testing). Uses window.console by default.
@@ -33,7 +38,8 @@ export interface LoggerOptions {
 export interface LoggerErrorContext {
   error: Error;
   loggerName: string;
-  uid?: string;
+  tag?: string;
+  tagName?: string;
 }
 
 let levels: LogLevels = {
@@ -62,8 +68,12 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
       return noOp;
     } else {
       let label = `%c${_name}`;
-      if (options?.uid) {
-        label += ` %c[uid: %c${options.uid}%c]`;
+      if (options?.tag) {
+        if (options.tagName) {
+          label += ` %c[${options.tagName}: %c${options.tag}%c]`;
+        } else {
+          label += ` %c[%c${options.tag}%c]`;
+        }
       } else {
         label += `%c%c%c`;
       }
@@ -95,7 +105,8 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
       const ctx: LoggerErrorContext = {
         error,
         loggerName: get(name),
-        uid: options?.uid,
+        tag: options?.tag,
+        tagName: options?.tagName,
       };
 
       for (const listener of crashListeners) {

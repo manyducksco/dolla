@@ -1,4 +1,4 @@
-export * from "./src/index";
+export * from "./src/core/index";
 
 import type { IntrinsicElements as Elements } from "./src/types";
 

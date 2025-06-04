@@ -17,7 +17,12 @@ export type CrashViewProps = {
   /**
    * Unique identifier to pinpoint the specific view that reported the crash.
    */
-  uid?: string;
+  tag?: string;
+
+  /**
+   * Label for the tag.
+   */
+  tagName?: string;
 };
 
 export function DefaultCrashView(props: CrashViewProps) {
@@ -38,7 +43,14 @@ export function DefaultCrashView(props: CrashViewProps) {
       "p",
       { style: { marginBottom: "0.25rem" } },
       m("span", { style: { fontFamily: "monospace" } }, props.loggerName),
-      when(props.uid, m("span", { style: { fontFamily: "monospace", opacity: 0.5 } }, ` [uid: ${props.uid}]`)),
+      when(
+        props.tag,
+        m(
+          "span",
+          { style: { fontFamily: "monospace", opacity: 0.5 } },
+          ` [${props.tagName ? `${props.tagName}: ` : ""}${props.tag}]`,
+        ),
+      ),
       " says:",
     ),
     m(

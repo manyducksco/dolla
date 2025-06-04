@@ -1,6 +1,7 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
 import { Signal } from "./core/signals.js";
+import { Mixin } from "./core/mixin.js";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -257,6 +258,13 @@ export interface ElementProps {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionupdate_event
    */
   onCompositionUpdate?: OptionalProperty<EventHandler<CompositionEvent>>;
+
+  /**
+   * Fired when the user attempts to open a context menu. Typically triggered by clicking the right mouse button.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/contextmenu_event
+   */
+  onContextMenu?: OptionalProperty<EventHandler<PointerEvent>>;
 
   // onContextMenu: Deliberately unimplemented due to lack of support in iOS Safari and by extension all iOS webviews.
 
@@ -583,7 +591,12 @@ export interface ElementProps {
    */
   oncompositionupdate?: OptionalProperty<EventHandler<CompositionEvent>>;
 
-  // onContextMenu: Deliberately unimplemented due to lack of support in iOS Safari and by extension all iOS webviews.
+  /**
+   * Fired when the user attempts to open a context menu. Typically triggered by clicking the right mouse button.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/contextmenu_event
+   */
+  oncontextmenu?: OptionalProperty<EventHandler<PointerEvent>>;
 
   /**
    * Fired when a pointing device button is rapidly clicked twice while the pointer is inside the element.
@@ -1172,7 +1185,12 @@ export interface HTMLElementProps extends ElementProps {
   onpaste?: OptionalProperty<EventHandler<ClipboardEvent>>;
 }
 
-export interface SVGElementProps extends ElementProps {}
+export interface SVGElementProps extends ElementProps {
+  /**
+   * A mixin function or an array of mixin functions to be applied to this element.
+   */
+  mixin?: Mixin<SVGElement> | Mixin<SVGElement>[];
+}
 
 /**
  * Mapping of event props to event names.
@@ -1506,6 +1524,11 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
     | ((value: HTMLElement | undefined) => void)
     | ((value: Element | undefined) => void)
     | ((value: Node | undefined) => void);
+
+  /**
+   * A mixin function or an array of mixin functions to be applied to this element.
+   */
+  mixin?: Mixin<E> | Mixin<E>[];
 }
 
 /**

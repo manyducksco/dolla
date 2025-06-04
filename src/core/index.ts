@@ -13,6 +13,9 @@ export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
 // Store
 export { Stores, type StoreContext, type StoreFunction } from "./store.js";
 
+// Mixin
+export { type Mixin, type MixinContext } from "./mixin.js";
+
 // Markup
 export { markup, portal, repeat, unless, when, constructMarkup } from "./markup.js";
 export type { Markup, MarkupElement } from "./markup.js";

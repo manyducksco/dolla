@@ -40,11 +40,7 @@ export interface ViewElement extends MarkupElement {
   setRouteView(view: ViewFunction<{}>): ViewElement;
 }
 
-export interface ViewContext
-  extends Omit<Logger, "setName">,
-    ComponentContext,
-    StoreProviderContext,
-    StoreConsumerContext {
+export interface ViewContext extends Logger, ComponentContext, StoreProviderContext, StoreConsumerContext {
   /**
    * An ID unique to this view.
    */
@@ -92,7 +88,7 @@ export interface ViewContext
 \*=====================================*/
 
 // Defines logger methods on context.
-interface Context extends Omit<Logger, "setName"> {}
+interface Context extends Logger {}
 
 class Context implements ViewContext {
   private view;
@@ -261,7 +257,7 @@ export class View<P> implements ViewElement {
       stores: new Map(),
       route: $<View<{}>>(),
     };
-    this.logger = createLogger(this.name, { uid: this.uniqueId });
+    this.logger = createLogger(this.name, { tag: this.uniqueId, tagName: "uid" });
     this.props = {
       ...props,
       children,

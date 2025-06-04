@@ -182,7 +182,7 @@ export class Store<Options, Value> {
       return false;
     }
     this.elementContext = elementContext;
-    this.logger = createLogger(this.name, { uid: this.id });
+    this.logger = createLogger(this.name, { tag: this.id, tagName: "uid" });
     const context = new Context(this);
     try {
       this.value = this.fn.call(context, this._options, context);

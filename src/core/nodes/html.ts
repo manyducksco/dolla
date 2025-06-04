@@ -1,8 +1,9 @@
-import { isFunction, isObject, isString } from "../../typeChecking.js";
+import { isArray, isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
 import { type ElementContext } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkup, toMarkupElements, type Markup, type MarkupElement } from "../markup.js";
+import { Mixin, MixinController } from "../mixin.js";
 import { effect, get, peek, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
@@ -19,11 +20,14 @@ export class HTML implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   domNode;
+  elementContext;
+
   private props: Record<string, any>;
   private childMarkup: Markup[] = [];
   private children: MarkupElement[] = [];
   private unsubscribers: UnsubscribeFn[] = [];
-  private elementContext;
+
+  private mixin?: MixinController;
 
   private logger;
 
@@ -68,16 +72,18 @@ export class HTML implements MarkupElement {
       }
     }
 
+    if (props.mixin) {
+      this.mixin = new MixinController(this, isArray(props.mixin) ? props.mixin : [props.mixin]);
+    }
+
     this.props = {
-      ...omit(["ref", "class", "className"], props),
+      ...omit(["ref", "class", "className", "mixin"], props),
       class: props.className ?? props.class,
     };
 
     if (children) {
       this.childMarkup = toMarkup(children);
     }
-
-    // console.log(this.domNode, { children, childMarkup: this.childMarkup });
 
     this.elementContext = elementContext;
   }
@@ -87,7 +93,11 @@ export class HTML implements MarkupElement {
       throw new Error(`HTML element requires a parent element as the first argument to connect. Got: ${parent}`);
     }
 
-    if (!this.isMounted) {
+    const wasMounted = this.isMounted;
+
+    if (!wasMounted) {
+      if (this.mixin) this.mixin.beforeMount();
+
       if (this.childMarkup.length > 0) {
         this.children = toMarkupElements(this.elementContext, this.childMarkup);
       }
@@ -105,13 +115,17 @@ export class HTML implements MarkupElement {
 
     parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
-    setTimeout(() => {
+    queueMicrotask(() => {
       this.canClickAway = true;
-    }, 0);
+
+      if (this.mixin && !wasMounted) this.mixin.onMount();
+    });
   }
 
   unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
+      if (this.mixin) this.mixin.beforeUnmount();
+
       if (!parentIsUnmounting) {
         this.domNode.parentNode?.removeChild(this.domNode);
       }
@@ -120,16 +134,18 @@ export class HTML implements MarkupElement {
         child.unmount(true);
       }
 
-      if (this.ref) {
-        this.ref(undefined);
-      }
-
       this.canClickAway = false;
 
       for (const unsubscribe of this.unsubscribers) {
         unsubscribe();
       }
       this.unsubscribers.length = 0;
+
+      if (this.ref) {
+        this.ref(undefined);
+      }
+
+      if (this.mixin) this.mixin.onUnmount();
     }
   }
 
@@ -477,6 +493,6 @@ export function camelToKebab(value: string): string {
 }
 
 // Attributes in this list will not be forwarded to the DOM node.
-const privateProps = ["ref", "children", "class", "style", "data"];
+const privateProps = ["ref", "children", "class", "style", "data", "mixin"];
 
 const eventProps = ["onsubmit", "onclick", "ontransitionend"];
