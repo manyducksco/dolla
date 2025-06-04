@@ -2,6 +2,9 @@
 export { $, effect, get, peek } from "./signals.js";
 export type { MaybeSignal, Signal, Source } from "./signals.js";
 
+// Ref
+export { ref, type Ref } from "./ref.js";
+
 export { constructView } from "./nodes/view.js";
 
 // Equality checks

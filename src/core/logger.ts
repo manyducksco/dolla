@@ -57,10 +57,11 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
   const _console = options?.console ?? _getDefaultConsole();
 
   const bind = (method: keyof LogLevels) => {
-    if (levels[method] === false || (isString(levels[method]) && levels[method] !== getEnv()) || !match(get(name))) {
+    let _name = get(name);
+    if (levels[method] === false || (isString(levels[method]) && levels[method] !== getEnv()) || !match(_name)) {
       return noOp;
     } else {
-      let label = `%c${name}`;
+      let label = `%c${_name}`;
       if (options?.uid) {
         label += ` %c[uid: %c${options.uid}%c]`;
       } else {
