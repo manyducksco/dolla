@@ -380,7 +380,7 @@ class I18n {
   readonly $locale = $(this.#locale);
 
   constructor() {
-    this.#logger = createLogger("Dolla.i18n");
+    this.#logger = createLogger("dolla.i18n");
 
     this.addFormat("number", (_, value, options) => {
       return this.#formatNumber(Number(value), options);

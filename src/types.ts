@@ -1,7 +1,7 @@
 import type * as CSS from "csstype";
 import type { Markup } from "./core/markup.js";
 import { Signal } from "./core/signals.js";
-import { Mixin } from "./core/mixin.js";
+import { Mixin } from "./core/nodes/html.js";
 
 /**
  * Represents everything that can be handled as a DOM node.

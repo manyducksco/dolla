@@ -3,7 +3,7 @@
   "version": "2.0.0-alpha.54",
   "description": "Front-end components, routing and state management.",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/core/index.d.ts",
   "type": "module",
   "sideEffects": false,
   "repository": {

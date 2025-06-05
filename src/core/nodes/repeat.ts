@@ -1,17 +1,17 @@
 import { deepEqual } from "../../utils.js";
-import { type ElementContext } from "../context.js";
+import { type Context } from "../context.js";
 import { type MarkupElement } from "../markup.js";
 import { $, effect, peek, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
-import { View, type ViewContext, type ViewResult } from "./view.js";
+import { ViewInstance, type ViewResult } from "./view.js";
 
 // ----- Types ----- //
 
 interface RepeatOptions<T> {
-  elementContext: ElementContext;
+  context: Context;
   items: Signal<T[]>;
   keyFn: (item: T, index: number) => string | number | symbol;
-  renderFn: (item: Signal<T>, index: Signal<number>, ctx: ViewContext) => ViewResult;
+  renderFn: (item: Signal<T>, index: Signal<number>, ctx: Context) => ViewResult;
 }
 
 type ConnectedItem<T> = {
@@ -30,16 +30,16 @@ export class Repeat<T> implements MarkupElement {
   private items: Signal<T[]>;
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: ConnectedItem<T>[] = [];
-  private elementContext;
-  private renderFn: (this: ViewContext, value: Signal<T>, index: Signal<number>, context: ViewContext) => ViewResult;
+  private context;
+  private renderFn: (this: Context, value: Signal<T>, index: Signal<number>, context: Context) => ViewResult;
   private keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
     return this.domNode.parentNode != null;
   }
 
-  constructor({ elementContext, items, renderFn, keyFn }: RepeatOptions<T>) {
-    this.elementContext = elementContext;
+  constructor({ context, items, renderFn, keyFn }: RepeatOptions<T>) {
+    this.context = context;
 
     this.items = items;
     this.renderFn = renderFn;
@@ -131,7 +131,7 @@ export class Repeat<T> implements MarkupElement {
           key: potential.key,
           item,
           index,
-          element: new View(this.elementContext, RepeatItemView, {
+          element: new ViewInstance(this.context, RepeatItemView, {
             item: () => item(),
             index: () => index(),
             renderFn: this.renderFn,
@@ -159,10 +159,10 @@ export class Repeat<T> implements MarkupElement {
 interface ListItemProps {
   item: Signal<any>;
   index: Signal<number>;
-  renderFn: (item: Signal<any>, index: Signal<number>, context: ViewContext) => ViewResult;
+  renderFn: (item: Signal<any>, index: Signal<number>, context: Context) => ViewResult;
 }
 
-function RepeatItemView(props: ListItemProps, context: ViewContext) {
-  context.name = "@RepeatItem";
+function RepeatItemView(props: ListItemProps, context: Context) {
+  context.setName("@RepeatItem");
   return props.renderFn.call(context, props.item, props.index, context);
 }

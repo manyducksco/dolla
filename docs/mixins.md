@@ -20,7 +20,7 @@ const logMe: Mixin = (element, ctx) => {
 <h1 mixin={logMe}>Title</h1>;
 
 // Or an array of mixins
-<p mixin={[logMe /*, more mixins */]}>Text goes here...</p>;
+<p mixin={[logMe, anotherMixin, yetAnotherMixin]}>Text goes here...</p>;
 ```
 
 ---

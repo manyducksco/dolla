@@ -1,13 +1,14 @@
 import { isArray, typeOf } from "../../typeChecking.js";
 import type { Renderable } from "../../types.js";
-import type { ElementContext } from "../context.js";
+import type { Context } from "../context.js";
 import { isMarkupElement, isRenderable, toMarkup, toMarkupElements, type MarkupElement } from "../markup.js";
 import { effect, peek, Signal, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
+import { ViewInstance, VIEW } from "./view.js";
 
 interface DynamicOptions {
   source: Signal<Renderable>;
-  elementContext: ElementContext;
+  context: Context;
 }
 
 /**
@@ -21,7 +22,7 @@ export class Dynamic implements MarkupElement {
 
   domNode = document.createTextNode("");
   private children: MarkupElement[] = [];
-  private elementContext: ElementContext;
+  private context: Context;
 
   private source: Signal<Renderable>;
   private unsubscribe?: UnsubscribeFn;
@@ -32,7 +33,7 @@ export class Dynamic implements MarkupElement {
 
   constructor(options: DynamicOptions) {
     this.source = options.source;
-    this.elementContext = options.elementContext;
+    this.context = options.context;
   }
 
   mount(parent: Node, after?: Node) {
@@ -54,7 +55,7 @@ export class Dynamic implements MarkupElement {
             this.update(isArray(content) ? content : [content]);
           });
         } catch (error) {
-          const logger = this.elementContext.view!.logger;
+          const logger = this.context.getState<ViewInstance<any>>(VIEW).context;
           logger.error(error);
           logger.crash(error as Error);
         }
@@ -89,7 +90,7 @@ export class Dynamic implements MarkupElement {
       if (isMarkupElement(c)) {
         return c as MarkupElement;
       } else {
-        return toMarkupElements(this.elementContext, toMarkup(c));
+        return toMarkupElements(this.context, toMarkup(c));
       }
     });
 

@@ -1,7 +1,9 @@
-import { createLogger, type Logger } from "../core/logger.js";
-import { constructView, type ViewElement, type ViewFunction } from "../core/nodes/view.js";
-import { $, peek, type UnsubscribeFn } from "../core/signals.js";
-import { Passthrough } from "../core/views/passthrough.js";
+import { Context } from "../core/context.js";
+import { createLogger } from "../core/logger.js";
+import { m, MarkupElement, render, toMarkup } from "../core/markup.js";
+import { Outlet } from "../core/nodes/outlet.js";
+import { ViewInstance, type View } from "../core/nodes/view.js";
+import { $, peek, Source, type UnsubscribeFn } from "../core/signals.js";
 import { assertObject, isArray, isFunction, isObject, isString } from "../typeChecking.js";
 import type { Stringable } from "../types.js";
 import { shallowEqual } from "../utils.js";
@@ -51,7 +53,7 @@ export interface Route {
   /**
    * View to display when this route is matched.
    */
-  view?: ViewFunction<any>;
+  view?: View<any>;
 
   /**
    * Subroutes.
@@ -78,7 +80,7 @@ export interface RouteConfig {
 
 export interface RouteLayer {
   id: number;
-  view: ViewFunction<{}>;
+  view: View<{}>;
 }
 
 /**
@@ -86,7 +88,9 @@ export interface RouteLayer {
  */
 interface ActiveLayer {
   id: number;
-  view: ViewElement;
+  element: MarkupElement;
+  context: Context;
+  $slot: Source<ViewInstance<{}> | undefined>;
 }
 
 /**
@@ -153,7 +157,7 @@ export const UNMOUNT = Symbol();
 export const ROOT_VIEW = Symbol();
 
 export class Router {
-  #logger?: Logger;
+  #logger = createLogger("dolla.router");
 
   #layerId = 0;
   #activeLayers: ActiveLayer[] = [];
@@ -161,7 +165,10 @@ export class Router {
 
   #isMounted = false;
 
-  [ROOT_VIEW] = constructView(Passthrough);
+  $slot = $<ViewInstance<{}>>();
+  #outlet = new Outlet(this.$slot);
+
+  #rootLayer!: ActiveLayer;
 
   /**
    * Use hash routing when true. Configured in router options.
@@ -192,7 +199,7 @@ export class Router {
   readonly $params = $(() => this.#match()?.params ?? {}, { equals: shallowEqual });
 
   /**
-   * The current query params. Changes to this object will be reflected in the URL.
+   * The current query params.
    */
   readonly $query = $(() => this.#match()?.query ?? {}, { equals: shallowEqual });
 
@@ -217,8 +224,13 @@ export class Router {
     assertValidRedirects(this.#routes);
   }
 
-  async [MOUNT](parent: Element) {
-    this.#logger = createLogger("Dolla.router");
+  async [MOUNT](parent: Element, context: Context): Promise<MarkupElement> {
+    this.#rootLayer = {
+      id: -1,
+      element: this.#outlet,
+      context,
+      $slot: this.$slot,
+    };
 
     // Listen for popstate events and update route accordingly.
     const onPopState = () => {
@@ -231,7 +243,7 @@ export class Router {
     this.#unsubscribers.push(
       catchLinks(parent, (anchor) => {
         let href = anchor.getAttribute("href")!;
-        this.#logger!.info("intercepted click on <a> tag", anchor);
+        this.#logger.info("intercepted click on <a> tag", anchor);
 
         const preserve = anchor.getAttribute("data-router-preserve-query");
 
@@ -246,6 +258,8 @@ export class Router {
 
     // Setup initial route content.
     await this.#updateRoute(undefined, {});
+
+    return this.#outlet;
   }
 
   async [UNMOUNT]() {
@@ -323,14 +337,14 @@ export class Router {
   }
 
   #push(href: string, options: NavigateOptions) {
-    this.#logger?.info("(push)", href);
+    this.#logger.info("(push)", href);
 
     window.history.pushState(null, "", this.#hash ? "/#" + href : href);
     this.#updateRoute(href, options);
   }
 
   #replace(href: string, options: NavigateOptions) {
-    this.#logger?.info("(replace)", href);
+    this.#logger.info("(replace)", href);
 
     window.history.replaceState(null, "", this.#hash ? "/#" + href : href);
     this.#updateRoute(href, options);
@@ -350,7 +364,6 @@ export class Router {
    */
   async #updateRoute(href: string | undefined, options: NavigateOptions) {
     const logger = this.#logger;
-    const rootView = this[ROOT_VIEW];
     const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
 
     const { match, journey } = await this.#resolveRoute(url);
@@ -400,12 +413,12 @@ export class Router {
 
       // Update the URL if matched path differs from navigator path.
       // This happens if route resolution involved redirects.
-      if (rootView && (match.path !== location.pathname || location.search !== queryString)) {
+      if (match.path !== location.pathname || location.search !== queryString) {
         window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
       }
 
-      if (rootView && match.pattern !== oldPattern) {
-        this.#mountRoute(rootView, match);
+      if (match.pattern !== oldPattern) {
+        this.#mountRoute(match);
       }
     } else {
       // Only crash if routing has been configured.
@@ -420,7 +433,7 @@ export class Router {
   /**
    * Takes a matched route and mounts it.
    */
-  #mountRoute(rootView: ViewElement, match: RouteMatch<RouteMeta>) {
+  #mountRoute(match: RouteMatch<RouteMeta>) {
     const layers = match.meta.layers!;
 
     // Diff and update route layers.
@@ -431,13 +444,20 @@ export class Router {
       if (activeLayer?.id !== matchedLayer.id) {
         // Discard all previously active layers starting at this depth.
         this.#activeLayers = this.#activeLayers.slice(0, i);
-        activeLayer?.view.unmount();
+        activeLayer?.element.unmount();
 
-        const parentLayer = this.#activeLayers.at(-1);
-        const parent = parentLayer?.view ?? rootView;
+        const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
-        const view = parent.setRouteView(matchedLayer.view);
-        this.#activeLayers.push({ id: matchedLayer.id, view });
+        const $slot = $<ViewInstance<{}>>();
+        const element = new ViewInstance(parentLayer.context, matchedLayer.view, {}, toMarkup($slot));
+
+        parentLayer.$slot(element);
+        this.#activeLayers.push({
+          id: matchedLayer.id,
+          element,
+          context: element.context,
+          $slot,
+        });
       }
     }
   }
@@ -591,7 +611,7 @@ export class Router {
       return routes;
     }
 
-    let view: ViewFunction<any> = Passthrough;
+    let view: View<any> = (props: any) => props.children;
 
     if (isFunction(route.view)) {
       view = route.view;

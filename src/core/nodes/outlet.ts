@@ -1,7 +1,6 @@
 import { type MarkupElement } from "../markup.js";
 import { effect, peek, type Signal, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
-import { View } from "./view.js";
 
 /**
  * Renders the subroute of the nearest view.
@@ -12,13 +11,13 @@ export class Outlet implements MarkupElement {
   domNode = document.createTextNode("");
   isMounted = false;
 
-  private view: Signal<View<{}> | undefined>;
-  private mountedView?: View<{}>;
+  private $slot: Signal<MarkupElement | undefined>;
+  private mounted?: MarkupElement;
 
   private unsubscribe?: UnsubscribeFn;
 
-  constructor(view: Signal<View<{}> | undefined>) {
-    this.view = view;
+  constructor($slot: Signal<MarkupElement | undefined>) {
+    this.$slot = $slot;
   }
 
   mount(parent: Node, after?: Node | undefined) {
@@ -28,9 +27,9 @@ export class Outlet implements MarkupElement {
       parent.insertBefore(this.domNode, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        const view = this.view();
+        const element = this.$slot();
         peek(() => {
-          this.update(view);
+          this.update(element);
         });
       });
     }
@@ -49,18 +48,18 @@ export class Outlet implements MarkupElement {
   }
 
   private cleanup(parentIsUnmounting: boolean) {
-    if (this.mountedView) {
-      this.mountedView.unmount(parentIsUnmounting);
+    if (this.mounted) {
+      this.mounted.unmount(parentIsUnmounting);
     }
-    this.mountedView = undefined;
+    this.mounted = undefined;
   }
 
-  private update(view?: View<{}>) {
+  private update(element?: MarkupElement) {
     this.cleanup(false);
 
-    if (view) {
-      view.mount(this.domNode.parentElement!, this.domNode);
-      this.mountedView = view;
+    if (element) {
+      element.mount(this.domNode.parentElement!, this.domNode);
+      this.mounted = element;
     }
   }
 }

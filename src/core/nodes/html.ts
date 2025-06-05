@@ -1,16 +1,22 @@
 import { isArray, isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
-import { type ElementContext } from "../context.js";
+import { Context } from "../context.js";
 import { getEnv } from "../env.js";
+import { Logger } from "../logger.js";
 import { toMarkup, toMarkupElements, type Markup, type MarkupElement } from "../markup.js";
-import { Mixin, MixinController } from "../mixin.js";
 import { effect, get, peek, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
+import { ViewInstance, VIEW } from "./view.js";
 
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 
+export type Mixin<E extends Element = Element> = (element: E, context: Context) => void;
+
+const IS_SVG = Symbol("HTML.isSVG");
+// const IS_SVG = "__IS_SVG__";
+
 type HTMLOptions = {
-  elementContext: ElementContext;
+  context: Context;
   tag: string;
   props: Record<string, any>;
   children?: any[];
@@ -20,16 +26,14 @@ export class HTML implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   domNode;
-  elementContext;
+  context: Context;
 
   private props: Record<string, any>;
   private childMarkup: Markup[] = [];
   private children: MarkupElement[] = [];
   private unsubscribers: UnsubscribeFn[] = [];
 
-  private mixin?: MixinController;
-
-  private logger;
+  private logger: Logger;
 
   // Track the ref so we can nullify it on unmount.
   private ref?: Source<any>;
@@ -41,26 +45,26 @@ export class HTML implements MarkupElement {
     return this.domNode.parentNode != null;
   }
 
-  constructor({ tag, props, children, elementContext }: HTMLOptions) {
+  constructor({ tag, props, children, context }: HTMLOptions) {
+    this.context = Context.inherit(context, tag);
+
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
-      elementContext = {
-        ...elementContext,
-        isSVG: true,
-      };
+      this.context.setState(IS_SVG, true);
     }
 
-    this.logger = elementContext.view!.logger;
+    const view = this.context.getState<ViewInstance<unknown>>(VIEW);
+    this.logger = view.context;
 
     // Create node with the appropriate constructor.
-    if (elementContext.isSVG) {
+    if (this.context.getState(IS_SVG, false)) {
       this.domNode = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
       this.domNode = document.createElement(tag);
     }
 
-    if (getEnv() === "development" && peek(elementContext.view!.name)) {
-      this.domNode.dataset.view = peek(elementContext.view!.name);
+    if (getEnv() === "development" && peek(view.$name)) {
+      this.domNode.dataset.view = peek(view.$name);
     }
 
     if (props.ref) {
@@ -73,7 +77,16 @@ export class HTML implements MarkupElement {
     }
 
     if (props.mixin) {
-      this.mixin = new MixinController(this, isArray(props.mixin) ? props.mixin : [props.mixin]);
+      const mixins = isArray(props.mixin) ? props.mixin : [props.mixin];
+      for (const fn of mixins) {
+        fn(
+          this.domNode,
+          Context.inherit(this.context, () => getLoggerName(this), {
+            bindLifecycleToParent: true,
+            logger: { tagName: fn.name === "mixin" ? undefined : "mixin", tag: fn.name },
+          }),
+        );
+      }
     }
 
     this.props = {
@@ -84,8 +97,6 @@ export class HTML implements MarkupElement {
     if (children) {
       this.childMarkup = toMarkup(children);
     }
-
-    this.elementContext = elementContext;
   }
 
   mount(parent: Node, after?: Node) {
@@ -96,10 +107,10 @@ export class HTML implements MarkupElement {
     const wasMounted = this.isMounted;
 
     if (!wasMounted) {
-      if (this.mixin) this.mixin.beforeMount();
+      this.context._lifecycle.willMount();
 
       if (this.childMarkup.length > 0) {
-        this.children = toMarkupElements(this.elementContext, this.childMarkup);
+        this.children = toMarkupElements(this.context, this.childMarkup);
       }
 
       for (let i = 0; i < this.children.length; i++) {
@@ -118,13 +129,13 @@ export class HTML implements MarkupElement {
     queueMicrotask(() => {
       this.canClickAway = true;
 
-      if (this.mixin && !wasMounted) this.mixin.onMount();
+      if (!wasMounted) this.context._lifecycle.didMount();
     });
   }
 
   unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
-      if (this.mixin) this.mixin.beforeUnmount();
+      this.context._lifecycle.willUnmount();
 
       if (!parentIsUnmounting) {
         this.domNode.parentNode?.removeChild(this.domNode);
@@ -145,7 +156,7 @@ export class HTML implements MarkupElement {
         this.ref(undefined);
       }
 
-      if (this.mixin) this.mixin.onUnmount();
+      this.context._lifecycle.didUnmount();
     }
   }
 
@@ -212,7 +223,7 @@ export class HTML implements MarkupElement {
           }
         });
       } else if (!privateProps.includes(key)) {
-        if (this.elementContext.isSVG) {
+        if (this.context.getState(IS_SVG, false)) {
           this.attachProp(value, (current) => {
             if (current != null) {
               element.setAttribute(key, String(props[key]));
@@ -496,3 +507,16 @@ export function camelToKebab(value: string): string {
 const privateProps = ["ref", "children", "class", "style", "data", "mixin"];
 
 const eventProps = ["onsubmit", "onclick", "ontransitionend"];
+
+function getLoggerName(html: HTML) {
+  let name = html.domNode.tagName.toLowerCase();
+  if (html.domNode.id) {
+    name += `#${html.domNode.id}`;
+  }
+  if (html.domNode.classList.length > 0) {
+    for (const className of html.domNode.classList.values()) {
+      name += `.${className}`;
+    }
+  }
+  return name;
+}

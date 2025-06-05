@@ -1,5 +1,29 @@
 # Scratch Note
 
+Library needs to be easier to render standalone elements. Idea to replace constructView and a lot of the store management weirdness with a `createContext` function and a `render` function that takes markup and a context.
+
+The context is basically a refactor of the old ElementContext and serves the same purpose.
+
+```jsx
+import { m, render, createContext } from "@manyducks.co/dolla";
+
+const context = createContext();
+context.addStore(SomeStore);
+
+function ExampleView(props, ctx) {
+  // Views now access the Context directly.
+  const store = ctx.getStore(SomeStore);
+
+  return <h1>Hello World</h1>;
+}
+
+const element = render(ExampleView, context);
+
+element.mount(document.body);
+```
+
+---
+
 Idea: Monomorphic app context. Replaces StoreContext, ViewContext, etc.
 
 Routes are baked into the app once again, but

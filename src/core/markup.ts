@@ -1,6 +1,6 @@
 import { isArray, isArrayOf, isFunction, isNumber, isString } from "../typeChecking.js";
 import type { Mountable, Renderable } from "../types.js";
-import { rootElementContext, type ElementContext } from "./context.js";
+import { Context } from "./context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { Dynamic } from "./nodes/dynamic.js";
 import { Fragment } from "./nodes/fragment.js";
@@ -8,7 +8,7 @@ import { HTML } from "./nodes/html.js";
 import { Outlet } from "./nodes/outlet.js";
 import { Portal } from "./nodes/portal.js";
 import { Repeat } from "./nodes/repeat.js";
-import { View, type ViewContext, type ViewFunction, type ViewResult } from "./nodes/view.js";
+import { ViewInstance, type View, type ViewResult } from "./nodes/view.js";
 import { $, get, type MaybeSignal, type Signal } from "./signals.js";
 import { IS_MARKUP_ELEMENT } from "./symbols.js";
 
@@ -24,7 +24,7 @@ export interface Markup {
    * In the case of a view, type will be the View function itself. It can also hold an identifier for special nodes like "$cond", "$repeat", etc.
    * DOM nodes can be created by name, such as HTML elements like "div", "ul" or "span", SVG elements like ""
    */
-  type: string | ViewFunction<any>;
+  type: string | View<any>;
   /**
    * Data that will be passed to a new MarkupElement instance when it is constructed.
    */
@@ -65,7 +65,7 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
     }
 
     if (x instanceof Node) {
-      results.push(markup("$node", { value: x }));
+      results.push(m("$node", { value: x }));
       continue;
     }
 
@@ -75,7 +75,7 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
     }
 
     if (isFunction(x)) {
-      results.push(markup("$dynamic", { source: x }));
+      results.push(m("$dynamic", { source: x }));
       continue;
     }
 
@@ -85,14 +85,10 @@ export function toMarkup(renderables: Renderable | Renderable[]): Markup[] {
     }
 
     // fallback to displaying value as text
-    results.push(markup("$text", { value: x }));
+    results.push(m("$text", { value: x }));
   }
 
   return results;
-}
-
-export function constructMarkup(markup: Markup | Markup[]): MarkupElement {
-  return groupElements(toMarkupElements(rootElementContext, markup));
 }
 
 export enum MarkupType {
@@ -110,13 +106,13 @@ export interface MarkupAttributes {
   [MarkupType.Repeat]: {
     items: Signal<any[]>;
     keyFn: (value: any, index: number) => string | number | symbol;
-    renderFn: (item: Signal<any>, index: Signal<number>, ctx: ViewContext) => ViewResult;
+    renderFn: (item: Signal<any>, index: Signal<number>, ctx: Context) => ViewResult;
   };
   [MarkupType.Dynamic]: {
     source: Signal<Renderable>;
   };
   [MarkupType.Outlet]: {
-    view: Signal<View<{}> | undefined>;
+    view: Signal<ViewInstance<{}> | undefined>;
   };
   [MarkupType.Fragment]: {
     children: MaybeSignal<MarkupElement[]>;
@@ -132,15 +128,15 @@ export interface MarkupAttributes {
   [tag: string]: Record<string, any>;
 }
 
-export function markup<T extends keyof MarkupAttributes>(
+export function m<T extends keyof MarkupAttributes>(
   type: T,
   attributes: MarkupAttributes[T],
   ...children: Renderable[]
 ): Markup;
 
-export function markup<I>(type: ViewFunction<I>, attributes?: I, ...children: any[]): Markup;
+export function m<I>(type: View<I>, attributes?: I, ...children: any[]): Markup;
 
-export function markup<P>(type: string | ViewFunction<P>, props?: P, ...children: any[]) {
+export function m<P>(type: string | View<P>, props?: P, ...children: any[]) {
   return new VNode(type, props as any, ...children);
 }
 
@@ -149,7 +145,7 @@ class VNode<P extends Record<any, any>> implements Markup {
   props;
   children;
 
-  constructor(type: string | ViewFunction<P>, props?: P, ...children: Renderable[]) {
+  constructor(type: string | View<P>, props?: P, ...children: Renderable[]) {
     this.type = type;
     this.props = props;
     this.children = children;
@@ -164,7 +160,7 @@ class VNode<P extends Record<any, any>> implements Markup {
  * Displays `thenContent` when `condition` is truthy and `elseContent` when falsy.
  */
 export function when(condition: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  return markup(MarkupType.Dynamic, {
+  return m(MarkupType.Dynamic, {
     source: $<Renderable>(() => {
       const value = get(condition);
 
@@ -192,31 +188,35 @@ export function unless(condition: MaybeSignal<any>, thenContent?: Renderable, el
 export function repeat<T>(
   items: MaybeSignal<T[]>,
   keyFn: (value: T, index: number) => string | number | symbol,
-  renderFn: (item: Signal<T>, index: Signal<number>, ctx: ViewContext) => ViewResult,
+  renderFn: (item: Signal<T>, index: Signal<number>, ctx: Context) => ViewResult,
 ): Markup {
-  return markup(MarkupType.Repeat, { items: () => get(items), keyFn, renderFn });
+  return m(MarkupType.Repeat, { items: () => get(items), keyFn, renderFn });
 }
 
 /**
  * Renders `content` into a `parent` node anywhere in the page, rather than its usual position in the view.
  */
 export function portal(parent: Node, content: Renderable): Markup {
-  return markup(MarkupType.Portal, { parent, content });
+  return m(MarkupType.Portal, { parent, content });
 }
 
 /*===========================*\
 ||           Render          ||
 \*===========================*/
 
+export function render(content: Renderable, context = new Context("$")): MarkupElement {
+  return groupElements(toMarkupElements(context, toMarkup(content)));
+}
+
 /**
  * Construct Markup metadata into a set of MarkupElements.
  */
-export function toMarkupElements(elementContext: ElementContext, markup: Markup | Markup[]): MarkupElement[] {
+export function toMarkupElements(context: Context, markup: Markup | Markup[]): MarkupElement[] {
   const items = isArray(markup) ? markup : [markup];
 
   return items.map((item) => {
     if (isFunction(item.type)) {
-      return new View(elementContext, item.type as ViewFunction<any>, item.props, item.children);
+      return new ViewInstance(context, item.type as View<any>, item.props, item.children);
     } else if (isString(item.type)) {
       switch (item.type) {
         case MarkupType.Node: {
@@ -233,14 +233,14 @@ export function toMarkupElements(elementContext: ElementContext, markup: Markup 
             items: attrs.items,
             keyFn: attrs.keyFn,
             renderFn: attrs.renderFn,
-            elementContext,
+            context,
           });
         }
         case MarkupType.Dynamic: {
           const attrs = item.props! as MarkupAttributes[MarkupType.Dynamic];
           return new Dynamic({
             source: attrs.source,
-            elementContext,
+            context,
           });
         }
         case MarkupType.Fragment: {
@@ -256,7 +256,7 @@ export function toMarkupElements(elementContext: ElementContext, markup: Markup 
           return new Portal({
             content: attrs.content,
             parent: attrs.parent,
-            elementContext,
+            context,
           });
         }
         default:
@@ -265,7 +265,7 @@ export function toMarkupElements(elementContext: ElementContext, markup: Markup 
             tag: item.type,
             props: item.props ?? {},
             children: item.children,
-            elementContext,
+            context,
           });
       }
     } else {
@@ -289,6 +289,7 @@ export function isRenderable(value: unknown): value is Renderable {
   return (
     value == null ||
     value === false ||
+    isFunction(value.toString) ||
     isFunction(value) ||
     isString(value) ||
     isNumber(value) ||

@@ -1,12 +1,12 @@
 import type { Renderable } from "../../types.js";
-import type { ElementContext } from "../context.js";
+import { Context } from "../context.js";
 import { toMarkupElements, groupElements, isMarkupElement, toMarkup, type MarkupElement } from "../markup.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 interface PortalConfig {
   content: Renderable;
   parent: Node;
-  elementContext: ElementContext;
+  context: Context;
 }
 
 /**
@@ -35,7 +35,7 @@ export class Portal implements MarkupElement {
     if (isMarkupElement(content)) {
       this.element = content;
     } else {
-      this.element = groupElements(toMarkupElements(this.config.elementContext, toMarkup(content)));
+      this.element = groupElements(toMarkupElements(this.config.context, toMarkup(content)));
     }
 
     this.element.mount(parent);

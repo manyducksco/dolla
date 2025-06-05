@@ -1,269 +1,60 @@
-import { isArray, isArrayOf, isFunction, isObject, typeOf } from "../../typeChecking.js";
-import { Renderable } from "../../types.js";
+import { isArrayOf, isFunction, typeOf } from "../../typeChecking.js";
 import { getUniqueId } from "../../utils.js";
-import {
-  globalStores,
-  type ComponentContext,
-  type ElementContext,
-  type StoreConsumerContext,
-  type StoreProviderContext,
-} from "../context.js";
-import { createLogger, type Logger } from "../logger.js";
-import {
-  groupElements,
-  isMarkup,
-  markup,
-  toMarkup,
-  toMarkupElements,
-  type Markup,
-  type MarkupElement,
-} from "../markup.js";
-import { $, effect, peek, type EffectFn, type Signal, type UnsubscribeFn } from "../signals.js";
-import { Store, StoreError, StoreFunction } from "../store.js";
+import { Context } from "../context.js";
+import { isMarkup, m, render, type Markup, type MarkupElement } from "../markup.js";
+import { $, type Signal } from "../signals.js";
 import { IS_MARKUP_ELEMENT } from "../symbols.js";
 
 /*=====================================*\
 ||                Types                ||
 \*=====================================*/
 
+export const ROUTE = Symbol("View.route");
+export const VIEW = Symbol("View");
+
 /**
  * Any valid value that a View can return.
  */
 export type ViewResult = Node | Signal<any> | Markup | Markup[] | null;
 
-export type ViewFunction<P> = (this: ViewContext, props: P, context: ViewContext) => ViewResult;
+/**
+ *
+ */
+export type View<P> = (this: Context, props: P, context: Context) => ViewResult;
 
 /**
  * A view that has been constructed into DOM nodes.
  */
-export interface ViewElement extends MarkupElement {
-  setRouteView(view: ViewFunction<{}>): ViewElement;
-}
+// export interface ViewElement extends MarkupElement {
+//   setRouteView(view: ViewFn<{}>): ViewElement;
+// }
 
-export interface ViewContext extends Logger, ComponentContext, StoreProviderContext, StoreConsumerContext {
-  /**
-   * An ID unique to this view.
-   */
-  readonly uid: string;
-
-  /**
-   * True while this view is connected to the DOM.
-   */
-  readonly isMounted: boolean;
-
-  /**
-   * Registers a callback to run just before this view is mounted. DOM nodes are not yet attached to the page.
-   */
-  beforeMount(callback: () => void): void;
-
-  /**
-   * Registers a callback to run just after this view is mounted.
-   */
-  onMount(callback: () => void): void;
-
-  /**
-   * Registers a callback to run just before this view is unmounted. DOM nodes are still attached to the page.
-   */
-  beforeUnmount(callback: () => void): void;
-
-  /**
-   * Registers a callback to run just after this view is unmounted.
-   */
-  onUnmount(callback: () => void): void;
-
-  /**
-   * Passes a getter function to `callback` that will track reactive states and return their current values.
-   * Callback will be run each time a tracked state gets a new value.
-   */
-  effect(callback: EffectFn): UnsubscribeFn;
-
-  /**
-   * Displays this view's subroutes if mounted as a router view.
-   */
-  outlet(): Markup;
-}
-
-/*=====================================*\
-||              View Init              ||
-\*=====================================*/
-
-// Defines logger methods on context.
-interface Context extends Logger {}
-
-class Context implements ViewContext {
-  private view;
-
-  constructor(view: View<any>) {
-    this.view = view;
-
-    // Copy logger methods from logger.
-    const descriptors = Object.getOwnPropertyDescriptors(this.view.logger);
-    for (const key in descriptors) {
-      if (key !== "setName") {
-        Object.defineProperty(this, key, descriptors[key]);
-      }
-    }
-  }
-
-  get uid() {
-    return this.view.uniqueId;
-  }
-
-  get isMounted() {
-    return this.view.isMounted;
-  }
-
-  get name() {
-    return peek(this.view.name) || this.uid;
-  }
-
-  set name(value) {
-    this.view.name(value);
-  }
-
-  provide<Value>(store: StoreFunction<any, Value>, options?: any): Value {
-    const instance = new Store(store, options);
-    const attached = instance.attach(this.view.elementContext);
-    if (attached) {
-      this.view.lifecycleListeners.mount.push(() => {
-        instance.handleMount();
-      });
-      this.view.lifecycleListeners.unmount.push(() => {
-        instance.handleUnmount();
-      });
-      return instance.value;
-    } else {
-      let name = store.name ? `'${store.name}'` : "this store";
-      this.view.logger.warn(`An instance of ${name} was already attached to this context.`);
-      return this.get(store);
-    }
-  }
-
-  get<Value>(store: StoreFunction<any, Value>): Value {
-    if (isFunction(store)) {
-      let context = this.view.elementContext;
-      let instance: Store<any, Value> | undefined;
-      while (true) {
-        instance = context.stores.get(store);
-        if (instance == null && context.parent != null) {
-          context = context.parent;
-        } else {
-          break;
-        }
-      }
-      if (instance == null) {
-        throw new StoreError(`Store '${store.name}' is not provided on this context.`);
-      } else {
-        return instance.value;
-      }
-    } else {
-      throw new StoreError(`Invalid store.`);
-    }
-  }
-
-  beforeMount(callback: () => void): void {
-    this.view.lifecycleListeners.beforeMount.push(callback);
-  }
-
-  onMount(callback: () => void): void {
-    this.view.lifecycleListeners.mount.push(callback);
-  }
-
-  beforeUnmount(callback: () => void): void {
-    this.view.lifecycleListeners.beforeUnmount.push(callback);
-  }
-
-  onUnmount(callback: () => void): void {
-    this.view.lifecycleListeners.unmount.push(callback);
-  }
-
-  effect(callback: EffectFn) {
-    const fn = () => {
-      try {
-        // Return callback so cleanup function passes through
-        return callback();
-      } catch (error) {
-        this.error(error);
-        if (error instanceof Error) {
-          this.crash(error);
-        } else if (typeof error === "string") {
-          this.crash(new Error(error));
-        } else {
-          this.crash(new Error(`Unknown error thrown in effect callback`));
-        }
-      }
-    };
-
-    if (this.view.isMounted) {
-      // If called when the component is connected, we assume this code is in a lifecycle hook
-      // where it will be triggered at some point again after the component is reconnected.
-      const unsubscribe = effect(fn);
-      this.view.lifecycleListeners.unmount.push(unsubscribe);
-      return unsubscribe;
-    } else {
-      // This should only happen if called in the body of the component function.
-      // This code is not always re-run between when a component is unmounted and remounted.
-      let unsubscribe: UnsubscribeFn | undefined;
-      let disposed = false;
-      this.view.lifecycleListeners.mount.push(() => {
-        if (!disposed) {
-          unsubscribe = effect(fn);
-          this.view.lifecycleListeners.unmount.push(unsubscribe);
-        }
-      });
-      return () => {
-        if (unsubscribe != null) {
-          disposed = true;
-          unsubscribe();
-        }
-      };
-    }
-  }
-
-  outlet(): Markup {
-    return markup("$outlet", { view: this.view.elementContext.route! });
-    // return createMarkup("$fragment", { children: this.view.children });
-  }
-}
-
-export class View<P> implements ViewElement {
+export class ViewInstance<P> implements MarkupElement {
   [IS_MARKUP_ELEMENT] = true;
 
   uniqueId = getUniqueId();
-
-  elementContext: ElementContext;
-  logger;
+  context: Context;
   props;
   fn;
 
   element?: MarkupElement;
 
-  name = $("");
-  context: Context;
+  $name = $("");
 
-  lifecycleListeners: {
-    beforeMount: (() => any)[];
-    mount: (() => any)[];
-    beforeUnmount: (() => any)[];
-    unmount: (() => any)[];
-  } = { beforeMount: [], mount: [], beforeUnmount: [], unmount: [] };
-
-  constructor(elementContext: ElementContext, fn: ViewFunction<P>, props: P, children?: Markup[]) {
-    this.name(fn.name || "🌇 anonymous view");
-    this.elementContext = {
-      ...elementContext,
-      parent: elementContext,
-      view: this,
-      stores: new Map(),
-      route: $<View<{}>>(),
-    };
-    this.logger = createLogger(this.name, { tag: this.uniqueId, tagName: "uid" });
+  constructor(context: Context, fn: View<P>, props: P, children?: Markup[]) {
+    this.$name(fn.name || "🌇 anonymous view");
+    this.context = Context.inherit(context, this.$name, {
+      logger: {
+        tag: this.uniqueId,
+        tagName: "uid",
+      },
+    });
+    this.context.setState(VIEW, this);
     this.props = {
       ...props,
       children,
     };
     this.fn = fn;
-    this.context = new Context(this);
   }
 
   /*===============================*\
@@ -283,9 +74,7 @@ export class View<P> implements ViewElement {
 
     if (!wasConnected) {
       this._initialize();
-      for (const listener of this.lifecycleListeners.beforeMount) {
-        listener();
-      }
+      this.context._lifecycle.willMount();
     }
 
     if (this.element) {
@@ -296,17 +85,13 @@ export class View<P> implements ViewElement {
       this.isMounted = true;
 
       requestAnimationFrame(() => {
-        for (const listener of this.lifecycleListeners.mount) {
-          listener();
-        }
+        this.context._lifecycle.didMount();
       });
     }
   }
 
   unmount(parentIsUnmounting = false) {
-    for (const listener of this.lifecycleListeners.beforeUnmount) {
-      listener();
-    }
+    this.context._lifecycle.willUnmount();
 
     if (this.element) {
       // parentIsUnmounting is forwarded to the element because the view acts as a proxy for an element.
@@ -315,23 +100,17 @@ export class View<P> implements ViewElement {
 
     this.isMounted = false;
 
-    for (const listener of this.lifecycleListeners.unmount) {
-      listener();
-    }
-
-    this.lifecycleListeners.beforeMount.length = 0;
-    this.lifecycleListeners.mount.length = 0;
-    this.lifecycleListeners.beforeUnmount.length = 0;
-    this.lifecycleListeners.unmount.length = 0;
+    this.context._lifecycle.didUnmount();
   }
 
-  setRouteView(fn: ViewFunction<{}>) {
-    const node = new View(this.elementContext, fn, {});
+  // setRouteView(fn: View<{}>) {
+  //   const node = new ViewInstance(this.context, fn, {});
 
-    this.elementContext.route!(node);
+  //   const $route = this.context.getState(ROUTE) as Source<ViewInstance<{}>>;
+  //   $route(node);
 
-    return node;
-  }
+  //   return node;
+  // }
 
   /*===============================*\
   ||           Internal            ||
@@ -345,7 +124,7 @@ export class View<P> implements ViewElement {
       result = this.fn.call(context, this.props, context);
     } catch (error) {
       if (error instanceof Error) {
-        this.logger.crash(error);
+        this.context.crash(error);
       }
       throw error;
     }
@@ -353,55 +132,18 @@ export class View<P> implements ViewElement {
     if (result === null) {
       // Do nothing.
     } else if (result instanceof Node) {
-      this.element = groupElements(toMarkupElements(this.elementContext, markup("$node", { value: result })));
+      this.element = render(m("$node", { value: result }), this.context);
     } else if (isFunction(result)) {
-      this.element = groupElements(
-        toMarkupElements(this.elementContext, markup("$dynamic", { source: result as Signal<Renderable> })),
-      );
+      this.element = render(m("$dynamic", { source: result }), this.context);
     } else if (isMarkup(result) || isArrayOf<Markup>(isMarkup, result)) {
-      this.element = groupElements(toMarkupElements(this.elementContext, result));
+      this.element = render(result, this.context);
     } else {
       const error = new TypeError(
         `Expected '${
           this.fn.name
         }' function to return a DOM node, Markup element, Signal or null. Got: ${typeOf(result)}`,
       );
-      this.logger.crash(error);
+      this.context.crash(error);
     }
-  }
-}
-
-const rootElementContext: ElementContext = {
-  stores: globalStores,
-};
-
-export function constructView<P>(view: ViewFunction<P>, props: P, children?: Renderable[]): ViewElement;
-export function constructView(view: ViewFunction<{}>, children?: Renderable[]): ViewElement;
-export function constructView<P>(
-  context: ElementContext,
-  view: ViewFunction<P>,
-  props: P,
-  children?: Renderable[],
-): ViewElement;
-export function constructView(context: ElementContext, view: ViewFunction<{}>, children?: Renderable[]): ViewElement;
-
-export function constructView(...args: any): ViewElement {
-  if (isFunction(args[0])) {
-    const view = args[0] as ViewFunction<any>;
-    const props = isArray(args[1]) ? {} : args[1];
-    const children = (isArray(args[2]) ? args[2] : isArray(args[1]) ? args[1] : []) as Renderable[];
-
-    return new View(rootElementContext, view, props, toMarkup(children));
-  } else if (isObject(args[0]) && isFunction(args[1])) {
-    const context = args[0] as unknown as ElementContext;
-    const view = args[1] as ViewFunction<any>;
-    const props = isArray(args[2]) ? {} : args[2];
-    const children = (isArray(args[3]) ? args[3] : isArray(args[2]) ? args[2] : []) as Renderable[];
-
-    return new View(context, view, props, children ? toMarkup(children) : []);
-  } else {
-    throw new TypeError(
-      "Unexpected arguments; expected view, props and children, or context, view, props and children.",
-    );
   }
 }

@@ -1,4 +1,4 @@
-import { markup } from "./core/markup";
+import { m } from "./core/markup";
 export { Fragment } from "./core/views/fragment";
 
 export function jsxDEV(element, props, key, isStaticChildren, source, self) {
@@ -6,7 +6,7 @@ export function jsxDEV(element, props, key, isStaticChildren, source, self) {
   const children = Array.isArray(props.children) ? props.children : [props.children];
 
   // return new _Markup(element, attributes, children);
-  return markup(element, attributes, ...children);
+  return m(element, attributes, ...children);
 }
 
 function omit(keys, object) {

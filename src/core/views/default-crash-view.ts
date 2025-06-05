@@ -1,4 +1,4 @@
-import { when, markup as m } from "../markup.js";
+import { when, m } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.

@@ -15,7 +15,7 @@ export interface Logger {
   log(...args: any[]): void;
   warn(...args: any[]): void;
   error(...args: any[]): void;
-  crash(error: Error): void;
+  crash(error: Error): Error;
 }
 
 export interface LoggerOptions {
@@ -48,7 +48,7 @@ let levels: LogLevels = {
   warn: "development",
   error: true,
 };
-let match: MatcherFunction = createMatcher("*,-Dolla.*");
+let match: MatcherFunction = createMatcher("*,-dolla.*");
 let crashListeners: ((context: LoggerErrorContext) => void)[] = [];
 
 export function onLoggerCrash(listener: (context: LoggerErrorContext) => void) {
@@ -112,6 +112,8 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
       for (const listener of crashListeners) {
         listener(ctx);
       }
+
+      return error;
     },
   };
 }
