@@ -73,22 +73,11 @@ function Counter(props, ctx) {
         $(() => $count() > 10),
         <span>That's a lot of clicks!</span>,
       )}
-
-      {/* ALT: Or slot a getter function into the DOM and have it conditionally render an element */}
-      {() => {
-        // DEV NOTE
-        // If we get Dynamic to track its rendered elements and diff them by keys
-        // then we may be able to do away with repeat and when and just do things like:
-        //    <ul>{() => items().map(item => <li>{item}</li>)}</ul>
-        if ($count() > 10) {
-          return <span>That's a lot of clicks!</span>;
-        }
-      }}
     </div>
   );
 }
 
-mount(document.body, Counter);
+mount(Counter, document.body);
 ```
 
 > TODO: Show small examples for routing and stores.

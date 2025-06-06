@@ -35,6 +35,18 @@ export interface Markup {
   children?: any[];
 }
 
+// export class Markup {
+//   type;
+//   props;
+//   children;
+
+//   constructor(type: string | View<any>, props?: Record<string, any>, children?: any[]) {
+//     this.type = type;
+//     this.props = props;
+//     this.children = children;
+//   }
+// }
+
 /**
  * A DOM node that has been constructed from a Markup object.
  */

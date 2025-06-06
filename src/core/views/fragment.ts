@@ -6,5 +6,6 @@ import { m } from "../markup.js";
  * A utility view that displays its children.
  */
 export function Fragment(props: { children?: Renderable }, ctx: Context) {
-  return m("$dynamic", { source: () => props.children });
+  return props.children ?? null;
+  // return m("$dynamic", { source: () => props.children });
 }
