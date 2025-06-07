@@ -1,17 +1,11 @@
-export type Env = "production" | "development";
+import type { Env } from "../types";
 
-let env: Env = "production";
+let currentEnv = "production";
 
-/**
- * Gets the current environment value.
- */
-export function getEnv(): Env {
-  return env;
+export function getEnv() {
+  return currentEnv;
 }
 
-/**
- * Sets the environment value. Affects which log messages will print and how much debugging info is included in the DOM.
- */
 export function setEnv(value: Env) {
-  env = value;
+  currentEnv = value;
 }

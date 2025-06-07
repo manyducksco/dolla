@@ -1,7 +1,8 @@
-import { isString } from "../typeChecking";
-import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils";
-import { getEnv, type Env } from "./env";
-import { get, type MaybeSignal } from "./signals";
+import { isString } from "../typeChecking.js";
+import type { Env } from "../types.js";
+import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
+import { getEnv } from "./env.js";
+import { get, peek, type MaybeSignal } from "./signals.js";
 
 export interface LogLevels {
   info: boolean | Env;
@@ -63,7 +64,7 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
   const _console = options?.console ?? _getDefaultConsole();
 
   const bind = (method: keyof LogLevels) => {
-    let _name = get(name);
+    let _name = peek(name);
     if (levels[method] === false || (isString(levels[method]) && levels[method] !== getEnv()) || !match(_name)) {
       return noOp;
     } else {

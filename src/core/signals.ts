@@ -57,6 +57,83 @@ export const {
   },
 });
 
+function _createSource<T>(initialValue: T, options?: SignalOptions<T>): Source<T> {
+  const value: Value<T> = {
+    current: initialValue,
+    subs: undefined,
+    subsTail: undefined,
+  };
+  const equals = options?.equals ?? Object.is;
+  const signal: Signal<any> = function () {
+    if (arguments.length > 0) {
+      let next = arguments[0] as T;
+
+      if (typeof next === "function") {
+        next = next(value.current);
+      }
+
+      if (!equals(value.current, next)) {
+        value.current = next;
+        const subs = value.subs;
+        if (subs !== undefined) {
+          propagate(subs);
+          processEffectNotifications();
+        }
+      }
+    } else {
+      if (activeSub !== undefined) {
+        link(value, activeSub);
+      }
+      return value.current;
+    }
+  };
+  (signal as any)._type = SOURCE;
+
+  return signal;
+}
+
+function _createSignal<T>(fn: (cachedValue?: T) => T, options?: SignalOptions<T>): Signal<T> {
+  if (isFunction(fn) && (fn as any)._type === SIGNAL) {
+    if ((fn as any)._type === SOURCE) {
+      return (() => fn()) as Signal<T>;
+    } else {
+      return fn as Signal<T>;
+    }
+  }
+
+  const computed: Computed<T> = {
+    current: undefined,
+    equals: options?.equals ?? Object.is,
+    subs: undefined,
+    subsTail: undefined,
+    deps: undefined,
+    depsTail: undefined,
+    flags: SubscriberFlags.Computed | SubscriberFlags.Dirty,
+    getter: (cachedValue?: T) => {
+      const returned = fn(cachedValue);
+
+      // If a signal is returned, track it and return its value.
+      return get(returned);
+    },
+  };
+  const signal: Signal<T> = function () {
+    if (arguments.length > 0) {
+      throw new Error("Signals cannot be set as their values are derived from the sources they depend on.");
+    }
+    if (activeSub !== undefined) {
+      link(computed, activeSub);
+    }
+    const flags = computed.flags;
+    if (flags & (SubscriberFlags.Dirty | SubscriberFlags.PendingComputed)) {
+      processComputedUpdate(computed, flags);
+    }
+    return computed.current!;
+  };
+  (signal as any)._type = SIGNAL;
+
+  return signal;
+}
+
 /*===================================*\
 ||        EFFECTS & TRACKING         ||
 \*===================================*/
@@ -223,83 +300,4 @@ export function $<T>(init?: (() => T) | T, options?: SignalOptions<T>) {
   } else {
     return _createSource(init, options);
   }
-}
-
-/* -------------- INTERNAL --------------- */
-
-function _createSource<T>(initialValue: T, options?: SignalOptions<T>): Source<T> {
-  const value: Value<T> = {
-    current: initialValue,
-    subs: undefined,
-    subsTail: undefined,
-  };
-  const equals = options?.equals ?? Object.is;
-  const signal: Signal<any> = function () {
-    if (arguments.length > 0) {
-      let next = arguments[0] as T;
-
-      if (typeof next === "function") {
-        next = next(value.current);
-      }
-
-      if (!equals(value.current, next)) {
-        value.current = next;
-        const subs = value.subs;
-        if (subs !== undefined) {
-          propagate(subs);
-          processEffectNotifications();
-        }
-      }
-    } else {
-      if (activeSub !== undefined) {
-        link(value, activeSub);
-      }
-      return value.current;
-    }
-  };
-  (signal as any)._type = SOURCE;
-
-  return signal;
-}
-
-function _createSignal<T>(fn: (cachedValue?: T) => T, options?: SignalOptions<T>): Signal<T> {
-  if (isFunction(fn) && (fn as any)._type === SIGNAL) {
-    if ((fn as any)._type === SOURCE) {
-      return (() => fn()) as Signal<T>;
-    } else {
-      return fn as Signal<T>;
-    }
-  }
-
-  const computed: Computed<T> = {
-    current: undefined,
-    equals: options?.equals ?? Object.is,
-    subs: undefined,
-    subsTail: undefined,
-    deps: undefined,
-    depsTail: undefined,
-    flags: SubscriberFlags.Computed | SubscriberFlags.Dirty,
-    getter: (cachedValue?: T) => {
-      const returned = fn(cachedValue);
-
-      // If a signal is returned, track it and return its value.
-      return get(returned);
-    },
-  };
-  const signal: Signal<T> = function () {
-    if (arguments.length > 0) {
-      throw new Error("Signals cannot be set as their values are derived from the sources they depend on.");
-    }
-    if (activeSub !== undefined) {
-      link(computed, activeSub);
-    }
-    const flags = computed.flags;
-    if (flags & (SubscriberFlags.Dirty | SubscriberFlags.PendingComputed)) {
-      processComputedUpdate(computed, flags);
-    }
-    return computed.current!;
-  };
-  (signal as any)._type = SIGNAL;
-
-  return signal;
 }

@@ -1,29 +1,29 @@
-import type { MarkupElement } from "../markup";
-import { IS_MARKUP_ELEMENT } from "../symbols";
+import type { MarkupNode } from "../markup";
+import { IS_MARKUP_NODE } from "../symbols";
 
 /**
- * Wraps any plain DOM node in a MarkupElement interface.
+ * Wraps any plain DOM node in a MarkupNode interface.
  */
-export class DOMNode implements MarkupElement {
-  [IS_MARKUP_ELEMENT] = true;
+export class DOMNode implements MarkupNode {
+  [IS_MARKUP_NODE] = true;
 
-  domNode: Node;
+  root: Node;
 
   get isMounted() {
-    return this.domNode.parentNode != null;
+    return this.root.parentNode != null;
   }
 
   constructor(node: Node) {
-    this.domNode = node;
+    this.root = node;
   }
 
   mount(parent: Node, after?: Node) {
-    parent.insertBefore(this.domNode, after?.nextSibling ?? null);
+    parent.insertBefore(this.root, after?.nextSibling ?? null);
   }
 
   unmount(parentIsUnmounting = false) {
-    if (this.domNode.parentNode && !parentIsUnmounting) {
-      this.domNode.parentNode.removeChild(this.domNode);
+    if (this.root.parentNode && !parentIsUnmounting) {
+      this.root.parentNode.removeChild(this.root);
     }
   }
 }

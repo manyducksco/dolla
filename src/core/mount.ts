@@ -1,9 +1,9 @@
-import { MOUNT, ROOT_VIEW, Router, UNMOUNT } from "../router/router";
+import { MOUNT, Router, UNMOUNT } from "../router/router";
 import { assertInstanceOf } from "../typeChecking";
-import { Context } from "./context";
+import type { View } from "../types";
+import { Context, LifecycleEvent } from "./context";
 import { type LoggerErrorContext, onLoggerCrash } from "./logger";
-import { m, type MarkupElement, render } from "./markup";
-import { type View } from "./nodes/view";
+import { m, type MarkupNode, render } from "./markup";
 import { DefaultCrashView } from "./views/default-crash-view";
 
 let isMounted = false;
@@ -29,7 +29,7 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
     throw new Error(`A Dolla app is already mounted.`);
   }
 
-  let rootView: MarkupElement;
+  let rootView: MarkupNode;
   let router: Router | undefined;
   let crashView = options?.crashView ?? DefaultCrashView;
 
@@ -44,7 +44,7 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
     render(m(crashView, ctx), rootContext).mount(rootElement);
   });
 
-  rootContext._lifecycle.willMount();
+  Context.emit(LifecycleEvent.WILL_MOUNT, rootContext);
 
   if (view instanceof Router) {
     router = view;
@@ -57,12 +57,12 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
   rootView.mount(rootElement);
   isMounted = true;
 
-  rootContext._lifecycle.didMount();
+  Context.emit(LifecycleEvent.DID_MOUNT, rootContext);
 
   async function unmount() {
     if (!isMounted) return;
 
-    rootContext._lifecycle.willUnmount();
+    Context.emit(LifecycleEvent.WILL_UNMOUNT, rootContext);
 
     rootView.unmount(false);
 
@@ -72,7 +72,7 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
 
     isMounted = false;
 
-    rootContext._lifecycle.didUnmount();
+    Context.emit(LifecycleEvent.DID_UNMOUNT, rootContext);
   }
 
   return unmount;

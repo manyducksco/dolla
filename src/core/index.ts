@@ -4,11 +4,11 @@ export type { MaybeSignal, Signal, Source } from "./signals.js";
 
 // Context
 export { createContext } from "./context.js";
-export type { Context, Store } from "./context.js";
+export type { Context } from "./context.js";
 
 // Markup
 export { m, portal, render, repeat, unless, when } from "./markup.js";
-export type { Markup, MarkupElement } from "./markup.js";
+export type { MarkupNode } from "./markup.js";
 
 // Mixin
 export { type Mixin } from "./nodes/html.js";
@@ -24,15 +24,13 @@ export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
 
 // Env
 export { getEnv, setEnv } from "./env.js";
-export type { Env } from "./env.js";
 
 // Logger
 export { createLogger, setLogFilter, setLogLevels } from "./logger.js";
 export type { Logger, LoggerErrorContext, LoggerOptions, LogLevels } from "./logger.js";
 
 // Other types
-export type { InputType, Renderable } from "../types.js";
-export type { View } from "./nodes/view.js";
+export type { View, Store, InputType, Renderable, Env } from "../types.js";
 export type { CrashViewProps } from "./views/default-crash-view.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";

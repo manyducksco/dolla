@@ -1,22 +1,19 @@
 import type { Renderable } from "../../types.js";
 import { Context } from "../context.js";
-import { toMarkupElements, groupElements, isMarkupElement, toMarkup, type MarkupElement } from "../markup.js";
-import { IS_MARKUP_ELEMENT } from "../symbols.js";
-
-interface PortalConfig {
-  content: Renderable;
-  parent: Node;
-  context: Context;
-}
+import { render, type MarkupNode } from "../markup.js";
+import { IS_MARKUP_NODE } from "../symbols.js";
 
 /**
  * Renders content into a specified parent node.
  */
-export class Portal implements MarkupElement {
-  [IS_MARKUP_ELEMENT] = true;
+export class Portal implements MarkupNode {
+  [IS_MARKUP_NODE] = true;
 
-  private config: PortalConfig;
-  private element?: MarkupElement;
+  private context;
+  private content;
+  private parent;
+
+  private element?: MarkupNode;
 
   get isMounted() {
     if (!this.element) {
@@ -25,20 +22,15 @@ export class Portal implements MarkupElement {
     return this.element.isMounted;
   }
 
-  constructor(config: PortalConfig) {
-    this.config = config;
+  constructor(context: Context, content: Renderable, parent: Node) {
+    this.context = context;
+    this.content = content;
+    this.parent = parent;
   }
 
   mount(_parent: Node, _after?: Node) {
-    const { content, parent } = this.config;
-
-    if (isMarkupElement(content)) {
-      this.element = content;
-    } else {
-      this.element = groupElements(toMarkupElements(this.config.context, toMarkup(content)));
-    }
-
-    this.element.mount(parent);
+    this.element = render(this.content, this.context);
+    this.element.mount(this.parent);
   }
 
   unmount(parentIsUnmounting = false) {

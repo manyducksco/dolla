@@ -17,14 +17,9 @@ export interface Ref<T> {
 }
 
 /**
- * Creates a ref with no initial value.
+ * Creates a Ref.
  */
-export function ref<T>(): Ref<T>;
-
-/**
- * Creates a ref with an initial value.
- */
-export function ref<T>(value: T): Ref<T>;
+export function ref<T>(value?: T): Ref<T>;
 
 export function ref(value = EMPTY_REF) {
   return function () {

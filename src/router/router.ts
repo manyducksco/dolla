@@ -1,11 +1,11 @@
 import { Context } from "../core/context.js";
 import { createLogger } from "../core/logger.js";
-import { m, MarkupElement, render, toMarkup } from "../core/markup.js";
-import { Outlet } from "../core/nodes/outlet.js";
-import { ViewInstance, type View } from "../core/nodes/view.js";
+import { m, type MarkupNode } from "../core/markup.js";
+import { Dynamic } from "../core/nodes/dynamic.js";
+import { ViewInstance } from "../core/nodes/view.js";
 import { $, peek, Source, type UnsubscribeFn } from "../core/signals.js";
 import { assertObject, isArray, isFunction, isObject, isString } from "../typeChecking.js";
-import type { Stringable } from "../types.js";
+import type { View } from "../types.js";
 import { shallowEqual } from "../utils.js";
 import {
   catchLinks,
@@ -21,6 +21,8 @@ import {
 } from "./router.utils.js";
 
 // ----- Types ----- //
+
+export type Stringable = { toString(): string };
 
 export interface RouteMatchContext {
   path: string;
@@ -88,9 +90,9 @@ export interface RouteLayer {
  */
 interface ActiveLayer {
   id: number;
-  element: MarkupElement;
+  element: MarkupNode;
   context: Context;
-  $slot: Source<ViewInstance<{}> | undefined>;
+  $slot: Source<MarkupNode | undefined>;
 }
 
 /**
@@ -165,9 +167,6 @@ export class Router {
 
   #isMounted = false;
 
-  $slot = $<ViewInstance<{}>>();
-  #outlet = new Outlet(this.$slot);
-
   #rootLayer!: ActiveLayer;
 
   /**
@@ -224,12 +223,13 @@ export class Router {
     assertValidRedirects(this.#routes);
   }
 
-  async [MOUNT](parent: Element, context: Context): Promise<MarkupElement> {
+  async [MOUNT](parent: Element, context: Context): Promise<MarkupNode> {
+    const $slot = $<MarkupNode>();
     this.#rootLayer = {
       id: -1,
-      element: this.#outlet,
+      element: new Dynamic(context, $slot),
       context,
-      $slot: this.$slot,
+      $slot,
     };
 
     // Listen for popstate events and update route accordingly.
@@ -259,7 +259,7 @@ export class Router {
     // Setup initial route content.
     await this.#updateRoute(undefined, {});
 
-    return this.#outlet;
+    return this.#rootLayer.element;
   }
 
   async [UNMOUNT]() {
@@ -448,8 +448,10 @@ export class Router {
 
         const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
-        const $slot = $<ViewInstance<{}>>();
-        const element = new ViewInstance(parentLayer.context, matchedLayer.view, {}, toMarkup($slot));
+        const $slot = $<MarkupNode>();
+        const element = new ViewInstance(parentLayer.context, matchedLayer.view, {}, [
+          m("$dynamic", { source: $slot }),
+        ]);
 
         parentLayer.$slot(element);
         this.#activeLayers.push({

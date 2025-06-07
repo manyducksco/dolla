@@ -1,15 +1,8 @@
-import { isArray, typeOf } from "../../typeChecking.js";
-import type { Renderable } from "../../types.js";
+import { isArray } from "../../typeChecking.js";
 import type { Context } from "../context.js";
-import { isMarkupElement, isRenderable, toMarkup, toMarkupElements, type MarkupElement } from "../markup.js";
+import { toMarkupNodes, type MarkupNode } from "../markup.js";
 import { effect, peek, Signal, type UnsubscribeFn } from "../signals.js";
-import { IS_MARKUP_ELEMENT } from "../symbols.js";
-import { ViewInstance, VIEW } from "./view.js";
-
-interface DynamicOptions {
-  source: Signal<Renderable>;
-  context: Context;
-}
+import { IS_MARKUP_NODE } from "../symbols.js";
 
 /**
  * Displays dynamic children without a parent element.
@@ -17,47 +10,39 @@ interface DynamicOptions {
  *
  * This is probably the most used element type aside from HTML.
  */
-export class Dynamic implements MarkupElement {
-  [IS_MARKUP_ELEMENT] = true;
+export class Dynamic implements MarkupNode {
+  [IS_MARKUP_NODE] = true;
 
-  domNode = document.createTextNode("");
-  private children: MarkupElement[] = [];
+  root = document.createTextNode("");
+
+  private children: MarkupNode[] = [];
   private context: Context;
 
-  private source: Signal<Renderable>;
+  private $slot: Signal<any>;
   private unsubscribe?: UnsubscribeFn;
 
   get isMounted() {
-    return this.domNode.parentNode != null;
+    return this.root.parentNode != null;
   }
 
-  constructor(options: DynamicOptions) {
-    this.source = options.source;
-    this.context = options.context;
+  constructor(context: Context, $slot: Signal<any>) {
+    this.context = context;
+    this.$slot = $slot;
   }
 
   mount(parent: Node, after?: Node) {
     if (!this.isMounted) {
-      parent.insertBefore(this.domNode, after?.nextSibling ?? null);
+      parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
         try {
-          const content = this.source();
-
-          if (!isRenderable(content)) {
-            console.error(content);
-            throw new TypeError(
-              `Dynamic received invalid value to render. Got type: ${typeOf(content)}, value: ${content}`,
-            );
-          }
-
+          const content = this.$slot();
           peek(() => {
             this.update(isArray(content) ? content : [content]);
           });
         } catch (error) {
-          const logger = this.context.getState<ViewInstance<any>>(VIEW).context;
-          logger.error(error);
-          logger.crash(error as Error);
+          this.context.error(error);
+          this.context.crash(error as Error);
         }
       });
     }
@@ -68,47 +53,43 @@ export class Dynamic implements MarkupElement {
 
     if (this.isMounted) {
       this.cleanup(parentIsUnmounting);
-      this.domNode.parentNode?.removeChild(this.domNode);
+      this.root.parentNode?.removeChild(this.root);
     }
   }
 
-  cleanup(parentIsUnmounting: boolean) {
+  private cleanup(parentIsUnmounting: boolean) {
     for (const element of this.children) {
       element.unmount(parentIsUnmounting);
     }
     this.children = [];
   }
 
-  update(children: Renderable[]) {
+  private update(content: any[]) {
     this.cleanup(false);
 
-    if (children == null || children.length === 0 || !this.isMounted) {
-      return;
-    }
+    if (content.length === 0 || !this.isMounted) return;
 
-    const newElements: MarkupElement[] = children.flatMap((c) => {
-      if (isMarkupElement(c)) {
-        return c as MarkupElement;
-      } else {
-        return toMarkupElements(this.context, toMarkup(c));
-      }
-    });
+    const elements = toMarkupNodes(this.context, content);
 
-    // console.log("$dynamic update", newElements, children);
-
-    for (const element of newElements) {
-      const previous = this.children.at(-1)?.domNode || this.domNode;
-      element.mount(this.domNode.parentNode!, previous);
+    for (const element of elements) {
+      const previous = this.children.at(-1)?.root || this.root;
+      element.mount(this.root.parentNode!, previous);
       this.children.push(element);
     }
 
-    // Move marker node to end.
-    const parent = this.domNode.parentNode!;
-    const lastChildNextSibling = this.children.at(-1)?.domNode?.nextSibling ?? null;
+    this.moveMarker();
+  }
+
+  /**
+   * Move marker node to end of children.
+   */
+  private moveMarker() {
+    const parent = this.root.parentNode!;
+    const lastChildNextSibling = this.children.at(-1)?.root?.nextSibling ?? null;
     if ("moveBefore" in parent) {
-      (parent.moveBefore as any)(this.domNode, lastChildNextSibling);
+      (parent.moveBefore as any)(this.root, lastChildNextSibling);
     } else {
-      parent.insertBefore(this.domNode, lastChildNextSibling);
+      parent.insertBefore(this.root, lastChildNextSibling);
     }
   }
 }

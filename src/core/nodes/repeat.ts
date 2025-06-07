@@ -1,61 +1,61 @@
+import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
-import { type Context } from "../context.js";
-import { type MarkupElement } from "../markup.js";
+import type { Context } from "../context.js";
+import type { MarkupNode } from "../markup.js";
 import { $, effect, peek, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
-import { IS_MARKUP_ELEMENT } from "../symbols.js";
-import { ViewInstance, type ViewResult } from "./view.js";
+import { IS_MARKUP_NODE } from "../symbols.js";
+import { ViewInstance } from "./view.js";
 
 // ----- Types ----- //
 
-interface RepeatOptions<T> {
-  context: Context;
-  items: Signal<T[]>;
-  keyFn: (item: T, index: number) => string | number | symbol;
-  renderFn: (item: Signal<T>, index: Signal<number>, ctx: Context) => ViewResult;
-}
+export type KeyFn<T> = (item: T, index: number) => string | number | symbol;
+export type RenderFn<T> = (item: Signal<T>, index: Signal<number>, ctx: Context) => Renderable;
 
 type ConnectedItem<T> = {
   key: any;
   item: Source<T>;
   index: Source<number>;
-  element: MarkupElement;
+  node: MarkupNode;
 };
 
 // ----- Code ----- //
 
-export class Repeat<T> implements MarkupElement {
-  [IS_MARKUP_ELEMENT] = true;
+export class Repeat<T> implements MarkupNode {
+  [IS_MARKUP_NODE] = true;
 
-  domNode = document.createTextNode("");
+  root = document.createTextNode("");
+
+  private context;
+
   private items: Signal<T[]>;
+  private key: KeyFn<T>;
+  private render: RenderFn<T>;
+
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: ConnectedItem<T>[] = [];
-  private context;
-  private renderFn: (this: Context, value: Signal<T>, index: Signal<number>, context: Context) => ViewResult;
-  private keyFn: (value: T, index: number) => string | number | symbol;
 
   get isMounted() {
-    return this.domNode.parentNode != null;
+    return this.root.parentNode != null;
   }
 
-  constructor({ context, items, renderFn, keyFn }: RepeatOptions<T>) {
+  constructor(context: Context, items: Signal<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
     this.context = context;
 
     this.items = items;
-    this.renderFn = renderFn;
-    this.keyFn = keyFn;
+    this.key = key;
+    this.render = render;
   }
 
   mount(parent: Node, after?: Node) {
     if (!this.isMounted) {
-      parent.insertBefore(this.domNode, after?.nextSibling ?? null);
+      parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
         let value = this.items();
 
         if (value == null) {
           value = [];
-          console.log("repeat received empty value", value, this);
+          this.context.warn("repeat() received empty value for items", value);
         }
 
         peek(() => {
@@ -72,7 +72,7 @@ export class Repeat<T> implements MarkupElement {
     }
 
     if (!parentIsUnmounting && this.isMounted) {
-      this.domNode.parentNode?.removeChild(this.domNode);
+      this.root.parentNode?.removeChild(this.root);
     }
 
     this._cleanup(parentIsUnmounting);
@@ -80,7 +80,7 @@ export class Repeat<T> implements MarkupElement {
 
   private _cleanup(parentIsUnmounting: boolean) {
     for (const item of this.connectedItems) {
-      item.element.unmount(parentIsUnmounting);
+      item.node.unmount(parentIsUnmounting);
     }
     this.connectedItems = [];
   }
@@ -97,7 +97,7 @@ export class Repeat<T> implements MarkupElement {
 
     for (const item of value) {
       potentialItems.push({
-        key: this.keyFn(item, index),
+        key: this.key(item, index),
         value: item,
         index: index++,
       });
@@ -110,7 +110,7 @@ export class Repeat<T> implements MarkupElement {
       const potentialItem = potentialItems.find((p) => p.key === connected.key);
 
       if (!potentialItem) {
-        connected.element.unmount(false);
+        connected.node.unmount(false);
       }
     }
 
@@ -131,10 +131,10 @@ export class Repeat<T> implements MarkupElement {
           key: potential.key,
           item,
           index,
-          element: new ViewInstance(this.context, RepeatItemView, {
+          node: new ViewInstance(this.context, RepeatItemView, {
             item: () => item(),
             index: () => index(),
-            renderFn: this.renderFn,
+            renderFn: this.render,
           }),
         };
       }
@@ -144,22 +144,22 @@ export class Repeat<T> implements MarkupElement {
     // TODO: Use a smarter inline reordering method. This causes scrollbars to jump.
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
-      const previous = newItems[i - 1]?.element.domNode ?? this.domNode;
-      item.element.mount(this.domNode.parentNode!, previous);
+      const previous = newItems[i - 1]?.node.root ?? this.root;
+      item.node.mount(this.root.parentNode!, previous);
     }
 
     this.connectedItems = newItems;
 
     // Move marker node to end.
-    const lastItem = newItems.at(-1)?.element.domNode ?? this.domNode;
-    this.domNode.parentNode?.insertBefore(this.domNode, lastItem.nextSibling);
+    const lastItem = newItems.at(-1)?.node.root ?? this.root;
+    this.root.parentNode?.insertBefore(this.root, lastItem.nextSibling);
   }
 }
 
 interface ListItemProps {
   item: Signal<any>;
   index: Signal<number>;
-  renderFn: (item: Signal<any>, index: Signal<number>, context: Context) => ViewResult;
+  renderFn: (item: Signal<any>, index: Signal<number>, context: Context) => Renderable;
 }
 
 function RepeatItemView(props: ListItemProps, context: Context) {

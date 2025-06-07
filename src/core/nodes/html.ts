@@ -1,39 +1,28 @@
 import { isArray, isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
-import { Context } from "../context.js";
+import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
-import { Logger } from "../logger.js";
-import { toMarkup, toMarkupElements, type Markup, type MarkupElement } from "../markup.js";
-import { effect, get, peek, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
-import { IS_MARKUP_ELEMENT } from "../symbols.js";
-import { ViewInstance, VIEW } from "./view.js";
+import { toMarkupNodes, type MarkupNode } from "../markup.js";
+import { effect, get, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
+import { IS_MARKUP_NODE } from "../symbols.js";
+import { VIEW, ViewInstance } from "./view.js";
 
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 
 export type Mixin<E extends Element = Element> = (element: E, context: Context) => void;
 
 const IS_SVG = Symbol("HTML.isSVG");
-// const IS_SVG = "__IS_SVG__";
 
-type HTMLOptions = {
-  context: Context;
-  tag: string;
-  props: Record<string, any>;
-  children?: any[];
-};
+export class HTML implements MarkupNode {
+  [IS_MARKUP_NODE] = true;
 
-export class HTML implements MarkupElement {
-  [IS_MARKUP_ELEMENT] = true;
+  root;
 
-  domNode;
-  context: Context;
-
+  private context: Context;
   private props: Record<string, any>;
-  private childMarkup: Markup[] = [];
-  private children: MarkupElement[] = [];
+  private children?: any[];
+  private childNodes: MarkupNode[] = [];
   private unsubscribers: UnsubscribeFn[] = [];
-
-  private logger: Logger;
 
   // Track the ref so we can nullify it on unmount.
   private ref?: Source<any>;
@@ -42,35 +31,36 @@ export class HTML implements MarkupElement {
   private canClickAway = false;
 
   get isMounted() {
-    return this.domNode.parentNode != null;
+    return this.root.parentNode != null;
   }
 
-  constructor({ tag, props, children, context }: HTMLOptions) {
-    this.context = Context.inherit(context, tag);
+  constructor(context: Context, tag: string, props: Record<string, any>, children?: any[]) {
+    this.context = Context.linked(context, tag);
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
       this.context.setState(IS_SVG, true);
     }
 
-    const view = this.context.getState<ViewInstance<unknown>>(VIEW);
-    this.logger = view.context;
-
     // Create node with the appropriate constructor.
     if (this.context.getState(IS_SVG, false)) {
-      this.domNode = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      this.root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
-      this.domNode = document.createElement(tag);
+      this.root = document.createElement(tag);
     }
 
-    if (getEnv() === "development" && peek(view.$name)) {
-      this.domNode.dataset.view = peek(view.$name);
+    // Add view name as a data attribute in development mode for better debugging.
+    if (getEnv() === "development") {
+      const view = this.context.getState<ViewInstance<unknown> | null>(VIEW, null);
+      if (view) {
+        this.root.dataset.view = view.context.getName();
+      }
     }
 
     if (props.ref) {
       if (isFunction(props.ref)) {
         this.ref = props.ref;
-        this.ref(this.domNode);
+        this.ref(this.root);
       } else {
         throw new Error("Expected ref to be a function. Got: " + props.ref);
       }
@@ -80,8 +70,8 @@ export class HTML implements MarkupElement {
       const mixins = isArray(props.mixin) ? props.mixin : [props.mixin];
       for (const fn of mixins) {
         fn(
-          this.domNode,
-          Context.inherit(this.context, () => getLoggerName(this), {
+          this.root,
+          Context.linked(this.context, () => getLoggerName(this), {
             bindLifecycleToParent: true,
             logger: { tagName: fn.name === "mixin" ? undefined : "mixin", tag: fn.name },
           }),
@@ -93,10 +83,7 @@ export class HTML implements MarkupElement {
       ...omit(["ref", "class", "className", "mixin"], props),
       class: props.className ?? props.class,
     };
-
-    if (children) {
-      this.childMarkup = toMarkup(children);
-    }
+    this.children = children;
   }
 
   mount(parent: Node, after?: Node) {
@@ -107,41 +94,41 @@ export class HTML implements MarkupElement {
     const wasMounted = this.isMounted;
 
     if (!wasMounted) {
-      this.context._lifecycle.willMount();
+      Context.emit(LifecycleEvent.WILL_MOUNT, this.context);
 
-      if (this.childMarkup.length > 0) {
-        this.children = toMarkupElements(this.context, this.childMarkup);
+      if (this.children && this.children.length > 0) {
+        this.childNodes = toMarkupNodes(this.context, this.children);
       }
 
-      for (let i = 0; i < this.children.length; i++) {
-        const child = this.children[i];
-        const previous = i > 0 ? this.children[i - 1].domNode : undefined;
-        child.mount(this.domNode, previous);
+      for (let i = 0; i < this.childNodes.length; i++) {
+        const child = this.childNodes[i];
+        const previous = i > 0 ? this.childNodes[i - 1].root : undefined;
+        child.mount(this.root, previous);
       }
 
-      this.applyProps(this.domNode, this.props);
-      if (this.props.style) this.applyStyles(this.domNode, this.props.style, this.unsubscribers);
-      if (this.props.class) this.applyClasses(this.domNode, this.props.class, this.unsubscribers);
+      this.applyProps(this.root, this.props);
+      if (this.props.style) this.applyStyles(this.root, this.props.style, this.unsubscribers);
+      if (this.props.class) this.applyClasses(this.root, this.props.class, this.unsubscribers);
     }
 
-    parent.insertBefore(this.domNode, after?.nextSibling ?? null);
+    parent.insertBefore(this.root, after?.nextSibling ?? null);
 
     queueMicrotask(() => {
       this.canClickAway = true;
 
-      if (!wasMounted) this.context._lifecycle.didMount();
+      if (!wasMounted) Context.emit(LifecycleEvent.DID_MOUNT, this.context);
     });
   }
 
   unmount(parentIsUnmounting = false) {
     if (this.isMounted) {
-      this.context._lifecycle.willUnmount();
+      Context.emit(LifecycleEvent.WILL_UNMOUNT, this.context);
 
       if (!parentIsUnmounting) {
-        this.domNode.parentNode?.removeChild(this.domNode);
+        this.root.parentNode?.removeChild(this.root);
       }
 
-      for (const child of this.children) {
+      for (const child of this.childNodes) {
         child.unmount(true);
       }
 
@@ -156,7 +143,7 @@ export class HTML implements MarkupElement {
         this.ref(undefined);
       }
 
-      this.context._lifecycle.didUnmount();
+      Context.emit(LifecycleEvent.DID_UNMOUNT, this.context);
     }
   }
 
@@ -167,8 +154,8 @@ export class HTML implements MarkupElement {
           try {
             callback((value as Signal<T>)());
           } catch (error) {
-            this.logger.error(error);
-            this.logger.crash(error as Error);
+            this.context.error(error);
+            this.context.crash(error as Error);
           }
         }),
       );
@@ -496,10 +483,23 @@ function getStyleMap(styles: unknown) {
   return mapped;
 }
 
+function getLoggerName(html: HTML) {
+  let name = html.root.tagName.toLowerCase();
+  if (html.root.id) {
+    name += `#${html.root.id}`;
+  }
+  if (html.root.classList.length > 0) {
+    for (const className of html.root.classList.values()) {
+      name += `.${className}`;
+    }
+  }
+  return name;
+}
+
 /**
  * Converts a camelCase string to kebab-case.
  */
-export function camelToKebab(value: string): string {
+function camelToKebab(value: string): string {
   return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
 }
 
@@ -507,16 +507,3 @@ export function camelToKebab(value: string): string {
 const privateProps = ["ref", "children", "class", "style", "data", "mixin"];
 
 const eventProps = ["onsubmit", "onclick", "ontransitionend"];
-
-function getLoggerName(html: HTML) {
-  let name = html.domNode.tagName.toLowerCase();
-  if (html.domNode.id) {
-    name += `#${html.domNode.id}`;
-  }
-  if (html.domNode.classList.length > 0) {
-    for (const className of html.domNode.classList.values()) {
-      name += `.${className}`;
-    }
-  }
-  return name;
-}

@@ -1,7 +1,10 @@
 import type * as CSS from "csstype";
-import type { Markup } from "./core/markup.js";
+import type { Markup, MarkupNode } from "./core/markup.js";
 import { Signal } from "./core/signals.js";
 import { Mixin } from "./core/nodes/html.js";
+import type { Context } from "./core/context.js";
+
+export type Env = "production" | "development";
 
 /**
  * Represents everything that can be handled as a DOM node.
@@ -10,24 +13,28 @@ import { Mixin } from "./core/nodes/html.js";
 export type Renderable =
   | string
   | number
+  | Node
   | Markup
+  | MarkupNode
   | false
   | null
   | undefined
   | Signal<any>
-  | (string | number | Markup | false | null | undefined | Signal<any>)[];
+  | (string | number | Node | Markup | MarkupNode | false | null | undefined | Signal<any>)[];
 
-export interface Mountable {
-  mount(parent: Node, after?: Node): void;
-  unmount(parentIsUnmounting?: boolean): void;
-}
+/**
+ *
+ */
+export type View<P> = (this: Context, props: P, context: Context) => Renderable;
 
-export interface AsyncMountable {
-  mount(parent: Node, after?: Node): Promise<void>;
-  unmount(parentIsUnmounting?: boolean): Promise<void>;
-}
+/**
+ *
+ */
+export type Store<Options, Value> = (this: Context, options: Options, context: Context) => Value;
 
-export type Stringable = { toString(): string };
+/*==================================*\
+||            JSX Types             ||
+\*==================================*/
 
 type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined>;
 
