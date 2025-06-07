@@ -80,7 +80,7 @@ export class HTML implements MarkupNode {
     }
 
     this.props = {
-      ...omit(["ref", "class", "className", "mixin"], props),
+      ...omit(["ref", "mixin", "class", "className"], props),
       class: props.className ?? props.class,
     };
     this.children = children;
@@ -194,11 +194,11 @@ export class HTML implements MarkupNode {
         this.unsubscribers.push(() => {
           element.removeEventListener(eventName, listener);
         });
-      } else if (isFunction(value) && eventProps.includes(key)) {
-        const _key = key.substring(2);
-        element.addEventListener(_key, value as EventListener);
+      } else if (key.startsWith("on") && isFunction(value) && knownEventNames.includes(key.substring(2))) {
+        // Event handler property (element.onsomething = function () {})
+        (element as any)[key] = value;
         this.unsubscribers.push(() => {
-          element.removeEventListener(_key, value as EventListener);
+          (element as any)[key] = undefined;
         });
       } else if (key.includes("-")) {
         // Names with dashes in them are not valid prop names, so they are treated as attributes.
@@ -230,6 +230,12 @@ export class HTML implements MarkupNode {
             case "for":
               this.attachProp(value, (current) => {
                 (element as any).htmlFor = current;
+              });
+              break;
+
+            case "innerHTML":
+              this.attachProp(value, (current) => {
+                (element as any).innerHTML = current;
               });
               break;
 
@@ -506,4 +512,97 @@ function camelToKebab(value: string): string {
 // Attributes in this list will not be forwarded to the DOM node.
 const privateProps = ["ref", "children", "class", "style", "data", "mixin"];
 
-const eventProps = ["onsubmit", "onclick", "ontransitionend"];
+// A list of all known event names. These will be handled as event listeners.
+const knownEventNames = [
+  // Element
+  "animationcancel",
+  "animationend",
+  "animationiteration",
+  "animationstart",
+  "auxclick",
+  "beforeinput",
+  "beforematch",
+  "beforexrselect",
+  "blur",
+  "click",
+  "compositionend",
+  "compositionstart",
+  "compositionupdate",
+  "contentvisibilityautostatechange",
+  "contextmenu",
+  "copy",
+  "cut",
+  "dblclick",
+  "focus",
+  "focusin",
+  "focusout",
+  "fullscreenchange",
+  "fullscreenerror",
+  "gotpointercapture",
+  "input",
+  "keydown",
+  "keyup",
+  "lostpointercapture",
+  "mousedown",
+  "mouseenter",
+  "mouseleave",
+  "mousemove",
+  "mouseout",
+  "mouseover",
+  "mouseup",
+  "paste",
+  "pointercancel",
+  "pointerdown",
+  "pointerenter",
+  "pointerleave",
+  "pointermove",
+  "pointerout",
+  "pointerover",
+  "pointerrawupdate",
+  "pointerup",
+  "scroll",
+  "scrollend",
+  "scrollsnapchange",
+  "scrollsnapchanging",
+  "securitypolicyviolation",
+  "touchcancel",
+  "touchend",
+  "touchmove",
+  "touchstart",
+  "transitioncancel",
+  "transitionend",
+  "transitionrun",
+  "transitionstart",
+  "webkitmouseforcechanged",
+  "webkitmouseforcedown",
+  "webkitmouseforceup",
+  "webkimouseforcewillbegin",
+  "wheel",
+
+  // HTMLElement
+  "beforetoggle",
+  "change",
+  "command",
+  "drag",
+  "dragend",
+  "dragenter",
+  "dragleave",
+  "dragover",
+  "dragstart",
+  "drop",
+  "error",
+  "load",
+  "toggle",
+
+  // HTMLInputElement
+  "cancel",
+  "invalid",
+  "search",
+  "select",
+  "selectionchange",
+
+  // HTMLFormElement
+  "formdata",
+  "reset",
+  "submit",
+];

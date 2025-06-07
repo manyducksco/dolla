@@ -101,7 +101,10 @@ function MessageStore(options, ctx) {
 }
 
 function App(props, ctx) {
-  const { message, setMessage } = ctx.provide(MessageStore);
+  // Provide a store for this and all child views.
+  ctx.addStore(MessageStore);
+
+  const { message, setMessage } = ctx.getStore(MessageStore);
   // Provides a MessageStore on this context and any child contexts.
   // When a store is provided its value is returned right away.
 
@@ -123,7 +126,7 @@ function App(props, ctx) {
 }
 
 function MessageView(props, ctx) {
-  const { message } = ctx.get(MessageStore);
+  const { message } = ctx.getStore(MessageStore);
   // Gets the nearest instance of MessageStore. In this case the one provided at the parent.
 
   return <span>{message}</span>;

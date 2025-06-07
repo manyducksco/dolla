@@ -71,7 +71,7 @@ export interface ElementProps {
   /**
    * HTML attributes to assign to the element.
    */
-  attributes?: OptionalProperty<Record<string, any>>;
+  // attributes?: OptionalProperty<Record<string, any>>;
 
   /**
    * Object of event listeners.
@@ -84,7 +84,7 @@ export interface ElementProps {
    * Class names in a class map will be applied to the element while their values are true. Also supports an
    * array of strings and class maps.
    *
-   * Alias of `className`.
+   * @alias className
    *
    * @example
    * <div class="one-class" />
@@ -105,6 +105,8 @@ export interface ElementProps {
    * Class names in a class map will be applied to the element while their values are true. Also supports an
    * array of strings and class maps.
    *
+   * @alias class
+   *
    * @example
    * <div className="one-class" />
    *
@@ -118,27 +120,43 @@ export interface ElementProps {
    */
   className?: OptionalProperty<ClassListValues>;
 
+  // TODO: elementTiming (experimental; Chrome-only?)
+
   /**
    * A unique string to identify this element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/id
    */
   id?: OptionalProperty<string>;
 
   /**
+   * Renders a string of HTML as the children of this element.
+   * Equivalent to setting `innerHTML` on a DOM element.
+   *
+   * `NOTE` This property does no sanitization. If it's in the string, it's in the DOM. Be mindful when handling user-generated content.
+   */
+  innerHTML?: OptionalProperty<string>;
+
+  /**
+   * Specifies the element's [WAI-ARIA role](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles).
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/role
+   */
+  role?: OptionalProperty<string>;
+
+  /**
    * Scroll position from the left (on the X axis), if this element is scrollable.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollLeft
    */
   scrollLeft?: OptionalProperty<number>;
 
   /**
    * Scroll position from the top (on the Y axis) if this element is scrollable.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollTop
    */
   scrollTop?: OptionalProperty<number>;
-
-  /**
-   * Enables or disables checking for spelling errors in an element's content.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/spellcheck
-   */
-  spellcheck?: OptionalProperty<boolean>;
 
   /**
    * Specifies whether an element's content should be translated when the page is localized.
@@ -168,6 +186,13 @@ export interface ElementProps {
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/slot
    */
   slot?: OptionalProperty<string>;
+
+  /**
+   * Enables or disables checking for spelling errors in an element's content.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/spellcheck
+   */
+  spellCheck?: OptionalProperty<boolean>;
 
   /**
    * Inline styles applied to the element. Can be passed as a string or as an object.
@@ -931,8 +956,6 @@ export interface HTMLElementProps extends ElementProps {
    * TODO: Add support. Currently experimental.
    */
   // popover?: never;
-
-  role?: OptionalProperty<string>;
 
   /**
    * This element's position in the tab order, or the order this element will be focused as the user cycles through elements with the tab key.
