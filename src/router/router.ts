@@ -3,7 +3,7 @@ import { createLogger } from "../core/logger.js";
 import { m, type MarkupNode } from "../core/markup.js";
 import { Dynamic } from "../core/nodes/dynamic.js";
 import { ViewInstance } from "../core/nodes/view.js";
-import { $, peek, Source, type UnsubscribeFn } from "../core/signals.js";
+import { $, untracked, Source, type UnsubscribeFn } from "../core/signals.js";
 import { assertObject, isArray, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { shallowEqual } from "../utils.js";
@@ -312,7 +312,7 @@ export class Router {
    * Updates query params, keeping existing ones and applying new ones. Removes the query param if value is set to `null`.
    */
   updateQuery(values: Record<string, Stringable | null>) {
-    const match = peek(this.#match)!;
+    const match = untracked(this.#match)!;
     const query = { ...this.$query() };
 
     for (const key in values) {
@@ -385,7 +385,7 @@ export class Router {
     }
 
     if (match) {
-      const oldPattern = peek(this.$pattern);
+      const oldPattern = untracked(this.$pattern);
 
       // Merge query params.
       let query = match.query;
@@ -423,7 +423,7 @@ export class Router {
     } else {
       // Only crash if routing has been configured.
       if (this.#isMounted) {
-        logger!.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
+        logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
       }
     }
 
@@ -435,6 +435,8 @@ export class Router {
    */
   #mountRoute(match: RouteMatch<RouteMeta>) {
     const layers = match.meta.layers!;
+
+    this.#logger.info("mounting", match);
 
     // Diff and update route layers.
     for (let i = 0; i < layers.length; i++) {
@@ -448,18 +450,22 @@ export class Router {
 
         const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
+        // Create a $slot and element for this layer.
         const $slot = $<MarkupNode>();
-        const element = new ViewInstance(parentLayer.context, matchedLayer.view, {}, [
-          m("$dynamic", { source: $slot }),
-        ]);
+        const element = new ViewInstance(parentLayer.context, matchedLayer.view, {
+          children: m("$dynamic", { source: $slot }),
+        });
 
-        parentLayer.$slot(element);
+        // Add new layer to activeLayers.
         this.#activeLayers.push({
           id: matchedLayer.id,
           element,
           context: element.context,
           $slot,
         });
+
+        // Slot this layer into parent $slot.
+        parentLayer.$slot(element);
       }
     }
   }

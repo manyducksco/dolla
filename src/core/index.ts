@@ -1,5 +1,5 @@
 // Signals
-export { $, effect, get, peek } from "./signals.js";
+export { $, effect, get, untracked } from "./signals.js";
 export type { MaybeSignal, Signal, Source } from "./signals.js";
 
 // Context
@@ -27,7 +27,7 @@ export { getEnv, setEnv } from "./env.js";
 
 // Logger
 export { createLogger, setLogFilter, setLogLevels } from "./logger.js";
-export type { Logger, LoggerErrorContext, LoggerOptions, LogLevels } from "./logger.js";
+export type { Logger, LoggerErrorProps as LoggerErrorContext, LoggerOptions, LogLevels } from "./logger.js";
 
 // Other types
 export type { View, Store, InputType, Renderable, Env } from "../types.js";

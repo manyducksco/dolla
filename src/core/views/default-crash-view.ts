@@ -1,4 +1,4 @@
-import { when, m } from "../markup.js";
+import { when, m, Markup } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.
@@ -26,36 +26,35 @@ export type CrashViewProps = {
 };
 
 export function DefaultCrashView(props: CrashViewProps) {
-  return m(
-    "div",
-    {
-      style: {
-        backgroundColor: "#880000",
-        color: "#fff",
-        padding: "2rem",
-        position: "fixed",
-        inset: 0,
-        fontSize: "20px",
-      },
+  return new Markup("div", {
+    style: {
+      backgroundColor: "#880000",
+      color: "#fff",
+      padding: "2rem",
+      position: "fixed",
+      inset: 0,
+      fontSize: "20px",
     },
-    m("h1", { style: { marginBottom: "0.5rem" } }, "The app has crashed"),
-    m(
-      "p",
-      { style: { marginBottom: "0.25rem" } },
-      m("span", { style: { fontFamily: "monospace" } }, props.loggerName),
-      when(
-        props.tag,
-        m(
-          "span",
-          { style: { fontFamily: "monospace", opacity: 0.5 } },
-          ` [${props.tagName ? `${props.tagName}: ` : ""}${props.tag}]`,
-        ),
-      ),
-      " says:",
-    ),
-    m(
-      "blockquote",
-      {
+    children: [
+      m("h1", { style: { marginBottom: "0.5rem" }, children: "The app has crashed" }),
+      m("p", {
+        style: { marginBottom: "0.25rem" },
+        children: [
+          m("span", {
+            style: { fontFamily: "monospace" },
+            children: props.loggerName,
+          }),
+          when(
+            props.tag,
+            m("span", {
+              style: { fontFamily: "monospace", opacity: 0.5 },
+              children: ` [${props.tagName ? `${props.tagName}: ` : ""}${props.tag}]`,
+            }),
+          ),
+          " says:",
+        ],
+      }),
+      m("blockquote", {
         style: {
           backgroundColor: "#991111",
           padding: "0.25em",
@@ -63,24 +62,23 @@ export function DefaultCrashView(props: CrashViewProps) {
           fontFamily: "monospace",
           marginBottom: "1rem",
         },
-      },
-      m(
-        "span",
-        {
-          style: {
-            display: "inline-block",
-            backgroundColor: "red",
-            padding: "0.1em 0.4em",
-            marginRight: "0.5em",
-            borderRadius: "4px",
-            fontSize: "0.9em",
-            fontWeight: "bold",
-          },
-        },
-        props.error.name,
-      ),
-      props.error.message,
-    ),
-    m("p", {}, "Please see the browser console for details."),
-  );
+        children: [
+          m("span", {
+            style: {
+              display: "inline-block",
+              backgroundColor: "red",
+              padding: "0.1em 0.4em",
+              marginRight: "0.5em",
+              borderRadius: "4px",
+              fontSize: "0.9em",
+              fontWeight: "bold",
+            },
+            children: props.error.name,
+          }),
+          props.error.message,
+        ],
+      }),
+      m("p", { children: "Please see the browser console for details." }),
+    ],
+  });
 }

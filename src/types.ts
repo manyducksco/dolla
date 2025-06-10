@@ -22,6 +22,10 @@ export type Renderable =
   | Signal<any>
   | (string | number | Node | Markup | MarkupNode | false | null | undefined | Signal<any>)[];
 
+export interface BaseProps {
+  children?: Renderable;
+}
+
 /**
  *
  */
@@ -136,6 +140,11 @@ export interface ElementProps {
    * `NOTE` This property does no sanitization. If it's in the string, it's in the DOM. Be mindful when handling user-generated content.
    */
   innerHTML?: OptionalProperty<string>;
+
+  /**
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/popover
+   */
+  popover?: OptionalProperty<"auto" | "hint" | "manual" | true | false>;
 
   /**
    * Specifies the element's [WAI-ARIA role](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Roles).

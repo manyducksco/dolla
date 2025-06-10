@@ -1,7 +1,7 @@
 import { isArray } from "../../typeChecking.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes, type MarkupNode } from "../markup.js";
-import { effect, peek, Signal, type UnsubscribeFn } from "../signals.js";
+import { effect, untracked, Signal, type UnsubscribeFn } from "../signals.js";
 import { IS_MARKUP_NODE } from "../symbols.js";
 
 /**
@@ -21,27 +21,26 @@ export class Dynamic implements MarkupNode {
   private $slot: Signal<any>;
   private unsubscribe?: UnsubscribeFn;
 
-  get isMounted() {
-    return this.root.parentNode != null;
-  }
-
   constructor(context: Context, $slot: Signal<any>) {
     this.context = context;
     this.$slot = $slot;
   }
 
+  isMounted() {
+    return this.root.parentElement != null;
+  }
+
   mount(parent: Node, after?: Node) {
-    if (!this.isMounted) {
+    if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
         try {
           const content = this.$slot();
-          peek(() => {
+          untracked(() => {
             this.update(isArray(content) ? content : [content]);
           });
         } catch (error) {
-          this.context.error(error);
           this.context.crash(error as Error);
         }
       });
@@ -51,30 +50,46 @@ export class Dynamic implements MarkupNode {
   unmount(parentIsUnmounting = false) {
     this.unsubscribe?.();
 
-    if (this.isMounted) {
+    if (this.isMounted()) {
       this.cleanup(parentIsUnmounting);
       this.root.parentNode?.removeChild(this.root);
     }
   }
 
+  move(parent: Element, after?: Node) {
+    if ("moveBefore" in parent) {
+      try {
+        (parent as any).moveBefore(this.root, after?.nextSibling ?? null);
+        for (let i = 0; i < this.children.length; i++) {
+          this.children[i].move(parent, this.children[i - 1]?.root ?? this.root);
+        }
+        (parent as any).moveBefore(this.root, this.children.at(-1)?.root?.nextSibling ?? null);
+      } catch {
+        this.mount(parent, after);
+      }
+    } else {
+      this.mount(parent, after);
+    }
+  }
+
   private cleanup(parentIsUnmounting: boolean) {
     for (const element of this.children) {
-      element.unmount(parentIsUnmounting);
+      if (element.isMounted()) element.unmount(parentIsUnmounting);
     }
-    this.children = [];
+    this.children.length = 0;
   }
 
   private update(content: any[]) {
     this.cleanup(false);
 
-    if (content.length === 0 || !this.isMounted) return;
+    if (content.length === 0 || !this.isMounted()) return;
 
-    const elements = toMarkupNodes(this.context, content);
+    const nodes = toMarkupNodes(this.context, content);
 
-    for (const element of elements) {
+    for (const node of nodes) {
       const previous = this.children.at(-1)?.root || this.root;
-      element.mount(this.root.parentNode!, previous);
-      this.children.push(element);
+      node.mount(this.root.parentElement!, previous);
+      this.children.push(node);
     }
 
     this.moveMarker();
@@ -84,10 +99,10 @@ export class Dynamic implements MarkupNode {
    * Move marker node to end of children.
    */
   private moveMarker() {
-    const parent = this.root.parentNode!;
+    const parent = this.root.parentElement!;
     const lastChildNextSibling = this.children.at(-1)?.root?.nextSibling ?? null;
     if ("moveBefore" in parent) {
-      (parent.moveBefore as any)(this.root, lastChildNextSibling);
+      (parent as any).moveBefore(this.root, lastChildNextSibling);
     } else {
       parent.insertBefore(this.root, lastChildNextSibling);
     }

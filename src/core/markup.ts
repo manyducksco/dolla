@@ -17,7 +17,7 @@ import { IS_MARKUP_NODE } from "./symbols.js";
 /**
  * Markup is a set of element metadata that hasn't been constructed into a MarkupElement yet.
  */
-export class Markup<P extends Record<any, any> = Record<any, any>> {
+export class Markup<P = any> {
   /**
    * In the case of a view, type will be the View function itself. It can also hold an identifier for special nodes like "$cond", "$repeat", etc.
    * DOM nodes can be created by name, such as HTML elements like "div", "ul" or "span", SVG elements like ""
@@ -26,18 +26,13 @@ export class Markup<P extends Record<any, any> = Record<any, any>> {
 
   /**
    * Data that will be passed to a new MarkupNode instance when it is constructed.
+   * Includes a `children` prop if children were passed.
    */
   props;
 
-  /**
-   *
-   */
-  children;
-
-  constructor(type: string | View<P>, props?: P, ...children: Renderable[]) {
+  constructor(type: string | View<P>, props?: P) {
     this.type = type;
     this.props = props;
-    this.children = children;
   }
 }
 
@@ -53,17 +48,22 @@ export interface MarkupNode {
   /**
    *
    */
-  readonly isMounted: boolean;
+  isMounted(): boolean;
 
   /**
    *
    */
-  mount(parent: Node, after?: Node): void;
+  mount(parent: Element, after?: Node): void;
 
   /**
    *
    */
   unmount(parentIsUnmounting?: boolean): void;
+
+  /**
+   * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
+   */
+  move(parent: Element, after?: Node): void;
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {
@@ -93,19 +93,19 @@ export interface MarkupProps {
   };
   [MarkupType.Portal]: {
     content: Renderable;
-    parent: Node;
+    parent: Element;
   };
 
   [tag: string]: Record<string, any>;
 }
 
-export function m<T extends keyof MarkupProps>(type: T, props: MarkupProps[T], ...children: Renderable[]): Markup;
+export function m<T extends keyof MarkupProps>(type: T, props: MarkupProps[T]): Markup;
 
-export function m<P extends {}>(type: View<P>, props?: P, ...children: Renderable[]): Markup;
-export function m<P>(type: View<P>, props: P, ...children: any[]): Markup;
+export function m<P extends {}>(type: View<P>, props?: P): Markup;
+export function m<P>(type: View<P>, props: P): Markup;
 
-export function m<P>(type: string | View<P>, props?: P, ...children: any[]) {
-  return new Markup(type, props as any, ...children);
+export function m(type: string | View<any>, props?: any) {
+  return new Markup(type, props ?? {});
 }
 
 /*===========================*\
@@ -148,7 +148,7 @@ export function repeat<T>(items: MaybeSignal<T[]>, key: KeyFn<T>, render: Render
 /**
  * Renders `content` into a `parent` node anywhere in the page, rather than its usual position in the view.
  */
-export function portal(parent: Node, content: Renderable): Markup {
+export function portal(parent: Element, content: Renderable): Markup {
   return m(MarkupType.Portal, { parent, content });
 }
 
@@ -183,7 +183,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
 
     if (item instanceof Markup) {
       if (isFunction(item.type)) {
-        elements.push(new ViewInstance(context, item.type as View<any>, item.props, item.children));
+        elements.push(new ViewInstance(context, item.type as View<any>, item.props));
         continue;
       } else if (isString(item.type)) {
         switch (item.type) {
@@ -214,7 +214,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
           }
           default:
             // Handle type as an HTML tag.
-            elements.push(new HTML(context, item.type, item.props ?? {}, item.children));
+            elements.push(new HTML(context, item.type, item.props));
             continue;
         }
       } else {

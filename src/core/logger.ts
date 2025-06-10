@@ -2,7 +2,7 @@ import { isString } from "../typeChecking.js";
 import type { Env } from "../types.js";
 import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
 import { getEnv } from "./env.js";
-import { get, peek, type MaybeSignal } from "./signals.js";
+import { get, untracked, type MaybeSignal } from "./signals.js";
 
 export interface LogLevels {
   info: boolean | Env;
@@ -36,7 +36,7 @@ export interface LoggerOptions {
   console?: any;
 }
 
-export interface LoggerErrorContext {
+export interface LoggerErrorProps {
   error: Error;
   loggerName: string;
   tag?: string;
@@ -50,9 +50,10 @@ let levels: LogLevels = {
   error: true,
 };
 let match: MatcherFunction = createMatcher("*,-dolla.*");
-let crashListeners: ((context: LoggerErrorContext) => void)[] = [];
+let crashListeners: ((context: LoggerErrorProps) => void)[] = [];
+let isCrashed = false;
 
-export function onLoggerCrash(listener: (context: LoggerErrorContext) => void) {
+export function onLoggerCrash(listener: (context: LoggerErrorProps) => void) {
   crashListeners.push(listener);
 
   return function cancel() {
@@ -64,7 +65,7 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
   const _console = options?.console ?? _getDefaultConsole();
 
   const bind = (method: keyof LogLevels) => {
-    let _name = peek(name);
+    let _name = untracked(name);
     if (levels[method] === false || (isString(levels[method]) && levels[method] !== getEnv()) || !match(_name)) {
       return noOp;
     } else {
@@ -103,15 +104,20 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
       return bind("error");
     },
     crash(error: Error) {
-      const ctx: LoggerErrorContext = {
-        error,
-        loggerName: get(name),
-        tag: options?.tag,
-        tagName: options?.tagName,
-      };
+      if (!isCrashed) {
+        isCrashed = true;
+        const ctx: LoggerErrorProps = {
+          error,
+          loggerName: get(name),
+          tag: options?.tag,
+          tagName: options?.tagName,
+        };
 
-      for (const listener of crashListeners) {
-        listener(ctx);
+        for (const listener of crashListeners) {
+          listener(ctx);
+        }
+
+        throw error;
       }
 
       return error;

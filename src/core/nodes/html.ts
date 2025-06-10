@@ -1,6 +1,6 @@
 import { isArray, isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit } from "../../utils.js";
-import { Context, LifecycleEvent } from "../context.js";
+import { Context } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes, type MarkupNode } from "../markup.js";
 import { effect, get, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
@@ -16,11 +16,14 @@ const IS_SVG = Symbol("HTML.isSVG");
 export class HTML implements MarkupNode {
   [IS_MARKUP_NODE] = true;
 
-  root;
+  root?: HTMLElement | SVGElement;
 
+  private parentContext: Context;
   private context: Context;
-  private props: Record<string, any>;
-  private children?: any[];
+
+  tag;
+  props: Record<string, any>;
+
   private childNodes: MarkupNode[] = [];
   private unsubscribers: UnsubscribeFn[] = [];
 
@@ -30,12 +33,12 @@ export class HTML implements MarkupNode {
   // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
   private canClickAway = false;
 
-  get isMounted() {
-    return this.root.parentNode != null;
-  }
+  constructor(context: Context, tag: string, props: Record<string, any>) {
+    this.parentContext = context;
+    this.tag = tag;
+    this.props = props;
 
-  constructor(context: Context, tag: string, props: Record<string, any>, children?: any[]) {
-    this.context = Context.linked(context, tag);
+    this.context = Context.linked(this.parentContext, getLoggerName.bind(this));
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
@@ -51,11 +54,30 @@ export class HTML implements MarkupNode {
 
     // Add view name as a data attribute in development mode for better debugging.
     if (getEnv() === "development") {
-      const view = this.context.getState<ViewInstance<unknown> | null>(VIEW, null);
+      const view = this.context.getState<ViewInstance<any> | null>(VIEW, null);
       if (view) {
         this.root.dataset.view = view.context.getName();
       }
     }
+
+    if (props.mixin) {
+      const mixins = isArray(props.mixin) ? props.mixin : [props.mixin];
+      for (const fn of mixins) {
+        fn(
+          this.root,
+          Context.linked(this.context, getLoggerName.bind(this), {
+            bindLifecycleToParent: true,
+            logger: { tagName: fn.name === "mixin" ? undefined : "mixin", tag: fn.name },
+          }),
+        );
+      }
+    }
+
+    const classes = props.className ?? props.class;
+
+    this.applyProps(this.root!, omit(["class", "className", "ref", "mixin", "children"], props));
+    if (props.style) this.applyStyles(this.root, props.style, this.unsubscribers);
+    if (classes) this.applyClasses(this.root, classes, this.unsubscribers);
 
     if (props.ref) {
       if (isFunction(props.ref)) {
@@ -66,84 +88,71 @@ export class HTML implements MarkupNode {
       }
     }
 
-    if (props.mixin) {
-      const mixins = isArray(props.mixin) ? props.mixin : [props.mixin];
-      for (const fn of mixins) {
-        fn(
-          this.root,
-          Context.linked(this.context, () => getLoggerName(this), {
-            bindLifecycleToParent: true,
-            logger: { tagName: fn.name === "mixin" ? undefined : "mixin", tag: fn.name },
-          }),
-        );
-      }
+    if (props.children) {
+      this.childNodes = toMarkupNodes(this.context, props.children);
     }
+  }
 
-    this.props = {
-      ...omit(["ref", "mixin", "class", "className"], props),
-      class: props.className ?? props.class,
-    };
-    this.children = children;
+  isMounted() {
+    return this.context.isMounted;
+    // return this.root?.parentNode != null;
   }
 
   mount(parent: Node, after?: Node) {
-    if (parent == null) {
-      throw new Error(`HTML element requires a parent element as the first argument to connect. Got: ${parent}`);
-    }
-
-    const wasMounted = this.isMounted;
+    const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      Context.emit(LifecycleEvent.WILL_MOUNT, this.context);
-
-      if (this.children && this.children.length > 0) {
-        this.childNodes = toMarkupNodes(this.context, this.children);
-      }
+      Context.willMount(this.context);
 
       for (let i = 0; i < this.childNodes.length; i++) {
         const child = this.childNodes[i];
         const previous = i > 0 ? this.childNodes[i - 1].root : undefined;
-        child.mount(this.root, previous);
+        child.mount(this.root!, previous);
       }
-
-      this.applyProps(this.root, this.props);
-      if (this.props.style) this.applyStyles(this.root, this.props.style, this.unsubscribers);
-      if (this.props.class) this.applyClasses(this.root, this.props.class, this.unsubscribers);
     }
 
-    parent.insertBefore(this.root, after?.nextSibling ?? null);
+    parent.insertBefore(this.root!, after?.nextSibling ?? null);
 
-    queueMicrotask(() => {
-      this.canClickAway = true;
+    this.canClickAway = true;
 
-      if (!wasMounted) Context.emit(LifecycleEvent.DID_MOUNT, this.context);
-    });
+    if (!wasMounted) Context.didMount(this.context);
   }
 
   unmount(parentIsUnmounting = false) {
-    if (this.isMounted) {
-      Context.emit(LifecycleEvent.WILL_UNMOUNT, this.context);
+    Context.willUnmount(this.context);
 
-      if (!parentIsUnmounting) {
-        this.root.parentNode?.removeChild(this.root);
+    if (!parentIsUnmounting) {
+      this.root!.parentNode?.removeChild(this.root!);
+    }
+
+    for (const child of this.childNodes) {
+      child.unmount(true);
+    }
+
+    this.canClickAway = false;
+
+    for (const unsubscribe of this.unsubscribers) {
+      unsubscribe();
+    }
+    this.unsubscribers.length = 0;
+
+    if (this.ref) {
+      this.ref(undefined);
+    }
+
+    Context.didUnmount(this.context);
+    Context.dispose(this.context);
+  }
+
+  move(parent: Element, after?: Node) {
+    if ("moveBefore" in parent) {
+      try {
+        (parent as any).moveBefore(this.root!, after?.nextSibling ?? null);
+      } catch {
+        this.mount(parent, after);
       }
-
-      for (const child of this.childNodes) {
-        child.unmount(true);
-      }
-
-      this.canClickAway = false;
-
-      for (const unsubscribe of this.unsubscribers) {
-        unsubscribe();
-      }
-      this.unsubscribers.length = 0;
-
-      if (this.ref) {
-        this.ref(undefined);
-      }
-
-      Context.emit(LifecycleEvent.DID_UNMOUNT, this.context);
+    } else {
+      this.mount(parent, after);
     }
   }
 
@@ -154,8 +163,8 @@ export class HTML implements MarkupNode {
           try {
             callback((value as Signal<T>)());
           } catch (error) {
-            this.context.error(error);
-            this.context.crash(error as Error);
+            this.context!.error(error);
+            this.context!.crash(error as Error);
           }
         }),
       );
@@ -165,6 +174,8 @@ export class HTML implements MarkupNode {
   }
 
   private applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
+    const context = this.context!;
+
     for (const key in props) {
       const value = props[key];
 
@@ -210,7 +221,7 @@ export class HTML implements MarkupNode {
           }
         });
       } else if (!privateProps.includes(key)) {
-        if (this.context.getState(IS_SVG, false)) {
+        if (context.getState(IS_SVG, false)) {
           this.attachProp(value, (current) => {
             if (current != null) {
               element.setAttribute(key, String(props[key]));
@@ -489,13 +500,14 @@ function getStyleMap(styles: unknown) {
   return mapped;
 }
 
-function getLoggerName(html: HTML) {
-  let name = html.root.tagName.toLowerCase();
-  if (html.root.id) {
-    name += `#${html.root.id}`;
+function getLoggerName(this: HTML) {
+  if (this.root == null) return this.tag;
+  let name = this.root.tagName.toLowerCase();
+  if (this.root.id) {
+    name += `#${this.root.id}`;
   }
-  if (html.root.classList.length > 0) {
-    for (const className of html.root.classList.values()) {
+  if (this.root.classList.length > 0) {
+    for (const className of this.root.classList.values()) {
       name += `.${className}`;
     }
   }

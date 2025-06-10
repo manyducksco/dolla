@@ -15,28 +15,30 @@ export class Portal implements MarkupNode {
 
   private element?: MarkupNode;
 
-  get isMounted() {
-    if (!this.element) {
-      return false;
-    }
-    return this.element.isMounted;
-  }
-
-  constructor(context: Context, content: Renderable, parent: Node) {
+  constructor(context: Context, content: Renderable, parent: Element) {
     this.context = context;
     this.content = content;
     this.parent = parent;
   }
 
-  mount(_parent: Node, _after?: Node) {
+  isMounted() {
+    if (!this.element) {
+      return false;
+    }
+    return this.element.isMounted();
+  }
+
+  mount(_parent: Element, _after?: Node) {
     this.element = render(this.content, this.context);
     this.element.mount(this.parent);
   }
 
   unmount(parentIsUnmounting = false) {
-    if (this.element?.isMounted) {
+    if (this.element?.isMounted()) {
       // Portals MUST unmount DOM nodes because they won't be removed by parents unmounting.
       this.element.unmount(false);
     }
   }
+
+  move(_parent: Element, _after?: Node) {}
 }

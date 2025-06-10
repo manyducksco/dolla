@@ -1,20 +1,16 @@
-import { m } from "./core/markup";
+import { m, Markup } from "./core/markup";
 export { Fragment } from "./core/views/fragment";
 
 export function jsxDEV(element, props, key, isStaticChildren, source, self) {
-  const attributes = { ...omit(["children", "key"], props) };
-  const children = Array.isArray(props.children) ? props.children : [props.children];
-
-  // return new _Markup(element, attributes, children);
-  return m(element, attributes, ...children);
+  return new Markup(element, key != null ? { ...props, key } : props);
 }
 
-function omit(keys, object) {
-  const result = {};
-  for (const key in object) {
-    if (!keys.includes(key)) {
-      result[key] = object[key];
-    }
-  }
-  return result;
-}
+// function omit(keys, object) {
+//   const result = {};
+//   for (const key in object) {
+//     if (!keys.includes(key)) {
+//       result[key] = object[key];
+//     }
+//   }
+//   return result;
+// }

@@ -1,16 +1,17 @@
 import { MOUNT, Router, UNMOUNT } from "../router/router";
 import { assertInstanceOf } from "../typeChecking";
 import type { View } from "../types";
-import { Context, LifecycleEvent } from "./context";
-import { type LoggerErrorContext, onLoggerCrash } from "./logger";
-import { m, type MarkupNode, render } from "./markup";
+import { Context } from "./context";
+import { type LoggerErrorProps, onLoggerCrash } from "./logger";
+import { type MarkupNode } from "./markup";
+import { ViewInstance } from "./nodes/view";
 import { DefaultCrashView } from "./views/default-crash-view";
 
 let isMounted = false;
 
 export type UnmountFn = () => Promise<void>;
 export interface MountOptions {
-  crashView?: View<LoggerErrorContext>;
+  crashView?: View<LoggerErrorProps>;
 
   /**
    * An existing Context to use as the root, otherwise a new one will be created.
@@ -35,34 +36,34 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
 
   const rootContext = options?.context ?? new Context("App");
 
-  onLoggerCrash((ctx) => {
+  onLoggerCrash((props) => {
     if (isMounted) {
       unmount();
     }
 
     // Mount the crash page
-    render(m(crashView, ctx), rootContext).mount(rootElement);
+    new ViewInstance(rootContext, crashView, props).mount(rootElement);
   });
 
-  Context.emit(LifecycleEvent.WILL_MOUNT, rootContext);
+  Context.willMount(rootContext);
 
   if (view instanceof Router) {
     router = view;
     rootView = await router[MOUNT](rootElement, rootContext);
   } else {
     // First, initialize the root view. The router store needs this to connect the initial route.
-    rootView = render(m(view), rootContext);
+    rootView = new ViewInstance(rootContext, view, {});
   }
 
   rootView.mount(rootElement);
   isMounted = true;
 
-  Context.emit(LifecycleEvent.DID_MOUNT, rootContext);
+  Context.didMount(rootContext);
 
   async function unmount() {
     if (!isMounted) return;
 
-    Context.emit(LifecycleEvent.WILL_UNMOUNT, rootContext);
+    Context.willUnmount(rootContext);
 
     rootView.unmount(false);
 
@@ -72,7 +73,7 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
 
     isMounted = false;
 
-    Context.emit(LifecycleEvent.DID_UNMOUNT, rootContext);
+    Context.didUnmount(rootContext);
   }
 
   return unmount;

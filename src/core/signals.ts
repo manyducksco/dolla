@@ -1,203 +1,257 @@
-import { createReactiveSystem, type Dependency, type Subscriber, SubscriberFlags } from "alien-signals";
+import type { ReactiveFlags, ReactiveNode } from "alien-signals";
+import { createReactiveSystem } from "alien-signals/system";
 import { isFunction } from "../typeChecking";
+import { strictEqual } from "../utils";
 
-export interface Effect extends Subscriber, Dependency {
-  /**
-   * Effect function. Can return an optional cleanup callback to be invoked before the next fn() call.
-   */
-  fn(): (() => void) | void;
+const enum EffectFlags {
+  Queued = 1 << 6,
+}
 
+interface EffectScope extends ReactiveNode {}
+
+interface Effect extends ReactiveNode {
+  fn(): void | (() => void);
   cleanup?: () => void;
 }
 
-export interface Computed<T = any> extends Value<T | undefined>, Subscriber {
-  getter: (cachedValue?: T) => T;
+interface ComputedGetterState<T> {
+  value?: T;
+}
+
+interface Computed<T = any> extends ReactiveNode {
+  value: T | undefined;
+  getter: (this: ComputedGetterState<T>) => T;
   equals: EqualityFn<T>;
 }
 
-export interface Value<T = any> extends Dependency {
-  current: T;
+interface Value<T = any> extends ReactiveNode {
+  previousValue: T;
+  value: T;
+  equals: EqualityFn<T>;
 }
 
-export const {
-  link,
-  propagate,
-  updateDirtyFlag,
-  startTracking,
-  endTracking,
-  processEffectNotifications,
-  processComputedUpdate,
-  processPendingInnerEffects,
-} = createReactiveSystem({
-  updateComputed(c: Computed): boolean {
-    const prevSub = activeSub;
-    activeSub = c;
-    startTracking(c);
-    try {
-      const oldValue = c.current;
-      const newValue = c.getter(oldValue);
-      if (!c.equals(oldValue, newValue)) {
-        c.current = newValue;
-        return true;
-      }
-      return false;
-    } finally {
-      activeSub = prevSub;
-      endTracking(c);
+const queuedEffects: (Effect | EffectScope | undefined)[] = [];
+const { link, unlink, propagate, checkDirty, endTracking, startTracking, shallowPropagate } = createReactiveSystem({
+  update(signal: Value | Computed): boolean {
+    if ("getter" in signal) {
+      return updateComputed(signal);
+    } else {
+      return updateSignal(signal, signal.value);
     }
   },
-  notifyEffect(e: Effect) {
-    const flags = e.flags;
-    if (flags & SubscriberFlags.Dirty || (flags & SubscriberFlags.PendingComputed && updateDirtyFlag(e, flags))) {
-      queueEffect(e);
-    } else {
-      processPendingInnerEffects(e, e.flags);
+  notify,
+  unwatched(node: Value | Computed | Effect | EffectScope) {
+    if ("getter" in node) {
+      let toRemove = node.deps;
+      if (toRemove !== undefined) {
+        node.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+        do {
+          toRemove = unlink(toRemove, node);
+        } while (toRemove !== undefined);
+      }
+    } else if (!("previousValue" in node)) {
+      _effect.call(node);
     }
-    return true;
   },
 });
 
-function _createSource<T>(initialValue: T, options?: SignalOptions<T>): Source<T> {
-  const value: Value<T> = {
-    current: initialValue,
-    subs: undefined,
-    subsTail: undefined,
-  };
-  const equals = options?.equals ?? Object.is;
-  const signal: Signal<any> = function () {
-    if (arguments.length > 0) {
-      let next = arguments[0] as T;
+let batchDepth = 0;
 
-      if (typeof next === "function") {
-        next = next(value.current);
-      }
+let notifyIndex = 0;
+let queuedEffectsLength = 0;
+let activeSub: ReactiveNode | undefined;
+let activeScope: EffectScope | undefined;
 
-      if (!equals(value.current, next)) {
-        value.current = next;
-        const subs = value.subs;
-        if (subs !== undefined) {
-          propagate(subs);
-          processEffectNotifications();
-        }
-      }
-    } else {
-      if (activeSub !== undefined) {
-        link(value, activeSub);
-      }
-      return value.current;
-    }
-  };
-  (signal as any)._type = SOURCE;
-
-  return signal;
+function getCurrentSub(): ReactiveNode | undefined {
+  return activeSub;
 }
 
-function _createSignal<T>(fn: (cachedValue?: T) => T, options?: SignalOptions<T>): Signal<T> {
-  if (isFunction(fn) && (fn as any)._type === SIGNAL) {
-    if ((fn as any)._type === SOURCE) {
-      return (() => fn()) as Signal<T>;
+function setCurrentSub(sub: ReactiveNode | undefined) {
+  const prevSub = activeSub;
+  activeSub = sub;
+  return prevSub;
+}
+
+// function getCurrentScope(): EffectScope | undefined {
+//   return activeScope;
+// }
+
+// function setCurrentScope(scope: EffectScope | undefined) {
+//   const prevScope = activeScope;
+//   activeScope = scope;
+//   return prevScope;
+// }
+
+// export function effectScope(fn: () => void): () => void {
+//   const e: EffectScope = {
+//     deps: undefined,
+//     depsTail: undefined,
+//     subs: undefined,
+//     subsTail: undefined,
+//     flags: 0 satisfies ReactiveFlags.None,
+//   };
+//   if (activeScope !== undefined) {
+//     link(e, activeScope);
+//   }
+//   const prevSub = setCurrentSub(undefined);
+//   const prevScope = setCurrentScope(e);
+//   try {
+//     fn();
+//   } finally {
+//     setCurrentScope(prevScope);
+//     setCurrentSub(prevSub);
+//   }
+//   return effectOper.bind(e);
+// }
+
+function updateComputed(c: Computed): boolean {
+  const prevSub = setCurrentSub(c);
+  startTracking(c);
+  try {
+    const oldValue = c.value;
+    const state: ComputedGetterState<any> = { value: c.value };
+    // return oldValue !== (c.value = c.getter.call(state));
+    return !c.equals(oldValue, (c.value = c.getter.call(state)));
+  } finally {
+    setCurrentSub(prevSub);
+    endTracking(c);
+  }
+}
+
+function updateSignal(s: Value, value: any): boolean {
+  s.flags = 1 satisfies ReactiveFlags.Mutable;
+  // return s.previousValue !== (s.previousValue = value);
+  return !s.equals(s.previousValue, (s.previousValue = value));
+}
+
+function notify(e: Effect | EffectScope) {
+  const flags = e.flags;
+  if (!(flags & EffectFlags.Queued)) {
+    e.flags = flags | EffectFlags.Queued;
+    const subs = e.subs;
+    if (subs !== undefined) {
+      notify(subs.sub as Effect | EffectScope);
     } else {
-      return fn as Signal<T>;
+      queuedEffects[queuedEffectsLength++] = e;
     }
   }
+}
 
-  const computed: Computed<T> = {
-    current: undefined,
-    equals: options?.equals ?? Object.is,
-    subs: undefined,
-    subsTail: undefined,
-    deps: undefined,
-    depsTail: undefined,
-    flags: SubscriberFlags.Computed | SubscriberFlags.Dirty,
-    getter: (cachedValue?: T) => {
-      const returned = fn(cachedValue);
+function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
+  if (
+    flags & (16 satisfies ReactiveFlags.Dirty) ||
+    (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(e.deps!, e))
+  ) {
+    const prev = setCurrentSub(e);
+    startTracking(e);
+    try {
+      if ("cleanup" in e && e.cleanup !== undefined) {
+        e.cleanup();
+      }
+      const result = (e as Effect).fn();
+      if ("cleanup" in e && isFunction(result)) {
+        e.cleanup = result;
+      }
+    } finally {
+      setCurrentSub(prev);
+      endTracking(e);
+    }
+    return;
+  } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
+    e.flags = flags & ~(32 satisfies ReactiveFlags.Pending);
+  }
+  let link = e.deps;
+  while (link !== undefined) {
+    const dep = link.dep;
+    const depFlags = dep.flags;
+    if (depFlags & EffectFlags.Queued) {
+      run(dep, (dep.flags = depFlags & ~EffectFlags.Queued));
+    }
+    link = link.nextDep;
+  }
+}
 
-      // If a signal is returned, track it and return its value.
-      return get(returned);
-    },
-  };
-  const signal: Signal<T> = function () {
-    if (arguments.length > 0) {
-      throw new Error("Signals cannot be set as their values are derived from the sources they depend on.");
+function flush(): void {
+  while (notifyIndex < queuedEffectsLength) {
+    const effect = queuedEffects[notifyIndex]!;
+    queuedEffects[notifyIndex++] = undefined;
+    run(effect, (effect.flags &= ~EffectFlags.Queued));
+  }
+  notifyIndex = 0;
+  queuedEffectsLength = 0;
+}
+
+function _computed<T>(this: Computed<T>): T {
+  const flags = this.flags;
+  if (
+    flags & (16 satisfies ReactiveFlags.Dirty) ||
+    (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(this.deps!, this))
+  ) {
+    if (updateComputed(this)) {
+      const subs = this.subs;
+      if (subs !== undefined) {
+        shallowPropagate(subs);
+      }
+    }
+  } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
+    this.flags = flags & ~(32 satisfies ReactiveFlags.Pending);
+  }
+  if (activeSub !== undefined) {
+    link(this, activeSub);
+  } else if (activeScope !== undefined) {
+    link(this, activeScope);
+  }
+  return this.value!;
+}
+
+function _source<T>(this: Value<T>, ...value: [T]): T | void {
+  if (value.length) {
+    let newValue = value[0];
+    if (isFunction(newValue)) {
+      newValue = get(newValue(this.value)) as T;
+    }
+    if (!this.equals(this.value, newValue)) {
+      this.value = newValue;
+      this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+      const subs = this.subs;
+      if (subs !== undefined) {
+        propagate(subs);
+        if (!batchDepth) {
+          flush();
+        }
+      }
+    }
+  } else {
+    const value = this.value;
+    if (this.flags & (16 satisfies ReactiveFlags.Dirty)) {
+      if (updateSignal(this, value)) {
+        const subs = this.subs;
+        if (subs !== undefined) {
+          shallowPropagate(subs);
+        }
+      }
     }
     if (activeSub !== undefined) {
-      link(computed, activeSub);
+      link(this, activeSub);
     }
-    const flags = computed.flags;
-    if (flags & (SubscriberFlags.Dirty | SubscriberFlags.PendingComputed)) {
-      processComputedUpdate(computed, flags);
-    }
-    return computed.current!;
-  };
-  (signal as any)._type = SIGNAL;
-
-  return signal;
-}
-
-/*===================================*\
-||        EFFECTS & TRACKING         ||
-\*===================================*/
-
-export let activeSub: Subscriber | undefined;
-
-const PENDING_EFFECTS: Effect[] = [];
-
-let flushPending = false;
-
-function flushEffects(): void {
-  if (!flushPending) {
-    flushPending = true;
-
-    queueMicrotask(() => {
-      flushPending = false;
-      for (let i = 0; i < PENDING_EFFECTS.length; i++) {
-        const e = PENDING_EFFECTS[i];
-        const prevSub = activeSub;
-        activeSub = e;
-        startTracking(e);
-        try {
-          if (e.cleanup) {
-            pauseTracking();
-            e.cleanup();
-            resumeTracking();
-          }
-          e.cleanup = e.fn() ?? undefined;
-        } finally {
-          activeSub = prevSub;
-          endTracking(e);
-        }
-      }
-      PENDING_EFFECTS.length = 0;
-    });
+    return value;
   }
 }
 
-export function queueEffect(e: Effect) {
-  PENDING_EFFECTS.push(e);
-  flushEffects();
-}
+function _effect(this: Effect | EffectScope): void {
+  let dep = this.deps;
+  while (dep !== undefined) {
+    dep = unlink(dep, this);
+  }
+  const sub = this.subs;
+  if (sub !== undefined) {
+    unlink(sub);
+  }
+  this.flags = 0 satisfies ReactiveFlags.None;
 
-export function stopEffect(this: Effect): void {
-  startTracking(this);
-  endTracking(this);
-  // Cancel it after it receives its current value.
-  queueMicrotask(() => {
-    PENDING_EFFECTS.splice(PENDING_EFFECTS.indexOf(this), 1);
-    if (this.cleanup) {
-      this.cleanup();
-    }
-  });
-}
-
-const pauseStack: (Subscriber | undefined)[] = [];
-
-export function pauseTracking() {
-  pauseStack.push(activeSub);
-  activeSub = undefined;
-}
-
-export function resumeTracking() {
-  activeSub = pauseStack.pop();
+  if ("cleanup" in this && this.cleanup != null) {
+    this.cleanup();
+  }
 }
 
 /*===================================*\
@@ -241,12 +295,22 @@ export function isSource<T>(value: MaybeSignal<T>): value is Source<T> {
   return isFunction(value) && (value as any)._type === SOURCE;
 }
 
-export function peek<T>(value: MaybeSignal<T>) {
-  let result: T;
-  pauseTracking();
-  result = get(value);
-  resumeTracking();
-  return result;
+export function batch(fn: () => void) {
+  ++batchDepth;
+  fn();
+  if (!--batchDepth) flush();
+}
+
+export function untracked<T>(value: MaybeSignal<T>): T {
+  if (isFunction(value)) {
+    let result: T;
+    const pausedSub = setCurrentSub(undefined);
+    result = value();
+    setCurrentSub(pausedSub);
+    return result;
+  } else {
+    return value;
+  }
 }
 
 export function get<T>(value: MaybeSignal<T>) {
@@ -278,26 +342,51 @@ export function effect(fn: EffectFn): UnsubscribeFn {
     subsTail: undefined,
     deps: undefined,
     depsTail: undefined,
-    flags: SubscriberFlags.Effect,
+    flags: 2 satisfies ReactiveFlags.Watching,
   };
   if (activeSub !== undefined) {
     link(e, activeSub);
+  } else if (activeScope !== undefined) {
+    link(e, activeScope);
   }
-  queueEffect(e);
-  return stopEffect.bind(e);
+  const prev = setCurrentSub(e);
+  try {
+    e.cleanup?.();
+    const result = e.fn();
+    e.cleanup = isFunction(result) ? result : undefined;
+  } finally {
+    setCurrentSub(prev);
+  }
+  return _effect.bind(e);
 }
 
-export function $<T>(compute: () => MaybeSignal<T>, options?: SignalOptions<T>): Signal<T>;
+export function $<T>(compute: (previousValue: T) => MaybeSignal<T>, options?: SignalOptions<T>): Signal<T>;
 export function $<T>(value: T, options?: SignalOptions<T>): Source<T>;
 export function $<T>(value: undefined, options?: SignalOptions<T>): Source<T | undefined>;
 export function $<T>(): Source<T | undefined>;
 
-export function $<T>(init?: (() => T) | T, options?: SignalOptions<T>) {
+export function $<T>(init?: ((previousValue: T) => MaybeSignal<T>) | T, options?: SignalOptions<T>) {
   if (isFunction(init)) {
-    return _createSignal(init as () => T, options);
-  } else if (init === undefined) {
-    return _createSource<T | undefined>(undefined, options as SignalOptions<T | undefined>);
+    return _computed.bind({
+      value: undefined,
+      subs: undefined,
+      subsTail: undefined,
+      deps: undefined,
+      depsTail: undefined,
+      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
+      getter: function (this: ComputedGetterState<any>) {
+        return get(init.call(this));
+      },
+      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+    }) as () => T;
   } else {
-    return _createSource(init, options);
+    return _source.bind({
+      previousValue: init,
+      value: init,
+      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+      subs: undefined,
+      subsTail: undefined,
+      flags: 1 satisfies ReactiveFlags.Mutable,
+    }) as () => T | undefined;
   }
 }

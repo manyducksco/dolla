@@ -2,122 +2,156 @@ import { isFunction, typeOf } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
-import { effect, type EffectFn, get, type MaybeSignal, peek, type UnsubscribeFn } from "./signals";
-
-type StoreMap = Map<Store<any, any>, any>;
+import { effect, type EffectFn, get, type MaybeSignal, untracked, type UnsubscribeFn } from "./signals";
 
 export enum LifecycleEvent {
   WILL_MOUNT,
   DID_MOUNT,
   WILL_UNMOUNT,
   DID_UNMOUNT,
+  DISPOSE,
 }
 
-// type LifecycleEvent = "willMount" | "didMount" | "willUnmount" | "didUnmount";
-
 type LifecycleListener = () => void;
-type LifecycleListeners = {
-  [LifecycleEvent.WILL_MOUNT]?: LifecycleListener[];
-  [LifecycleEvent.DID_MOUNT]?: LifecycleListener[];
-  [LifecycleEvent.WILL_UNMOUNT]?: LifecycleListener[];
-  [LifecycleEvent.DID_UNMOUNT]?: LifecycleListener[];
-};
 
 enum LifecycleState {
   Unmounted = 0,
   WillMount = 1,
-  WillMountByDependent = 2,
-  DidMount = 3,
-  DidMountByDependent = 4,
-  WillUnmount = 5,
-  WillUnmountByDependent = 6,
-  DidUnmount = 7,
+  DidMount = 2,
+  WillUnmount = 3,
+  DidUnmount = 4,
+  Disposed = 5,
 }
+
+const NAME = Symbol("name");
+const LIFECYCLE = Symbol("lifecycle");
+const PARENT = Symbol("parent");
+const STORES = Symbol("stores");
+const STATE = Symbol("state");
 
 /**
  * Manages lifecycle events for a Context.
  */
 class ContextLifecycle {
+  private context;
+
   state = LifecycleState.Unmounted;
-  dependents = 0;
+  listeners = new Map<LifecycleEvent, Set<LifecycleListener>>();
+  bound?: Set<Context>;
 
-  #listeners: LifecycleListeners = {};
+  constructor(context: Context) {
+    this.context = context;
+  }
 
+  /**
+   * Listen for a certain event to be emitted. Listeners are called when the event results in a state change.
+   */
   on<E extends LifecycleEvent>(event: E, listener: LifecycleListener) {
-    if (!this.#listeners[event]) {
-      this.#listeners[event] = [listener];
-    } else if (this.#listeners[event].indexOf(listener) === -1) {
-      this.#listeners[event].push(listener);
+    const listeners = this.listeners.get(event);
+    if (!listeners) {
+      this.listeners.set(event, new Set([listener]));
+    } else {
+      listeners.add(listener);
     }
   }
 
+  /**
+   * Stop a particular listener from being called when an event is emitted.
+   */
   off<E extends LifecycleEvent>(event: E, listener: LifecycleListener) {
-    if (this.#listeners[event]) {
-      this.#listeners[event].splice(this.#listeners[event].indexOf(listener), 1);
-
-      if (this.#listeners[event].length === 0) {
-        delete this.#listeners[event];
+    const listeners = this.listeners.get(event);
+    if (listeners) {
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        this.listeners.delete(event);
       }
     }
   }
 
-  notify<E extends LifecycleEvent>(event: E) {
-    if (this.#listeners[event]) {
-      for (const listener of this.#listeners[event]) {
-        listener();
-      }
-    }
-  }
-
-  emit<E extends LifecycleEvent>(event: E, dependent = false) {
+  /**
+   * Advance the lifecycle state machine.
+   */
+  emit<E extends LifecycleEvent>(event: E) {
     switch (event) {
       case LifecycleEvent.WILL_MOUNT: {
-        if (dependent) this.dependents++;
-
         if (this.state < LifecycleState.WillMount) {
-          this.state = dependent ? LifecycleState.WillMountByDependent : LifecycleState.WillMount;
+          this.state = LifecycleState.WillMount;
           this.notify(event);
+        } else {
+          this.context.crash(new Error(`Tried to WILL_MOUNT context at state ${this.state}`));
         }
         break;
       }
       case LifecycleEvent.DID_MOUNT: {
         if (this.state >= LifecycleState.WillMount && this.state < LifecycleState.DidMount) {
-          this.state += 2;
+          this.state = LifecycleState.DidMount;
           this.notify(event);
+        } else {
+          this.context.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
         }
         break;
       }
       case LifecycleEvent.WILL_UNMOUNT: {
-        if (dependent) {
-          this.dependents--;
-          if (!this.dependents) {
-            this.emit(LifecycleEvent.WILL_UNMOUNT);
-          }
-        } else if (this.state >= LifecycleState.DidMount && this.state < LifecycleState.WillUnmount) {
+        if (this.state >= LifecycleState.DidMount && this.state < LifecycleState.WillUnmount) {
           this.notify(event);
-          this.state += 2;
+          this.state = LifecycleState.WillUnmount;
+        } else {
+          this.context.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
         }
         break;
       }
       case LifecycleEvent.DID_UNMOUNT: {
-        if (dependent) {
-          if (!this.dependents && this.state === LifecycleState.WillUnmountByDependent) {
-            this.emit(LifecycleEvent.DID_UNMOUNT);
-          }
-        } else if (this.state >= LifecycleState.WillUnmount && this.state < LifecycleState.DidUnmount) {
+        if (this.state >= LifecycleState.WillUnmount && this.state < LifecycleState.DidUnmount) {
           // Loop back to .Unmounted
           this.state = LifecycleState.DidUnmount % LifecycleState.DidUnmount;
           this.notify(event);
+        } else {
+          this.context.crash(new Error(`Tried to DID_UNMOUNT context at state ${this.state}`));
+        }
+        break;
+      }
+      case LifecycleEvent.DISPOSE: {
+        if (this.state === LifecycleState.Unmounted) {
+          this.notify(event);
+          this.listeners.clear();
+          this.bound = undefined;
+          this.state = LifecycleState.Disposed;
+        } else {
+          this.context.crash(new Error(`Tried to DISPOSE context at state ${this.state}`));
         }
         break;
       }
     }
   }
 
-  dispose() {
-    this.emit(LifecycleEvent.WILL_UNMOUNT);
-    this.emit(LifecycleEvent.DID_UNMOUNT);
-    this.#listeners = {};
+  /**
+   * Bind `context` to this lifecycle; when any event is emitted here it will be emitted for `context` as well.
+   */
+  bind(context: Context) {
+    if (!this.bound) {
+      this.bound = new Set([context]);
+    } else {
+      this.bound.add(context);
+    }
+  }
+
+  /**
+   * Call all the event's listeners and re-emit to bound contexts.
+   */
+  private notify<E extends LifecycleEvent>(event: E) {
+    // Call listener functions.
+    const listeners = this.listeners.get(event);
+    if (listeners) {
+      for (const listener of listeners) {
+        listener();
+      }
+    }
+    // Emit to bound contexts.
+    if (this.bound) {
+      for (const context of this.bound) {
+        context[LIFECYCLE].emit(event);
+      }
+    }
   }
 }
 
@@ -134,14 +168,14 @@ export interface Context extends Logger {}
 export class Context implements Logger {
   #name: MaybeSignal<string>;
 
-  _name: string;
-  _lifecycle = new ContextLifecycle();
-  _parent?: Context;
-  _stores?: StoreMap;
-  _state?: Map<any, any>;
+  [NAME]: string;
+  [LIFECYCLE] = new ContextLifecycle(this);
+  [PARENT]?: Context;
+  [STORES]?: Map<Store<any, any>, any>;
+  [STATE]?: Map<any, any>;
 
   get isMounted() {
-    const { state } = this._lifecycle;
+    const { state } = this[LIFECYCLE];
     return state >= LifecycleState.DidMount && state < LifecycleState.DidUnmount;
   }
 
@@ -150,45 +184,60 @@ export class Context implements Logger {
    */
   static linked(parent: Context, name: MaybeSignal<string>, options?: LinkedContextOptions): Context {
     const context = new Context(name, options);
-    context._parent = parent;
-
-    if (options?.bindLifecycleToParent) {
-      parent._lifecycle.on(LifecycleEvent.WILL_MOUNT, () => {
-        context._lifecycle.emit(LifecycleEvent.WILL_MOUNT);
-      });
-      parent._lifecycle.on(LifecycleEvent.DID_MOUNT, () => {
-        context._lifecycle.emit(LifecycleEvent.DID_MOUNT);
-      });
-      parent._lifecycle.on(LifecycleEvent.WILL_UNMOUNT, () => {
-        context._lifecycle.emit(LifecycleEvent.WILL_UNMOUNT);
-      });
-      parent._lifecycle.on(LifecycleEvent.DID_UNMOUNT, () => {
-        context._lifecycle.emit(LifecycleEvent.DID_UNMOUNT);
-      });
-    } else {
-      context._lifecycle.on(LifecycleEvent.WILL_MOUNT, () => {
-        parent._lifecycle.emit(LifecycleEvent.WILL_MOUNT, true);
-      });
-      context._lifecycle.on(LifecycleEvent.DID_MOUNT, () => {
-        parent._lifecycle.emit(LifecycleEvent.DID_MOUNT, true);
-      });
-      context._lifecycle.on(LifecycleEvent.WILL_UNMOUNT, () => {
-        parent._lifecycle.emit(LifecycleEvent.WILL_UNMOUNT, true);
-      });
-      context._lifecycle.on(LifecycleEvent.DID_UNMOUNT, () => {
-        parent._lifecycle.emit(LifecycleEvent.DID_UNMOUNT, true);
-      });
-    }
+    context[PARENT] = parent;
+    if (options?.bindLifecycleToParent) parent[LIFECYCLE].bind(context);
     return context;
   }
 
-  static emit(event: LifecycleEvent, context: Context) {
-    context._lifecycle.emit(event);
+  /**
+   * Emit "will mount" lifecycle event to `context`.
+   */
+  static willMount(context: Context) {
+    context[LIFECYCLE].emit(LifecycleEvent.WILL_MOUNT);
+  }
+  /**
+   * Emit "did mount" lifecycle event to `context`.
+   */
+  static didMount(context: Context) {
+    context[LIFECYCLE].emit(LifecycleEvent.DID_MOUNT);
+  }
+  /**
+   * Emit "will unmount" lifecycle event to `context`.
+   */
+  static willUnmount(context: Context) {
+    context[LIFECYCLE].emit(LifecycleEvent.WILL_UNMOUNT);
+  }
+  /**
+   * Emit "did unmount" lifecycle event to `context`.
+   */
+  static didUnmount(context: Context) {
+    context[LIFECYCLE].emit(LifecycleEvent.DID_UNMOUNT);
+  }
+  /**
+   * Emit "dispose" lifecycle event to `context`.
+   */
+  static dispose(context: Context) {
+    context[LIFECYCLE].emit(LifecycleEvent.DISPOSE);
+    context[STATE] = undefined;
+    context[STORES] = undefined;
+  }
+
+  /**
+   * Traverses _parent contexts until arriving at one that doesn't have a parent itself.
+   * Returns null if this context is the parent.
+   */
+  static getRoot(context: Context) {
+    // This is like the programming version of "Buffalo buffalo buffalo..."
+    let parent = context[PARENT];
+    while (parent?.[PARENT]) {
+      parent = parent[PARENT];
+    }
+    return parent ?? null;
   }
 
   constructor(name: MaybeSignal<string>, options?: ContextOptions) {
     this.#name = name;
-    this._name = peek(name);
+    this[NAME] = untracked(name);
 
     // Add logger methods.
     const logger = createLogger(() => get(this.#name), options?.logger);
@@ -202,7 +251,7 @@ export class Context implements Logger {
    * Returns the current name of this context.
    */
   getName(): string {
-    return peek(this.#name);
+    return untracked(this.#name);
   }
 
   /**
@@ -210,14 +259,16 @@ export class Context implements Logger {
    */
   setName(name: MaybeSignal<string>) {
     this.#name = name;
-    this._name = peek(name); // Try to store name as a readable string for debugging purposes.
+    this[NAME] = untracked(name); // Try to store name as a readable string for debugging purposes.
   }
 
+  /**
+   * Creates an instance of a store and attaches it to this context.
+   */
   addStore<T>(store: Store<any, T>, options?: any): this {
-    if (this._stores?.get(store)) {
+    if (this[STORES]?.get(store)) {
       let name = store.name ? `'${store.name}'` : "this store";
-      this.warn(`An instance of ${name} was already added on this context.`);
-      return this;
+      throw this.crash(new StoreError(`An instance of ${name} was already added on this context.`));
     }
 
     const context = Context.linked(this, store.name, {
@@ -225,9 +276,9 @@ export class Context implements Logger {
       logger: { tag: getUniqueId(), tagName: "uid" },
     });
     try {
-      if (!this._stores) this._stores = new Map();
+      if (!this[STORES]) this[STORES] = new Map();
       const result = store.call(context, options, context);
-      this._stores.set(store, result);
+      this[STORES].set(store, result);
     } catch (error) {
       throw this.crash(error as Error);
     }
@@ -235,6 +286,11 @@ export class Context implements Logger {
     return this;
   }
 
+  /**
+   * Retrieves the nearest instance of `store`. If this context doesn't have it, the parent context is checked. This process continues until either:
+   * 1. An instance of the store is found and returned.
+   * 2. No instance is found and an error is thrown.
+   */
   getStore<T>(store: Store<any, T>): T {
     if (!isFunction(store)) {
       throw new StoreError(`Invalid store.`);
@@ -242,9 +298,9 @@ export class Context implements Logger {
     let context: Context = this;
     let result: unknown;
     while (true) {
-      result = context._stores?.get(store);
-      if (result == null && context._parent != null) {
-        context = context._parent;
+      result = context[STORES]?.get(store);
+      if (result == null && context[PARENT] != null) {
+        context = context[PARENT];
       } else {
         break;
       }
@@ -259,39 +315,38 @@ export class Context implements Logger {
    * Schedule a callback function to run just before this context is mounted.
    */
   beforeMount(listener: LifecycleListener) {
-    this._lifecycle.on(LifecycleEvent.WILL_MOUNT, listener);
-    return () => this._lifecycle.off(LifecycleEvent.WILL_MOUNT, listener);
+    this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, listener);
+    return () => this[LIFECYCLE].off(LifecycleEvent.WILL_MOUNT, listener);
   }
 
   /**
    * Schedule a callback function to run after this context is mounted.
    */
   onMount(listener: LifecycleListener) {
-    this._lifecycle.on(LifecycleEvent.DID_MOUNT, listener);
-    return () => this._lifecycle.off(LifecycleEvent.DID_MOUNT, listener);
+    this[LIFECYCLE].on(LifecycleEvent.DID_MOUNT, listener);
+    return () => this[LIFECYCLE].off(LifecycleEvent.DID_MOUNT, listener);
   }
 
   /**
    * Schedule a callback function to run just before this context is unmounted.
    */
   beforeUnmount(listener: LifecycleListener) {
-    this._lifecycle.on(LifecycleEvent.WILL_UNMOUNT, listener);
-    return () => this._lifecycle.off(LifecycleEvent.WILL_UNMOUNT, listener);
+    this[LIFECYCLE].on(LifecycleEvent.WILL_UNMOUNT, listener);
+    return () => this[LIFECYCLE].off(LifecycleEvent.WILL_UNMOUNT, listener);
   }
 
   /**
    * Schedule a callback function to run after this context is unmounted.
    */
   onUnmount(listener: LifecycleListener) {
-    this._lifecycle.on(LifecycleEvent.DID_UNMOUNT, listener);
-    return () => this._lifecycle.off(LifecycleEvent.DID_UNMOUNT, listener);
+    this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, listener);
+    return () => this[LIFECYCLE].off(LifecycleEvent.DID_UNMOUNT, listener);
   }
 
   effect(callback: EffectFn) {
     const fn = () => {
       try {
-        // Return callback so cleanup function passes through
-        return callback();
+        return callback(); // Return callback so cleanup function passes through to effect handler
       } catch (error) {
         this.error(error);
         if (error instanceof Error) {
@@ -304,19 +359,19 @@ export class Context implements Logger {
       }
     };
 
-    if (this._lifecycle.state >= LifecycleState.WillMount) {
+    if (this[LIFECYCLE].state >= LifecycleState.WillMount) {
       // This code is probably in a lifecycle hook; run the effect immediately and trigger unsubscribe when context unmounts.
       const unsubscribe = effect(fn);
-      this._lifecycle.on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
+      this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
       return unsubscribe;
     } else {
       // Prime the effect to run when the context is mounted and unsubscribe when unmounted, unless unsubscribed before `willMount`.
       let unsubscribe: UnsubscribeFn | undefined;
       let disposed = false;
-      this._lifecycle.on(LifecycleEvent.WILL_MOUNT, () => {
+      this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, () => {
         if (!disposed) {
           unsubscribe = effect(fn);
-          this._lifecycle.on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
+          this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
         }
       });
       return () => {
@@ -349,9 +404,9 @@ export class Context implements Logger {
       let context: Context = this;
       let value: any;
       while (true) {
-        value = context._state?.get(key);
-        if (value === undefined && context._parent != null) {
-          context = context._parent;
+        value = context[STATE]?.get(key);
+        if (value === undefined && context[PARENT] != null) {
+          context = context[PARENT];
         } else {
           break;
         }
@@ -369,11 +424,11 @@ export class Context implements Logger {
       let context: Context = this;
       const entries: [any, any][] = [];
       while (true) {
-        if (context._state) {
-          entries.push(...context._state.entries());
+        if (context[STATE]) {
+          entries.push(...context[STATE].entries());
         }
-        if (context._parent != null) {
-          context = context._parent;
+        if (context[PARENT] != null) {
+          context = context[PARENT];
         } else {
           break;
         }
@@ -393,17 +448,17 @@ export class Context implements Logger {
   setState(entries: [key: any, value: any][]): void;
 
   setState() {
-    if (!this._state) {
-      this._state = new Map();
+    if (!this[STATE]) {
+      this[STATE] = new Map();
     }
     if (arguments.length === 2) {
-      this._state.set(arguments[0], arguments[1]);
+      this[STATE].set(arguments[0], arguments[1]);
     } else if (typeOf(arguments[0]) === "array") {
       for (const [key, value] of arguments[0]) {
         if (value === undefined) {
-          this._state.delete(key);
+          this[STATE].delete(key);
         } else {
-          this._state.set(key, value);
+          this[STATE].set(key, value);
         }
       }
     } else {
