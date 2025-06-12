@@ -1,5 +1,5 @@
 import { isFunction, isString } from "../typeChecking.js";
-import type { Renderable, View } from "../types.js";
+import type { IntrinsicElements, Renderable, View } from "../types.js";
 import { Context } from "./context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { Dynamic } from "./nodes/dynamic.js";
@@ -8,7 +8,7 @@ import { Portal } from "./nodes/portal.js";
 import { KeyFn, RenderFn, Repeat } from "./nodes/repeat.js";
 import { ViewInstance } from "./nodes/view.js";
 import { $, get, type MaybeSignal, type Signal } from "./signals.js";
-import { IS_MARKUP_NODE } from "./symbols.js";
+import { TYPE, MARKUP_NODE } from "./symbols.js";
 
 /*===========================*\
 ||           Markup          ||
@@ -46,19 +46,25 @@ export interface MarkupNode {
   readonly root?: Node;
 
   /**
-   *
+   * Returns true when this MarkupNode is mounted.
    */
   isMounted(): boolean;
 
   /**
-   *
+   * Mount this MarkupNode to a `parent` element.
+   * If passed, this MarkupNode will be mounted as the next sibling of `after`.
    */
   mount(parent: Element, after?: Node): void;
 
   /**
+   * Unmount this MarkupNode from its parent element.
    *
+   * The `skipDOM` option can be passed as an optimization when unmounting a parent node.
+   * A value of `true` indicates that no DOM operations need to happen because the parent is already being unmounted.
+   *
+   * @param skipDOM - No DOM updates will be performed when true. Lifecycle methods will be called regardless.
    */
-  unmount(parentIsUnmounting?: boolean): void;
+  unmount(skipDOM?: boolean): void;
 
   /**
    * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
@@ -67,41 +73,67 @@ export interface MarkupNode {
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {
-  return value?.[IS_MARKUP_NODE] === true;
+  return value?.[TYPE] === MARKUP_NODE;
 }
 
 export enum MarkupType {
-  Text = "$text",
-  Repeat = "$repeat",
-  Dynamic = "$dynamic",
   DOM = "$dom",
+  Dynamic = "$dynamic",
   Portal = "$portal",
+  Repeat = "$repeat",
 }
 
-export interface MarkupProps {
-  [MarkupType.Text]: { value: any };
-  [MarkupType.Repeat]: {
-    items: Signal<any[]>;
-    key: KeyFn<any>;
-    render: RenderFn<any>;
+export interface MarkupNodeProps {
+  [MarkupType.DOM]: {
+    value: Node;
   };
   [MarkupType.Dynamic]: {
     source: Signal<any>;
-  };
-  [MarkupType.DOM]: {
-    value: Node;
   };
   [MarkupType.Portal]: {
     content: Renderable;
     parent: Element;
   };
-
-  [tag: string]: Record<string, any>;
+  [MarkupType.Repeat]: {
+    items: Signal<any[]>;
+    key: KeyFn<any>;
+    render: RenderFn<any>;
+  };
 }
 
-export function m<T extends keyof MarkupProps>(type: T, props: MarkupProps[T]): Markup;
+export interface MarkupCustomElementProps {
+  /**
+   * Custom element tagName pattern (must include a hyphen).
+   */
+  [tag: `${string}-${string}`]: Record<string, any>;
+}
 
+/**
+ * Creates a Markup element that defines an HTML element.
+ */
+export function m<T extends keyof IntrinsicElements>(
+  tag: T,
+  attrs: IntrinsicElements[T] & { children?: Renderable },
+): Markup;
+
+/**
+ * Creates a Markup element that defines an HTML custom element.
+ */
+export function m<T extends keyof MarkupCustomElementProps>(type: T, props: MarkupCustomElementProps[T]): Markup;
+
+/**
+ * Creates a Markup element that defines a MarkupNode.
+ */
+export function m<T extends keyof MarkupNodeProps>(type: T, props: MarkupNodeProps[T]): Markup;
+
+/**
+ * Creates a Markup element that defines a view.
+ */
 export function m<P extends {}>(type: View<P>, props?: P): Markup;
+
+/**
+ * Creates a Markup element that defines a view.
+ */
 export function m<P>(type: View<P>, props: P): Markup;
 
 export function m(type: string | View<any>, props?: any) {
@@ -188,28 +220,23 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       } else if (isString(item.type)) {
         switch (item.type) {
           case MarkupType.DOM: {
-            const attrs = item.props! as MarkupProps[MarkupType.DOM];
+            const attrs = item.props! as MarkupNodeProps[MarkupType.DOM];
             elements.push(new DOMNode(attrs.value));
             continue;
           }
-          case MarkupType.Text: {
-            const attrs = item.props! as MarkupProps[MarkupType.Text];
-            elements.push(new DOMNode(document.createTextNode(String(attrs.value))));
-            continue;
-          }
-          case MarkupType.Repeat: {
-            const attrs = item.props! as MarkupProps[MarkupType.Repeat];
-            elements.push(new Repeat(context, attrs.items, attrs.key, attrs.render));
-            continue;
-          }
           case MarkupType.Dynamic: {
-            const attrs = item.props! as MarkupProps[MarkupType.Dynamic];
+            const attrs = item.props! as MarkupNodeProps[MarkupType.Dynamic];
             elements.push(new Dynamic(context, attrs.source));
             continue;
           }
           case MarkupType.Portal: {
-            const attrs = item.props! as MarkupProps[MarkupType.Portal];
+            const attrs = item.props! as MarkupNodeProps[MarkupType.Portal];
             elements.push(new Portal(context, attrs.content, attrs.parent));
+            continue;
+          }
+          case MarkupType.Repeat: {
+            const attrs = item.props! as MarkupNodeProps[MarkupType.Repeat];
+            elements.push(new Repeat(context, attrs.items, attrs.key, attrs.render));
             continue;
           }
           default:

@@ -36,7 +36,7 @@ export interface LoggerOptions {
   console?: any;
 }
 
-export interface LoggerErrorProps {
+export interface LoggerCrashProps {
   error: Error;
   loggerName: string;
   tag?: string;
@@ -50,10 +50,13 @@ let levels: LogLevels = {
   error: true,
 };
 let match: MatcherFunction = createMatcher("*,-dolla.*");
-let crashListeners: ((context: LoggerErrorProps) => void)[] = [];
+let crashListeners: ((context: LoggerCrashProps) => void)[] = [];
 let isCrashed = false;
 
-export function onLoggerCrash(listener: (context: LoggerErrorProps) => void) {
+/**
+ * Listen for logged crashes.
+ */
+export function onLoggerCrash(listener: (context: LoggerCrashProps) => void) {
   crashListeners.push(listener);
 
   return function cancel() {
@@ -106,7 +109,7 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
     crash(error: Error) {
       if (!isCrashed) {
         isCrashed = true;
-        const ctx: LoggerErrorProps = {
+        const ctx: LoggerCrashProps = {
           error,
           loggerName: get(name),
           tag: options?.tag,

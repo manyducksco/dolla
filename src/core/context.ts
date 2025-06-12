@@ -115,6 +115,8 @@ class ContextLifecycle {
           this.notify(event);
           this.listeners.clear();
           this.bound = undefined;
+          this.context[STATE] = undefined;
+          this.context[STORES] = undefined;
           this.state = LifecycleState.Disposed;
         } else {
           this.context.crash(new Error(`Tried to DISPOSE context at state ${this.state}`));
@@ -190,36 +192,10 @@ export class Context implements Logger {
   }
 
   /**
-   * Emit "will mount" lifecycle event to `context`.
+   * Emit a lifecycle event to `context`.
    */
-  static willMount(context: Context) {
-    context[LIFECYCLE].emit(LifecycleEvent.WILL_MOUNT);
-  }
-  /**
-   * Emit "did mount" lifecycle event to `context`.
-   */
-  static didMount(context: Context) {
-    context[LIFECYCLE].emit(LifecycleEvent.DID_MOUNT);
-  }
-  /**
-   * Emit "will unmount" lifecycle event to `context`.
-   */
-  static willUnmount(context: Context) {
-    context[LIFECYCLE].emit(LifecycleEvent.WILL_UNMOUNT);
-  }
-  /**
-   * Emit "did unmount" lifecycle event to `context`.
-   */
-  static didUnmount(context: Context) {
-    context[LIFECYCLE].emit(LifecycleEvent.DID_UNMOUNT);
-  }
-  /**
-   * Emit "dispose" lifecycle event to `context`.
-   */
-  static dispose(context: Context) {
-    context[LIFECYCLE].emit(LifecycleEvent.DISPOSE);
-    context[STATE] = undefined;
-    context[STORES] = undefined;
+  static emit(context: Context, event: LifecycleEvent) {
+    context[LIFECYCLE].emit(event);
   }
 
   /**

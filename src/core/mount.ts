@@ -1,8 +1,8 @@
 import { MOUNT, Router, UNMOUNT } from "../router/router";
 import { assertInstanceOf } from "../typeChecking";
 import type { View } from "../types";
-import { Context } from "./context";
-import { type LoggerErrorProps, onLoggerCrash } from "./logger";
+import { Context, LifecycleEvent } from "./context";
+import { type LoggerCrashProps, onLoggerCrash } from "./logger";
 import { type MarkupNode } from "./markup";
 import { ViewInstance } from "./nodes/view";
 import { DefaultCrashView } from "./views/default-crash-view";
@@ -11,7 +11,7 @@ let isMounted = false;
 
 export type UnmountFn = () => Promise<void>;
 export interface MountOptions {
-  crashView?: View<LoggerErrorProps>;
+  crashView?: View<LoggerCrashProps>;
 
   /**
    * An existing Context to use as the root, otherwise a new one will be created.
@@ -45,35 +45,32 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
     new ViewInstance(rootContext, crashView, props).mount(rootElement);
   });
 
-  Context.willMount(rootContext);
+  Context.emit(rootContext, LifecycleEvent.WILL_MOUNT);
 
   if (view instanceof Router) {
+    // Store router reference so we can unmount it with the app.
     router = view;
     rootView = await router[MOUNT](rootElement, rootContext);
   } else {
-    // First, initialize the root view. The router store needs this to connect the initial route.
     rootView = new ViewInstance(rootContext, view, {});
   }
-
   rootView.mount(rootElement);
   isMounted = true;
 
-  Context.didMount(rootContext);
+  Context.emit(rootContext, LifecycleEvent.DID_MOUNT);
 
   async function unmount() {
     if (!isMounted) return;
 
-    Context.willUnmount(rootContext);
+    Context.emit(rootContext, LifecycleEvent.WILL_UNMOUNT);
 
     rootView.unmount(false);
-
     if (router) {
       await router[UNMOUNT]();
     }
-
     isMounted = false;
 
-    Context.didUnmount(rootContext);
+    Context.emit(rootContext, LifecycleEvent.DID_UNMOUNT);
   }
 
   return unmount;

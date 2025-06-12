@@ -1,7 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
-import { Signal } from "./core/signals.js";
-import { Mixin } from "./core/nodes/html.js";
+import type { Signal } from "./core/signals.js";
 import type { Context } from "./core/context.js";
 
 export type Env = "production" | "development";
@@ -35,6 +34,11 @@ export type View<P> = (this: Context, props: P, context: Context) => Renderable;
  *
  */
 export type Store<Options, Value> = (this: Context, options: Options, context: Context) => Value;
+
+/**
+ *
+ */
+export type Mixin<E extends Element = Element> = (element: E, context: Context) => void;
 
 /*==================================*\
 ||            JSX Types             ||
@@ -907,6 +911,13 @@ export interface HTMLElementProps extends ElementProps {
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/contentEditable
    */
   contentEditable?: OptionalProperty<ContentEditableValues>;
+
+  /**
+   * Stores values on the element as attributes prefixed with `data-`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset
+   */
+  dataset?: OptionalProperty<Record<string, string>>;
 
   /**
    * Specifies text directionality of the content of this element. Some languages, such as Arabic, are written from right to left (specified here as "rtl").

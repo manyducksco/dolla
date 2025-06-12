@@ -1,13 +1,13 @@
 import type { Renderable } from "../../types.js";
 import { Context } from "../context.js";
 import { render, type MarkupNode } from "../markup.js";
-import { IS_MARKUP_NODE } from "../symbols.js";
+import { TYPE, MARKUP_NODE } from "../symbols.js";
 
 /**
  * Renders content into a specified parent node.
  */
 export class Portal implements MarkupNode {
-  [IS_MARKUP_NODE] = true;
+  [TYPE] = MARKUP_NODE;
 
   private context;
   private content;
@@ -33,7 +33,7 @@ export class Portal implements MarkupNode {
     this.element.mount(this.parent);
   }
 
-  unmount(parentIsUnmounting = false) {
+  unmount(skipDOM = false) {
     if (this.element?.isMounted()) {
       // Portals MUST unmount DOM nodes because they won't be removed by parents unmounting.
       this.element.unmount(false);

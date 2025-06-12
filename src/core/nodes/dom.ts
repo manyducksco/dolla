@@ -1,11 +1,11 @@
 import type { MarkupNode } from "../markup";
-import { IS_MARKUP_NODE } from "../symbols";
+import { MARKUP_NODE, TYPE } from "../symbols";
 
 /**
- * Wraps any plain DOM node in a MarkupNode interface.
+ * Lightweight MarkupNode wrapper for a plain DOM node.
  */
 export class DOMNode implements MarkupNode {
-  [IS_MARKUP_NODE] = true;
+  [TYPE] = MARKUP_NODE;
 
   root: Node;
 
@@ -21,8 +21,8 @@ export class DOMNode implements MarkupNode {
     parent.insertBefore(this.root, after?.nextSibling ?? null);
   }
 
-  unmount(parentIsUnmounting = false) {
-    if (this.root.parentNode && !parentIsUnmounting) {
+  unmount(skipDOM = false) {
+    if (!skipDOM && this.root.parentNode) {
       this.root.parentNode.removeChild(this.root);
     }
   }

@@ -3,7 +3,7 @@ import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
 import type { MarkupNode } from "../markup.js";
 import { $, batch, effect, untracked, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
-import { IS_MARKUP_NODE } from "../symbols.js";
+import { TYPE, MARKUP_NODE } from "../symbols.js";
 import { ViewInstance } from "./view.js";
 
 // ----- Types ----- //
@@ -23,7 +23,7 @@ type ConnectedItem<T> = {
 // ----- Code ----- //
 
 export class Repeat<T> implements MarkupNode {
-  [IS_MARKUP_NODE] = true;
+  [TYPE] = MARKUP_NODE;
 
   root = document.createTextNode("");
 
@@ -67,21 +67,21 @@ export class Repeat<T> implements MarkupNode {
     }
   }
 
-  unmount(parentIsUnmounting = false) {
+  unmount(skipDOM = false) {
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
     }
 
-    if (!parentIsUnmounting && this.isMounted()) {
+    if (!skipDOM && this.isMounted()) {
       this.root.parentNode?.removeChild(this.root);
     }
 
-    this._cleanup(parentIsUnmounting);
+    this._cleanup(skipDOM);
   }
 
   move(parent: Element, after?: Node) {
-    // TODO:
+    // TODO: Implement move
     return this.mount(parent, after);
   }
 
@@ -179,8 +179,8 @@ interface ListItemProps {
   $index: Signal<number>;
   render: (item: Signal<any>, index: Signal<number>, context: Context) => Renderable;
 }
-
+const contextName = "dolla.RepeatItemView";
 function RepeatItemView(props: ListItemProps, context: Context) {
-  context.setName("@RepeatItemView");
+  context.setName(contextName);
   return props.render.call(context, props.$item, props.$index, context);
 }

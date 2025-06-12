@@ -1,8 +1,8 @@
-import { isArray } from "../../typeChecking.js";
+import { toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes, type MarkupNode } from "../markup.js";
-import { effect, untracked, Signal, type UnsubscribeFn } from "../signals.js";
-import { IS_MARKUP_NODE } from "../symbols.js";
+import { effect, untracked, type Signal, type UnsubscribeFn } from "../signals.js";
+import { MARKUP_NODE, TYPE } from "../symbols.js";
 
 /**
  * Displays dynamic children without a parent element.
@@ -11,7 +11,7 @@ import { IS_MARKUP_NODE } from "../symbols.js";
  * This is probably the most used element type aside from HTML.
  */
 export class Dynamic implements MarkupNode {
-  [IS_MARKUP_NODE] = true;
+  [TYPE] = MARKUP_NODE;
 
   root = document.createTextNode("");
 
@@ -38,7 +38,7 @@ export class Dynamic implements MarkupNode {
         try {
           const content = this.$slot();
           untracked(() => {
-            this.update(isArray(content) ? content : [content]);
+            this.update(toArray(content));
           });
         } catch (error) {
           this.context.crash(error as Error);
@@ -47,11 +47,11 @@ export class Dynamic implements MarkupNode {
     }
   }
 
-  unmount(parentIsUnmounting = false) {
+  unmount(skipDOM = false) {
     this.unsubscribe?.();
 
     if (this.isMounted()) {
-      this.cleanup(parentIsUnmounting);
+      this.cleanup(skipDOM);
       this.root.parentNode?.removeChild(this.root);
     }
   }
@@ -72,9 +72,9 @@ export class Dynamic implements MarkupNode {
     }
   }
 
-  private cleanup(parentIsUnmounting: boolean) {
+  private cleanup(skipDOM: boolean) {
     for (const element of this.children) {
-      if (element.isMounted()) element.unmount(parentIsUnmounting);
+      if (element.isMounted()) element.unmount(skipDOM);
     }
     this.children.length = 0;
   }

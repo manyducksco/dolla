@@ -10,9 +10,6 @@ export type { Context } from "./context.js";
 export { m, portal, render, repeat, unless, when } from "./markup.js";
 export type { MarkupNode } from "./markup.js";
 
-// Mixin
-export { type Mixin } from "./nodes/html.js";
-
 // Ref
 export { ref, type Ref } from "./ref.js";
 
@@ -26,11 +23,11 @@ export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
 export { getEnv, setEnv } from "./env.js";
 
 // Logger
-export { createLogger, setLogFilter, setLogLevels } from "./logger.js";
-export type { Logger, LoggerErrorProps as LoggerErrorContext, LoggerOptions, LogLevels } from "./logger.js";
+export { createLogger, setLogFilter, setLogLevels, onLoggerCrash } from "./logger.js";
+export type { Logger, LoggerCrashProps, LoggerOptions, LogLevels } from "./logger.js";
 
 // Other types
-export type { View, Store, InputType, Renderable, Env, CSSProperties } from "../types.js";
+export type { View, Store, Mixin, InputType, Renderable, Env, CSSProperties } from "../types.js";
 export type { CrashViewProps } from "./views/default-crash-view.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";

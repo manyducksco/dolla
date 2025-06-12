@@ -1,3 +1,2 @@
-// Type symbols; these are used to quickly check if a value is the expected object.
-export const IS_MARKUP = Symbol.for("dollaMarkup");
-export const IS_MARKUP_NODE = Symbol.for("dollaMarkupNode");
+export const TYPE = Symbol("type");
+export const MARKUP_NODE = Symbol("MarkupNode");

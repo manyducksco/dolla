@@ -1,13 +1,13 @@
 import type { View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
-import { Context } from "../context.js";
+import { Context, LifecycleEvent } from "../context.js";
 import { render, type MarkupNode } from "../markup.js";
-import { IS_MARKUP_NODE } from "../symbols.js";
+import { TYPE, MARKUP_NODE } from "../symbols.js";
 
 export const VIEW = Symbol("View");
 
 export class ViewInstance<P> implements MarkupNode {
-  [IS_MARKUP_NODE] = true;
+  [TYPE] = MARKUP_NODE;
 
   uniqueId = getUniqueId();
   context: Context;
@@ -20,6 +20,11 @@ export class ViewInstance<P> implements MarkupNode {
     return this.node?.root!;
   }
 
+  /**
+   * @param context - Parent contenxt to link to.
+   * @param view - View function to mount.
+   * @param props - Props to pass to view function.
+   */
   constructor(context: Context, view: View<P>, props: P) {
     this.context = Context.linked(context, view.name ?? "anonymous view", {
       logger: {
@@ -55,27 +60,25 @@ export class ViewInstance<P> implements MarkupNode {
         throw error;
       }
 
-      Context.willMount(this.context);
+      Context.emit(this.context, LifecycleEvent.WILL_MOUNT);
     }
 
     if (this.node) {
       this.node.mount(parent, after);
     }
 
-    if (!wasMounted) {
-      Context.didMount(this.context);
-    }
+    if (!wasMounted) Context.emit(this.context, LifecycleEvent.DID_MOUNT);
   }
 
-  unmount(parentIsUnmounting = false) {
-    Context.willUnmount(this.context);
+  unmount(skipDOM = false) {
+    Context.emit(this.context, LifecycleEvent.WILL_UNMOUNT);
 
     if (this.node) {
-      this.node.unmount(parentIsUnmounting);
+      this.node.unmount(skipDOM);
     }
 
-    Context.didUnmount(this.context);
-    Context.dispose(this.context);
+    Context.emit(this.context, LifecycleEvent.DID_UNMOUNT);
+    Context.emit(this.context, LifecycleEvent.DISPOSE);
   }
 
   move(parent: Element, after?: Node) {

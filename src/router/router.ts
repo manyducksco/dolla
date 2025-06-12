@@ -1,10 +1,10 @@
 import { Context } from "../core/context.js";
 import { createLogger } from "../core/logger.js";
-import { m, type MarkupNode } from "../core/markup.js";
+import { m, MarkupType, type MarkupNode } from "../core/markup.js";
 import { Dynamic } from "../core/nodes/dynamic.js";
 import { ViewInstance } from "../core/nodes/view.js";
-import { $, untracked, Source, type UnsubscribeFn } from "../core/signals.js";
-import { assertObject, isArray, isFunction, isObject, isString } from "../typeChecking.js";
+import { $, batch, untracked, type Source } from "../core/signals.js";
+import { assertObject, isArray, isArrayOf, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { shallowEqual } from "../utils.js";
 import {
@@ -31,6 +31,16 @@ export interface RouteMatchContext {
   query: Record<string, string>;
 
   /**
+   * Stores `value` at `key` in this context's state.
+   */
+  setState<T>(key: any, value: T): void;
+
+  /**
+   * For each tuple in `entries`, stores `value` at `key` in this context's state.
+   */
+  setState(entries: [key: any, value: any][]): void;
+
+  /**
    * Redirects the user to a different route instead of matching the current one.
    */
   redirect(path: string): void;
@@ -38,7 +48,7 @@ export interface RouteMatchContext {
   /**
    * Triggers the next beforeMatch function, or mounts the route.
    */
-  next(): void;
+  // next(): void;
 }
 
 export interface Route {
@@ -72,7 +82,7 @@ export interface RouteMeta {
   redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
   pattern?: string;
   layers?: RouteLayer[];
-  beforeMatch?: ((ctx: RouteMatchContext) => void | Promise<void>)[];
+  beforeMatch?: { fn: (ctx: RouteMatchContext) => void | Promise<void>; layerId: number }[];
 }
 
 export interface RouteConfig {
@@ -161,7 +171,7 @@ export const ROOT_VIEW = Symbol();
 export class Router {
   #logger = createLogger("dolla.router");
 
-  #layerId = 0;
+  #nextLayerId = 0;
   #activeLayers: ActiveLayer[] = [];
   #routes: ParsedRoute<RouteMeta>[] = [];
 
@@ -174,8 +184,10 @@ export class Router {
    */
   #hash = false;
 
-  // Callbacks that need to be called on unmount.
-  #unsubscribers: UnsubscribeFn[] = [];
+  /**
+   * Cleanup functions to call on unmount.
+   */
+  #cleanup: (() => void)[] = [];
 
   /**
    * The current match object.
@@ -226,47 +238,45 @@ export class Router {
   async [MOUNT](parent: Element, context: Context): Promise<MarkupNode> {
     const $slot = $<MarkupNode>();
     this.#rootLayer = {
-      id: -1,
+      id: this.#nextLayerId++,
       element: new Dynamic(context, $slot),
       context,
       $slot,
     };
 
     // Listen for popstate events and update route accordingly.
-    const onPopState = () => {
-      this.#updateRoute(undefined, {});
-    };
+    const onPopState = () => this.#updateRoute();
     window.addEventListener("popstate", onPopState);
-    this.#unsubscribers.push(() => window.removeEventListener("popstate", onPopState));
+    this.#cleanup.push(() => window.removeEventListener("popstate", onPopState));
 
     // Listen for clicks on <a> tags within the app.
-    this.#unsubscribers.push(
+    this.#cleanup.push(
       catchLinks(parent, (anchor) => {
-        let href = anchor.getAttribute("href")!;
         this.#logger.info("intercepted click on <a> tag", anchor);
 
-        const preserve = anchor.getAttribute("data-router-preserve-query");
+        const href = anchor.getAttribute("href")!;
+        const preserveQuery = anchor.getAttribute("data-router-preserve-query");
 
         this.go(href, {
-          preserveQuery: parsePreserveQueryAttribute(preserve),
+          preserveQuery: parsePreserveQueryAttribute(preserveQuery),
         });
       }),
     );
-    this.#logger.info("will intercept clicks on <a> tags within root element", parent);
+    this.#logger.info("will intercept clicks on <a> tags within parent element:", parent);
 
     this.#isMounted = true;
 
-    // Setup initial route content.
-    await this.#updateRoute(undefined, {});
+    // Mount initial route.
+    await this.#updateRoute();
 
     return this.#rootLayer.element;
   }
 
   async [UNMOUNT]() {
-    for (const callback of this.#unsubscribers) {
+    for (const callback of this.#cleanup) {
       callback();
     }
-    this.#unsubscribers = [];
+    this.#cleanup.length = 0;
   }
 
   /**
@@ -362,112 +372,133 @@ export class Router {
    * Run when the location changes. Diffs and mounts new routes and updates
    * the $path, $route, $params and $query states accordingly.
    */
-  async #updateRoute(href: string | undefined, options: NavigateOptions) {
+  async #updateRoute(href?: string | undefined, options: NavigateOptions = {}) {
     const logger = this.#logger;
     const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
 
-    const { match, journey } = await this.#resolveRoute(url);
+    const { match, journey, state } = await this.#resolveRoute(url);
 
-    for (const step of journey) {
+    for (let i = 0; i < journey.length; i++) {
+      const step = journey[i];
+      const tag = `(update: step ${i + 1} of ${journey.length})`;
+
       switch (step.kind) {
         case "match":
-          logger?.info(`📍 ${step.message}`);
+          logger?.info(`${tag} 📍 ${step.message}`);
           break;
         case "redirect":
-          logger?.info(`↩️ ${step.message}`);
+          logger?.info(`${tag} ↩️ ${step.message}`);
           break;
         case "miss":
-          logger?.info(`💀 ${step.message}`);
+          logger?.info(`${tag} 💀 ${step.message}`);
           break;
         default:
           break;
       }
     }
 
-    if (match) {
-      const oldPattern = untracked(this.$pattern);
+    if (!match) {
+      // Only crash if routing has been configured.
+      if (this.#isMounted) {
+        throw logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
+      }
+      return;
+    }
 
-      // Merge query params.
-      let query = match.query;
-      let queryParts: string[] = [];
+    // Merge query params.
+    let query = match.query;
+    let queryParts: string[] = [];
 
-      if (options.preserveQuery === true) {
-        query = Object.assign({}, this.$query(), match.query);
-      } else if (isArray(options.preserveQuery)) {
-        const preserved: Record<string, any> = {};
-        const current = this.$query();
-        for (const key in current) {
-          if (options.preserveQuery.includes(key)) {
-            preserved[key] = current[key];
-          }
+    if (options.preserveQuery === true) {
+      query = Object.assign({}, this.$query(), match.query);
+    } else if (isArray(options.preserveQuery)) {
+      const preserved: Record<string, any> = {};
+      const current = this.$query();
+      for (const key in current) {
+        if (options.preserveQuery.includes(key)) {
+          preserved[key] = current[key];
         }
-        query = Object.assign({}, preserved, match.query);
       }
+      query = Object.assign({}, preserved, match.query);
+    }
 
-      for (const key in query) {
-        queryParts.push(`${key}=${query[key]}`);
-      }
-      const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
+    for (const key in query) {
+      queryParts.push(`${key}=${query[key]}`);
+    }
+    const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
+
+    // Update the URL if matched path differs from navigator path.
+    // This happens if route resolution involved redirects.
+    if (match.path !== location.pathname || location.search !== queryString) {
+      window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
+    }
+
+    // Run in batch so all new layers are mounted simultaneously with match signal change.
+    // This avoids the old route effects receiving new signal values just before they unmount.
+    batch(() => {
+      const oldPattern = untracked(this.$pattern);
 
       this.#match({ ...match, query });
 
-      // Update the URL if matched path differs from navigator path.
-      // This happens if route resolution involved redirects.
-      if (match.path !== location.pathname || location.search !== queryString) {
-        window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
+      if (match.pattern === oldPattern) {
+        // If pattern has not changed, update state on current layers.
+        for (const layer of this.#activeLayers) {
+          const stateEntries = state.get(layer.id);
+          if (stateEntries) {
+            layer.context.setState(stateEntries);
+          }
+        }
+        return;
       }
 
-      if (match.pattern !== oldPattern) {
-        this.#mountRoute(match);
+      const layers = match.meta.layers!;
+      logger.info("mounting", match);
+
+      // Diff and update route layers.
+      for (let i = 0; i < layers.length; i++) {
+        const matchedLayer = layers[i];
+        const activeLayer = this.#activeLayers[i];
+
+        if (activeLayer?.id !== matchedLayer.id) {
+          // Discard all previously active layers starting at this depth.
+          this.#activeLayers = this.#activeLayers.slice(0, i);
+          activeLayer?.element.unmount();
+
+          const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
+
+          // Create a $slot and element for this layer.
+          const $slot = $<MarkupNode>();
+          const element = new ViewInstance(parentLayer.context, matchedLayer.view, {
+            children: m(MarkupType.Dynamic, { source: $slot }),
+          });
+
+          // Set state for new layer.
+          const stateEntries = state.get(matchedLayer.id);
+          if (stateEntries) {
+            element.context.setState(stateEntries);
+          }
+
+          // Add new layer to activeLayers.
+          this.#activeLayers.push({
+            id: matchedLayer.id,
+            element,
+            context: element.context,
+            $slot,
+          });
+
+          // Slot this layer into parent.
+          parentLayer.$slot(element);
+        } else {
+          // Update state for layers that are still active.
+          const stateEntries = state.get(activeLayer.id);
+          if (stateEntries) {
+            activeLayer.context.setState(stateEntries);
+          }
+        }
       }
-    } else {
-      // Only crash if routing has been configured.
-      if (this.#isMounted) {
-        logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
-      }
-    }
+    });
 
     return { match, journey };
-  }
-
-  /**
-   * Takes a matched route and mounts it.
-   */
-  #mountRoute(match: RouteMatch<RouteMeta>) {
-    const layers = match.meta.layers!;
-
-    this.#logger.info("mounting", match);
-
-    // Diff and update route layers.
-    for (let i = 0; i < layers.length; i++) {
-      const matchedLayer = layers[i];
-      const activeLayer = this.#activeLayers[i];
-
-      if (activeLayer?.id !== matchedLayer.id) {
-        // Discard all previously active layers starting at this depth.
-        this.#activeLayers = this.#activeLayers.slice(0, i);
-        activeLayer?.element.unmount();
-
-        const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
-
-        // Create a $slot and element for this layer.
-        const $slot = $<MarkupNode>();
-        const element = new ViewInstance(parentLayer.context, matchedLayer.view, {
-          children: m("$dynamic", { source: $slot }),
-        });
-
-        // Add new layer to activeLayers.
-        this.#activeLayers.push({
-          id: matchedLayer.id,
-          element,
-          context: element.context,
-          $slot,
-        });
-
-        // Slot this layer into parent $slot.
-        parentLayer.$slot(element);
-      }
-    }
   }
 
   /**
@@ -476,9 +507,11 @@ export class Router {
   async #resolveRoute(
     url: URL,
     journey: JourneyStep[] = [],
+    state = new Map<number, [any, any][]>(),
   ): Promise<{
     match: RouteMatch<RouteMeta> | null;
     journey: JourneyStep[];
+    state: Map<number, [any, any][]>; // map of layerId to state entries
   }> {
     return new Promise((resolve, reject) => {
       const match = matchRoutes(this.#routes, url.pathname);
@@ -487,6 +520,7 @@ export class Router {
         return resolve({
           match: null,
           journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
+          state,
         });
       }
 
@@ -524,7 +558,7 @@ export class Router {
             ]),
           );
         } else {
-          resolve({ match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] });
+          resolve({ match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }], state });
         }
       };
 
@@ -538,20 +572,48 @@ export class Router {
             finalize();
           } else {
             // Next callback
-            callbacks[i]({
+            let finalized = false;
+            const result = callbacks[i].fn({
               path: match.path,
               pattern: match.pattern,
               params: match.params,
               query: match.query,
 
-              // TODO: Allow setting context variables from here? Would apply to the context of the matched view.
+              setState: (...args: any[]) => {
+                const id = callbacks[i].layerId;
+                const entries: [any, any][] = [];
+
+                if (args.length === 1 && isArrayOf(isArray, args[0])) {
+                  entries.push(...(args[0] as [any, any][]));
+                } else if (args.length === 2) {
+                  entries.push([args[0], args[1]]);
+                } else {
+                  throw new Error("Invalid arguments.");
+                }
+
+                const current = state.get(id);
+                if (!current) {
+                  state.set(id, entries);
+                } else {
+                  entries.push(...entries);
+                }
+              },
+
               redirect: (path) => {
                 redirect = path;
+                finalized = true;
                 finalize();
               },
 
-              next,
+              // next,
             });
+            if (!finalized) {
+              if (result instanceof Promise) {
+                result.then(next);
+              } else {
+                next();
+              }
+            }
           }
         };
 
@@ -627,7 +689,7 @@ export class Router {
       throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
     }
 
-    const layer: RouteLayer = { id: this.#layerId++, view };
+    const layer: RouteLayer = { id: this.#nextLayerId++, view };
 
     // Parse nested routes if they exist.
     if (route.routes) {
@@ -636,13 +698,14 @@ export class Router {
       }
     } else {
       routes.push({
-        pattern: parent ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
+        pattern: parents.length ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
         meta: {
           pattern: route.path,
           layers: [...layers, layer],
+          // Store the layer ID with each beforeMatch so we can correlate which context needs to get any state that is set.
           beforeMatch: parents
-            .flatMap((parent) => parent.beforeMatch)
-            .concat(route.beforeMatch)
+            .flatMap((parent, i) => (parent.beforeMatch ? { fn: parent.beforeMatch, layerId: layers[i].id } : null))
+            .concat(route.beforeMatch ? { fn: route.beforeMatch, layerId: layer.id } : null)
             .filter((x) => x != null),
         },
       });

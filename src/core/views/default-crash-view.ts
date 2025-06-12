@@ -1,4 +1,4 @@
-import { when, m, Markup } from "../markup.js";
+import { when, m } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.
@@ -26,7 +26,7 @@ export type CrashViewProps = {
 };
 
 export function DefaultCrashView(props: CrashViewProps) {
-  return new Markup("div", {
+  return m("div", {
     style: {
       backgroundColor: "#880000",
       color: "#fff",

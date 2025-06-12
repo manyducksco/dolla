@@ -180,6 +180,18 @@ export function omit<O extends Record<any, any>>(keys: (keyof O)[], object: O): 
 ||          Misc Utils         ||
 \*=============================*/
 
+export function toArray<T>(value: T | T[]): T[] {
+  if (Array.isArray(value)) {
+    return value;
+  } else {
+    return [value];
+  }
+}
+
+export function toCamelCase(s: string) {
+  return s.replace(/-./g, (x) => x[1].toUpperCase());
+}
+
 /**
  * Takes any string and returns an OKLCH color.
  */
