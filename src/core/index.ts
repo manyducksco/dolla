@@ -1,5 +1,5 @@
 // Signals
-export { $, effect, get, untracked } from "./signals.js";
+export { $, effect, get, untracked, batch } from "./signals.js";
 export type { MaybeSignal, Signal, Source } from "./signals.js";
 
 // Context
@@ -30,7 +30,7 @@ export { createLogger, setLogFilter, setLogLevels } from "./logger.js";
 export type { Logger, LoggerErrorProps as LoggerErrorContext, LoggerOptions, LogLevels } from "./logger.js";
 
 // Other types
-export type { View, Store, InputType, Renderable, Env } from "../types.js";
+export type { View, Store, InputType, Renderable, Env, CSSProperties } from "../types.js";
 export type { CrashViewProps } from "./views/default-crash-view.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";
