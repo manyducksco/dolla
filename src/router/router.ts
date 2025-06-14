@@ -1,12 +1,12 @@
 import { Context } from "../core/context.js";
 import { createLogger } from "../core/logger.js";
 import { m, MarkupType, type MarkupNode } from "../core/markup.js";
-import { Dynamic } from "../core/nodes/dynamic.js";
-import { ViewInstance } from "../core/nodes/view.js";
+import { DynamicNode } from "../core/nodes/dynamic.js";
+import { ViewNode } from "../core/nodes/view.js";
 import { $, batch, untracked, type Source } from "../core/signals.js";
 import { assertObject, isArray, isArrayOf, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
-import { shallowEqual } from "../utils.js";
+import { deepEqual, shallowEqual } from "../utils.js";
 import {
   catchLinks,
   joinPath,
@@ -24,12 +24,31 @@ import {
 
 export type Stringable = { toString(): string };
 
-export interface RouteMatchContext {
+export interface Match {
+  /**
+   * The path as it appears in the URL bar.
+   */
   path: string;
+
+  /**
+   * The pattern that this path was matched with.
+   */
   pattern: string;
+
+  /**
+   * Named route params parsed from `path`.
+   */
   params: Record<string, string>;
+
+  /**
+   * Query params parsed from `path`.
+   */
   query: Record<string, string>;
 
+  data: Record<string, any>;
+}
+
+export interface RouteMatchContext extends Match {
   /**
    * Stores `value` at `key` in this context's state.
    */
@@ -44,11 +63,6 @@ export interface RouteMatchContext {
    * Redirects the user to a different route instead of matching the current one.
    */
   redirect(path: string): void;
-
-  /**
-   * Triggers the next beforeMatch function, or mounts the route.
-   */
-  // next(): void;
 }
 
 export interface Route {
@@ -76,6 +90,14 @@ export interface Route {
    * Called after the match is identified but before it is acted on. Use this to set state, load data, etc.
    */
   beforeMatch?: (ctx: RouteMatchContext) => void | Promise<void>;
+
+  /**
+   * Arbitrary data you'd like to store on this route.
+   * This object will be available at `router.$match` while the route is active.
+   *
+   * In the case of nested routes, data from all layers will be merged into a single data object.
+   */
+  data?: Record<string, any>;
 }
 
 export interface RouteMeta {
@@ -83,6 +105,7 @@ export interface RouteMeta {
   pattern?: string;
   layers?: RouteLayer[];
   beforeMatch?: { fn: (ctx: RouteMatchContext) => void | Promise<void>; layerId: number }[];
+  data?: Record<string, any>;
 }
 
 export interface RouteConfig {
@@ -100,7 +123,7 @@ export interface RouteLayer {
  */
 interface ActiveLayer {
   id: number;
-  element: MarkupNode;
+  node: MarkupNode;
   context: Context;
   $slot: Source<MarkupNode | undefined>;
 }
@@ -108,27 +131,7 @@ interface ActiveLayer {
 /**
  * Object passed to redirect callbacks. Contains information useful for determining how to redirect.
  */
-export interface RouteRedirectContext {
-  /**
-   * The path as it appears in the URL bar.
-   */
-  path: string;
-
-  /**
-   * The pattern that this path was matched with.
-   */
-  pattern: string;
-
-  /**
-   * Named route params parsed from `path`.
-   */
-  params: Record<string, string>;
-
-  /**
-   * Query params parsed from `path`.
-   */
-  query: Record<string, string>;
-}
+export interface RouteRedirectContext extends Match {}
 
 /**
  * A log for a single step in the route resolution process.
@@ -190,9 +193,28 @@ export class Router {
   #cleanup: (() => void)[] = [];
 
   /**
-   * The current match object.
+   * The current match object (internal).
    */
   #match = $<RouteMatch>();
+
+  /**
+   * The current match object.
+   */
+  readonly $match = $<Match | undefined>(
+    () => {
+      const match = this.#match();
+      if (match) {
+        return {
+          path: match.path,
+          pattern: match.pattern,
+          params: { ...match.params },
+          query: { ...match.query },
+          data: match.meta.data ?? {},
+        };
+      }
+    },
+    { equals: deepEqual },
+  );
 
   /**
    * The currently matched route pattern, if any.
@@ -239,7 +261,7 @@ export class Router {
     const $slot = $<MarkupNode>();
     this.#rootLayer = {
       id: this.#nextLayerId++,
-      element: new Dynamic(context, $slot),
+      node: new DynamicNode(context, $slot),
       context,
       $slot,
     };
@@ -269,7 +291,7 @@ export class Router {
     // Mount initial route.
     await this.#updateRoute();
 
-    return this.#rootLayer.element;
+    return this.#rootLayer.node;
   }
 
   async [UNMOUNT]() {
@@ -462,32 +484,32 @@ export class Router {
         if (activeLayer?.id !== matchedLayer.id) {
           // Discard all previously active layers starting at this depth.
           this.#activeLayers = this.#activeLayers.slice(0, i);
-          activeLayer?.element.unmount();
+          activeLayer?.node.unmount();
 
           const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
           // Create a $slot and element for this layer.
           const $slot = $<MarkupNode>();
-          const element = new ViewInstance(parentLayer.context, matchedLayer.view, {
+          const node = new ViewNode(parentLayer.context, matchedLayer.view, {
             children: m(MarkupType.Dynamic, { source: $slot }),
           });
 
           // Set state for new layer.
           const stateEntries = state.get(matchedLayer.id);
           if (stateEntries) {
-            element.context.setState(stateEntries);
+            node.context.setState(stateEntries);
           }
 
           // Add new layer to activeLayers.
           this.#activeLayers.push({
             id: matchedLayer.id,
-            element,
-            context: element.context,
+            node,
+            context: node.context,
             $slot,
           });
 
           // Slot this layer into parent.
-          parentLayer.$slot(element);
+          parentLayer.$slot(node);
         } else {
           // Update state for layers that are still active.
           const stateEntries = state.get(activeLayer.id);
@@ -538,6 +560,7 @@ export class Router {
               pattern: match.pattern,
               params: match.params,
               query: match.query,
+              data: match.meta.data ?? {},
             };
             path = await redirect(redirectContext);
             if (!isString(path)) {
@@ -578,6 +601,7 @@ export class Router {
               pattern: match.pattern,
               params: match.params,
               query: match.query,
+              data: match.meta.data ?? {},
 
               setState: (...args: any[]) => {
                 const id = callbacks[i].layerId;
@@ -604,8 +628,6 @@ export class Router {
                 finalized = true;
                 finalize();
               },
-
-              // next,
             });
             if (!finalized) {
               if (result instanceof Promise) {
@@ -671,12 +693,13 @@ export class Router {
         }
       }
 
-      routes.push({
+      const config: RouteConfig = {
         pattern: "/" + joinPath([...parts, ...splitPath(route.path)]),
         meta: {
           redirect,
         },
-      });
+      };
+      routes.push(config);
 
       return routes;
     }
@@ -697,7 +720,7 @@ export class Router {
         routes.push(...this.#prepareRoute(subroute, [...parents, route], [...layers, layer]));
       }
     } else {
-      routes.push({
+      const config: RouteConfig = {
         pattern: parents.length ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
         meta: {
           pattern: route.path,
@@ -708,7 +731,16 @@ export class Router {
             .concat(route.beforeMatch ? { fn: route.beforeMatch, layerId: layer.id } : null)
             .filter((x) => x != null),
         },
-      });
+      };
+      if (route.data) {
+        const parent = parents.at(-1);
+        if (parent) {
+          config.meta.data = { ...parent.data, ...route.data };
+        } else {
+          config.meta.data = route.data;
+        }
+      }
+      routes.push(config);
     }
 
     return routes;

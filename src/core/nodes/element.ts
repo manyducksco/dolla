@@ -2,29 +2,37 @@ import { isFunction, isObject, isString } from "../../typeChecking.js";
 import { omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
-import { toMarkupNodes, type MarkupNode } from "../markup.js";
-import { effect, get, type MaybeSignal, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
-import { MARKUP_NODE, TYPE } from "../symbols.js";
-import { VIEW, ViewInstance } from "./view.js";
+import { toMarkupNodes } from "../markup.js";
+import {
+  effect,
+  get,
+  setCurrentContext,
+  type MaybeSignal,
+  type Signal,
+  type Source,
+  type UnsubscribeFn,
+} from "../signals.js";
+
+import { MarkupNode } from "./_markup.js";
+import { VIEW, ViewNode } from "./view.js";
 
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 
 const IS_SVG = Symbol("HTML.isSVG");
 
-// Attributes in this list will not be forwarded to the DOM node.
-const privateProps = ["class", "className", "ref", "mixin", "children"];
+// Properties in this list will not be processed by applyProps because they are already handled elsewhere.
+const ignoredProps = ["class", "className", "ref", "mixin", "children"];
 
-export class HTML implements MarkupNode {
-  [TYPE] = MARKUP_NODE;
+/**
+ * Renders an HTML or SVG element.
+ */
+export class ElementNode extends MarkupNode {
+  private root: HTMLElement | SVGElement;
 
-  root: HTMLElement | SVGElement;
+  readonly tag;
+  readonly props: Record<string, any>;
 
-  private parentContext: Context;
   private context: Context;
-
-  tag;
-  props: Record<string, any>;
-
   private childNodes: MarkupNode[] = [];
   private unsubscribers: UnsubscribeFn[] = [];
 
@@ -35,11 +43,11 @@ export class HTML implements MarkupNode {
   private canClickAway = false;
 
   constructor(context: Context, tag: string, props: Record<string, any>) {
-    this.parentContext = context;
+    super();
+
     this.tag = tag;
     this.props = props;
-
-    this.context = Context.linked(this.parentContext, getLoggerName.bind(this));
+    this.context = Context.linked(context, getLoggerName.bind(this));
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
@@ -55,27 +63,27 @@ export class HTML implements MarkupNode {
 
     // Add view name as a data attribute in development mode for better debugging.
     if (getEnv() === "development") {
-      const view = this.context.getState<ViewInstance<any> | null>(VIEW, null);
+      const view = this.context.getState<ViewNode<any> | null>(VIEW, null);
       if (view) {
         this.root.dataset.view = view.context.getName();
       }
     }
 
     if (props.mixin) {
-      for (const fn of toArray(props.mixin)) {
-        fn(
-          this.root,
-          Context.linked(this.context, getLoggerName.bind(this), {
-            bindLifecycleToParent: true,
-            logger: { tagName: fn.name === "mixin" ? undefined : "mixin", tag: fn.name },
-          }),
-        );
+      for (const mixin of toArray(props.mixin)) {
+        const context = Context.linked(this.context, getLoggerName.bind(this), {
+          bindLifecycleToParent: true,
+          logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
+        });
+        const prevCtx = setCurrentContext(context);
+        mixin(this.root, context);
+        setCurrentContext(prevCtx);
       }
     }
 
     const classes = props.className ?? props.class;
 
-    this.applyProps(this.root, omit(privateProps, props));
+    this.applyProps(this.root, props);
     if (props.style) this.applyStyles(this.root, props.style, this.unsubscribers);
     if (classes) this.applyClasses(this.root, classes, this.unsubscribers);
 
@@ -93,12 +101,15 @@ export class HTML implements MarkupNode {
     }
   }
 
-  isMounted() {
-    return this.context.isMounted;
-    // return this.root?.parentNode != null;
+  override getRoot() {
+    return this.root;
   }
 
-  mount(parent: Node, after?: Node) {
+  override isMounted() {
+    return this.context.isMounted;
+  }
+
+  override mount(parent: Node, after?: Node) {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
@@ -106,7 +117,7 @@ export class HTML implements MarkupNode {
 
       for (let i = 0; i < this.childNodes.length; i++) {
         const child = this.childNodes[i];
-        const previous = i > 0 ? this.childNodes[i - 1].root : undefined;
+        const previous = i > 0 ? this.childNodes[i - 1].getRoot() : undefined;
         child.mount(this.root!, previous);
       }
     }
@@ -118,7 +129,7 @@ export class HTML implements MarkupNode {
     if (!wasMounted) Context.emit(this.context, LifecycleEvent.DID_MOUNT);
   }
 
-  unmount(skipDOM = false) {
+  override unmount(skipDOM = false) {
     Context.emit(this.context, LifecycleEvent.WILL_UNMOUNT);
 
     if (!skipDOM) {
@@ -144,7 +155,7 @@ export class HTML implements MarkupNode {
     Context.emit(this.context, LifecycleEvent.DISPOSE);
   }
 
-  move(parent: Element, after?: Node) {
+  override move(parent: Element, after?: Node) {
     if ("moveBefore" in parent) {
       try {
         (parent as any).moveBefore(this.root!, after?.nextSibling ?? null);
@@ -174,7 +185,7 @@ export class HTML implements MarkupNode {
   }
 
   private applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
-    for (const key in props) {
+    for (const key in omit(ignoredProps, props)) {
       const value = props[key];
 
       if (key === "on:clickoutside" || key === "onClickOutside" || key === "onclickoutside") {
@@ -330,7 +341,7 @@ export class HTML implements MarkupNode {
 
                 for (const key in applied) {
                   // Key removed.
-                  if (Object.hasOwn(applied, key) && !Object.hasOwn(next, key)) {
+                  if (!Object.hasOwn(next, key)) {
                     delete element.dataset[key];
                     delete applied[key];
                   }
@@ -541,14 +552,15 @@ function getStyleMap(styles: unknown) {
   return mapped;
 }
 
-function getLoggerName(this: HTML) {
-  if (this.root == null) return this.tag;
-  let name = this.root.tagName.toLowerCase();
-  if (this.root.id) {
-    name += `#${this.root.id}`;
+function getLoggerName(this: ElementNode) {
+  const root = this.getRoot();
+  if (root == null) return this.tag;
+  let name = this.getRoot().tagName.toLowerCase();
+  if (root.id) {
+    name += `#${root.id}`;
   }
-  if (this.root.classList.length > 0) {
-    for (const className of this.root.classList.values()) {
+  if (root.classList.length > 0) {
+    for (const className of root.classList.values()) {
       name += `.${className}`;
     }
   }

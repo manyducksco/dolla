@@ -1,10 +1,9 @@
 import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
-import type { MarkupNode } from "../markup.js";
 import { $, batch, effect, untracked, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
-import { TYPE, MARKUP_NODE } from "../symbols.js";
-import { ViewInstance } from "./view.js";
+import { MarkupNode } from "./_markup.js";
+import { ViewNode } from "./view.js";
 
 // ----- Types ----- //
 
@@ -22,10 +21,11 @@ type ConnectedItem<T> = {
 
 // ----- Code ----- //
 
-export class Repeat<T> implements MarkupNode {
-  [TYPE] = MARKUP_NODE;
-
-  root = document.createTextNode("");
+/**
+ * Renders a list of items.
+ */
+export class RepeatNode<T> extends MarkupNode {
+  private root = document.createTextNode("");
 
   private context;
 
@@ -37,6 +37,7 @@ export class Repeat<T> implements MarkupNode {
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
   constructor(context: Context, items: Signal<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
+    super();
     this.context = context;
 
     this.items = items;
@@ -44,11 +45,15 @@ export class Repeat<T> implements MarkupNode {
     this.render = render;
   }
 
-  isMounted() {
+  override getRoot() {
+    return this.root;
+  }
+
+  override isMounted() {
     return this.root.parentElement != null;
   }
 
-  mount(parent: Element, after?: Node) {
+  override mount(parent: Element, after?: Node) {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
@@ -67,7 +72,7 @@ export class Repeat<T> implements MarkupNode {
     }
   }
 
-  unmount(skipDOM = false) {
+  override unmount(skipDOM = false) {
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
@@ -80,7 +85,7 @@ export class Repeat<T> implements MarkupNode {
     this._cleanup(skipDOM);
   }
 
-  move(parent: Element, after?: Node) {
+  override move(parent: Element, after?: Node) {
     // TODO: Implement move
     return this.mount(parent, after);
   }
@@ -139,7 +144,7 @@ export class Repeat<T> implements MarkupNode {
             key: potential.key,
             $item,
             $index,
-            node: new ViewInstance(this.context, RepeatItemView, {
+            node: new ViewNode(this.context, RepeatItemView, {
               $item: () => $item(),
               $index: () => $index(),
               render: this.render,
@@ -153,7 +158,7 @@ export class Repeat<T> implements MarkupNode {
     // TODO: Use a smarter inline reordering method. This causes scrollbars to jump.
     for (let i = 0; i < newItems.length; i++) {
       const item = newItems[i];
-      const previous = newItems[i - 1]?.node.root ?? this.root;
+      const previous = newItems[i - 1]?.node.getRoot() ?? this.root;
 
       const connected = this.connectedItems.get(item.key);
       if (connected && connected.node.isMounted()) {
@@ -169,7 +174,7 @@ export class Repeat<T> implements MarkupNode {
     }
 
     // Move marker node to end.
-    const lastItem = newItems.at(-1)?.node.root ?? this.root;
+    const lastItem = newItems.at(-1)?.node.getRoot() ?? this.root;
     this.root.parentNode?.insertBefore(this.root, lastItem.nextSibling);
   }
 }

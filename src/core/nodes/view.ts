@@ -1,14 +1,16 @@
 import type { View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
-import { render, type MarkupNode } from "../markup.js";
-import { TYPE, MARKUP_NODE } from "../symbols.js";
+import { render } from "../markup.js";
+import { MarkupNode } from "./_markup.js";
+import { setCurrentContext } from "../signals.js";
 
-export const VIEW = Symbol("View");
+export const VIEW = Symbol("ViewNode");
 
-export class ViewInstance<P> implements MarkupNode {
-  [TYPE] = MARKUP_NODE;
-
+/**
+ * Renders a View.
+ */
+export class ViewNode<P> extends MarkupNode {
   uniqueId = getUniqueId();
   context: Context;
   props;
@@ -16,16 +18,13 @@ export class ViewInstance<P> implements MarkupNode {
 
   node?: MarkupNode;
 
-  get root() {
-    return this.node?.root!;
-  }
-
   /**
    * @param context - Parent contenxt to link to.
    * @param view - View function to mount.
    * @param props - Props to pass to view function.
    */
   constructor(context: Context, view: View<P>, props: P) {
+    super();
     this.context = Context.linked(context, view.name ?? "anonymous view", {
       logger: {
         tag: this.uniqueId,
@@ -35,6 +34,10 @@ export class ViewInstance<P> implements MarkupNode {
     this.context.setState(VIEW, this);
     this.props = props;
     this.view = view;
+  }
+
+  getRoot() {
+    return this.node?.getRoot();
   }
 
   isMounted() {
@@ -49,7 +52,9 @@ export class ViewInstance<P> implements MarkupNode {
     if (!wasMounted) {
       const { context, props, view } = this;
       try {
+        const prevCtx = setCurrentContext(context);
         const result = view.call(context, props, context);
+        setCurrentContext(prevCtx);
         if (result != null && result !== false) {
           this.node = render(result, context);
         }

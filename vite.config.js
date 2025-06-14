@@ -9,6 +9,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, "src/core/index.ts"),
+        hooks: resolve(__dirname, "src/hooks/index.ts"),
         http: resolve(__dirname, "src/http/index.ts"),
         i18n: resolve(__dirname, "src/i18n/index.ts"),
         router: resolve(__dirname, "src/router/index.ts"),

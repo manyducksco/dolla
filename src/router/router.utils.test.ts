@@ -78,7 +78,7 @@ test("add and match routes", () => {
   expect(matchNone).toBeUndefined();
 });
 
-test("static joinPath: joins simple path fragments", (t) => {
+test("static joinPath: joins simple path fragments", () => {
   expect(joinPath(["users", 5, "edit"])).toBe("users/5/edit");
   expect(joinPath(["/lots", "/of/", "/slashes/"])).toBe("/lots/of/slashes");
   expect(joinPath(["even/", "/more/", "slashes"])).toBe("even/more/slashes");

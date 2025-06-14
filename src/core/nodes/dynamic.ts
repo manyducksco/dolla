@@ -1,19 +1,15 @@
 import { toArray } from "../../utils.js";
 import type { Context } from "../context.js";
-import { toMarkupNodes, type MarkupNode } from "../markup.js";
+import { toMarkupNodes } from "../markup.js";
 import { effect, untracked, type Signal, type UnsubscribeFn } from "../signals.js";
-import { MARKUP_NODE, TYPE } from "../symbols.js";
+import { MarkupNode } from "./_markup.js";
 
 /**
- * Displays dynamic children without a parent element.
- * Renders a Reactive value via a render function.
- *
- * This is probably the most used element type aside from HTML.
+ * Renders any kind of content; markup, signals, DOM nodes, etc.
+ * If it can be rendered by Dolla then Dynamic will do it.
  */
-export class Dynamic implements MarkupNode {
-  [TYPE] = MARKUP_NODE;
-
-  root = document.createTextNode("");
+export class DynamicNode extends MarkupNode {
+  private root = document.createTextNode("");
 
   private children: MarkupNode[] = [];
   private context: Context;
@@ -22,15 +18,20 @@ export class Dynamic implements MarkupNode {
   private unsubscribe?: UnsubscribeFn;
 
   constructor(context: Context, $slot: Signal<any>) {
+    super();
     this.context = context;
     this.$slot = $slot;
   }
 
-  isMounted() {
+  override getRoot() {
+    return this.root;
+  }
+
+  override isMounted() {
     return this.root.parentElement != null;
   }
 
-  mount(parent: Node, after?: Node) {
+  override mount(parent: Node, after?: Node) {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
@@ -47,7 +48,7 @@ export class Dynamic implements MarkupNode {
     }
   }
 
-  unmount(skipDOM = false) {
+  override unmount(skipDOM = false) {
     this.unsubscribe?.();
 
     if (this.isMounted()) {
@@ -56,14 +57,14 @@ export class Dynamic implements MarkupNode {
     }
   }
 
-  move(parent: Element, after?: Node) {
+  override move(parent: Element, after?: Node) {
     if ("moveBefore" in parent) {
       try {
         (parent as any).moveBefore(this.root, after?.nextSibling ?? null);
         for (let i = 0; i < this.children.length; i++) {
-          this.children[i].move(parent, this.children[i - 1]?.root ?? this.root);
+          this.children[i].move(parent, this.children[i - 1]?.getRoot() ?? this.root);
         }
-        (parent as any).moveBefore(this.root, this.children.at(-1)?.root?.nextSibling ?? null);
+        (parent as any).moveBefore(this.root, this.children.at(-1)?.getRoot()?.nextSibling ?? null);
       } catch {
         this.mount(parent, after);
       }
@@ -87,20 +88,14 @@ export class Dynamic implements MarkupNode {
     const nodes = toMarkupNodes(this.context, content);
 
     for (const node of nodes) {
-      const previous = this.children.at(-1)?.root || this.root;
+      const previous = this.children.at(-1)?.getRoot() || this.root;
       node.mount(this.root.parentElement!, previous);
       this.children.push(node);
     }
 
-    this.moveMarker();
-  }
-
-  /**
-   * Move marker node to end of children.
-   */
-  private moveMarker() {
+    // Move marker after children
     const parent = this.root.parentElement!;
-    const lastChildNextSibling = this.children.at(-1)?.root?.nextSibling ?? null;
+    const lastChildNextSibling = this.children.at(-1)?.getRoot()?.nextSibling ?? null;
     if ("moveBefore" in parent) {
       (parent as any).moveBefore(this.root, lastChildNextSibling);
     } else {

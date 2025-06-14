@@ -3,7 +3,7 @@ import { when, m } from "../markup.js";
 /**
  * Props passed to the crash view when a crash occurs.
  */
-export type CrashViewProps = {
+export interface CrashViewProps {
   /**
    * JavaScript Error object.
    */
@@ -23,8 +23,11 @@ export type CrashViewProps = {
    * Label for the tag.
    */
   tagName?: string;
-};
+}
 
+/**
+ * The crash view displayed unless you specify your own.
+ */
 export function DefaultCrashView(props: CrashViewProps) {
   return m("div", {
     style: {

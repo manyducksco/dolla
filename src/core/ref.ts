@@ -21,18 +21,25 @@ export interface Ref<T> {
  */
 export function ref<T>(value?: T): Ref<T>;
 
-export function ref(value = EMPTY_REF) {
-  return function () {
-    if (arguments.length === 0) {
-      if (value === EMPTY_REF) {
-        throw new Error(`Ref getter was called, but ref has no value! Be sure to set your refs before accessing them.`);
-      }
-    } else if (arguments.length === 1) {
-      value = arguments[0];
-    } else {
-      throw new Error(`Ref called with too many arguments. Expected 0 or 1 arguments.`);
-    }
+export function ref<T>(...value: [T]): Ref<T> {
+  return _ref.bind({ current: value.length ? value[0] : EMPTY_REF }) as Ref<T>;
+}
 
-    return value;
-  };
+/*==================================*\
+||          Implementation          ||
+\*==================================*/
+
+interface RefValue<T> {
+  current: T | typeof EMPTY_REF;
+}
+
+function _ref<T>(this: RefValue<T>, ...value: [T]): T {
+  if (value.length) {
+    this.current = value[0];
+  } else {
+    if (this.current === EMPTY_REF) {
+      throw new Error("Ref getter was called, but ref has no value! Be sure to set your refs before accessing them.");
+    }
+  }
+  return this.current;
 }

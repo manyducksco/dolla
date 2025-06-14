@@ -28,7 +28,7 @@ export interface BaseProps {
 /**
  *
  */
-export type View<P> = (this: Context, props: P, context: Context) => Renderable;
+export type View<Props> = (this: Context, props: Props, context: Context) => Renderable;
 
 /**
  *

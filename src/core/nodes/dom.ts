@@ -1,33 +1,35 @@
-import type { MarkupNode } from "../markup";
-import { MARKUP_NODE, TYPE } from "../symbols";
+import { MarkupNode } from "./_markup";
 
 /**
- * Lightweight MarkupNode wrapper for a plain DOM node.
+ * A lightweight MarkupNode wrapper for a plain DOM node.
  */
-export class DOMNode implements MarkupNode {
-  [TYPE] = MARKUP_NODE;
-
-  root: Node;
+export class DOMNode extends MarkupNode {
+  private root: Node;
 
   constructor(node: Node) {
+    super();
     this.root = node;
   }
 
-  isMounted() {
+  override getRoot() {
+    return this.root;
+  }
+
+  override isMounted() {
     return this.root.parentNode != null;
   }
 
-  mount(parent: Element, after?: Node) {
+  override mount(parent: Element, after?: Node) {
     parent.insertBefore(this.root, after?.nextSibling ?? null);
   }
 
-  unmount(skipDOM = false) {
+  override unmount(skipDOM = false) {
     if (!skipDOM && this.root.parentNode) {
       this.root.parentNode.removeChild(this.root);
     }
   }
 
-  move(parent: Element, after?: Node) {
+  override move(parent: Element, after?: Node) {
     if ("moveBefore" in parent && this.root instanceof Element) {
       try {
         (parent as any).moveBefore(this.root, after?.nextSibling ?? null);

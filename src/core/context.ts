@@ -2,7 +2,15 @@ import { isFunction, typeOf } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
-import { effect, type EffectFn, get, type MaybeSignal, untracked, type UnsubscribeFn } from "./signals";
+import {
+  effect,
+  type EffectFn,
+  get,
+  type MaybeSignal,
+  untracked,
+  type UnsubscribeFn,
+  setCurrentContext,
+} from "./signals";
 
 export enum LifecycleEvent {
   WILL_MOUNT,
@@ -244,7 +252,7 @@ export class Context implements Logger {
   addStore<T>(store: Store<any, T>, options?: any): this {
     if (this[STORES]?.get(store)) {
       let name = store.name ? `'${store.name}'` : "this store";
-      throw this.crash(new StoreError(`An instance of ${name} was already added on this context.`));
+      throw this.crash(new Error(`An instance of ${name} was already added on this context.`));
     }
 
     const context = Context.linked(this, store.name, {
@@ -253,7 +261,9 @@ export class Context implements Logger {
     });
     try {
       if (!this[STORES]) this[STORES] = new Map();
+      const prevCtx = setCurrentContext(context);
       const result = store.call(context, options, context);
+      setCurrentContext(prevCtx);
       this[STORES].set(store, result);
     } catch (error) {
       throw this.crash(error as Error);
@@ -269,7 +279,7 @@ export class Context implements Logger {
    */
   getStore<T>(store: Store<any, T>): T {
     if (!isFunction(store)) {
-      throw new StoreError(`Invalid store.`);
+      throw new Error(`Invalid store.`);
     }
     let context: Context = this;
     let result: unknown;
@@ -282,7 +292,7 @@ export class Context implements Logger {
       }
     }
     if (result == null) {
-      throw this.crash(new StoreError(`Store '${store.name}' is not provided by this context.`));
+      throw this.crash(new Error(`Store '${store.name}' is not provided by this context.`));
     }
     return result as T;
   }
@@ -423,14 +433,14 @@ export class Context implements Logger {
    */
   setState(entries: [key: any, value: any][]): void;
 
-  setState() {
+  setState(...args: any[]) {
     if (!this[STATE]) {
       this[STATE] = new Map();
     }
-    if (arguments.length === 2) {
-      this[STATE].set(arguments[0], arguments[1]);
-    } else if (typeOf(arguments[0]) === "array") {
-      for (const [key, value] of arguments[0]) {
+    if (args.length === 2) {
+      this[STATE].set(args[0], args[1]);
+    } else if (typeOf(args[0]) === "array") {
+      for (const [key, value] of args[0]) {
         if (value === undefined) {
           this[STATE].delete(key);
         } else {
@@ -448,5 +458,3 @@ export class Context implements Logger {
 export function createContext(name: MaybeSignal<string>, options?: ContextOptions) {
   return new Context(name, options);
 }
-
-export class StoreError extends Error {}

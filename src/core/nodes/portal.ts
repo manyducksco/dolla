@@ -1,44 +1,50 @@
 import type { Renderable } from "../../types.js";
 import { Context } from "../context.js";
-import { render, type MarkupNode } from "../markup.js";
-import { TYPE, MARKUP_NODE } from "../symbols.js";
+import { render } from "../markup.js";
+import { MarkupNode } from "./_markup.js";
 
 /**
  * Renders content into a specified parent node.
  */
-export class Portal implements MarkupNode {
-  [TYPE] = MARKUP_NODE;
-
+export class PortalNode extends MarkupNode {
   private context;
-  private content;
+  private value;
   private parent;
 
-  private element?: MarkupNode;
+  private node?: MarkupNode;
 
-  constructor(context: Context, content: Renderable, parent: Element) {
+  constructor(context: Context, value: Renderable, parent: Element) {
+    super();
     this.context = context;
-    this.content = content;
+    this.value = value;
     this.parent = parent;
   }
 
-  isMounted() {
-    if (!this.element) {
+  override getRoot() {
+    return this.node?.getRoot();
+  }
+
+  override isMounted() {
+    if (!this.node) {
       return false;
     }
-    return this.element.isMounted();
+    return this.node.isMounted();
   }
 
-  mount(_parent: Element, _after?: Node) {
-    this.element = render(this.content, this.context);
-    this.element.mount(this.parent);
+  override mount(_parent: Element, _after?: Node) {
+    const node = render(this.value, this.context);
+    this.node = node;
+    node.mount(this.parent);
   }
 
-  unmount(skipDOM = false) {
-    if (this.element?.isMounted()) {
-      // Portals MUST unmount DOM nodes because they won't be removed by parents unmounting.
-      this.element.unmount(false);
+  override unmount(skipDOM = false) {
+    if (this.node?.isMounted()) {
+      // Portals must unmount DOM nodes because they won't be removed by parents unmounting.
+      this.node.unmount(false);
     }
   }
 
-  move(_parent: Element, _after?: Node) {}
+  override move(_parent: Element, _after?: Node) {
+    // Moving does not apply to portals.
+  }
 }

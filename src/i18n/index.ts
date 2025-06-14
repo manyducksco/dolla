@@ -655,9 +655,7 @@ class I18n {
     return new Intl.ListFormat(this.#locale(), options).format(list);
   }
 
-  // relativeTime(): State<string> {
-
-  // }
+  // relativeTime(date?: MaybeSignal<string | number | Date | undefined>): Signal<string> {}
 
   #getCached(key: string, values?: Record<string, any>): string | undefined {
     for (const entry of this.#cache) {

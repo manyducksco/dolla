@@ -4,7 +4,7 @@ import type { View } from "../types";
 import { Context, LifecycleEvent } from "./context";
 import { type LoggerCrashProps, onLoggerCrash } from "./logger";
 import { type MarkupNode } from "./markup";
-import { ViewInstance } from "./nodes/view";
+import { ViewNode } from "./nodes/view";
 import { DefaultCrashView } from "./views/default-crash-view";
 
 let isMounted = false;
@@ -42,7 +42,7 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
     }
 
     // Mount the crash page
-    new ViewInstance(rootContext, crashView, props).mount(rootElement);
+    new ViewNode(rootContext, crashView, props).mount(rootElement);
   });
 
   Context.emit(rootContext, LifecycleEvent.WILL_MOUNT);
@@ -52,7 +52,7 @@ export async function mount(view: any, rootElement: Element, options?: MountOpti
     router = view;
     rootView = await router[MOUNT](rootElement, rootContext);
   } else {
-    rootView = new ViewInstance(rootContext, view, {});
+    rootView = new ViewNode(rootContext, view, {});
   }
   rootView.mount(rootElement);
   isMounted = true;

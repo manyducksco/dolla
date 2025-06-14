@@ -1,21 +1,23 @@
 import { isFunction, isString } from "../typeChecking.js";
 import type { IntrinsicElements, Renderable, View } from "../types.js";
 import { Context } from "./context.js";
+import { MarkupNode } from "./nodes/_markup.js";
 import { DOMNode } from "./nodes/dom.js";
-import { Dynamic } from "./nodes/dynamic.js";
-import { HTML } from "./nodes/html.js";
-import { Portal } from "./nodes/portal.js";
-import { KeyFn, RenderFn, Repeat } from "./nodes/repeat.js";
-import { ViewInstance } from "./nodes/view.js";
+import { DynamicNode } from "./nodes/dynamic.js";
+import { ElementNode } from "./nodes/element.js";
+import { PortalNode } from "./nodes/portal.js";
+import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat.js";
+import { ViewNode } from "./nodes/view.js";
 import { $, get, type MaybeSignal, type Signal } from "./signals.js";
-import { TYPE, MARKUP_NODE } from "./symbols.js";
+
+export { MarkupNode };
 
 /*===========================*\
 ||           Markup          ||
 \*===========================*/
 
 /**
- * Markup is a set of element metadata that hasn't been constructed into a MarkupElement yet.
+ * `Markup` is a set of metadata that will be constructed into a `MarkupNode`.
  */
 export class Markup<P = any> {
   /**
@@ -37,44 +39,46 @@ export class Markup<P = any> {
 }
 
 /**
- * A mountable node that has been constructed from Markup metadata.
+ * A node that can be mounted by the Markup layout engine.
+ * Implemented by the built in nodes, but can of course also be implemented to create your own custom nodes.
+ *
+ * A `MarkupNode` instance can be passed anywhere a `Renderable` is required.
  */
-export interface MarkupNode {
-  /**
-   *
-   */
-  readonly root?: Node;
+// export interface MarkupNode {
+//   /**
+//    * A single DOM node to represent this MarkupNode's position in the DOM.
+//    * Usually the parent element, but it can be an empty Text node used as a marker.
+//    *
+//    * It only needs to be defined while the node is mounted, so it can be created in the `mount` function.
+//    */
+//   readonly root?: Node;
 
-  /**
-   * Returns true when this MarkupNode is mounted.
-   */
-  isMounted(): boolean;
+//   /**
+//    * Returns true while this MarkupNode is mounted.
+//    */
+//   isMounted(): boolean;
 
-  /**
-   * Mount this MarkupNode to a `parent` element.
-   * If passed, this MarkupNode will be mounted as the next sibling of `after`.
-   */
-  mount(parent: Element, after?: Node): void;
+//   /**
+//    * Mount this MarkupNode to a `parent` element.
+//    * If passed, this MarkupNode will be mounted as the next sibling of `after`.
+//    */
+//   mount(parent: Element, after?: Node): void;
 
-  /**
-   * Unmount this MarkupNode from its parent element.
-   *
-   * The `skipDOM` option can be passed as an optimization when unmounting a parent node.
-   * A value of `true` indicates that no DOM operations need to happen because the parent is already being unmounted.
-   *
-   * @param skipDOM - No DOM updates will be performed when true. Lifecycle methods will be called regardless.
-   */
-  unmount(skipDOM?: boolean): void;
+//   /**
+//    * Unmount this MarkupNode from its parent element.
+//    *
+//    * The `skipDOM` option can be passed as an optimization when unmounting a parent node.
+//    * A value of `true` indicates that no DOM operations need to happen because the parent is already being unmounted.
+//    *
+//    * @param skipDOM - No DOM updates will be performed when true. Lifecycle methods will be called regardless.
+//    */
+//   unmount(skipDOM?: boolean): void;
 
-  /**
-   * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
-   */
-  move(parent: Element, after?: Node): void;
-}
-
-export function isMarkupNode(value: any): value is MarkupNode {
-  return value?.[TYPE] === MARKUP_NODE;
-}
+//   /**
+//    * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
+//    */
+//   move(parent: Element, after?: Node): void;
+// }
 
 export enum MarkupType {
   DOM = "$dom",
@@ -109,7 +113,7 @@ export interface MarkupCustomElementProps {
 }
 
 /**
- * Creates a Markup element that defines an HTML element.
+ * Creates a `Markup` element that defines an HTML element.
  */
 export function m<T extends keyof IntrinsicElements>(
   tag: T,
@@ -117,22 +121,22 @@ export function m<T extends keyof IntrinsicElements>(
 ): Markup;
 
 /**
- * Creates a Markup element that defines an HTML custom element.
+ * Creates a `Markup` element that defines an HTML custom element.
  */
 export function m<T extends keyof MarkupCustomElementProps>(type: T, props: MarkupCustomElementProps[T]): Markup;
 
 /**
- * Creates a Markup element that defines a MarkupNode.
+ * Creates a `Markup` element that defines a `MarkupNode`.
  */
 export function m<T extends keyof MarkupNodeProps>(type: T, props: MarkupNodeProps[T]): Markup;
 
 /**
- * Creates a Markup element that defines a view.
+ * Creates a `Markup` element that defines a view.
  */
 export function m<P extends {}>(type: View<P>, props?: P): Markup;
 
 /**
- * Creates a Markup element that defines a view.
+ * Creates a `Markup` element that defines a view.
  */
 export function m<P>(type: View<P>, props: P): Markup;
 
@@ -188,20 +192,23 @@ export function portal(parent: Element, content: Renderable): Markup {
 ||           Render          ||
 \*===========================*/
 
+/**
+ * Takes any `Renderable` value and returns a `MarkupNode` that will display it.
+ */
 export function render(content: Renderable, context = new Context("$")): MarkupNode {
-  const nodes = toMarkupNodes(context, [content]);
+  const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
     return nodes[0];
   }
-  return new Dynamic(context, () => nodes);
+  return new DynamicNode(context, () => nodes);
 }
 
 /**
- * Convert basically anything into a set of MarkupElements.
+ * Convert basically anything into a set of `MarkupNode`s.
  */
 export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[] {
   const items = content.flat(Infinity);
-  const elements: MarkupNode[] = [];
+  const nodes: MarkupNode[] = [];
 
   for (const item of items) {
     if (item === null || item === undefined || item === false) {
@@ -209,39 +216,39 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
     }
 
     if (item instanceof Node) {
-      elements.push(new DOMNode(item));
+      nodes.push(new DOMNode(item));
       continue;
     }
 
     if (item instanceof Markup) {
       if (isFunction(item.type)) {
-        elements.push(new ViewInstance(context, item.type as View<any>, item.props));
+        nodes.push(new ViewNode(context, item.type as View<any>, item.props));
         continue;
       } else if (isString(item.type)) {
         switch (item.type) {
           case MarkupType.DOM: {
             const attrs = item.props! as MarkupNodeProps[MarkupType.DOM];
-            elements.push(new DOMNode(attrs.value));
+            nodes.push(new DOMNode(attrs.value));
             continue;
           }
           case MarkupType.Dynamic: {
             const attrs = item.props! as MarkupNodeProps[MarkupType.Dynamic];
-            elements.push(new Dynamic(context, attrs.source));
+            nodes.push(new DynamicNode(context, attrs.source));
             continue;
           }
           case MarkupType.Portal: {
             const attrs = item.props! as MarkupNodeProps[MarkupType.Portal];
-            elements.push(new Portal(context, attrs.content, attrs.parent));
+            nodes.push(new PortalNode(context, attrs.content, attrs.parent));
             continue;
           }
           case MarkupType.Repeat: {
             const attrs = item.props! as MarkupNodeProps[MarkupType.Repeat];
-            elements.push(new Repeat(context, attrs.items, attrs.key, attrs.render));
+            nodes.push(new RepeatNode(context, attrs.items, attrs.key, attrs.render));
             continue;
           }
           default:
-            // Handle type as an HTML tag.
-            elements.push(new HTML(context, item.type, item.props));
+            // Assume `type` is an HTML/SVG tag.
+            nodes.push(new ElementNode(context, item.type, item.props));
             continue;
         }
       } else {
@@ -249,19 +256,19 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       }
     }
 
-    if (isMarkupNode(item)) {
-      elements.push(item);
+    if (item instanceof MarkupNode) {
+      nodes.push(item);
       continue;
     }
 
     if (isFunction(item)) {
-      elements.push(new Dynamic(context, item));
+      nodes.push(new DynamicNode(context, item));
       continue;
     }
 
     // fallback to displaying value as text
-    elements.push(new DOMNode(document.createTextNode(String(item))));
+    nodes.push(new DOMNode(document.createTextNode(String(item))));
   }
 
-  return elements;
+  return nodes;
 }

@@ -2,6 +2,7 @@ import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
 import { isFunction } from "../typeChecking";
 import { strictEqual } from "../utils";
+import { Context } from "./context";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -61,6 +62,7 @@ let notifyIndex = 0;
 let queuedEffectsLength = 0;
 let activeSub: ReactiveNode | undefined;
 let activeScope: EffectScope | undefined;
+let activeContext: Context | undefined;
 
 function getCurrentSub(): ReactiveNode | undefined {
   return activeSub;
@@ -70,6 +72,16 @@ function setCurrentSub(sub: ReactiveNode | undefined) {
   const prevSub = activeSub;
   activeSub = sub;
   return prevSub;
+}
+
+export function getCurrentContext(): Context | undefined {
+  return activeContext;
+}
+
+export function setCurrentContext(context: Context | undefined) {
+  const prevContext = activeContext;
+  activeContext = context;
+  return prevContext;
 }
 
 // function getCurrentScope(): EffectScope | undefined {
@@ -260,9 +272,6 @@ function _effect(this: Effect | EffectScope): void {
 
 /* -------------- TYPES --------------- */
 
-const SIGNAL = Symbol("SIGNAL");
-const SOURCE = Symbol("SOURCE");
-
 /**
  * A getter that returns the current value held within the signal.
  * If called inside a trackable scope this signal will be tracked as a dependency.
@@ -291,16 +300,18 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
-export function isSource<T>(value: MaybeSignal<T>): value is Source<T> {
-  return isFunction(value) && (value as any)._type === SOURCE;
-}
-
+/**
+ * Suspends effects during `fn`. Effects for all updated Signal values are called at the end of the batch.
+ */
 export function batch(fn: () => void) {
   ++batchDepth;
   fn();
   if (!--batchDepth) flush();
 }
 
+/**
+ * Call a Signal function without tracking its value.
+ */
 export function untracked<T>(value: MaybeSignal<T>): T {
   if (isFunction(value)) {
     let result: T;
@@ -313,6 +324,9 @@ export function untracked<T>(value: MaybeSignal<T>): T {
   }
 }
 
+/**
+ * Unwraps the plain value from a Signal. If the value is not a Signal it is returned as-is.
+ */
 export function get<T>(value: MaybeSignal<T>) {
   if (isFunction(value)) {
     return (value as () => T)();
@@ -360,7 +374,7 @@ export function effect(fn: EffectFn): UnsubscribeFn {
   return _effect.bind(e);
 }
 
-export function $<T>(compute: (previousValue: T) => MaybeSignal<T>, options?: SignalOptions<T>): Signal<T>;
+export function $<T>(compute: (this: ComputedGetterState<T>) => MaybeSignal<T>, options?: SignalOptions<T>): Signal<T>;
 export function $<T>(value: T, options?: SignalOptions<T>): Source<T>;
 export function $<T>(value: undefined, options?: SignalOptions<T>): Source<T | undefined>;
 export function $<T>(): Source<T | undefined>;
