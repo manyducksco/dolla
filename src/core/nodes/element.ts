@@ -55,7 +55,7 @@ export class ElementNode extends MarkupNode {
     }
 
     // Create node with the appropriate constructor.
-    if (this.context.getState(IS_SVG, false)) {
+    if (this.context.getState(IS_SVG, { fallback: false })) {
       this.root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
       this.root = document.createElement(tag);
@@ -63,7 +63,7 @@ export class ElementNode extends MarkupNode {
 
     // Add view name as a data attribute in development mode for better debugging.
     if (getEnv() === "development") {
-      const view = this.context.getState<ViewNode<any> | null>(VIEW, null);
+      const view = this.context.getState<ViewNode<any> | null>(VIEW, { fallback: null });
       if (view) {
         this.root.dataset.view = view.context.getName();
       }
@@ -273,7 +273,7 @@ export class ElementNode extends MarkupNode {
             element.setAttribute(key, String(current));
           }
         });
-      } else if (this.context.getState(IS_SVG, false)) {
+      } else if (this.context.getState(IS_SVG, { fallback: false })) {
         // SVG gets everything set as an attribute.
 
         // TODO: This isn't exactly right. SVGElement supports props as well.

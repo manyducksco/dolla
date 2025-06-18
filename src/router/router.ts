@@ -45,6 +45,10 @@ export interface Match {
    */
   query: Record<string, string>;
 
+  /**
+   * Freeform data you wish to store with this route.
+   * Merged `data` from all matched layers are available from `router.$match()`.
+   */
   data: Record<string, any>;
 }
 
@@ -499,6 +503,16 @@ export class Router {
           if (stateEntries) {
             node.context.setState(stateEntries);
           }
+
+          // TODO: Handle route suspense. Route views should be able to suspend route mounting until they have loaded their data.
+
+          // const routeLoader = {
+          //   next() {},
+          //   error(err: Error) {},
+          // };
+          // node.context.setState("ROUTE_LOADER", routeLoader);
+          // TODO: Views will look for a ROUTE_LOADER on their own context and call next() on it if they find it.
+          // This will complete the mounting of the route.
 
           // Add new layer to activeLayers.
           this.#activeLayers.push({

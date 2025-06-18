@@ -165,6 +165,26 @@ class ContextLifecycle {
   }
 }
 
+export interface ContextGetStateOptions<T> {
+  fallback?: T;
+
+  /**
+   * Only check this context; skip parent contexts.
+   */
+  immediate?: boolean;
+}
+
+export interface ContextGetStateOptionsWithFallbackValue<T> extends ContextGetStateOptions<T> {
+  fallback: T;
+}
+
+export interface ContextGetStateMapOptions {
+  /**
+   * Only include state from this context; skip parent contexts.
+   */
+  immediate?: boolean;
+}
+
 export interface ContextOptions {
   logger?: LoggerOptions;
 }
@@ -370,57 +390,58 @@ export class Context implements Logger {
   }
 
   /**
-   * Gets the value stored at `key`, or returns the `defaultValue` if none is set.
+   * Gets the value stored at `key`, or returns `options.fallback` if none is set.
    */
-  getState<T>(key: any, defaultValue: T): T;
+  getState<T>(key: any, options: ContextGetStateOptionsWithFallbackValue<T>): T;
 
   /**
    * Gets the value stored at `key`, or throws an error if none is set.
    */
-  getState<T>(key: any): T;
+  getState<T>(key: any, options?: ContextGetStateOptions<T>): T;
+
+  getState<T>(key: any, options?: ContextGetStateOptions<T>): T {
+    const immediate = options?.immediate ?? false;
+    let context: Context = this;
+    let value: any;
+    while (true) {
+      value = context[STATE]?.get(key);
+      if (value === undefined && !immediate && context[PARENT] != null) {
+        context = context[PARENT];
+      } else {
+        break;
+      }
+    }
+    if (value === undefined) {
+      if (options != null && Object.hasOwn(options, "fallback")) {
+        return options.fallback!;
+      } else {
+        throw new Error(`Expected a value for '${String(key)}' but got undefined.`);
+      }
+    }
+    return value;
+  }
 
   /**
    * Returns a Map containing all state values available to this context.
+   *
+   * Pass `options.immediate` to only include state stored on this context.
+   * By default all state stored on parent contexts is also included.
    */
-  getState(): Map<any, any>;
-
-  getState<T>(key?: any, defaultValue?: T): T | Map<any, any> {
-    if (arguments.length > 0) {
-      // Get value by key
-      let context: Context = this;
-      let value: any;
-      while (true) {
-        value = context[STATE]?.get(key);
-        if (value === undefined && context[PARENT] != null) {
-          context = context[PARENT];
-        } else {
-          break;
-        }
+  getStateMap(options?: ContextGetStateMapOptions): Map<any, any> {
+    let context: Context = this;
+    const immediate = options?.immediate ?? false;
+    const entries: [any, any][] = [];
+    while (true) {
+      if (context[STATE]) {
+        entries.push(...context[STATE].entries());
       }
-      if (value === undefined) {
-        if (arguments.length > 1) {
-          return defaultValue!;
-        } else {
-          throw new Error(`Expected a value for '${String(key)}' but got undefined.`);
-        }
+      if (!immediate && context[PARENT] != null) {
+        context = context[PARENT];
+      } else {
+        break;
       }
-      return value;
-    } else {
-      // Get merged values
-      let context: Context = this;
-      const entries: [any, any][] = [];
-      while (true) {
-        if (context[STATE]) {
-          entries.push(...context[STATE].entries());
-        }
-        if (context[PARENT] != null) {
-          context = context[PARENT];
-        } else {
-          break;
-        }
-      }
-      return new Map(entries.reverse());
     }
+    return new Map(entries.reverse());
   }
 
   /**

@@ -38,48 +38,6 @@ export class Markup<P = any> {
   }
 }
 
-/**
- * A node that can be mounted by the Markup layout engine.
- * Implemented by the built in nodes, but can of course also be implemented to create your own custom nodes.
- *
- * A `MarkupNode` instance can be passed anywhere a `Renderable` is required.
- */
-// export interface MarkupNode {
-//   /**
-//    * A single DOM node to represent this MarkupNode's position in the DOM.
-//    * Usually the parent element, but it can be an empty Text node used as a marker.
-//    *
-//    * It only needs to be defined while the node is mounted, so it can be created in the `mount` function.
-//    */
-//   readonly root?: Node;
-
-//   /**
-//    * Returns true while this MarkupNode is mounted.
-//    */
-//   isMounted(): boolean;
-
-//   /**
-//    * Mount this MarkupNode to a `parent` element.
-//    * If passed, this MarkupNode will be mounted as the next sibling of `after`.
-//    */
-//   mount(parent: Element, after?: Node): void;
-
-//   /**
-//    * Unmount this MarkupNode from its parent element.
-//    *
-//    * The `skipDOM` option can be passed as an optimization when unmounting a parent node.
-//    * A value of `true` indicates that no DOM operations need to happen because the parent is already being unmounted.
-//    *
-//    * @param skipDOM - No DOM updates will be performed when true. Lifecycle methods will be called regardless.
-//    */
-//   unmount(skipDOM?: boolean): void;
-
-//   /**
-//    * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
-//    */
-//   move(parent: Element, after?: Node): void;
-// }
-
 export enum MarkupType {
   DOM = "$dom",
   Dynamic = "$dynamic",

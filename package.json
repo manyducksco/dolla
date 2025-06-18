@@ -1,6 +1,6 @@
 {
   "name": "@manyducks.co/dolla",
-  "version": "2.0.0-alpha.61",
+  "version": "2.0.0-alpha.62",
   "description": "Front-end components, routing and state management.",
   "main": "dist/index.js",
   "types": "dist/core/index.d.ts",

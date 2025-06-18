@@ -7,13 +7,13 @@ import { ViewNode } from "./view.js";
 
 // ----- Types ----- //
 
-export type Key = string | number | symbol;
+export type Key = any;
 
 export type KeyFn<T> = (item: T, index: number) => Key;
 export type RenderFn<T> = (item: Signal<T>, index: Signal<number>, ctx: Context) => Renderable;
 
 type ConnectedItem<T> = {
-  key: any;
+  key: Key;
   $item: Source<T>;
   $index: Source<number>;
   node: MarkupNode;
@@ -102,9 +102,9 @@ export class RepeatNode<T> extends MarkupNode {
       return this._cleanup(false);
     }
 
-    type UpdateItem = { key: string | number | symbol; value: T; index: number };
+    type UpdateItem = { key: Key; value: T; index: number };
 
-    const potentialItems = new Map<string | number | symbol, UpdateItem>();
+    const potentialItems = new Map<Key, UpdateItem>();
     let index = 0;
 
     for (const item of value) {

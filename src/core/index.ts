@@ -12,6 +12,10 @@ export { m, MarkupNode, portal, render, repeat, unless, when } from "./markup.js
 // Ref
 export { ref, type Ref } from "./ref.js";
 
+// Built-in Views
+export { For, type ForProps } from "./views/for.js";
+export { Show, type ShowProps } from "./views/show.js";
+
 // Mount
 export { mount, type UnmountFn } from "./mount.js";
 

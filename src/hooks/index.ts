@@ -46,7 +46,7 @@ export function useState<T>(value?: T): [Signal<T>, Setter<T>] {
   return [() => $value() as T, $value];
 }
 
-export function useMemo<T>(compute: (current?: T) => T, deps?: Signal<any>[]): Signal<T> {
+export function useMemo<T>(compute: (current?: T) => MaybeSignal<T>, deps?: Signal<any>[]): Signal<T> {
   useContext(); // assert that we're in a valid context
   if (deps) {
     return $(function () {

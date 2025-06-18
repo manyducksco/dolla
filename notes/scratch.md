@@ -1,5 +1,25 @@
 # Scratch Note
 
+## Dolla Custom Elements
+
+Define custom HTML elements with Dolla.
+
+```jsx
+defineElement("my-counter", {
+  props: {
+    // Defines props and their types
+  },
+  setup: (props, ctx) => {
+    // Returns markup (this is a view)
+    return html` <div></div> `;
+  },
+});
+```
+
+---
+
+## Rendering standalone elements outside an app
+
 Library needs to be easier to render standalone elements. Idea to replace constructView and a lot of the store management weirdness with a `createContext` function and a `render` function that takes markup and a context.
 
 The context is basically a refactor of the old ElementContext and serves the same purpose.
@@ -24,7 +44,9 @@ element.mount(document.body);
 
 ---
 
-Idea: Monomorphic app context. Replaces StoreContext, ViewContext, etc.
+## Monomorphic app context
+
+> Replaces StoreContext, ViewContext, etc.
 
 Routes are baked into the app once again, but
 
