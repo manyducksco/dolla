@@ -1,15 +1,16 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
-import { omit, toArray, toCamelCase } from "../../utils.js";
+import { getUniqueId, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
+import { Ref } from "../ref.js";
 import {
   effect,
   get,
+  INTERNAL_EFFECT,
   setCurrentContext,
-  type MaybeSignal,
   type Signal,
-  type Source,
+  type MaybeSignal,
   type UnsubscribeFn,
 } from "../signals.js";
 
@@ -29,6 +30,8 @@ const ignoredProps = ["class", "className", "ref", "mixin", "children"];
 export class ElementNode extends MarkupNode {
   private root: HTMLElement | SVGElement;
 
+  private id = getUniqueId();
+
   readonly tag;
   readonly props: Record<string, any>;
 
@@ -37,7 +40,7 @@ export class ElementNode extends MarkupNode {
   private unsubscribers: UnsubscribeFn[] = [];
 
   // Track the ref so we can nullify it on unmount.
-  private ref?: Source<any>;
+  private ref?: Ref<any>;
 
   // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
   private canClickAway = false;
@@ -167,21 +170,28 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attachProp<T>(value: MaybeSignal<T>, callback: (value: T) => void) {
+  private attachProp<T>(value: MaybeSignal<T>, callback: (value: T) => void, key?: string) {
     if (isFunction(value)) {
       this.unsubscribers.push(
-        effect(() => {
-          try {
-            callback((value as Signal<T>)());
-          } catch (error) {
-            this.context.error(error);
-            this.context.crash(error as Error);
-          }
-        }),
+        effect(
+          () => {
+            try {
+              callback((value as Signal<T>)());
+            } catch (error) {
+              this.context.error(error);
+              this.context.crash(error as Error);
+            }
+          },
+          { _type: INTERNAL_EFFECT },
+        ),
       );
     } else {
       callback(value);
     }
+  }
+
+  private getKey(name: string) {
+    return this.id + ":" + name;
   }
 
   private applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
@@ -208,9 +218,13 @@ export class ElementNode extends MarkupNode {
         // Keys starting with `prop:` are set as props.
 
         const _key = key.substring(5);
-        this.attachProp(value, (current) => {
-          (element as any)[_key] = current;
-        });
+        this.attachProp(
+          value,
+          (current) => {
+            (element as any)[_key] = current;
+          },
+          this.getKey(_key),
+        );
       } else if (key.startsWith("on:")) {
         // Keys starting with `on:` are treated as event listeners.
 
@@ -222,29 +236,37 @@ export class ElementNode extends MarkupNode {
             element.removeEventListener(_key, value as EventListener);
           });
         } else {
-          this.attachProp(value as MaybeSignal<EventListener>, (current) => {
-            if (!current && _prev) {
-              element.removeEventListener(_key, _prev);
-            } else if (current != null) {
-              if (_prev && _prev !== current) {
+          this.attachProp(
+            value as MaybeSignal<EventListener>,
+            (current) => {
+              if (!current && _prev) {
                 element.removeEventListener(_key, _prev);
+              } else if (current != null) {
+                if (_prev && _prev !== current) {
+                  element.removeEventListener(_key, _prev);
+                }
+                element.addEventListener(_key, current);
               }
-              element.addEventListener(_key, current);
-            }
-            _prev = current;
-          });
+              _prev = current;
+            },
+            this.getKey(_key),
+          );
         }
       } else if (key.startsWith("attr:")) {
         // Keys starting with `attr:` are set as attributes.
 
         const _key = key.substring(5).toLowerCase();
-        this.attachProp(value, (current) => {
-          if (current != null) {
-            element.setAttribute(_key, String(current));
-          } else {
-            element.removeAttribute(_key);
-          }
-        });
+        this.attachProp(
+          value,
+          (current) => {
+            if (current != null) {
+              element.setAttribute(_key, String(current));
+            } else {
+              element.removeAttribute(_key);
+            }
+          },
+          this.getKey(_key),
+        );
       } else if (isFunction(value) && isCamelCaseEventName(key)) {
         // camelCase event names are applied with addEventListener.
 
@@ -266,120 +288,160 @@ export class ElementNode extends MarkupNode {
       } else if (key.includes("-")) {
         // Names with dashes in them are not valid prop names, so they are treated as attributes.
 
-        this.attachProp(value, (current) => {
-          if (current == null) {
-            element.removeAttribute(key);
-          } else {
-            element.setAttribute(key, String(current));
-          }
-        });
+        this.attachProp(
+          value,
+          (current) => {
+            if (current == null) {
+              element.removeAttribute(key);
+            } else {
+              element.setAttribute(key, String(current));
+            }
+          },
+          this.getKey(key),
+        );
       } else if (this.context.getState(IS_SVG, { fallback: false })) {
         // SVG gets everything set as an attribute.
 
         // TODO: This isn't exactly right. SVGElement supports props as well.
-        this.attachProp(value, (current) => {
-          if (current != null) {
-            element.setAttribute(key, String(props[key]));
-          } else {
-            element.removeAttribute(key);
-          }
-        });
+        this.attachProp(
+          value,
+          (current) => {
+            if (current != null) {
+              element.setAttribute(key, String(props[key]));
+            } else {
+              element.removeAttribute(key);
+            }
+          },
+          this.getKey(key),
+        );
       } else {
         // Special handling for other props on a case by case basis.
 
         switch (key) {
           case "contentEditable":
           case "value":
-            this.attachProp(value, (current) => {
-              (element as any)[key] = String(current);
-            });
+            this.attachProp(
+              value,
+              (current) => {
+                (element as any)[key] = String(current);
+              },
+              this.getKey(key),
+            );
             break;
 
           case "for":
-            this.attachProp(value, (current) => {
-              (element as any).htmlFor = current;
-            });
+            this.attachProp(
+              value,
+              (current) => {
+                (element as any).htmlFor = current;
+              },
+              this.getKey(key),
+            );
             break;
 
           case "innerHTML":
-            this.attachProp(value, (current) => {
-              (element as any).innerHTML = current;
-            });
+            this.attachProp(
+              value,
+              (current) => {
+                (element as any).innerHTML = current;
+              },
+              this.getKey(key),
+            );
             break;
 
           case "title":
-            this.attachProp(value, (current) => {
-              if (current == null) {
-                (element as any).removeAttribute(key);
-              } else {
-                (element as any).setAttribute(key, String(current));
-              }
-            });
+            this.attachProp(
+              value,
+              (current) => {
+                if (current == null) {
+                  (element as any).removeAttribute(key);
+                } else {
+                  (element as any).setAttribute(key, String(current));
+                }
+              },
+              this.getKey(key),
+            );
 
           case "checked":
-            this.attachProp(value, (current) => {
-              (element as any).checked = current;
+            this.attachProp(
+              value,
+              (current) => {
+                (element as any).checked = current;
 
-              // Set attribute also or styles don't take effect.
-              if (current) {
-                element.setAttribute("checked", "");
-              } else {
-                element.removeAttribute("checked");
-              }
-            });
+                // Set attribute also or styles don't take effect.
+                if (current) {
+                  element.setAttribute("checked", "");
+                } else {
+                  element.removeAttribute("checked");
+                }
+              },
+              this.getKey(key),
+            );
             break;
 
           case "dataset":
             let applied: Record<string, string> = {};
-            this.attachProp(value, (_next) => {
-              if (isObject(_next)) {
-                // Convert keys to camelCase and make sure values are strings.
-                const next: Record<string, string> = {};
-                for (const _key in _next) {
-                  next[toCamelCase(_key)] = String(_next[_key]);
-                }
+            this.attachProp(
+              value,
+              (_next) => {
+                if (isObject(_next)) {
+                  // Convert keys to camelCase and make sure values are strings.
+                  const next: Record<string, string> = {};
+                  for (const _key in _next) {
+                    next[toCamelCase(_key)] = String(_next[_key]);
+                  }
 
-                for (const key in applied) {
-                  // Key removed.
-                  if (!Object.hasOwn(next, key)) {
+                  for (const key in applied) {
+                    // Key removed.
+                    if (!Object.hasOwn(next, key)) {
+                      delete element.dataset[key];
+                      delete applied[key];
+                    }
+                  }
+
+                  for (const key in next) {
+                    // Value changed (or not set).
+                    if (applied[key] !== next[key]) {
+                      element.dataset[key] = next[key];
+                      applied[key] = next[key];
+                    }
+                  }
+                } else {
+                  for (const key in applied) {
                     delete element.dataset[key];
-                    delete applied[key];
                   }
                 }
-
-                for (const key in next) {
-                  // Value changed (or not set).
-                  if (applied[key] !== next[key]) {
-                    element.dataset[key] = next[key];
-                    applied[key] = next[key];
-                  }
-                }
-              } else {
-                for (const key in applied) {
-                  delete element.dataset[key];
-                }
-              }
-            });
+              },
+              this.getKey(key),
+            );
             break;
 
           case "autocomplete":
           case "autocapitalize":
-            this.attachProp(value, (current) => {
-              if (typeof current === "string") {
-                (element as any)[key] = current;
-              } else if (current) {
-                (element as any)[key] = "on";
-              } else {
-                (element as any)[key] = "off";
-              }
-            });
+            this.attachProp(
+              value,
+              (current) => {
+                if (typeof current === "string") {
+                  (element as any)[key] = current;
+                } else if (current) {
+                  (element as any)[key] = "on";
+                } else {
+                  (element as any)[key] = "off";
+                }
+              },
+              this.getKey(key),
+            );
             break;
 
           default: {
             // Fall back to setting as a property.
-            this.attachProp(value, (current) => {
-              (element as any)[key] = current;
-            });
+            this.attachProp(
+              value,
+              (current) => {
+                (element as any)[key] = current;
+              },
+              this.getKey(key),
+            );
             break;
           }
         }
@@ -393,13 +455,17 @@ export class ElementNode extends MarkupNode {
     if (isFunction(styles)) {
       let unapply: () => void;
 
-      const unsubscribe = effect(() => {
-        if (isFunction(unapply)) {
-          unapply();
-        }
-        element.style.cssText = "";
-        unapply = this.applyStyles(element, get(styles), unsubscribers);
-      });
+      const unsubscribe = effect(
+        () => {
+          if (isFunction(unapply)) {
+            unapply();
+          }
+          element.style.cssText = "";
+
+          unapply = this.applyStyles(element, get(styles), unsubscribers);
+        },
+        { _type: INTERNAL_EFFECT },
+      );
 
       unsubscribers.push(unsubscribe);
       propUnsubscribers.push(unsubscribe);
@@ -410,13 +476,16 @@ export class ElementNode extends MarkupNode {
         const { value, priority } = mapped[name];
 
         if (isFunction(value)) {
-          const unsubscribe = effect(() => {
-            if (get(value)) {
-              element.style.setProperty(name, String(get(value)), priority);
-            } else {
-              element.style.removeProperty(name);
-            }
-          });
+          const unsubscribe = effect(
+            () => {
+              if (get(value)) {
+                element.style.setProperty(name, String(get(value)), priority);
+              } else {
+                element.style.removeProperty(name);
+              }
+            },
+            { _type: INTERNAL_EFFECT },
+          );
 
           unsubscribers.push(unsubscribe);
           propUnsubscribers.push(unsubscribe);
@@ -440,13 +509,16 @@ export class ElementNode extends MarkupNode {
     if (isFunction(classes)) {
       let unapply: () => void;
 
-      const unsubscribe = effect(() => {
-        if (isFunction(unapply)) {
-          unapply();
-        }
-        element.removeAttribute("class");
-        unapply = this.applyClasses(element, get(classes), unsubscribers);
-      });
+      const unsubscribe = effect(
+        () => {
+          if (isFunction(unapply)) {
+            unapply();
+          }
+          element.removeAttribute("class");
+          unapply = this.applyClasses(element, get(classes), unsubscribers);
+        },
+        { _type: INTERNAL_EFFECT },
+      );
 
       unsubscribers.push(unsubscribe);
       classUnsubscribers.push(unsubscribe);
@@ -457,13 +529,16 @@ export class ElementNode extends MarkupNode {
         const value = mapped[name];
 
         if (isFunction(value)) {
-          const unsubscribe = effect(() => {
-            if (get(value)) {
-              element.classList.add(name);
-            } else {
-              element.classList.remove(name);
-            }
-          });
+          const unsubscribe = effect(
+            () => {
+              if (get(value)) {
+                element.classList.add(name);
+              } else {
+                element.classList.remove(name);
+              }
+            },
+            { _type: INTERNAL_EFFECT },
+          );
 
           unsubscribers.push(unsubscribe);
           classUnsubscribers.push(unsubscribe);

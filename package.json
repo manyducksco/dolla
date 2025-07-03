@@ -56,7 +56,8 @@
     }
   },
   "dependencies": {
-    "alien-signals": "^2.0.5"
+    "alien-signals": "^2.0.5",
+    "prosemirror-markdown": "^1.13.2"
   },
   "devDependencies": {
     "@types/node": "^22.12.0",

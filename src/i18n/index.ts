@@ -1,5 +1,5 @@
 import { createLogger, type Logger } from "../core/logger.js";
-import { $, get, type MaybeSignal, type Signal } from "../core/signals.js";
+import { writable, get, type MaybeSignal, type Signal, memo } from "../core/signals.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -375,9 +375,9 @@ class I18n {
 
   #initialLocale = "auto";
 
-  #locale = $<string>("en");
+  #locale = writable<string>("en");
 
-  readonly $locale = $(this.#locale);
+  readonly $locale = memo(this.#locale);
 
   constructor() {
     this.#logger = createLogger("dolla.i18n");
@@ -471,7 +471,7 @@ class I18n {
       await translation.load();
 
       this.#cache = [];
-      this.#locale(realName);
+      this.#locale.set(realName);
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -497,7 +497,7 @@ class I18n {
       );
     }
 
-    return $(() => {
+    return memo(() => {
       const values: Record<string, any> = {};
 
       // Track all option values.
@@ -608,7 +608,7 @@ class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
   number(count: MaybeSignal<number | bigint>, options?: Intl.NumberFormatOptions): Signal<string> {
-    return $(() => this.#formatNumber(get(count), options));
+    return memo(() => this.#formatNumber(get(count), options));
   }
 
   #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
@@ -629,7 +629,7 @@ class I18n {
     date?: MaybeSignal<string | number | Date | undefined>,
     options?: Intl.DateTimeFormatOptions,
   ): Signal<string> {
-    return $(() => this.#formatDateTime(get(date), options));
+    return memo(() => this.#formatDateTime(get(date), options));
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
@@ -647,7 +647,7 @@ class I18n {
    * const $formatted = Dolla.i18n.list(list, {  });
    */
   list(list: MaybeSignal<Iterable<string>>, options?: Intl.ListFormatOptions): Signal<string> {
-    return $(() => this.#formatList(get(list), options));
+    return memo(() => this.#formatList(get(list), options));
   }
 
   #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {

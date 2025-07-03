@@ -3,7 +3,7 @@ import { createLogger } from "../core/logger.js";
 import { m, MarkupType, type MarkupNode } from "../core/markup.js";
 import { DynamicNode } from "../core/nodes/dynamic.js";
 import { ViewNode } from "../core/nodes/view.js";
-import { $, batch, untracked, type Source } from "../core/signals.js";
+import { writable, memo, batch, untracked, type Writable, type Signal } from "../core/signals.js";
 import { assertObject, isArray, isArrayOf, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { deepEqual, shallowEqual } from "../utils.js";
@@ -129,7 +129,7 @@ interface ActiveLayer {
   id: number;
   node: MarkupNode;
   context: Context;
-  $slot: Source<MarkupNode | undefined>;
+  slot: Writable<MarkupNode | undefined>;
 }
 
 /**
@@ -199,12 +199,12 @@ export class Router {
   /**
    * The current match object (internal).
    */
-  #match = $<RouteMatch>();
+  #match = writable<RouteMatch>();
 
   /**
    * The current match object.
    */
-  readonly $match = $<Match | undefined>(
+  readonly $match = memo<Match | undefined>(
     () => {
       const match = this.#match();
       if (match) {
@@ -223,22 +223,22 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly $pattern = $(() => this.#match()?.pattern);
+  readonly $pattern = memo(() => this.#match()?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly $path = $(() => this.#match()?.path ?? window.location.pathname);
+  readonly $path = memo(() => this.#match()?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly $params = $(() => this.#match()?.params ?? {}, { equals: shallowEqual });
+  readonly $params = memo(() => this.#match()?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params.
    */
-  readonly $query = $(() => this.#match()?.query ?? {}, { equals: shallowEqual });
+  readonly $query = memo(() => this.#match()?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
@@ -262,12 +262,12 @@ export class Router {
   }
 
   async [MOUNT](parent: Element, context: Context): Promise<MarkupNode> {
-    const $slot = $<MarkupNode>();
+    const slot = writable<MarkupNode>();
     this.#rootLayer = {
       id: this.#nextLayerId++,
-      node: new DynamicNode(context, $slot),
+      node: new DynamicNode(context, slot),
       context,
-      $slot,
+      slot,
     };
 
     // Listen for popstate events and update route accordingly.
@@ -367,7 +367,7 @@ export class Router {
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    this.#match({ ...match, query });
+    this.#match.set({ ...match, query });
 
     window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
   }
@@ -464,7 +464,7 @@ export class Router {
     batch(() => {
       const oldPattern = untracked(this.$pattern);
 
-      this.#match({ ...match, query });
+      this.#match.set({ ...match, query });
 
       if (match.pattern === oldPattern) {
         // If pattern has not changed, update state on current layers.
@@ -493,9 +493,9 @@ export class Router {
           const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
           // Create a $slot and element for this layer.
-          const $slot = $<MarkupNode>();
+          const slot = writable<MarkupNode>();
           const node = new ViewNode(parentLayer.context, matchedLayer.view, {
-            children: m(MarkupType.Dynamic, { source: $slot }),
+            children: m(MarkupType.Dynamic, { source: slot }),
           });
 
           // Set state for new layer.
@@ -519,11 +519,11 @@ export class Router {
             id: matchedLayer.id,
             node,
             context: node.context,
-            $slot,
+            slot,
           });
 
           // Slot this layer into parent.
-          parentLayer.$slot(node);
+          parentLayer.slot.set(node);
         } else {
           // Update state for layers that are still active.
           const stateEntries = state.get(activeLayer.id);

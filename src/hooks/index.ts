@@ -1,5 +1,16 @@
 import { Context, Logger, ref, type Ref, type Store } from "../core";
-import { $, type EffectFn, get, getCurrentContext, MaybeSignal, type Signal, untracked } from "../core/signals";
+import {
+  type EffectFn,
+  get,
+  getCurrentContext,
+  Signal,
+  MaybeSignal,
+  memo,
+  Setter,
+  writable,
+  SignalOptions,
+  untracked,
+} from "../core/signals";
 
 /**
  * Returns the Context object of the View, Store or Mixin this hook is called in.
@@ -23,42 +34,36 @@ export function useLogger(name?: MaybeSignal<string>): Logger {
 }
 
 /**
- * Sets the value of the Signal it is bound to.
+ * Creates a new read-only Getter and a bound Setter function.
  */
-export interface Setter<T> {
-  (value: T): void;
-  (fn: (current: T) => T): void;
-}
+export function useState<T>(value: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
 
 /**
  * Creates a new read-only Signal and a bound Setter function.
  */
-export function useState<T>(value: T): [Signal<T>, Setter<T>];
+export function useState<T>(
+  value: undefined,
+  options: SignalOptions<T>,
+): [Signal<T | undefined>, Setter<T | undefined>];
 
 /**
  * Creates a new read-only Signal and a bound Setter function.
  */
 export function useState<T>(): [Signal<T | undefined>, Setter<T | undefined>];
 
-export function useState<T>(value?: T): [Signal<T>, Setter<T>] {
+export function useState<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
   useContext(); // assert that we're in a valid context
-  const $value = $(value);
-  return [() => $value() as T, $value];
+  const state = writable(value as T, options);
+  return [() => state(), state.set];
 }
 
-export function useMemo<T>(compute: (current?: T) => MaybeSignal<T>, deps?: Signal<any>[]): Signal<T> {
+export function useMemo<T>(
+  compute: (current?: T) => MaybeSignal<T>,
+  deps?: Signal<any>[],
+  options?: SignalOptions<T>,
+): Signal<T> {
   useContext(); // assert that we're in a valid context
-  if (deps) {
-    return $(function () {
-      // Track deps and run `compute` untracked.
-      for (const dep of deps) get(dep);
-      return untracked(() => compute(this.value));
-    });
-  } else {
-    return $(function () {
-      return compute(this.value);
-    });
-  }
+  return memo(compute, { ...options, deps });
 }
 
 export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
@@ -73,9 +78,6 @@ export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
     context.effect(fn);
   }
 }
-
-// TODO: What would layout effect even mean in dolla?
-// export function useLayoutEffect() {}
 
 /**
  * Takes the current state and a dispatched action. Returns a new state based on the action.

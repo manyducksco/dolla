@@ -3,6 +3,7 @@ import { createReactiveSystem } from "alien-signals/system";
 import { isFunction } from "../typeChecking";
 import { strictEqual } from "../utils";
 import { Context } from "./context";
+import { getEnv } from "./env";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -216,37 +217,34 @@ function _computed<T>(this: Computed<T>): T {
   return this.value!;
 }
 
-function _source<T>(this: Value<T>, ...value: [T]): T | void {
-  if (value.length) {
-    let newValue = value[0];
-    if (isFunction(newValue)) {
-      newValue = get(newValue(this.value)) as T;
-    }
-    if (!this.equals(this.value, newValue)) {
-      this.value = newValue;
-      this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+function _getter<T>(this: Value<T>): T {
+  const value = this.value;
+  if (this.flags & (16 satisfies ReactiveFlags.Dirty)) {
+    if (updateSignal(this, value)) {
       const subs = this.subs;
       if (subs !== undefined) {
-        propagate(subs);
-        if (!batchDepth) {
-          flush();
-        }
+        shallowPropagate(subs);
       }
     }
-  } else {
-    const value = this.value;
-    if (this.flags & (16 satisfies ReactiveFlags.Dirty)) {
-      if (updateSignal(this, value)) {
-        const subs = this.subs;
-        if (subs !== undefined) {
-          shallowPropagate(subs);
-        }
+  }
+  if (activeSub !== undefined) {
+    link(this, activeSub);
+  }
+  return value;
+}
+
+function _setter<T>(this: Value<T>, value: T | ((current: T) => T)): void {
+  let next = isFunction(value) ? (get(value(this.value)) as T) : (value as T);
+  if (!this.equals(this.value, next)) {
+    this.value = next;
+    this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+    const subs = this.subs;
+    if (subs !== undefined) {
+      propagate(subs);
+      if (!batchDepth) {
+        flush();
       }
     }
-    if (activeSub !== undefined) {
-      link(this, activeSub);
-    }
-    return value;
   }
 }
 
@@ -273,24 +271,36 @@ function _effect(this: Effect | EffectScope): void {
 /* -------------- TYPES --------------- */
 
 /**
- * A getter that returns the current value held within the signal.
- * If called inside a trackable scope this signal will be tracked as a dependency.
+ * A function that returns the current value of a signal.
+ * Automatically tracked as a dependency when called within a tracking scope (such as `memo` or `effect` functions).
  */
 export interface Signal<T> {
   (): T;
 }
 
 /**
- * Extends Signal with the ability to pass a value or an updater function to change the Signal's value.
+ * A function that sets the value of the signal.
  */
-export interface Source<T> extends Signal<T> {
+export interface Setter<T> {
   (value: T): void;
-  (updater: (value: T) => T): void;
+  (update: (current: T) => T): void;
 }
 
+/**
+ * A getter and setter in a single object. Callable like a getter, but includes a `set` method for updating the signal's value.
+ */
+export interface Writable<T> extends Signal<T> {
+  set: Setter<T>;
+}
+
+/**
+ * Utility type for a value that may be a getter or a plain value.
+ * This value can be unwrapped to a plain value with `get` or `untracked` (depending on whether you're in a tracking context and need to track it).
+ */
 export type MaybeSignal<T> = Signal<T> | T;
 
 export type EqualityFn<T> = (current: T, next: T) => boolean;
+
 export interface SignalOptions<T> {
   /**
    * A function to compare the current and next values. Returning `true` means the value has changed.
@@ -300,10 +310,74 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
+export function $<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T>;
+
+export function $<T>(): Writable<T | undefined>;
+export function $<T>(value: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
+export function $<T>(value: T, options?: SignalOptions<T>): Writable<T>;
+
+export function $<T>(...args: any) {
+  if (isFunction(args[0])) {
+    return memo(args[0], args[1]);
+  } else {
+    return writable(args[0], args[1]);
+  }
+}
+
+export function writable<T>(): Writable<T | undefined>;
+export function writable<T>(value: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
+export function writable<T>(value: T, options?: SignalOptions<T>): Writable<T>;
+
+export function writable<T>(value?: T, options?: SignalOptions<T>): Writable<T> {
+  const v: Value<unknown> = {
+    previousValue: value as T,
+    value: value as T,
+    equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+    subs: undefined,
+    subsTail: undefined,
+    flags: 1 satisfies ReactiveFlags.Mutable,
+  };
+  const fn = _getter.bind(v) as Writable<T>;
+  fn.set = _setter.bind(v);
+  return fn;
+}
+
+export interface MemoOptions<T> extends SignalOptions<T> {
+  /**
+   * An array of signals this `memo` depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
+   * Instead the `deps` array will be tracked and `fn` will re-run when any value in `deps` changes.
+   */
+  deps?: Signal<any>[];
+}
+
+/**
+ * Creates a derived Signal that recomputes its value only when its dependencies change.
+ * Dependencies are tracked when called inside `fn` by default,
+ * but can be overridden by passing a `deps` array in the options object.
+ */
+export function memo<T>(fn: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T> {
+  return _computed.bind({
+    value: undefined,
+    subs: undefined,
+    subsTail: undefined,
+    deps: undefined,
+    depsTail: undefined,
+    flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
+    getter: function (this: ComputedGetterState<any>) {
+      if (options?.deps) {
+        for (let dep of options.deps) get(dep);
+        return get(untracked(() => fn(this.value)));
+      }
+      return get(fn(this.value));
+    },
+    equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+  }) as () => T;
+}
+
 /**
  * Suspends effects during `fn`. Effects for all updated Signal values are called at the end of the batch.
  */
-export function batch(fn: () => void) {
+export function batch(fn: () => void): void {
   ++batchDepth;
   fn();
   if (!--batchDepth) flush();
@@ -327,7 +401,7 @@ export function untracked<T>(value: MaybeSignal<T>): T {
 /**
  * Unwraps the plain value from a Signal. If the value is not a Signal it is returned as-is.
  */
-export function get<T>(value: MaybeSignal<T>) {
+export function get<T>(value: MaybeSignal<T>): T {
   if (isFunction(value)) {
     return (value as () => T)();
   } else {
@@ -342,6 +416,21 @@ export type EffectFn = () => void | (() => void);
 
 export type UnsubscribeFn = () => void;
 
+export const INTERNAL_EFFECT = Symbol("INTERNAL_EFFECT");
+
+export interface EffectOptions {
+  /**
+   * An array of signals this effect depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
+   * Instead the `deps` array will be tracked and `fn` will re-run when any value in `deps` changes.
+   */
+  deps?: Signal<any>[];
+
+  /**
+   * For internal use.
+   */
+  _type?: symbol;
+}
+
 /**
  * Creates a tracked scope that re-runs whenever the values of any tracked reactives changes.
  * Reactives are tracked by accessing their `value` within the body of the function.
@@ -349,7 +438,21 @@ export type UnsubscribeFn = () => void;
  * NOTE: You must call the unsubscribe function to stop watching for changes.
  * If you are using an effect inside a View or Store, use `ctx.effect` instead, which cleans up automatically when the component unmounts.
  */
-export function effect(fn: EffectFn): UnsubscribeFn {
+export function effect(fn: EffectFn, options?: EffectOptions): UnsubscribeFn {
+  const internal = options?._type === INTERNAL_EFFECT;
+
+  // Automatically bind to active context if called within one.
+  if (!internal && activeContext) {
+    return activeContext.effect(fn);
+  }
+
+  // Warn about memory leaks in dev mode.
+  if (!internal && getEnv() === "development") {
+    console.warn(
+      `This effect is not bound to a scope. You must call the unsubscribe function when done to avoid memory leaks.`,
+    );
+  }
+
   const e: Effect = {
     fn,
     subs: undefined,
@@ -372,35 +475,4 @@ export function effect(fn: EffectFn): UnsubscribeFn {
     setCurrentSub(prev);
   }
   return _effect.bind(e);
-}
-
-export function $<T>(compute: (this: ComputedGetterState<T>) => MaybeSignal<T>, options?: SignalOptions<T>): Signal<T>;
-export function $<T>(value: T, options?: SignalOptions<T>): Source<T>;
-export function $<T>(value: undefined, options?: SignalOptions<T>): Source<T | undefined>;
-export function $<T>(): Source<T | undefined>;
-
-export function $<T>(init?: ((previousValue: T) => MaybeSignal<T>) | T, options?: SignalOptions<T>) {
-  if (isFunction(init)) {
-    return _computed.bind({
-      value: undefined,
-      subs: undefined,
-      subsTail: undefined,
-      deps: undefined,
-      depsTail: undefined,
-      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
-      getter: function (this: ComputedGetterState<any>) {
-        return get(init.call(this));
-      },
-      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-    }) as () => T;
-  } else {
-    return _source.bind({
-      previousValue: init,
-      value: init,
-      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-      subs: undefined,
-      subsTail: undefined,
-      flags: 1 satisfies ReactiveFlags.Mutable,
-    }) as () => T | undefined;
-  }
 }

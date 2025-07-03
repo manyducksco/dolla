@@ -2,14 +2,16 @@ import { isFunction, typeOf } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
+// import scheduler from "./scheduler";
 import {
   effect,
   type EffectFn,
   get,
+  INTERNAL_EFFECT,
   type MaybeSignal,
-  untracked,
-  type UnsubscribeFn,
   setCurrentContext,
+  type UnsubscribeFn,
+  untracked,
 } from "./signals";
 
 export enum LifecycleEvent {
@@ -231,10 +233,10 @@ export class Context implements Logger {
    * Returns null if this context is the parent.
    */
   static getRoot(context: Context) {
-    // This is like the programming version of "Buffalo buffalo buffalo..."
     let parent = context[PARENT];
     while (parent?.[PARENT]) {
       parent = parent[PARENT];
+      // This is like the programming version of "Buffalo buffalo buffalo..."
     }
     return parent ?? null;
   }
@@ -250,6 +252,10 @@ export class Context implements Logger {
       Object.defineProperty(this, key, descriptors[key]);
     }
   }
+
+  // nextTick(callback: () => void) {
+  //   scheduler.nextTick(callback);
+  // }
 
   /**
    * Returns the current name of this context.
@@ -367,7 +373,7 @@ export class Context implements Logger {
 
     if (this[LIFECYCLE].state >= LifecycleState.WillMount) {
       // This code is probably in a lifecycle hook; run the effect immediately and trigger unsubscribe when context unmounts.
-      const unsubscribe = effect(fn);
+      const unsubscribe = effect(fn, { _type: INTERNAL_EFFECT });
       this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
       return unsubscribe;
     } else {
@@ -376,7 +382,7 @@ export class Context implements Logger {
       let disposed = false;
       this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, () => {
         if (!disposed) {
-          unsubscribe = effect(fn);
+          unsubscribe = effect(fn, { _type: INTERNAL_EFFECT });
           this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
         }
       });

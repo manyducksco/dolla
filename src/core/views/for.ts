@@ -16,7 +16,7 @@ export interface ForProps<T> {
   /**
    * A render function. Takes the item and its index in signal form and returns something to display for each item.
    */
-  children: ($item: Signal<T>, $index: Signal<number>, ctx: Context) => Renderable;
+  children: (item: Signal<T>, index: Signal<number>, ctx: Context) => Renderable;
 }
 
 const defaultKeyFn = (x: any) => x;

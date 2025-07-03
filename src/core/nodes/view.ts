@@ -2,8 +2,8 @@ import type { View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
-import { MarkupNode } from "./_markup.js";
 import { setCurrentContext } from "../signals.js";
+import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");
 
@@ -11,10 +11,10 @@ export const VIEW = Symbol("ViewNode");
  * Renders a View.
  */
 export class ViewNode<P> extends MarkupNode {
-  uniqueId = getUniqueId();
-  context: Context;
-  props;
-  view;
+  readonly id = getUniqueId();
+  readonly props;
+  readonly context: Context;
+  readonly view;
 
   node?: MarkupNode;
 
@@ -27,7 +27,7 @@ export class ViewNode<P> extends MarkupNode {
     super();
     this.context = Context.linked(context, view.name ?? "anonymous view", {
       logger: {
-        tag: this.uniqueId,
+        tag: this.id,
         tagName: "uid",
       },
     });

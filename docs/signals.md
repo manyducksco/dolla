@@ -6,33 +6,35 @@ Dolla sets out to solve the challenge of keeping your UI in sync with your data.
 
 [Solid](https://www.solidjs.com) and similar frameworks make use of [signals](https://dev.to/this-is-learning/the-evolution-of-signals-in-javascript-8ob), which are containers for data that will change over time. Signal values are accessed through special getter functions that can be called inside of a "scope" to track their values. When the value of a tracked signal changes, any computations that happened in scopes that depend on those signals are re-run. In an app like this, all of your DOM updates are performed with pinpoint accuracy without diffing as signal values change.
 
-The Signals API in Dolla has just four functions:
+The Signals API consists of these functions:
 
-- `$` to create a new Source or derived Signal.
-- `get` to unwrap a possible Signal value.
-- `peek` to unwrap a possible Signal value without tracking it.
+- `state`
+- `memo`
 - `effect` to run side effects when tracked signals change.
+- `get` to unwrap a possible signal value.
+- `untracked` to unwrap a possible signal value without tracking it.
+
 
 ### Basic State API
 
 ```js
-import { $ } from "@manyducks.co/dolla";
+import { state } from "@manyducks.co/dolla";
 
-const count = $(72);
+const [$count, setCount] = state(72);
 
 // Get the current value.
-count(): // 72
+$count(): // 72
 
 // Set a new value.
-count(300);
+setCount(300);
 
 // The State now reflects the latest value.
-count(); // 300
+$count(); // 300
 
 // Data can also be updated by passing an update function.
 // This function takes the current state and returns the next.
-count((value) => value + 1);
-count(); // 301
+setCount((value) => value + 1);
+$count(); // 301
 ```
 
 ### Deriving States from other States
@@ -40,13 +42,13 @@ count(); // 301
 #### Example 1: Doubled
 
 ```js
-import { $ } from "@manyducks.co/dolla";
+import { state, memo } from "@manyducks.co/dolla";
 
 // Passing a value to $() results in a Source...
-const count = $(1);
+const [$count, setCount] = state(1);
 
 // ...while passing a function results in a Signal with a derived value.
-const doubled = $(() => count() * 2);
+const doubled = memo(() => $count() * 2);
 
 count(10);
 doubled(); // 20

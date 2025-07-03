@@ -1,7 +1,16 @@
 import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
-import { $, batch, effect, untracked, type Signal, type Source, type UnsubscribeFn } from "../signals.js";
+import {
+  batch,
+  effect,
+  INTERNAL_EFFECT,
+  writable,
+  untracked,
+  type Signal,
+  type Writable,
+  type UnsubscribeFn,
+} from "../signals.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
 
@@ -14,8 +23,8 @@ export type RenderFn<T> = (item: Signal<T>, index: Signal<number>, ctx: Context)
 
 type ConnectedItem<T> = {
   key: Key;
-  $item: Source<T>;
-  $index: Source<number>;
+  item: Writable<T>;
+  index: Writable<number>;
   node: MarkupNode;
 };
 
@@ -57,18 +66,21 @@ export class RepeatNode<T> extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = effect(() => {
-        let value = this.items();
+      this.unsubscribe = effect(
+        () => {
+          let value = this.items();
 
-        if (value == null) {
-          value = [];
-          this.context.warn("repeat() received empty value for items", value);
-        }
+          if (value == null) {
+            value = [];
+            this.context.warn("repeat() received empty value for items", value);
+          }
 
-        untracked(() => {
-          this._update(Array.from(value));
-        });
-      });
+          untracked(() => {
+            this._update(Array.from(value));
+          });
+        },
+        { _type: INTERNAL_EFFECT },
+      );
     }
   }
 
@@ -131,22 +143,22 @@ export class RepeatNode<T> extends MarkupNode {
         const connected = this.connectedItems.get(potential.key);
 
         if (connected && connected.node.isMounted()) {
-          connected.$item(potential.value);
-          connected.$index(potential.index);
+          connected.item.set(potential.value);
+          connected.index.set(potential.index);
 
           newItems[potential.index] = connected;
         } else {
           // deepEqual avoids running update code again if the data is equivalent. In list updates this happens a lot.
-          const $item = $(potential.value, { equals: deepEqual });
-          const $index = $(potential.index);
+          const item = writable(potential.value, { equals: deepEqual });
+          const index = writable(potential.index);
 
           newItems[potential.index] = {
             key: potential.key,
-            $item,
-            $index,
+            item,
+            index,
             node: new ViewNode(this.context, RepeatItemView, {
-              $item: () => $item(),
-              $index: () => $index(),
+              item: () => item(),
+              index: () => index(),
               render: this.render,
             }),
           };
@@ -180,12 +192,12 @@ export class RepeatNode<T> extends MarkupNode {
 }
 
 interface ListItemProps {
-  $item: Signal<any>;
-  $index: Signal<number>;
+  item: Signal<any>;
+  index: Signal<number>;
   render: (item: Signal<any>, index: Signal<number>, context: Context) => Renderable;
 }
 const contextName = "dolla.RepeatItemView";
 function RepeatItemView(props: ListItemProps, context: Context) {
   context.setName(contextName);
-  return props.render.call(context, props.$item, props.$index, context);
+  return props.render.call(context, props.item, props.index, context);
 }

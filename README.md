@@ -35,44 +35,38 @@ Dolla's goals include:
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
 
 ```jsx
-import { $, when, mount } from "@manyducks.co/dolla";
+import { $, effect, when, mount } from "@manyducks.co/dolla";
 
 function Counter(props, ctx) {
   const $count = $(0);
 
-  // An effect will re-run whenever any signal value accessed inside it changes.
-  ctx.effect(() => {
-    console.log(`Count is: ${$count()}`);
+  effect(() => {
+    console.log("Count is: " + $count());
+    // An effect will re-run whenever any signal accessed inside it receives a new value.
   });
 
+  function reset() {
+    $count.set(0);
+  }
+
   function increment() {
-    // Pass a function that takes the current value and returns a new one.
-    $count((x) => x + 1);
+    $count.set((current) => current + 1);
   }
 
   function decrement() {
-    $count((x) => x - 1);
-  }
-
-  function reset() {
-    // Set state directly by passing a (non-function) value.
-    $count(0);
+    $count.set((current) => current - 1);
   }
 
   return (
     <div>
-      {/* Signals can be slotted into the DOM to render them */}
       <p>Counter: {$count}</p>
-      <div>
-        <button on:click={increment}>+1</button>
-        <button on:click={decrement}>-1</button>
-      </div>
+      {/* Signals can be slotted into the DOM to render them */}
 
-      {/* We can derive a new signal on the fly and conditionally render something based on that condition */}
-      {when(
-        $(() => $count() > 10),
-        <span>That's a lot of clicks!</span>,
-      )}
+      <div>
+        <button onClick={increment}>+1</button>
+        <button onClick={decrement}>-1</button>
+        <button onClick={reset}>Reset</button>
+      </div>
     </div>
   );
 }
@@ -95,8 +89,8 @@ function MessageStore(options, ctx) {
   // Context objects contain methods for controlling the component, logging and attaching lifecycle hooks.
 
   return {
-    message: $(() => message()),
-    setMessage: (value: string) => message(value),
+    $message: $(() => message()),
+    setMessage: (value: string) => message.set(value.toUpperCase()),
   };
 }
 
@@ -104,7 +98,7 @@ function App(props, ctx) {
   // Provide a store for this and all child views.
   ctx.addStore(MessageStore);
 
-  const { message, setMessage } = ctx.getStore(MessageStore);
+  const { $message, setMessage } = ctx.getStore(MessageStore);
   // Provides a MessageStore on this context and any child contexts.
   // When a store is provided its value is returned right away.
 
@@ -116,8 +110,8 @@ function App(props, ctx) {
 
       <input
         type="text"
-        value={message}
-        on:input={(e) => {
+        value={$message}
+        onInput={(e) => {
           setMessage(e.currentTarget.value);
         }}
       />

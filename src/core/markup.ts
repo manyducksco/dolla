@@ -8,7 +8,7 @@ import { ElementNode } from "./nodes/element.js";
 import { PortalNode } from "./nodes/portal.js";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat.js";
 import { ViewNode } from "./nodes/view.js";
-import { $, get, type MaybeSignal, type Signal } from "./signals.js";
+import { get, type Signal, type MaybeSignal, memo } from "./signals.js";
 
 export { MarkupNode };
 
@@ -16,10 +16,12 @@ export { MarkupNode };
 ||           Markup          ||
 \*===========================*/
 
+type PropsOf<V extends string | View<any>> = V extends View<infer U> ? U : any;
+
 /**
  * `Markup` is a set of metadata that will be constructed into a `MarkupNode`.
  */
-export class Markup<P = any> {
+export class Markup<Type extends string | View<any> = string | View<any>> {
   /**
    * In the case of a view, type will be the View function itself. It can also hold an identifier for special nodes like "$cond", "$repeat", etc.
    * DOM nodes can be created by name, such as HTML elements like "div", "ul" or "span", SVG elements like ""
@@ -32,7 +34,7 @@ export class Markup<P = any> {
    */
   props;
 
-  constructor(type: string | View<P>, props?: P) {
+  constructor(type: Type, props: PropsOf<Type>) {
     this.type = type;
     this.props = props;
   }
@@ -111,7 +113,7 @@ export function m(type: string | View<any>, props?: any) {
  */
 export function when(condition: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return m(MarkupType.Dynamic, {
-    source: $<Renderable>(() => {
+    source: memo<Renderable>(() => {
       const value = get(condition);
 
       if (value && thenContent) {

@@ -1,13 +1,13 @@
 // Signals
-export { $, batch, effect, get, untracked } from "./signals.js";
-export type { MaybeSignal, Signal, Source } from "./signals.js";
+export { $, batch, effect, get, memo, writable, untracked } from "./signals.js";
+export type { MaybeSignal, Writable, Signal } from "./signals.js";
 
 // Context
 export { createContext } from "./context.js";
 export type { Context } from "./context.js";
 
 // Markup
-export { m, MarkupNode, portal, render, repeat, unless, when } from "./markup.js";
+export { m, Markup, MarkupNode, portal, render, repeat, unless, when } from "./markup.js";
 
 // Ref
 export { ref, type Ref } from "./ref.js";
