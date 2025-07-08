@@ -8,8 +8,7 @@ Dolla sets out to solve the challenge of keeping your UI in sync with your data.
 
 The Signals API consists of these functions:
 
-- `state`
-- `memo`
+- `$` to create signals.
 - `effect` to run side effects when tracked signals change.
 - `get` to unwrap a possible signal value.
 - `untracked` to unwrap a possible signal value without tracking it.
@@ -17,78 +16,93 @@ The Signals API consists of these functions:
 
 ### Basic State API
 
-```js
-import { state } from "@manyducks.co/dolla";
+The core tool for working with state is the `$` function (hence the name of the library). The `$` function serves two purposes.
 
-const [$count, setCount] = state(72);
-
-// Get the current value.
-$count(): // 72
-
-// Set a new value.
-setCount(300);
-
-// The State now reflects the latest value.
-$count(); // 300
-
-// Data can also be updated by passing an update function.
-// This function takes the current state and returns the next.
-setCount((value) => value + 1);
-$count(); // 301
-```
-
-### Deriving States from other States
-
-#### Example 1: Doubled
+First, if you call it with a plain value it returns a `Writable` signal. A `Writable` is a signal object that can be called like a function to retrieve the currently stored value, and it also has a `set` method that can be used to update the stored value.
 
 ```js
-import { state, memo } from "@manyducks.co/dolla";
+import { $ } from "@manyducks.co/dolla";
 
-// Passing a value to $() results in a Source...
-const [$count, setCount] = state(1);
+const $count = $(0);
 
-// ...while passing a function results in a Signal with a derived value.
-const doubled = memo(() => $count() * 2);
+// Call to get current value
+$count(); // 0
 
-count(10);
-doubled(); // 20
-```
+// Set a new value
+$count.set(1);
+$count(); // 1
 
-##### A note on derived signals.
+// Update the value with a mapping function
+$count.set((current) => current + 1);
+$count(); // 2
+````
 
-Because signals are simply functions that return a value, you can also derive state by simply defining a function that returns a value. Any `Source` called in this function will therefore be tracked when this function is called in a tracked scope.
-
-The difference is that the value of the plain function is computed again each and every time that function is called. Wrapping it with `$()` will result in the computed value being cached until one of its dependencies changes. If you are coming from React then you may want to think of this like `useMemo`.
+Dolla's naming convention is to prepend a `$` to signal names. This is because signals have special side effects to be aware of when they are called. An `effect` is one such _tracking context_. Any signals accessed within it will be tracked, causing the function to run again when a tracked signal receives a new value.
 
 ```js
-// Plain getter: OK
-const plainCount = () => count() * 2;
+import { $, effect } from "@manyducks.co/dolla";
 
-// Signal: OK
-const cachedCount = $(() => count() * 2);
+const $count = $(0);
+
+// An effect is a function that implicitly subscribes to all $signal calls within it.
+// Whenever any of these signals receives a new value the effect function will run again.
+const unsubscribe = effect(() => {
+  console.log("count is now " + $count());
+});
+// prints: count is now 0
+
+$count.set(1);
+// prints: count is now 1
+$count.set(2);
+// prints: count is now 2
+
+// Effects can be cancelled by calling their unsubscribe function.
+// This will unsubscribe the effect from all signal updates and it will not run again.
+unsubscribe();
+
+$count.set(3);
+// does not print
+````
+
+Another tracking context, and another use for the `$` function, is to create derived signals. If you pass a function to `$`, any signals called within that function are tracked and the resulting signal will be recomputed only when those signals receive new values.
+
+```js
+import { $ } from "@manyducks.co/dolla";
+
+const $count = $(5);
+
+// Passing a function creates a computed signal.
+// The function is called if any tracked signals have changed since its value was last accessed.
+// For subsequent calls, the previous value is cached.
+const $doubled = $(() => $count() * 2);
+$doubled(); // 10
+$doubled(); // 10 (cached)
+
+// Technically, any function that calls a signal is a signal itself.
+const $doubled2 = () => $count() * 2;
+// This is another way to do a computed signal, although this value will be recomputed every time it's called.
+// Prefer wrapping your computed signals with `$()` if you are doing expensive calculations.
 ```
-
-Using plain getters to derive values is perfectly fine. It may be a waste to cache a very simple getter, but if the value is accessed frequently or involves expensive computations then you can get better performance by wrapping it in a Signal.
 
 #### Example 2: Selecting a User
 
 ```js
 import { $ } from "@manyducks.co/dolla";
 
-const users = $([
+const $users = $([
   { id: 1, name: "Audie" },
   { id: 2, name: "Bob" },
   { id: 3, name: "Cabel" },
 ]);
-const userId = $(1);
+const $userId = $(1);
 
-const selectedUser = $(() => users().find((user) => user.id === userId()));
+const selectedUser = $(() => $users().find((user) => user.id === $userId()));
 
-selectedUser(); // { id: 1, name: "Audie" }
+$selectedUser(); // { id: 1, name: "Audie" }
 
-userId(3);
+$userId(3);
 
-selectedUser(); // { id: 3, name: "Cabel" }
+$selectedUser(); // { id: 3, name: "Cabel" }
 ```
 
 That was a more realistic example you might actually use in real life. Here we are selecting a user from a list based on its `id` field. This is kind of similar to a `JOIN` operation in a SQL database. I use this kind of pattern constantly in my apps.
@@ -100,13 +114,13 @@ The strength of setting up a join like this is that the `$users` array can be up
 ```jsx
 import { $ } from "@manyducks.co/dolla";
 
-const user = $({ id: 1, name: "Audie" });
-const name = $(() => user().name);
+const $user = $({ id: 1, name: "Audie" });
+const $name = $(() => user().name);
 
-name(); // "Audie"
+$name(); // "Audie"
 
 // In a view:
-<span class="user-name">{name}</span>;
+<span class="user-name">{$name}</span>;
 ```
 
 Another common pattern. In a real app, most data is stored as arrays of objects. But what you need in order to slot it into a view is just a string. In the example above we've selected the user's name and slotted it into a `span`. If the `$user` value ever changes, the name will stay in sync.
@@ -116,10 +130,10 @@ Another common pattern. In a real app, most data is stored as arrays of objects.
 ```js
 import { $, get } from "@manyducks.co/dolla";
 
-const count = state(512);
+const $count = $(512);
 
 // Unwrap the value of count. Returns 512.
-const value = get(count);
+const value = get($count);
 // Passing a non-state value will simply return it.
 const name = get("World");
 
@@ -133,7 +147,7 @@ const value = () => "Hello";
 import { $ } from "@manyducks.co/dolla";
 
 function UserNameView(props, ctx) {
-  const name = $(() => props.user().name);
+  const $name = $(() => props.$user().name);
 
   // Passing an object to `class` results in keys with a truthy value being applied as classes.
   // Those with falsy values will be ignored.
@@ -142,19 +156,19 @@ function UserNameView(props, ctx) {
     <span
       class={{
         "user-name": true,
-        "is-selected": props.selected
+        "is-selected": props.$selected
       }}>
-      {name}
+      {$name}
     </span>
   );
 })
 
 // In parent view:
 
-const selected = $(false);
-const user = $({ id: 1, name: "Audie" });
+const $selected = $(false);
+const $user = $({ id: 1, name: "Audie" });
 
-<UserNameView selected={selected} user={user} />
+<UserNameView $selected={$selected} $user={$user} />
 
 // Changing signal values out here will now update the UserNameView internals.
 ```

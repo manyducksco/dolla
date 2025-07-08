@@ -6,17 +6,17 @@ Dolla implements a React-style hooks API for use in Views, Stores and Mixins. In
 import { useState, useEffect, useLogger } from "@manyducks.co/dolla/hooks";
 
 export function CounterView() {
-  const [count, setCount] = useState(0);
+  const [$count, setCount] = useState(0);
 
   const logger = useLogger();
   useEffect(() => {
     // Effect is triggered each time count changes; calling its getter tracks it.
-    logger.info(`Count is now ${count()}`);
+    logger.info(`Count is now ${$count()}`);
   });
 
   return (
     <div>
-      Count: {count}
+      Count: {$count}
       <button onClick={() => setCount((n) => n + 1)}>+1</button>
       <button onClick={() => setCount((n) => n - 1)}>-1</button>
       <button onClick={() => setCount(0)}>Reset</button>

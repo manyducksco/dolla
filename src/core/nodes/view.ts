@@ -49,6 +49,15 @@ export class ViewNode<P> extends MarkupNode {
     // Calling connect again can be used to re-order elements that are already connected to the DOM.
     const wasMounted = this.isMounted();
 
+    // TODO: Look into own state and find route controller.
+    // If preload function exists, pass the route controller to it.
+    // If no preload function exists, just call .next() on the route.
+    // Preload function is added by useRoutePreload hook.
+
+    // One problem is mounting and unmounting is entirely synchronous, but we need async and suspense.
+    // While a view is in suspense, the nearest suspense boundary shows fallback content.
+    // Routes are a suspense boundary of a sort where they don't unmount the previous view until the next leaves suspense.
+
     if (!wasMounted) {
       const { context, props, view } = this;
       try {

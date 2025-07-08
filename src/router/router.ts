@@ -129,7 +129,7 @@ interface ActiveLayer {
   id: number;
   node: MarkupNode;
   context: Context;
-  slot: Writable<MarkupNode | undefined>;
+  $slot: Writable<MarkupNode | undefined>;
 }
 
 /**
@@ -171,6 +171,7 @@ export interface RouterOptions {
 
 // ----- Code ----- //
 
+export const ROUTER = Symbol("Router");
 export const MOUNT = Symbol();
 export const UNMOUNT = Symbol();
 export const ROOT_VIEW = Symbol();
@@ -262,12 +263,12 @@ export class Router {
   }
 
   async [MOUNT](parent: Element, context: Context): Promise<MarkupNode> {
-    const slot = writable<MarkupNode>();
+    const $slot = writable<MarkupNode>();
     this.#rootLayer = {
       id: this.#nextLayerId++,
-      node: new DynamicNode(context, slot),
+      node: new DynamicNode(context, $slot),
       context,
-      slot,
+      $slot,
     };
 
     // Listen for popstate events and update route accordingly.
@@ -493,9 +494,9 @@ export class Router {
           const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
           // Create a $slot and element for this layer.
-          const slot = writable<MarkupNode>();
+          const $slot = writable<MarkupNode>();
           const node = new ViewNode(parentLayer.context, matchedLayer.view, {
-            children: m(MarkupType.Dynamic, { source: slot }),
+            children: m(MarkupType.Dynamic, { source: $slot }),
           });
 
           // Set state for new layer.
@@ -519,11 +520,11 @@ export class Router {
             id: matchedLayer.id,
             node,
             context: node.context,
-            slot,
+            $slot: $slot,
           });
 
           // Slot this layer into parent.
-          parentLayer.slot.set(node);
+          parentLayer.$slot.set(node);
         } else {
           // Update state for layers that are still active.
           const stateEntries = state.get(activeLayer.id);

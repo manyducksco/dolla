@@ -3,10 +3,12 @@
 > TODO: Write about stores
 
 ```tsx
-import Dolla, { createState } from "@manyducks.co/dolla";
+import { createApp useSignal, mount } from "@manyducks.co/dolla";
+
+
 
 function CounterStore (initialValue, ctx) {
-  const [$count, setCount] = createState(initialValue);
+  const [$count, setCount] = useSignal(initialValue);
 
   // Respond to context events which bubble up from views.
   ctx.on("counter:increment", (e) => {
@@ -25,8 +27,6 @@ function CounterStore (initialValue, ctx) {
   return $count;
 });
 
-// Stores can be provided by the app itself.
-Dolla.provide(CounterStore, 0);
 
 function CounterView(props, ctx) {
   // Store instances can also be provided at the view level to provide them to the current scope and those of child views.
@@ -51,6 +51,15 @@ function CounterView(props, ctx) {
     </div>
   );
 });
+
+const app = createApp(() => {
+  const ctx = useContext();
+  ctx.addStore(CounterStore, 0);
+
+  return <CounterView />
+});
+
+app.mount(document.body);
 ```
 
 ---

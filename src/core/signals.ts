@@ -282,8 +282,11 @@ export interface Signal<T> {
  * A function that sets the value of the signal.
  */
 export interface Setter<T> {
-  (value: T): void;
-  (update: (current: T) => T): void;
+  // This signature is required for Immer `produce` to infer types correctly.
+  (value: T | ((previousValue: T) => T)): void;
+
+  // (value: T): void;
+  // (update: (current: T) => T): void;
 }
 
 /**
@@ -299,7 +302,7 @@ export interface Writable<T> extends Signal<T> {
  */
 export type MaybeSignal<T> = Signal<T> | T;
 
-export type EqualityFn<T> = (current: T, next: T) => boolean;
+export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
 export interface SignalOptions<T> {
   /**
@@ -313,10 +316,10 @@ export interface SignalOptions<T> {
 export function $<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T>;
 
 export function $<T>(): Writable<T | undefined>;
-export function $<T>(value: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
-export function $<T>(value: T, options?: SignalOptions<T>): Writable<T>;
+export function $<T>(initialValue: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
+export function $<T>(initialValue: T, options?: SignalOptions<T>): Writable<T>;
 
-export function $<T>(...args: any) {
+export function $(...args: any) {
   if (isFunction(args[0])) {
     return memo(args[0], args[1]);
   } else {
@@ -325,13 +328,13 @@ export function $<T>(...args: any) {
 }
 
 export function writable<T>(): Writable<T | undefined>;
-export function writable<T>(value: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
-export function writable<T>(value: T, options?: SignalOptions<T>): Writable<T>;
+export function writable<T>(initialValue: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
+export function writable<T>(initialValue: T, options?: SignalOptions<T>): Writable<T>;
 
-export function writable<T>(value?: T, options?: SignalOptions<T>): Writable<T> {
+export function writable<T>(initialValue?: T, options?: SignalOptions<T>): Writable<T> {
   const v: Value<unknown> = {
-    previousValue: value as T,
-    value: value as T,
+    previousValue: initialValue as T,
+    value: initialValue as T,
     equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
     subs: undefined,
     subsTail: undefined,
@@ -340,6 +343,10 @@ export function writable<T>(value?: T, options?: SignalOptions<T>): Writable<T> 
   const fn = _getter.bind(v) as Writable<T>;
   fn.set = _setter.bind(v);
   return fn;
+}
+
+export function readable<T>(signal: MaybeSignal<T>): Signal<T> {
+  return memo(() => signal);
 }
 
 export interface MemoOptions<T> extends SignalOptions<T> {
@@ -351,11 +358,12 @@ export interface MemoOptions<T> extends SignalOptions<T> {
 }
 
 /**
- * Creates a derived Signal that recomputes its value only when its dependencies change.
+ * Creates a derived signal that recomputes its value only when its dependencies change.
+ * Subsequent calls will return a cached value.
  * Dependencies are tracked when called inside `fn` by default,
  * but can be overridden by passing a `deps` array in the options object.
  */
-export function memo<T>(fn: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T> {
+export function memo<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T> {
   return _computed.bind({
     value: undefined,
     subs: undefined,
@@ -366,9 +374,9 @@ export function memo<T>(fn: (previousValue?: T) => MaybeSignal<T>, options?: Mem
     getter: function (this: ComputedGetterState<any>) {
       if (options?.deps) {
         for (let dep of options.deps) get(dep);
-        return get(untracked(() => fn(this.value)));
+        return get(untracked(() => compute(this.value)));
       }
-      return get(fn(this.value));
+      return get(compute(this.value));
     },
     equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
   }) as () => T;

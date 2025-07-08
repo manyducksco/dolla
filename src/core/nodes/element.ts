@@ -1,9 +1,10 @@
 import { isFunction, isObject, isString } from "../../typeChecking.js";
-import { getUniqueId, omit, toArray, toCamelCase } from "../../utils.js";
+import { getIntegerId, getUniqueId, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { Ref } from "../ref.js";
+import scheduler from "../scheduler.js";
 import {
   effect,
   get,
@@ -30,7 +31,7 @@ const ignoredProps = ["class", "className", "ref", "mixin", "children"];
 export class ElementNode extends MarkupNode {
   private root: HTMLElement | SVGElement;
 
-  private id = getUniqueId();
+  private id = getIntegerId();
 
   readonly tag;
   readonly props: Record<string, any>;
@@ -72,24 +73,6 @@ export class ElementNode extends MarkupNode {
       }
     }
 
-    if (props.mixin) {
-      for (const mixin of toArray(props.mixin)) {
-        const context = Context.linked(this.context, getLoggerName.bind(this), {
-          bindLifecycleToParent: true,
-          logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
-        });
-        const prevCtx = setCurrentContext(context);
-        mixin(this.root, context);
-        setCurrentContext(prevCtx);
-      }
-    }
-
-    const classes = props.className ?? props.class;
-
-    this.applyProps(this.root, props);
-    if (props.style) this.applyStyles(this.root, props.style, this.unsubscribers);
-    if (classes) this.applyClasses(this.root, classes, this.unsubscribers);
-
     if (props.ref) {
       if (isFunction(props.ref)) {
         this.ref = props.ref;
@@ -97,10 +80,6 @@ export class ElementNode extends MarkupNode {
       } else {
         throw new Error("Expected ref to be a function. Got: " + props.ref);
       }
-    }
-
-    if (props.children) {
-      this.childNodes = toMarkupNodes(this.context, props.children);
     }
   }
 
@@ -116,8 +95,36 @@ export class ElementNode extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
+      const { props } = this;
+
+      if (props.mixin) {
+        for (const mixin of toArray(props.mixin)) {
+          const context = Context.linked(this.context, getLoggerName.bind(this), {
+            bindLifecycleToParent: true,
+            logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
+          });
+          const prevCtx = setCurrentContext(context);
+          mixin(this.root, context);
+          setCurrentContext(prevCtx);
+        }
+      }
+
       Context.emit(this.context, LifecycleEvent.WILL_MOUNT);
 
+      const classes = props.className ?? props.class;
+
+      this.applyProps(this.root, props);
+      if (props.style) this.applyStyles(this.root, props.style, this.unsubscribers);
+      if (classes) this.applyClasses(this.root, classes, this.unsubscribers);
+
+      if (props.children) {
+        this.childNodes = toMarkupNodes(this.context, props.children);
+      }
+    }
+
+    this.update(() => parent.insertBefore(this.root!, after?.nextSibling ?? null));
+
+    if (!wasMounted) {
       for (let i = 0; i < this.childNodes.length; i++) {
         const child = this.childNodes[i];
         const previous = i > 0 ? this.childNodes[i - 1].getRoot() : undefined;
@@ -125,14 +132,14 @@ export class ElementNode extends MarkupNode {
       }
     }
 
-    parent.insertBefore(this.root!, after?.nextSibling ?? null);
-
     this.canClickAway = true;
 
     if (!wasMounted) Context.emit(this.context, LifecycleEvent.DID_MOUNT);
   }
 
   override unmount(skipDOM = false) {
+    scheduler.cancelNodeUpdates(this.id);
+
     Context.emit(this.context, LifecycleEvent.WILL_UNMOUNT);
 
     if (!skipDOM) {
@@ -170,22 +177,30 @@ export class ElementNode extends MarkupNode {
     }
   }
 
+  private update(fn: () => void) {
+    fn();
+    // scheduler.scheduleNodeUpdate(this.id, fn);
+  }
+
   private attachProp<T>(value: MaybeSignal<T>, callback: (value: T) => void, key?: string) {
     if (isFunction(value)) {
       this.unsubscribers.push(
         effect(
           () => {
+            // scheduler.scheduleNodeUpdate(this.id, () => {
             try {
               callback((value as Signal<T>)());
             } catch (error) {
               this.context.error(error);
               this.context.crash(error as Error);
             }
+            // });
           },
           { _type: INTERNAL_EFFECT },
         ),
       );
     } else {
+      // scheduler.scheduleNodeUpdate(this.id, () => callback(value));
       callback(value);
     }
   }

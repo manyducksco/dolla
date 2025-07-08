@@ -9,6 +9,12 @@ export function getUniqueId(): string {
   return idCounter.toString(36) + Date.now().toString(36);
 }
 
+let intCounter = 0;
+export function getIntegerId(): number {
+  intCounter = (intCounter % Number.MAX_SAFE_INTEGER) + 1;
+  return intCounter;
+}
+
 /*=============================*\
 ||       Object Equality       ||
 \*=============================*/

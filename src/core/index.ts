@@ -1,5 +1,8 @@
+// App
+export { createApp } from "./app.js";
+
 // Signals
-export { $, batch, effect, get, memo, writable, untracked } from "./signals.js";
+export { $, batch, effect, get, memo as memo, writable, untracked } from "./signals.js";
 export type { MaybeSignal, Writable, Signal } from "./signals.js";
 
 // Context
@@ -17,7 +20,7 @@ export { For, type ForProps } from "./views/for.js";
 export { Show, type ShowProps } from "./views/show.js";
 
 // Mount
-export { mount, type UnmountFn } from "./mount.js";
+// export { mount, type UnmountFn } from "./mount.js";
 
 // Equality checks
 export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
