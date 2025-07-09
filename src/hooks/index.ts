@@ -1,15 +1,15 @@
-import { Context, Logger, ref, type Ref, type Store } from "../core";
+import { type Context, type Logger, ref, type Ref, type Store } from "../core";
 import {
   type EffectFn,
   get,
   getCurrentContext,
-  Signal,
-  MaybeSignal,
+  type MaybeSignal,
   memo,
-  Setter,
-  writable,
-  SignalOptions,
+  type Setter,
+  type Signal,
+  type SignalOptions,
   untracked,
+  writable,
 } from "../core/signals";
 
 /**
@@ -70,7 +70,6 @@ export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
   const context = useContext();
   if (deps) {
     context.effect(() => {
-      // Track deps and run `fn` untracked.
       for (const dep of deps) get(dep);
       untracked(fn);
     });

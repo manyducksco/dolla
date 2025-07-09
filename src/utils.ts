@@ -199,6 +199,17 @@ export function toCamelCase(s: string) {
 }
 
 /**
+ * Moves an element using `moveBefore` if the browser supports it, otherwise falls back to `insertBefore`.
+ */
+export function moveBefore(parent: Node, node: Node, child: Node | null) {
+  if ("moveBefore" in parent) {
+    (parent as any).moveBefore(node, child);
+  } else {
+    parent.insertBefore(node, child);
+  }
+}
+
+/**
  * Takes any string and returns an OKLCH color.
  */
 export function okhash(value: string) {

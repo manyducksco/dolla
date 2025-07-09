@@ -1,4 +1,4 @@
-import { toArray } from "../../utils.js";
+import { moveBefore, toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes } from "../markup.js";
 import { effect, Signal, INTERNAL_EFFECT, type UnsubscribeFn, untracked } from "../signals.js";
@@ -55,6 +55,7 @@ export class DynamicNode extends MarkupNode {
     this.unsubscribe?.();
 
     if (this.isMounted()) {
+      moveBefore(this.root.parentNode!, this.root, this.children[0]?.getRoot() ?? null);
       this.cleanup(skipDOM);
       this.root.parentNode?.removeChild(this.root);
     }
@@ -99,10 +100,6 @@ export class DynamicNode extends MarkupNode {
     // Move marker after children
     const parent = this.root.parentElement!;
     const lastChildNextSibling = this.children.at(-1)?.getRoot()?.nextSibling ?? null;
-    if ("moveBefore" in parent) {
-      (parent as any).moveBefore(this.root, lastChildNextSibling);
-    } else {
-      parent.insertBefore(this.root, lastChildNextSibling);
-    }
+    moveBefore(parent, this.root, lastChildNextSibling);
   }
 }
