@@ -198,6 +198,10 @@ export function toCamelCase(s: string) {
   return s.replace(/-./g, (x) => x[1].toUpperCase());
 }
 
+// export function deepFreeze<T>(obj: T): T {
+
+// }
+
 /**
  * Moves an element using `moveBefore` if the browser supports it, otherwise falls back to `insertBefore`.
  */

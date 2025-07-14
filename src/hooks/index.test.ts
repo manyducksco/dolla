@@ -1,5 +1,5 @@
 import { beforeEach, describe, test, expect, vi } from "vitest";
-import { useState, useMemo, useEffect, useReducer, useRef, useMount, useUnmount, ReducerFn } from "./index";
+import { useState, useMemo, useEffect, useReducer, useRef, useMount, useUnmount, Reducer } from "./index";
 import { getCurrentContext, setCurrentContext } from "../core/signals";
 import { Context, LifecycleEvent } from "../core/context";
 
@@ -192,7 +192,7 @@ describe("useReducer", () => {
     type State = number;
     type Action = "increment" | "decrement" | "reset";
 
-    const reducer: ReducerFn<State, Action> = (state, action) => {
+    const reducer: Reducer<State, Action> = (state, action) => {
       switch (action) {
         case "increment":
           return state + 1;

@@ -8,7 +8,7 @@ import { ElementNode } from "./nodes/element.js";
 import { PortalNode } from "./nodes/portal.js";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat.js";
 import { ViewNode } from "./nodes/view.js";
-import { get, type Signal, type MaybeSignal, memo } from "./signals.js";
+import { get, type MaybeSignal, memo, type Signal } from "./signals.js";
 
 export { MarkupNode };
 
@@ -110,6 +110,8 @@ export function m(type: string | View<any>, props?: any) {
 
 /**
  * If `condition` is truthy, displays `thenContent`, otherwise `elseContent`.
+ *
+ * @deprecated use `Show` view with `when` prop.
  */
 export function when(condition: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return m(MarkupType.Dynamic, {
@@ -128,6 +130,8 @@ export function when(condition: MaybeSignal<any>, thenContent?: Renderable, else
 
 /**
  * Inverted `when`. If `condition` is falsy, displays `thenContent`, otherwise `elseContent`.
+ *
+ * @deprecated use `Show` view with `unless` prop.
  */
 export function unless(condition: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
   return when(condition, elseContent, thenContent);
@@ -136,6 +140,8 @@ export function unless(condition: MaybeSignal<any>, thenContent?: Renderable, el
 /**
  * Calls `render` for each item in `items`. Dynamically adds and removes views as items change.
  * The result of `key` is used to compare items and decide if item was added, removed or updated.
+ *
+ * @deprecated use `For` view
  */
 export function repeat<T>(items: MaybeSignal<T[]>, key: KeyFn<T>, render: RenderFn<T>): Markup {
   return m(MarkupType.Repeat, { items: () => get(items), key, render });
@@ -143,6 +149,8 @@ export function repeat<T>(items: MaybeSignal<T[]>, key: KeyFn<T>, render: Render
 
 /**
  * Renders `content` into a `parent` node anywhere in the page, rather than its usual position in the view.
+ *
+ * @deprecated use `Portal` view
  */
 export function portal(parent: Element, content: Renderable): Markup {
   return m(MarkupType.Portal, { parent, content });

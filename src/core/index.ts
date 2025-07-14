@@ -18,6 +18,7 @@ export { ref, type Ref } from "./ref.js";
 // Built-in Views
 export { For, type ForProps } from "./views/for.js";
 export { Show, type ShowProps } from "./views/show.js";
+export { Portal, type PortalProps } from "./views/portal.js";
 
 // Mount
 // export { mount, type UnmountFn } from "./mount.js";

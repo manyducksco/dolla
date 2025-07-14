@@ -35,11 +35,13 @@ export function useLogger(name?: MaybeSignal<string>): Logger {
 
 /**
  * Creates a new read-only Getter and a bound Setter function.
+ * @deprecated prefer useSignal
  */
 export function useState<T>(value: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
 
 /**
  * Creates a new read-only Signal and a bound Setter function.
+ * @deprecated prefer useSignal
  */
 export function useState<T>(
   value: undefined,
@@ -48,6 +50,7 @@ export function useState<T>(
 
 /**
  * Creates a new read-only Signal and a bound Setter function.
+ * @deprecated prefer useSignal
  */
 export function useState<T>(): [Signal<T | undefined>, Setter<T | undefined>];
 
@@ -55,6 +58,31 @@ export function useState<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, 
   useContext(); // assert that we're in a valid context
   const state = writable(value as T, options);
   return [() => state(), state.set];
+}
+
+/**
+ * Creates a new read-only Signal. Returns bound Getter and Setter functions.
+ *
+ * @example
+ * const [$count, setCount] = useSignal(5);
+ * $count(); // 5
+ * setCount(6);
+ * setCount((current) => current + 1);
+ * $count(); // 7
+ */
+export function useSignal<T>(value: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
+
+export function useSignal<T>(
+  value: undefined,
+  options: SignalOptions<T>,
+): [Signal<T | undefined>, Setter<T | undefined>];
+
+export function useSignal<T>(): [Signal<T | undefined>, Setter<T | undefined>];
+
+export function useSignal<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
+  useContext(); // assert that we're in a valid context
+  const signal = writable(value as T, options);
+  return [() => signal(), signal.set];
 }
 
 export function useMemo<T>(
@@ -71,7 +99,7 @@ export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
   if (deps) {
     context.effect(() => {
       for (const dep of deps) get(dep);
-      untracked(fn);
+      return untracked(fn);
     });
   } else {
     context.effect(fn);
@@ -82,25 +110,25 @@ export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
  * Takes the current state and a dispatched action. Returns a new state based on the action.
  * Typically the body of this function will be a large switch statement.
  */
-export type ReducerFn<State, Action> = (state: State, action: Action) => State;
+export type Reducer<State, Action> = (state: State, action: Action) => State;
 
 /**
  * Dispatches an action to this reducer, causing the state to update.
  */
-export type DispatchFn<Action> = (action: Action) => void;
+export type Dispatcher<Action> = (action: Action) => void;
 
 /**
  *
  */
 export function useReducer<State, Action>(
-  reducer: ReducerFn<State, Action>,
+  reducer: Reducer<State, Action>,
   initialState: State,
-): [Signal<State>, DispatchFn<Action>] {
-  const [state, setState] = useState(initialState);
+): [Signal<State>, Dispatcher<Action>] {
+  const [$state, setState] = useSignal(initialState);
   const dispatch = (action: Action) => {
     setState((current) => reducer(current, action));
   };
-  return [state, dispatch];
+  return [$state, dispatch];
 }
 
 /**
