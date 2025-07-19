@@ -6,6 +6,7 @@ import {
   type MaybeSignal,
   memo,
   type Setter,
+  signal,
   type Signal,
   type SignalOptions,
   untracked,
@@ -81,8 +82,7 @@ export function useSignal<T>(): [Signal<T | undefined>, Setter<T | undefined>];
 
 export function useSignal<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
   useContext(); // assert that we're in a valid context
-  const signal = writable(value as T, options);
-  return [() => signal(), signal.set];
+  return signal(value as T, options);
 }
 
 export function useMemo<T>(

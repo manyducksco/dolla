@@ -313,10 +313,24 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
+/**
+ * @deprecated use `signal()` and `memo()` directly
+ */
 export function $<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T>;
 
+/**
+ * @deprecated use `signal()` and `memo()` directly
+ */
 export function $<T>(): Writable<T | undefined>;
+
+/**
+ * @deprecated use `signal()` and `memo()` directly
+ */
 export function $<T>(initialValue: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
+
+/**
+ * @deprecated use `signal()` and `memo()` directly
+ */
 export function $<T>(initialValue: T, options?: SignalOptions<T>): Writable<T>;
 
 export function $(...args: any) {
@@ -347,6 +361,33 @@ export function writable<T>(initialValue?: T, options?: SignalOptions<T>): Writa
 
 export function readable<T>(signal: MaybeSignal<T>): Signal<T> {
   return memo(() => signal);
+}
+
+/**
+ * Creates a new signal, returning a bound getter and setter pair.
+ *
+ * @example
+ * const [$count, setCount] = signal(0);
+ */
+export function signal<T>(initialValue: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
+
+export function signal<T>(
+  initialValue: undefined,
+  options: SignalOptions<T>,
+): [Signal<T | undefined>, Setter<T | undefined>];
+
+export function signal<T>(): [Signal<T | undefined>, Setter<T | undefined>];
+
+export function signal<T>(initialValue?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
+  const v: Value<unknown> = {
+    previousValue: initialValue as T,
+    value: initialValue as T,
+    equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+    subs: undefined,
+    subsTail: undefined,
+    flags: 1 satisfies ReactiveFlags.Mutable,
+  };
+  return [_getter.bind(v) as Signal<T>, _setter.bind(v)];
 }
 
 export interface MemoOptions<T> extends SignalOptions<T> {

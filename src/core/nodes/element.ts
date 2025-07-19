@@ -1,4 +1,4 @@
-import { isFunction, isObject, isString } from "../../typeChecking.js";
+import { isFunction, isNumber, isObject, isString } from "../../typeChecking.js";
 import { getIntegerId, getUniqueId, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
@@ -494,7 +494,7 @@ export class ElementNode extends MarkupNode {
           const unsubscribe = effect(
             () => {
               if (get(value)) {
-                element.style.setProperty(name, String(get(value)), priority);
+                element.style.setProperty(name, String(asPixelsIfNumber(get(value))), priority);
               } else {
                 element.style.removeProperty(name);
               }
@@ -505,7 +505,7 @@ export class ElementNode extends MarkupNode {
           unsubscribers.push(unsubscribe);
           propUnsubscribers.push(unsubscribe);
         } else if (value != undefined) {
-          element.style.setProperty(name, String(value));
+          element.style.setProperty(name, String(asPixelsIfNumber(value)));
         }
       }
     }
@@ -662,6 +662,14 @@ function getLoggerName(this: ElementNode) {
  */
 function camelToKebab(value: string): string {
   return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
+}
+
+function asPixelsIfNumber(value: any): string {
+  if (isNumber(value)) {
+    return `${value}px`;
+  } else {
+    return value;
+  }
 }
 
 // A list of all known event names. These will be handled as event listeners.
