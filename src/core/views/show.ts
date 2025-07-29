@@ -1,18 +1,18 @@
 import type { Renderable } from "../../types";
 import type { Context } from "../context";
 import { DynamicNode } from "../nodes/dynamic";
-import { get, type Signal } from "../signals";
+import { get, type MaybeSignal, memo, readable } from "../signals";
 
 export interface ShowProps {
   /**
    * If present, children will be rendered only when this signal holds a truthy value.
    */
-  when?: Signal<any>;
+  when?: MaybeSignal<any>;
 
   /**
    * If present, children will be rendered only when this signal holds a falsy value.
    */
-  unless?: Signal<any>;
+  unless?: MaybeSignal<any>;
 
   /**
    * Content to render if conditions permit.
@@ -29,15 +29,19 @@ export interface ShowProps {
  * Conditionally display children.
  */
 export function Show(props: ShowProps, context: Context) {
+  // Memoize conditions to avoid unnecessarily triggering DynamicNode updates.
+  const when = props.when ? readable(props.when) : null;
+  const unless = props.unless ? readable(props.unless) : null;
+
   return new DynamicNode(context, () => {
     let shouldShow = true;
 
-    if (props.when != null && props.unless != null) {
-      shouldShow = get(props.when) && !get(props.unless);
-    } else if (props.when != null) {
-      shouldShow = get(props.when);
-    } else if (props.unless != null) {
-      shouldShow = !get(props.unless);
+    if (when != null && unless != null) {
+      shouldShow = get(when) && !get(unless);
+    } else if (when != null) {
+      shouldShow = get(when);
+    } else if (unless != null) {
+      shouldShow = !get(unless);
     }
 
     if (shouldShow) {

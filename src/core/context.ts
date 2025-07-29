@@ -2,12 +2,10 @@ import { isFunction, typeOf } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
-// import scheduler from "./scheduler";
 import {
   effect,
   type EffectFn,
   get,
-  INTERNAL_EFFECT,
   type MaybeSignal,
   setCurrentContext,
   type UnsubscribeFn,
@@ -15,12 +13,14 @@ import {
 } from "./signals";
 
 export enum LifecycleEvent {
-  WILL_MOUNT,
-  DID_MOUNT,
-  WILL_UNMOUNT,
-  DID_UNMOUNT,
-  DISPOSE,
+  WILL_MOUNT = "willMount",
+  DID_MOUNT = "didMount",
+  WILL_UNMOUNT = "willUnmount",
+  DID_UNMOUNT = "didUnmount",
+  DISPOSE = "dispose",
 }
+
+export type LifecycleEventName = "willMount" | "didMount" | "willUnmount" | "didUnmount" | "dispose";
 
 type LifecycleListener = () => void;
 
@@ -214,7 +214,7 @@ export class Context implements Logger {
   /**
    * Returns a new Context with this one as its parent.
    */
-  static linked(parent: Context, name: MaybeSignal<string>, options?: LinkedContextOptions): Context {
+  static createChildOf(parent: Context, name: MaybeSignal<string>, options?: LinkedContextOptions): Context {
     const context = new Context(name, options);
     context[PARENT] = parent;
     if (options?.bindLifecycleToParent) parent[LIFECYCLE].bind(context);
@@ -228,19 +228,6 @@ export class Context implements Logger {
     context[LIFECYCLE].emit(event);
   }
 
-  /**
-   * Traverses _parent contexts until arriving at one that doesn't have a parent itself.
-   * Returns null if this context is the parent.
-   */
-  static getRoot(context: Context) {
-    let parent = context[PARENT];
-    while (parent?.[PARENT]) {
-      parent = parent[PARENT];
-      // This is like the programming version of "Buffalo buffalo buffalo..."
-    }
-    return parent ?? null;
-  }
-
   constructor(name: MaybeSignal<string>, options?: ContextOptions) {
     this.#name = name;
     this[NAME] = untracked(name);
@@ -252,10 +239,6 @@ export class Context implements Logger {
       Object.defineProperty(this, key, descriptors[key]);
     }
   }
-
-  // nextTick(callback: () => void) {
-  //   scheduler.nextTick(callback);
-  // }
 
   /**
    * Returns the current name of this context.
@@ -281,7 +264,7 @@ export class Context implements Logger {
       throw this.crash(new Error(`An instance of ${name} was already added on this context.`));
     }
 
-    const context = Context.linked(this, store.name, {
+    const context = Context.createChildOf(this, store.name, {
       bindLifecycleToParent: true,
       logger: { tag: getUniqueId(), tagName: "uid" },
     });
@@ -324,35 +307,13 @@ export class Context implements Logger {
   }
 
   /**
-   * Schedule a callback function to run just before this context is mounted.
+   * Registers a `listener` to be called at a specific transition point during this context's lifecycle.
+   *
+   * Prefer `useMount` and `useUnmount` hooks for general usage.
    */
-  beforeMount(listener: LifecycleListener) {
-    this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, listener);
-    return () => this[LIFECYCLE].off(LifecycleEvent.WILL_MOUNT, listener);
-  }
-
-  /**
-   * Schedule a callback function to run after this context is mounted.
-   */
-  onMount(listener: LifecycleListener) {
-    this[LIFECYCLE].on(LifecycleEvent.DID_MOUNT, listener);
-    return () => this[LIFECYCLE].off(LifecycleEvent.DID_MOUNT, listener);
-  }
-
-  /**
-   * Schedule a callback function to run just before this context is unmounted.
-   */
-  beforeUnmount(listener: LifecycleListener) {
-    this[LIFECYCLE].on(LifecycleEvent.WILL_UNMOUNT, listener);
-    return () => this[LIFECYCLE].off(LifecycleEvent.WILL_UNMOUNT, listener);
-  }
-
-  /**
-   * Schedule a callback function to run after this context is unmounted.
-   */
-  onUnmount(listener: LifecycleListener) {
-    this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, listener);
-    return () => this[LIFECYCLE].off(LifecycleEvent.DID_UNMOUNT, listener);
+  onLifecycleTransition(event: LifecycleEventName, listener: LifecycleListener) {
+    this[LIFECYCLE].on(event as LifecycleEvent, listener);
+    return () => this[LIFECYCLE].off(event as LifecycleEvent, listener);
   }
 
   effect(callback: EffectFn) {
@@ -373,7 +334,7 @@ export class Context implements Logger {
 
     if (this[LIFECYCLE].state >= LifecycleState.WillMount) {
       // This code is probably in a lifecycle hook; run the effect immediately and trigger unsubscribe when context unmounts.
-      const unsubscribe = effect(fn, { _type: INTERNAL_EFFECT });
+      const unsubscribe = effect(fn);
       this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
       return unsubscribe;
     } else {
@@ -382,7 +343,7 @@ export class Context implements Logger {
       let disposed = false;
       this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, () => {
         if (!disposed) {
-          unsubscribe = effect(fn, { _type: INTERNAL_EFFECT });
+          unsubscribe = effect(fn);
           this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
         }
       });

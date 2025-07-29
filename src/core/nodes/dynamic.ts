@@ -1,7 +1,7 @@
 import { moveBefore, toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes } from "../markup.js";
-import { effect, Signal, INTERNAL_EFFECT, type UnsubscribeFn, untracked } from "../signals.js";
+import { effect, type Signal, type UnsubscribeFn, untracked } from "../signals.js";
 import { MarkupNode } from "./_markup.js";
 
 /**
@@ -35,19 +35,16 @@ export class DynamicNode extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = effect(
-        () => {
-          try {
-            const content = this.$slot();
-            untracked(() => {
-              this.update(toArray(content));
-            });
-          } catch (error) {
-            this.context.crash(error as Error);
-          }
-        },
-        { _type: INTERNAL_EFFECT },
-      );
+      this.unsubscribe = effect(() => {
+        try {
+          const content = this.$slot();
+          untracked(() => {
+            this.update(toArray(content));
+          });
+        } catch (error) {
+          this.context.crash(error as Error);
+        }
+      });
     }
   }
 
@@ -55,9 +52,9 @@ export class DynamicNode extends MarkupNode {
     this.unsubscribe?.();
 
     if (this.isMounted()) {
-      moveBefore(this.root.parentNode!, this.root, this.children[0]?.getRoot() ?? null);
-      this.cleanup(skipDOM);
+      moveBefore(this.root.parentElement!, this.root, this.children[0]?.getRoot() ?? null);
       this.root.parentNode?.removeChild(this.root);
+      this.cleanup(skipDOM);
     }
   }
 

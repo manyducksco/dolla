@@ -25,7 +25,7 @@ export class ViewNode<P> extends MarkupNode {
    */
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = Context.linked(context, view.name ?? "anonymous view", {
+    this.context = Context.createChildOf(context, view.name ?? "anonymous view", {
       logger: {
         tag: this.id,
         tagName: "uid",
@@ -41,7 +41,7 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   isMounted() {
-    return this.node?.isMounted() ?? false;
+    return this.context.isMounted;
   }
 
   mount(parent: Element, after?: Node) {

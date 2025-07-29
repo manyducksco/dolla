@@ -75,7 +75,7 @@ export interface MarkupCustomElementProps {
 /**
  * Creates a `Markup` element that defines an HTML element.
  */
-export function m<T extends keyof IntrinsicElements>(
+export function createMarkup<T extends keyof IntrinsicElements>(
   tag: T,
   attrs: IntrinsicElements[T] & { children?: Renderable },
 ): Markup;
@@ -83,77 +83,28 @@ export function m<T extends keyof IntrinsicElements>(
 /**
  * Creates a `Markup` element that defines an HTML custom element.
  */
-export function m<T extends keyof MarkupCustomElementProps>(type: T, props: MarkupCustomElementProps[T]): Markup;
+export function createMarkup<T extends keyof MarkupCustomElementProps>(
+  type: T,
+  props: MarkupCustomElementProps[T],
+): Markup;
 
 /**
  * Creates a `Markup` element that defines a `MarkupNode`.
  */
-export function m<T extends keyof MarkupNodeProps>(type: T, props: MarkupNodeProps[T]): Markup;
+export function createMarkup<T extends keyof MarkupNodeProps>(type: T, props: MarkupNodeProps[T]): Markup;
 
 /**
  * Creates a `Markup` element that defines a view.
  */
-export function m<P extends {}>(type: View<P>, props?: P): Markup;
+export function createMarkup<P extends {}>(type: View<P>, props?: P): Markup;
 
 /**
  * Creates a `Markup` element that defines a view.
  */
-export function m<P>(type: View<P>, props: P): Markup;
+export function createMarkup<P>(type: View<P>, props: P): Markup;
 
-export function m(type: string | View<any>, props?: any) {
+export function createMarkup(type: string | View<any>, props?: any) {
   return new Markup(type, props ?? {});
-}
-
-/*===========================*\
-||        View Helpers       ||
-\*===========================*/
-
-/**
- * If `condition` is truthy, displays `thenContent`, otherwise `elseContent`.
- *
- * @deprecated use `Show` view with `when` prop.
- */
-export function when(condition: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  return m(MarkupType.Dynamic, {
-    source: memo<Renderable>(() => {
-      const value = get(condition);
-
-      if (value && thenContent) {
-        return thenContent;
-      } else if (!value && elseContent) {
-        return elseContent;
-      }
-      return null;
-    }),
-  });
-}
-
-/**
- * Inverted `when`. If `condition` is falsy, displays `thenContent`, otherwise `elseContent`.
- *
- * @deprecated use `Show` view with `unless` prop.
- */
-export function unless(condition: MaybeSignal<any>, thenContent?: Renderable, elseContent?: Renderable): Markup {
-  return when(condition, elseContent, thenContent);
-}
-
-/**
- * Calls `render` for each item in `items`. Dynamically adds and removes views as items change.
- * The result of `key` is used to compare items and decide if item was added, removed or updated.
- *
- * @deprecated use `For` view
- */
-export function repeat<T>(items: MaybeSignal<T[]>, key: KeyFn<T>, render: RenderFn<T>): Markup {
-  return m(MarkupType.Repeat, { items: () => get(items), key, render });
-}
-
-/**
- * Renders `content` into a `parent` node anywhere in the page, rather than its usual position in the view.
- *
- * @deprecated use `Portal` view
- */
-export function portal(parent: Element, content: Renderable): Markup {
-  return m(MarkupType.Portal, { parent, content });
 }
 
 /*===========================*\

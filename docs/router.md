@@ -25,7 +25,8 @@ to your code (`router` store, `$params` readable). Below are some examples of pa
 Now, here are some route examples in the context of an app:
 
 ```js
-import Dolla, { createRouter } from "@manyducks.co/dolla";
+import { createApp } from "@manyducks.co/dolla";
+import { createRouter } from "@manyducks.co/dolla/router";
 import { ThingIndex, ThingDetails, ThingEdit, ThingDelete } from "./views.js";
 
 const router = createRouter({
@@ -47,8 +48,10 @@ const router = createRouter({
   ],
 });
 
-// Mount the router in place of a view.
-Dolla.mount(document.body, router);
+// Pass the router in place of a root view.
+const app = createApp(router);
+
+app.mount(document.body);
 ```
 
 When the URL matches a pattern the corresponding view is displayed. If we visit `/people/john`,
@@ -56,9 +59,9 @@ we will see the `PersonDetails` view and the params will be `{ name: "john" }`. 
 accessed from anywhere in the app through `Dolla.router`.
 
 ```js
-import Dolla from "@manyducks.co/dolla";
+const router = // ... //
 
-// Info about the current route is exported as a set of Readables. Query params are also Writable through $$query:
+// Info about the current route is exported as a set of signals.
 const { $path, $pattern, $params, $query } = router;
 
 router.back(); // Step back in the history to the previous route, if any.

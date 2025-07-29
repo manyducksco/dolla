@@ -1,16 +1,7 @@
 import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
-import {
-  batch,
-  effect,
-  INTERNAL_EFFECT,
-  writable,
-  untracked,
-  type Signal,
-  type Writable,
-  type UnsubscribeFn,
-} from "../signals.js";
+import { batch, effect, untracked, writable, type Signal, type UnsubscribeFn, type Writable } from "../signals.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
 
@@ -66,21 +57,18 @@ export class RepeatNode<T> extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = effect(
-        () => {
-          let value = this.items();
+      this.unsubscribe = effect(() => {
+        let value = this.items();
 
-          if (value == null) {
-            value = [];
-            this.context.warn("repeat() received empty value for items", value);
-          }
+        if (value == null) {
+          value = [];
+          this.context.warn("repeat() received empty value for items", value);
+        }
 
-          untracked(() => {
-            this._update(Array.from(value));
-          });
-        },
-        { _type: INTERNAL_EFFECT },
-      );
+        untracked(() => {
+          this._update(Array.from(value));
+        });
+      });
     }
   }
 
@@ -94,7 +82,7 @@ export class RepeatNode<T> extends MarkupNode {
       this.root.parentNode?.removeChild(this.root);
     }
 
-    this._cleanup(skipDOM);
+    this._cleanup(true);
   }
 
   override move(parent: Element, after?: Node) {
@@ -102,9 +90,9 @@ export class RepeatNode<T> extends MarkupNode {
     return this.mount(parent, after);
   }
 
-  private _cleanup(parentIsUnmounting: boolean) {
+  private _cleanup(skipDOM: boolean) {
     for (const item of this.connectedItems.values()) {
-      item.node.unmount(parentIsUnmounting);
+      item.node.unmount(skipDOM);
     }
     this.connectedItems.clear();
   }

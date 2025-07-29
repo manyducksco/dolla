@@ -1,19 +1,10 @@
 import { isFunction, isNumber, isObject, isString } from "../../typeChecking.js";
-import { getIntegerId, getUniqueId, omit, toArray, toCamelCase } from "../../utils.js";
+import { getIntegerId, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
-import { Ref } from "../ref.js";
-import scheduler from "../scheduler.js";
-import {
-  effect,
-  get,
-  INTERNAL_EFFECT,
-  setCurrentContext,
-  type Signal,
-  type MaybeSignal,
-  type UnsubscribeFn,
-} from "../signals.js";
+import { EMPTY_REF, Ref } from "../ref.js";
+import { effect, get, setCurrentContext, type MaybeSignal, type Signal, type UnsubscribeFn } from "../signals.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -51,7 +42,7 @@ export class ElementNode extends MarkupNode {
 
     this.tag = tag;
     this.props = props;
-    this.context = Context.linked(context, getLoggerName.bind(this));
+    this.context = Context.createChildOf(context, getLoggerName.bind(this));
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
@@ -99,7 +90,7 @@ export class ElementNode extends MarkupNode {
 
       if (props.mixin) {
         for (const mixin of toArray(props.mixin)) {
-          const context = Context.linked(this.context, getLoggerName.bind(this), {
+          const context = Context.createChildOf(this.context, getLoggerName.bind(this), {
             bindLifecycleToParent: true,
             logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
           });
@@ -122,8 +113,6 @@ export class ElementNode extends MarkupNode {
       }
     }
 
-    this.update(() => parent.insertBefore(this.root!, after?.nextSibling ?? null));
-
     if (!wasMounted) {
       for (let i = 0; i < this.childNodes.length; i++) {
         const child = this.childNodes[i];
@@ -132,14 +121,18 @@ export class ElementNode extends MarkupNode {
       }
     }
 
+    if (this.root.parentNode === parent && "moveBefore" in parent) {
+      (parent as any).moveBefore(this.root!, after?.nextSibling ?? null);
+    } else {
+      parent.insertBefore(this.root!, after?.nextSibling ?? null);
+    }
+
     this.canClickAway = true;
 
     if (!wasMounted) Context.emit(this.context, LifecycleEvent.DID_MOUNT);
   }
 
   override unmount(skipDOM = false) {
-    scheduler.cancelNodeUpdates(this.id);
-
     Context.emit(this.context, LifecycleEvent.WILL_UNMOUNT);
 
     if (!skipDOM) {
@@ -157,12 +150,15 @@ export class ElementNode extends MarkupNode {
     }
     this.unsubscribers.length = 0;
 
-    if (this.ref) {
-      this.ref(undefined);
-    }
-
     Context.emit(this.context, LifecycleEvent.DID_UNMOUNT);
     Context.emit(this.context, LifecycleEvent.DISPOSE);
+
+    // Free ref after all lifecycle hooks have completed.
+    queueMicrotask(() => {
+      if (this.ref) {
+        this.ref(EMPTY_REF);
+      }
+    });
   }
 
   override move(parent: Element, after?: Node) {
@@ -177,30 +173,19 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private update(fn: () => void) {
-    fn();
-    // scheduler.scheduleNodeUpdate(this.id, fn);
-  }
-
   private attachProp<T>(value: MaybeSignal<T>, callback: (value: T) => void, key?: string) {
     if (isFunction(value)) {
       this.unsubscribers.push(
-        effect(
-          () => {
-            // scheduler.scheduleNodeUpdate(this.id, () => {
-            try {
-              callback((value as Signal<T>)());
-            } catch (error) {
-              this.context.error(error);
-              this.context.crash(error as Error);
-            }
-            // });
-          },
-          { _type: INTERNAL_EFFECT },
-        ),
+        effect(() => {
+          try {
+            callback((value as Signal<T>)());
+          } catch (error) {
+            this.context.error(error);
+            this.context.crash(error as Error);
+          }
+        }),
       );
     } else {
-      // scheduler.scheduleNodeUpdate(this.id, () => callback(value));
       callback(value);
     }
   }
@@ -470,17 +455,14 @@ export class ElementNode extends MarkupNode {
     if (isFunction(styles)) {
       let unapply: () => void;
 
-      const unsubscribe = effect(
-        () => {
-          if (isFunction(unapply)) {
-            unapply();
-          }
-          element.style.cssText = "";
+      const unsubscribe = effect(() => {
+        if (isFunction(unapply)) {
+          unapply();
+        }
+        element.style.cssText = "";
 
-          unapply = this.applyStyles(element, get(styles), unsubscribers);
-        },
-        { _type: INTERNAL_EFFECT },
-      );
+        unapply = this.applyStyles(element, get(styles), unsubscribers);
+      });
 
       unsubscribers.push(unsubscribe);
       propUnsubscribers.push(unsubscribe);
@@ -491,16 +473,13 @@ export class ElementNode extends MarkupNode {
         const { value, priority } = mapped[name];
 
         if (isFunction(value)) {
-          const unsubscribe = effect(
-            () => {
-              if (get(value)) {
-                element.style.setProperty(name, String(asPixelsIfNumber(get(value))), priority);
-              } else {
-                element.style.removeProperty(name);
-              }
-            },
-            { _type: INTERNAL_EFFECT },
-          );
+          const unsubscribe = effect(() => {
+            if (get(value)) {
+              element.style.setProperty(name, String(asPixelsIfNumber(get(value))), priority);
+            } else {
+              element.style.removeProperty(name);
+            }
+          });
 
           unsubscribers.push(unsubscribe);
           propUnsubscribers.push(unsubscribe);
@@ -524,16 +503,13 @@ export class ElementNode extends MarkupNode {
     if (isFunction(classes)) {
       let unapply: () => void;
 
-      const unsubscribe = effect(
-        () => {
-          if (isFunction(unapply)) {
-            unapply();
-          }
-          element.removeAttribute("class");
-          unapply = this.applyClasses(element, get(classes), unsubscribers);
-        },
-        { _type: INTERNAL_EFFECT },
-      );
+      const unsubscribe = effect(() => {
+        if (isFunction(unapply)) {
+          unapply();
+        }
+        element.removeAttribute("class");
+        unapply = this.applyClasses(element, get(classes), unsubscribers);
+      });
 
       unsubscribers.push(unsubscribe);
       classUnsubscribers.push(unsubscribe);
@@ -544,16 +520,13 @@ export class ElementNode extends MarkupNode {
         const value = mapped[name];
 
         if (isFunction(value)) {
-          const unsubscribe = effect(
-            () => {
-              if (get(value)) {
-                element.classList.add(name);
-              } else {
-                element.classList.remove(name);
-              }
-            },
-            { _type: INTERNAL_EFFECT },
-          );
+          const unsubscribe = effect(() => {
+            if (get(value)) {
+              element.classList.add(name);
+            } else {
+              element.classList.remove(name);
+            }
+          });
 
           unsubscribers.push(unsubscribe);
           classUnsubscribers.push(unsubscribe);

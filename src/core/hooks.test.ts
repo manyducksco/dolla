@@ -1,7 +1,7 @@
-import { beforeEach, describe, test, expect, vi } from "vitest";
-import { useState, useMemo, useEffect, useReducer, useRef, useMount, useUnmount, Reducer } from "./index";
-import { getCurrentContext, setCurrentContext } from "../core/signals";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Context, LifecycleEvent } from "../core/context";
+import { getCurrentContext, setCurrentContext } from "../core/signals";
+import { Reducer, useEffect, useMemo, useMount, useReducer, useRef, useSignal, useUnmount } from "./hooks";
 
 const _emitWillMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.WILL_MOUNT);
 const _emitDidMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.DID_MOUNT);
@@ -13,9 +13,9 @@ beforeEach(() => {
   setCurrentContext(new Context("test"));
 });
 
-describe("useState", () => {
+describe("useSignal", () => {
   test("stores state", () => {
-    const [value, setValue] = useState(0);
+    const [value, setValue] = useSignal(0);
     expect(value()).toBe(0);
 
     setValue(20);
@@ -28,8 +28,8 @@ describe("useState", () => {
 
 describe("useMemo", () => {
   test("with auto tracking", () => {
-    const [left, setLeft] = useState(5);
-    const [right, setRight] = useState(8);
+    const [left, setLeft] = useSignal(5);
+    const [right, setRight] = useSignal(8);
     const added = useMemo(() => left() + right());
 
     expect(added()).toBe(13);
@@ -42,8 +42,8 @@ describe("useMemo", () => {
   });
 
   test("with explicit deps", () => {
-    const [left, setLeft] = useState(5);
-    const [right, setRight] = useState(8);
+    const [left, setLeft] = useSignal(5);
+    const [right, setRight] = useSignal(8);
     const added = useMemo(() => left() + right(), [right]);
 
     expect(added()).toBe(13);
@@ -56,7 +56,7 @@ describe("useMemo", () => {
   });
 
   test("receives previous value as first argument", () => {
-    const [count, setCount] = useState(1);
+    const [count, setCount] = useSignal(1);
 
     const fn = vi.fn((prev) => count() * 2);
     const doubled = useMemo(fn);
@@ -78,7 +78,7 @@ describe("useMemo", () => {
 
 describe("useEffect", () => {
   test("effects are active while context is mounted", () => {
-    const [name, setName] = useState("Bon");
+    const [name, setName] = useSignal("Bon");
 
     const fn = vi.fn(() => {
       name();
@@ -110,8 +110,8 @@ describe("useEffect", () => {
   });
 
   test("with auto tracking", () => {
-    const [left, setLeft] = useState(5);
-    const [right, setRight] = useState(8);
+    const [left, setLeft] = useSignal(5);
+    const [right, setRight] = useSignal(8);
 
     const fn = vi.fn(() => {
       left();
@@ -132,8 +132,8 @@ describe("useEffect", () => {
   });
 
   test("with explicit deps", () => {
-    const [left, setLeft] = useState(5);
-    const [right, setRight] = useState(8);
+    const [left, setLeft] = useSignal(5);
+    const [right, setRight] = useSignal(8);
 
     const fn = vi.fn(() => {
       left();
@@ -154,7 +154,7 @@ describe("useEffect", () => {
   });
 
   test("cleanup function called between invocations and on unmount", () => {
-    const [count, setCount] = useState(0);
+    const [count, setCount] = useSignal(0);
 
     const cleanup = vi.fn();
     const fn = vi.fn(() => {

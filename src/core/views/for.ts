@@ -1,13 +1,13 @@
 import type { Renderable } from "../../types";
 import type { Context } from "../context";
 import { type Key, RepeatNode } from "../nodes/repeat";
-import { type Signal } from "../signals";
+import { type MaybeSignal, readable, type Signal } from "../signals";
 
 export interface ForProps<T> {
   /**
    * An array of items to render.
    */
-  each: Signal<T[]>;
+  each: MaybeSignal<T[]>;
   /**
    * A function to extract a unique key that identifies each item.
    * If no `key` function is passed, object identity (===) will be used.
@@ -25,5 +25,5 @@ const defaultKeyFn = (x: any) => x;
  *
  */
 export function For<T>(props: ForProps<T>, context: Context) {
-  return new RepeatNode(context, props.each, props.key ?? defaultKeyFn, props.children);
+  return new RepeatNode(context, readable(props.each), props.key ?? defaultKeyFn, props.children);
 }

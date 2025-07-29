@@ -2,17 +2,20 @@
 
 Mixins are a way to add custom lifecycle handlers to plain DOM nodes without creating an entire view. You can encapsulate reusable logic in mixin functions and apply them like CSS classes.
 
-Mixin functions take a reference to the element and a `MixinContext` object which adds lifecycle hooks similar to those of `ViewContext`.
+Mixin functions take a reference to the DOM node as their first argument.
 
 ```tsx
-import { type Mixin } from "@manyducks.co/dolla";
+import { type Mixin, useContext, useMount, useUnmount } from "@manyducks.co/dolla";
 
-const logMe: Mixin = (element, ctx) => {
-  ctx.onMount(() => {
-    ctx.log("element mounted");
+const logMe: Mixin = (element) => {
+  const context = useContext();
+
+  useMount(() => {
+    context.log("element mounted");
   });
-  ctx.onUnmount(() => {
-    ctx.log("element unmounted");
+
+  useUnmount(() => {
+    context.log("element unmounted");
   });
 };
 

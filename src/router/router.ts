@@ -1,6 +1,6 @@
 import { Context } from "../core/context.js";
 import { createLogger } from "../core/logger.js";
-import { m, MarkupType, type MarkupNode } from "../core/markup.js";
+import { createMarkup, MarkupType, type MarkupNode } from "../core/markup.js";
 import { DynamicNode } from "../core/nodes/dynamic.js";
 import { ViewNode } from "../core/nodes/view.js";
 import { writable, memo, batch, untracked, type Writable, type Signal } from "../core/signals.js";
@@ -496,7 +496,7 @@ export class Router {
           // Create a $slot and element for this layer.
           const $slot = writable<MarkupNode>();
           const node = new ViewNode(parentLayer.context, matchedLayer.view, {
-            children: m(MarkupType.Dynamic, { source: $slot }),
+            children: createMarkup(MarkupType.Dynamic, { source: $slot }),
           });
 
           // Set state for new layer.

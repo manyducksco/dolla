@@ -3,12 +3,11 @@
 Dolla implements a React-style hooks API for use in Views, Stores and Mixins. Internally these hooks are still using signals, and view functions still only run once, but this API may be more fun and enjoyable for those familiar with React.
 
 ```js
-import { useState, useEffect, useLogger } from "@manyducks.co/dolla/hooks";
+import { useSignal, useEffect, useLogger } from "@manyducks.co/dolla";
 
 export function CounterView() {
-  const [$count, setCount] = useState(0);
+  const [$count, setCount] = useSignal(0);
 
-  const logger = useLogger();
   useEffect(() => {
     // Effect is triggered each time count changes; calling its getter tracks it.
     logger.info(`Count is now ${$count()}`);
@@ -26,7 +25,7 @@ export function CounterView() {
 ```
 
 ```js
-import { useReducer } from "@manyducks.co/dolla/hooks";
+import { useReducer } from "@manyducks.co/dolla";
 
 export function CounterView() {
   const countReducer = (state, action) => {
@@ -56,12 +55,12 @@ export function CounterView() {
 
 ## All Hooks
 
-### `useState`
+### `useSignal`
 
-Creates a new state and returns a Signal and a Setter. Signals are functions that return the current value when called. If they are called within a tracking scope (such as a useMemo or useEffect function) they will _signal_ to that scope that they need to re-run when a new value is set.
+Creates a new signal and returns a getter and setter pair. Signals are functions that return the current value when called. If they are called within a tracking scope (such as a useMemo or useEffect function) they will _signal_ to that scope that they need to re-run when a new value is set.
 
 ```js
-const [message, setMessage] = useState("Hello World");
+const [message, setMessage] = useSignal("Hello World");
 message(); // "Hello World"
 setValue("different value");
 setValue((current) => current.toUpperCase());
@@ -72,7 +71,7 @@ setValue((current) => current.toUpperCase());
 Basic usage.
 
 ```js
-const [count, setCount] = useState(5);
+const [count, setCount] = useSignal(5);
 
 // Signals called within the body of the `useMemo` callback will be tracked.
 // This means `doubled` will re-run and update its value when and only when its tracked dependencies do.
@@ -85,8 +84,8 @@ const quadrupled = useMemo(() => doubled() * 2);
 #### Explicit Dependencies
 
 ```js
-const [first, setFirst] = useState(10);
-const [second, setSecond] = useState(20);
+const [first, setFirst] = useSignal(10);
+const [second, setSecond] = useSignal(20);
 
 // You can alternatively pass an array of dependencies. When you do this your callback will be re-run whenever
 // any of the provided dependencies change, regardless of what dependencies you actually call inside the callback;
@@ -127,16 +126,16 @@ function ExampleView() {
 
 ### `useContext`
 
-Not to be confused with React `useContext`. The context referred to here is the View, Store or Mixin `Context` object.
+Returns a reference to the `Context` object for the current component, be it a View, Store or Mixin.
 
 ```js
 // `useContext` returns the currently active Context object for the View, Store or Mixin it's called in.
 function ExampleView() {
-  const ctx = useContext();
+  const context = useContext();
+  context.log("Hello!");
+  context.addStore(ExampleStore);
 
-  ctx.onMount(() => {
-    /// ...
-  });
+  // ...
 }
 ```
 
@@ -145,8 +144,9 @@ function ExampleView() {
 Access an instance of a provided Store. Equivalent to `context.getStore(Store)`.
 
 ```jsx
+// Define a store...
 function CounterStore() {
-  const [value, setValue] = useState(0);
+  const [value, setValue] = useSignal(0);
 
   const increment = () => setValue((n) => n + 1);
   const decrement = () => setValue((n) => n - 1);
@@ -166,7 +166,7 @@ function ParentView() {
   return <ChildView />;
 }
 
-// Then...
+// Then access it with the hook.
 function ChildView() {
   const counter = useStore(CounterStore);
 

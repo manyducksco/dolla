@@ -1,4 +1,4 @@
-import { type Context, type Logger, ref, type Ref, type Store } from "../core";
+import { type Context, ref, type Ref, type Store } from "../core";
 import {
   type EffectFn,
   get,
@@ -10,55 +10,55 @@ import {
   type Signal,
   type SignalOptions,
   untracked,
-  writable,
 } from "../core/signals";
 
 /**
- * Returns the Context object of the View, Store or Mixin this hook is called in.
+ * Returns the Context object of the `View`, `Store` or `Mixin` this hook is called in.
+ *
+ * @param name - If passed, the context will be renamed. Context takes the name of the component function by default.
  */
-export function useContext(): Context {
+export function useContext(name?: MaybeSignal<string>): Context {
   const context = getCurrentContext();
   if (!context) {
     throw new Error(`No context found; hooks can only be called in the body of a View, Store or Mixin.`);
+  }
+  if (name != null) {
+    context.setName(name);
   }
   return context;
 }
 
 /**
- * Returns a logger. If a name is passed it will be used as a prefix for all console messages.
- * Otherwise the default name of the context will be used.
+ * Returns the nearest instance of a Store provided to this context.
  */
-export function useLogger(name?: MaybeSignal<string>): Logger {
-  const context = useContext();
-  if (name) context.setName(name);
-  return context;
+export function useStore<T>(store: Store<any, T>): T {
+  return useContext().getStore(store);
 }
 
 /**
- * Creates a new read-only Getter and a bound Setter function.
- * @deprecated prefer useSignal
+ * Adds a store to this context and returns the store instance.
  */
-export function useState<T>(value: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
+export function useStoreProvider<T, O>(store: Store<O, T>, options?: O): T {
+  return useContext().addStore(store, options).getStore(store);
+}
 
 /**
- * Creates a new read-only Signal and a bound Setter function.
- * @deprecated prefer useSignal
+ * Schedules `callback` to run just after the component is mounted.
+ * If `callback` returns a function, that function will run when the context is unmounted.
  */
-export function useState<T>(
-  value: undefined,
-  options: SignalOptions<T>,
-): [Signal<T | undefined>, Setter<T | undefined>];
+export function useMount(callback: () => void | (() => void)): void {
+  const context = useContext();
+  context.onLifecycleTransition("didMount", () => {
+    const result = callback();
+    if (result) context.onLifecycleTransition("didUnmount", result);
+  });
+}
 
 /**
- * Creates a new read-only Signal and a bound Setter function.
- * @deprecated prefer useSignal
+ * Schedules `callback` to run when the context is unmounted.
  */
-export function useState<T>(): [Signal<T | undefined>, Setter<T | undefined>];
-
-export function useState<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
-  useContext(); // assert that we're in a valid context
-  const state = writable(value as T, options);
-  return [() => state(), state.set];
+export function useUnmount(callback: () => void): void {
+  useContext().onLifecycleTransition("didUnmount", callback);
 }
 
 /**
@@ -72,16 +72,13 @@ export function useState<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, 
  * $count(); // 7
  */
 export function useSignal<T>(value: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
-
 export function useSignal<T>(
   value: undefined,
   options: SignalOptions<T>,
 ): [Signal<T | undefined>, Setter<T | undefined>];
-
 export function useSignal<T>(): [Signal<T | undefined>, Setter<T | undefined>];
-
 export function useSignal<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
-  useContext(); // assert that we're in a valid context
+  useContext(); // Ensure we're called within a context.
   return signal(value as T, options);
 }
 
@@ -90,20 +87,8 @@ export function useMemo<T>(
   deps?: Signal<any>[],
   options?: SignalOptions<T>,
 ): Signal<T> {
-  useContext(); // assert that we're in a valid context
+  useContext(); // Ensure we're called within a context.
   return memo(compute, { ...options, deps });
-}
-
-export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
-  const context = useContext();
-  if (deps) {
-    context.effect(() => {
-      for (const dep of deps) get(dep);
-      return untracked(fn);
-    });
-  } else {
-    context.effect(fn);
-  }
 }
 
 /**
@@ -132,11 +117,19 @@ export function useReducer<State, Action>(
 }
 
 /**
- * Uses a previously added Store. Takes the Store function itself and returns the nearest instance.
+ * Creates an effect bound to the current context.
+ * The `fn` is called when the component is mounted, then again each time the dependencies are updated until the component is unmounted.
  */
-export function useStore<T>(store: Store<any, T>): T {
+export function useEffect(fn: EffectFn, deps?: Signal<any>[]): void {
   const context = useContext();
-  return context.getStore(store);
+  if (deps) {
+    context.effect(() => {
+      for (const dep of deps) get(dep);
+      return untracked(fn);
+    });
+  } else {
+    context.effect(fn);
+  }
 }
 
 /**
@@ -149,6 +142,8 @@ export interface HybridRef<T> extends Ref<T> {
 
 /**
  * Creates a Ref. Useful for getting references to DOM nodes.
+ *
+ * @deprecated use ref()
  */
 export function useRef<T>(initialValue?: T): HybridRef<T>;
 
@@ -157,23 +152,4 @@ export function useRef<T>(...value: [T]): HybridRef<T> {
   const valueRef = ref(...value);
   Object.defineProperty(valueRef, "current", { get: valueRef, set: valueRef });
   return valueRef as HybridRef<T>;
-}
-
-/**
- * Calls `callback` when the context is mounted. If `callback` returns a function, that function is called when the context is unmounted.
- */
-export function useMount(callback: () => void | (() => void)): void {
-  const context = useContext();
-  context.onMount(() => {
-    const result = callback();
-    if (result) context.onUnmount(result);
-  });
-}
-
-/**
- * Calls `callback` when the context is unmounted.
- */
-export function useUnmount(callback: () => void): void {
-  const context = useContext();
-  context.onUnmount(callback);
 }

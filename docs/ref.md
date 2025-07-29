@@ -11,13 +11,13 @@ The main pattern for refs is as a DOM node reference. Markup elements take a `re
 Once you have this reference you can manipulate the node outside the usual declarative template workflow.
 
 ```tsx
-import { ref } from "@manyducks.co/dolla";
+import { useRef } from "@manyducks.co/dolla";
 
 function ExampleView() {
-  const element = ref<HTMLElement>();
+  const element = useRef<HTMLElement>();
 
   ctx.onMount(() => {
-    element().innerText = "GOODBYE THERE";
+    element.current.innerText = "GOODBYE THERE";
   });
 
   return <div ref={element}>HELLO THERE</div>;
@@ -29,7 +29,7 @@ function ExampleView() {
 Another useful pattern is to pass an API object from a child view to the parent, allowing the parent to call methods to control the child view in an imperative way.
 
 ```tsx
-import { ref } from "@manyducks.co/dolla";
+import { useRef, useSignal } from "@manyducks.co/dolla";
 
 // First we'll define the view to be controlled.
 
@@ -44,20 +44,20 @@ interface CounterViewProps {
 }
 
 function CounterView({ controls }: CounterViewProps) {
-  const $count = $(count);
+  const [$count, setCount] = useSignal(0);
 
   // Passing a `controls` object to the ref whose methods reference internal state.
-  controls({
+  controls.current = {
     increment() {
-      $count((current) => current + 1);
+      setCount((current) => current + 1);
     },
     decrement() {
-      $count((current) => current - 1);
+      setCount((current) => current - 1);
     },
     reset() {
-      $count(0);
+      setCount(0);
     },
-  });
+  };
 
   return <span>Count: {$count}</span>;
 }
@@ -66,7 +66,7 @@ function CounterView({ controls }: CounterViewProps) {
 
 function ParentView() {
   // Create a Ref to store the controls object.
-  const controls = ref<CounterViewControls>();
+  const controls = useRef<CounterViewControls>();
 
   return (
     <section>
@@ -76,9 +76,9 @@ function ParentView() {
       <CounterView controls={controls} />
 
       {/* Our buttons will call the methods on the controls object causing state changes within CounterView */}
-      <button onClick={() => controls.increment()}>+1</button>
-      <button onClick={() => controls.decrement()}>-1</button>
-      <button onClick={() => controls.reset()}>=0</button>
+      <button onClick={() => controls.current.increment()}>+1</button>
+      <button onClick={() => controls.current.decrement()}>-1</button>
+      <button onClick={() => controls.current.reset()}>=0</button>
     </section>
   );
 }

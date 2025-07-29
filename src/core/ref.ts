@@ -1,4 +1,4 @@
-const EMPTY_REF = Symbol("Ref.EMPTY");
+export const EMPTY_REF = Symbol("Ref.EMPTY");
 
 /**
  * A hybrid getter/setter function that stores the last value it was called with.

@@ -2,26 +2,26 @@
 export { createApp } from "./app.js";
 
 // Signals
-export { $, batch, effect, get, memo as memo, writable, untracked } from "./signals.js";
-export type { MaybeSignal, Writable, Signal } from "./signals.js";
+export { batch, effect, get, memo, readable, signal, untracked, writable } from "./signals.js";
+export type { MaybeSignal, Signal, Writable, Setter } from "./signals.js";
+
+// Hooks
+export * from "./hooks.js";
 
 // Context
 export { createContext } from "./context.js";
 export type { Context } from "./context.js";
 
 // Markup
-export { m, Markup, MarkupNode, portal, render, repeat, unless, when } from "./markup.js";
+export { createMarkup, Markup, MarkupNode, render } from "./markup.js";
 
 // Ref
 export { ref, type Ref } from "./ref.js";
 
 // Built-in Views
 export { For, type ForProps } from "./views/for.js";
-export { Show, type ShowProps } from "./views/show.js";
 export { Portal, type PortalProps } from "./views/portal.js";
-
-// Mount
-// export { mount, type UnmountFn } from "./mount.js";
+export { Show, type ShowProps } from "./views/show.js";
 
 // Equality checks
 export { deepEqual, shallowEqual, strictEqual } from "../utils.js";

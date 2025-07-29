@@ -3,7 +3,6 @@ import { createReactiveSystem } from "alien-signals/system";
 import { isFunction } from "../typeChecking";
 import { strictEqual } from "../utils";
 import { Context } from "./context";
-import { getEnv } from "./env";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -84,38 +83,6 @@ export function setCurrentContext(context: Context | undefined) {
   activeContext = context;
   return prevContext;
 }
-
-// function getCurrentScope(): EffectScope | undefined {
-//   return activeScope;
-// }
-
-// function setCurrentScope(scope: EffectScope | undefined) {
-//   const prevScope = activeScope;
-//   activeScope = scope;
-//   return prevScope;
-// }
-
-// export function effectScope(fn: () => void): () => void {
-//   const e: EffectScope = {
-//     deps: undefined,
-//     depsTail: undefined,
-//     subs: undefined,
-//     subsTail: undefined,
-//     flags: 0 satisfies ReactiveFlags.None,
-//   };
-//   if (activeScope !== undefined) {
-//     link(e, activeScope);
-//   }
-//   const prevSub = setCurrentSub(undefined);
-//   const prevScope = setCurrentScope(e);
-//   try {
-//     fn();
-//   } finally {
-//     setCurrentScope(prevScope);
-//     setCurrentSub(prevSub);
-//   }
-//   return effectOper.bind(e);
-// }
 
 function updateComputed(c: Computed): boolean {
   const prevSub = setCurrentSub(c);
@@ -313,34 +280,6 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
-/**
- * @deprecated use `signal()` and `memo()` directly
- */
-export function $<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T>;
-
-/**
- * @deprecated use `signal()` and `memo()` directly
- */
-export function $<T>(): Writable<T | undefined>;
-
-/**
- * @deprecated use `signal()` and `memo()` directly
- */
-export function $<T>(initialValue: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
-
-/**
- * @deprecated use `signal()` and `memo()` directly
- */
-export function $<T>(initialValue: T, options?: SignalOptions<T>): Writable<T>;
-
-export function $(...args: any) {
-  if (isFunction(args[0])) {
-    return memo(args[0], args[1]);
-  } else {
-    return writable(args[0], args[1]);
-  }
-}
-
 export function writable<T>(): Writable<T | undefined>;
 export function writable<T>(initialValue: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
 export function writable<T>(initialValue: T, options?: SignalOptions<T>): Writable<T>;
@@ -359,12 +298,26 @@ export function writable<T>(initialValue?: T, options?: SignalOptions<T>): Writa
   return fn;
 }
 
+/**
+ * Ensures that a value is a read-only signal.
+ *
+ * @example
+ * const $number = readable(5); // converts plain values to signals
+ *
+ * const $number = writable(5);
+ * const $value = readable($number);
+ * $number(); // 5
+ * $value(); // 5
+ * $number.set(6);
+ * $number(); // 6
+ * $value(); // 6 (tracks value but can't be written)
+ */
 export function readable<T>(signal: MaybeSignal<T>): Signal<T> {
   return memo(() => signal);
 }
 
 /**
- * Creates a new signal, returning a bound getter and setter pair.
+ * Creates a new signal, returning a getter and setter pair.
  *
  * @example
  * const [$count, setCount] = signal(0);
@@ -465,43 +418,14 @@ export type EffectFn = () => void | (() => void);
 
 export type UnsubscribeFn = () => void;
 
-export const INTERNAL_EFFECT = Symbol("INTERNAL_EFFECT");
-
-export interface EffectOptions {
-  /**
-   * An array of signals this effect depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
-   * Instead the `deps` array will be tracked and `fn` will re-run when any value in `deps` changes.
-   */
-  deps?: Signal<any>[];
-
-  /**
-   * For internal use.
-   */
-  _type?: symbol;
-}
-
 /**
  * Creates a tracked scope that re-runs whenever the values of any tracked reactives changes.
  * Reactives are tracked by accessing their `value` within the body of the function.
  *
- * NOTE: You must call the unsubscribe function to stop watching for changes.
- * If you are using an effect inside a View or Store, use `ctx.effect` instead, which cleans up automatically when the component unmounts.
+ * NOTE: You must call the unsubscribe function to clean up the effect.
+ * If you are using an effect inside a View or Store, try the `useEffect` hook instead, which cleans up automatically when the component unmounts.
  */
-export function effect(fn: EffectFn, options?: EffectOptions): UnsubscribeFn {
-  const internal = options?._type === INTERNAL_EFFECT;
-
-  // Automatically bind to active context if called within one.
-  if (!internal && activeContext) {
-    return activeContext.effect(fn);
-  }
-
-  // Warn about memory leaks in dev mode.
-  if (!internal && getEnv() === "development") {
-    console.warn(
-      `This effect is not bound to a scope. You must call the unsubscribe function when done to avoid memory leaks.`,
-    );
-  }
-
+export function effect(fn: EffectFn): UnsubscribeFn {
   const e: Effect = {
     fn,
     subs: undefined,
