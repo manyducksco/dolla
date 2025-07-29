@@ -21,6 +21,11 @@ Dolla's goals:
 - Be snappy and responsive for real life apps.
 - Be as compact as possible but not at the expense of necessary features.
 
+## DEV TO-DO
+
+- Make sure docs are correct and accurate.
+- Release v2.0.0
+
 ## An Example
 
 A basic view. Note that the view function is called exactly once when the view is first mounted. All changes to DOM nodes thereafter happen as a result of `$state` values changing.
