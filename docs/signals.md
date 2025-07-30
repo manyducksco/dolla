@@ -1,5 +1,7 @@
 ## ⚡ Reactive Updates with `Signals`
 
+> TODO: Rewrite in style matching other docs.
+
 Dolla sets out to solve the challenge of keeping your UI in sync with your data. All apps have state that changes at runtime, and your UI must update itself to stay in sync with that state as it changes. JavaScript frameworks all have their own ways of doing this, but there are two main ones; virtual DOM and signals. Dolla follows the Signals philosophy.
 
 [React](https://react.dev) and similar frameworks make use of a [virtual DOM](https://svelte.dev/blog/virtual-dom-is-pure-overhead), in which every state change causes a "diff" of the real DOM nodes on the page against a lightweight representation of what those nodes _should_ look like, followed by a "patch" where the minimal updates are performed to bring the DOM in line with the ideal virtual DOM.
@@ -8,11 +10,13 @@ Dolla sets out to solve the challenge of keeping your UI in sync with your data.
 
 The Signals API consists of these functions:
 
-- `$` to create signals.
-- `effect` to run side effects when tracked signals change.
+- `signal` creates a getter and setter pair, returned as an array.
+- `writable` creates a signal getter with a `.set` method so reader and writer can be kept together.
+- `readable` turns a plain value or any kind if signal into a getter function
+- `effect` tracks any signals accessed within its scope and re-runs when those signals change.
 - `get` to unwrap a possible signal value.
 - `untracked` to unwrap a possible signal value without tracking it.
-
+- `batch` to update multiple signals without running effects until they're all set.
 
 ### Basic State API
 
@@ -35,7 +39,7 @@ $count(); // 1
 // Update the value with a mapping function
 $count.set((current) => current + 1);
 $count(); // 2
-````
+```
 
 Dolla's naming convention is to prepend a `$` to signal names. This is because signals have special side effects to be aware of when they are called. An `effect` is one such _tracking context_. Any signals accessed within it will be tracked, causing the function to run again when a tracked signal receives a new value.
 
@@ -62,7 +66,7 @@ unsubscribe();
 
 $count.set(3);
 // does not print
-````
+```
 
 Another tracking context, and another use for the `$` function, is to create derived signals. If you pass a function to `$`, any signals called within that function are tracked and the resulting signal will be recomputed only when those signals receive new values.
 

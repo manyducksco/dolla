@@ -1,14 +1,12 @@
-# Ref
+# Refs: For When You Gotta Get Your Hands Dirty
 
-Refs are functions that serve as a getter and setter for a stored value. Calling a ref with no arguments will return its stored value, or throw an error if no value has yet been stored. Calling a ref with a single argument will store a new value.
+Aight, so what's a **ref**? It's basically a little box for holding onto a value. It's a function, so `myRef()` gets you the value, and `myRef(newValue)` sets a new one. If you try to get a value from an empty ref, it'll throw a fit, so heads up.
 
-This signature is very similar to that of a `Source` signal, with the differences being their error throwing behavior while empty and that refs are _not_ trackable in a signal context.
+Think of it like a signal's uncool cousin—it holds stuff, but it's **not reactive**. It won't trigger updates. It's for when you need to break the rules a little.
 
-## Pattern #1: Referencing DOM nodes
+## Use Case \#1: Grabbing DOM elements
 
-The main pattern for refs is as a DOM node reference. Markup elements take a `ref` attribute to which they will pass their DOM node when they are mounted.
-
-Once you have this reference you can manipulate the node outside the usual declarative template workflow.
+The main character energy of refs is grabbing actual HTML elements. Just yeet a `ref={myRef}` prop onto any element, and bam, the real DOM node lands in `myRef.current`. Now you can mess with it directly using regular JS, no cap. It's your secret backdoor to the DOM.
 
 ```tsx
 import { useRef } from "@manyducks.co/dolla";
@@ -16,66 +14,52 @@ import { useRef } from "@manyducks.co/dolla";
 function ExampleView() {
   const element = useRef<HTMLElement>();
 
-  ctx.onMount(() => {
-    element.current.innerText = "GOODBYE THERE";
+  useMount(() => {
+    // We're just changing the text directly on the element. Wild.
+    element.current.innerText = "GOODBYE WORLD";
   });
 
-  return <div ref={element}>HELLO THERE</div>;
+  return <div ref={element}>HELLO WORLD</div>;
 }
 ```
 
-## Pattern #2: Controlling a child view from a parent view
+## Use Case \#2: Parent Controlling a Child
 
-Another useful pattern is to pass an API object from a child view to the parent, allowing the parent to call methods to control the child view in an imperative way.
+This is some next-level strats, fr. You can use a ref to let a parent component control a child. The child makes a little API object—like a remote control—and sends it up to the parent via a ref. Then the parent can just be like `controls.current.increment()` and make the child do stuff. It's a total power move for when you need to break the rules.
 
 ```tsx
 import { useRef, useSignal } from "@manyducks.co/dolla";
 
-// First we'll define the view to be controlled.
-
+// The child component that's gonna get controlled
 interface CounterViewControls {
   increment(): void;
   decrement(): void;
   reset(): void;
 }
 
-interface CounterViewProps {
-  controls: Ref<CounterViewControls>;
-}
-
-function CounterView({ controls }: CounterViewProps) {
+function CounterView({ controls }: { controls: Ref<CounterViewControls> }) {
   const [$count, setCount] = useSignal(0);
 
-  // Passing a `controls` object to the ref whose methods reference internal state.
+  // We're making our "remote control" and giving it to the parent's ref
   controls.current = {
-    increment() {
-      setCount((current) => current + 1);
-    },
-    decrement() {
-      setCount((current) => current - 1);
-    },
-    reset() {
-      setCount(0);
-    },
+    increment: () => setCount((c) => c + 1),
+    decrement: () => setCount((c) => c - 1),
+    reset: () => setCount(0),
   };
 
   return <span>Count: {$count}</span>;
 }
 
-// Then we'll use it in the parent:
-
+// The parent component doing the controlling
 function ParentView() {
-  // Create a Ref to store the controls object.
   const controls = useRef<CounterViewControls>();
 
   return (
     <section>
       <h1>Counter</h1>
-
-      {/* CounterView will set the controls object */}
       <CounterView controls={controls} />
 
-      {/* Our buttons will call the methods on the controls object causing state changes within CounterView */}
+      {/* Now we can use the remote control from the parent! */}
       <button onClick={() => controls.current.increment()}>+1</button>
       <button onClick={() => controls.current.decrement()}>-1</button>
       <button onClick={() => controls.current.reset()}>=0</button>
@@ -83,11 +67,3 @@ function ParentView() {
   );
 }
 ```
-
----
-
-End.
-
-- [🗂️ Docs](./index.md)
-- [🏠 README](../README.md)
-- [🦆 That's a lot of ducks.](https://www.manyducks.co)

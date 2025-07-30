@@ -1,5 +1,7 @@
 # Markup
 
+> TODO: Rewrite with more detail in a style matching other docs.
+
 Dolla creates a tree of views that manage the DOM, updating attributes and recreating parts of the DOM as signal values change.
 
 ```js

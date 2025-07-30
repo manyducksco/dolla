@@ -1,5 +1,7 @@
 # Setting up Dolla
 
+> TODO: Rewrite with more detail in a style matching other docs.
+
 ## Installation
 
 Dolla is published on npm as `@manyducks.co/dolla`. You can install it in your project with the following command:
