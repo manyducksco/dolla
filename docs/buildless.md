@@ -82,8 +82,7 @@ Let's see how our usual `Counter` example looks with HTM. It's almost identical.
 
 ```html
 <script type="module">
-  import { createApp, useSignal, useEffect, createMarkup } from "https://esm.sh/@manyducks.co/dolla";
-  import { Show } from "https://esm.sh/@manyducks.co/dolla/views";
+  import { createApp, useSignal, useEffect, Show, createMarkup } from "https://esm.sh/@manyducks.co/dolla";
   import htm from "https://esm.sh/htm";
 
   const html = htm.bind(createMarkup);
