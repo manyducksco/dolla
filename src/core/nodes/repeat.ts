@@ -1,6 +1,7 @@
 import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
+import { useContext } from "../hooks.js";
 import { batch, effect, untracked, writable, type Signal, type UnsubscribeFn, type Writable } from "../signals.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
@@ -10,7 +11,7 @@ import { ViewNode } from "./view.js";
 export type Key = any;
 
 export type KeyFn<T> = (item: T, index: number) => Key;
-export type RenderFn<T> = (item: Signal<T>, index: Signal<number>, ctx: Context) => Renderable;
+export type RenderFn<T> = (item: Signal<T>, index: Signal<number>) => Renderable;
 
 type ConnectedItem<T> = {
   key: Key;
@@ -182,10 +183,10 @@ export class RepeatNode<T> extends MarkupNode {
 interface ListItemProps {
   item: Signal<any>;
   index: Signal<number>;
-  render: (item: Signal<any>, index: Signal<number>, context: Context) => Renderable;
+  render: (item: Signal<any>, index: Signal<number>) => Renderable;
 }
 const contextName = "dolla.RepeatItemView";
-function RepeatItemView(props: ListItemProps, context: Context) {
-  context.setName(contextName);
-  return props.render.call(context, props.item, props.index, context);
+function RepeatItemView(props: ListItemProps) {
+  useContext(contextName); // Set the context name.
+  return props.render(props.item, props.index);
 }

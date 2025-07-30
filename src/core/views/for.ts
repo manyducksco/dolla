@@ -1,7 +1,6 @@
-import type { Renderable } from "../../types";
-import type { Context } from "../context";
-import { type Key, RepeatNode } from "../nodes/repeat";
-import { type MaybeSignal, readable, type Signal } from "../signals";
+import { useContext } from "../hooks";
+import { type Key, RenderFn, RepeatNode } from "../nodes/repeat";
+import { type MaybeSignal, readable } from "../signals";
 
 export interface ForProps<T> {
   /**
@@ -16,7 +15,7 @@ export interface ForProps<T> {
   /**
    * A render function. Takes the item and its index in signal form and returns something to display for each item.
    */
-  children: (item: Signal<T>, index: Signal<number>, ctx: Context) => Renderable;
+  children: RenderFn<T>;
 }
 
 const defaultKeyFn = (x: any) => x;
@@ -24,6 +23,7 @@ const defaultKeyFn = (x: any) => x;
 /**
  *
  */
-export function For<T>(props: ForProps<T>, context: Context) {
+export function For<T>(props: ForProps<T>) {
+  const context = useContext("For");
   return new RepeatNode(context, readable(props.each), props.key ?? defaultKeyFn, props.children);
 }

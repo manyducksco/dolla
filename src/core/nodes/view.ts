@@ -62,7 +62,7 @@ export class ViewNode<P> extends MarkupNode {
       const { context, props, view } = this;
       try {
         const prevCtx = setCurrentContext(context);
-        const result = view.call(context, props, context);
+        const result = view(props);
         setCurrentContext(prevCtx);
         if (result != null && result !== false) {
           this.node = render(result, context);

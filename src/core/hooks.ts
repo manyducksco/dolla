@@ -32,14 +32,14 @@ export function useContext(name?: MaybeSignal<string>): Context {
  * Returns the nearest instance of a Store provided to this context.
  */
 export function useStore<T>(store: Store<any, T>): T {
-  return useContext().getStore(store);
+  return useContext().useStore(store);
 }
 
 /**
  * Adds a store to this context and returns the store instance.
  */
 export function useStoreProvider<T, O>(store: Store<O, T>, options?: O): T {
-  return useContext().addStore(store, options).getStore(store);
+  return useContext().provideStore(store, options).useStore(store);
 }
 
 /**

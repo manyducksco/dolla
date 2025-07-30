@@ -1,4 +1,4 @@
-# Stores
+# Dolla Stores: The State Management Glow Up
 
 Aight, let's get into one of the most clutch features in Dolla: **Stores**. If you've ever built an app that's more than just a single page, you've probably run into the nightmare of trying to share state between components that are far apart. This is called "prop drilling," and it's a total vibe killer.
 
@@ -103,3 +103,11 @@ function Header() {
 And that's it\! The `ThemeToggleButton` and `Header` can be anywhere inside `App`, and they'll both get the exact same store instance. When you click the button, `toggleTheme` is called, the `$theme` signal updates, and both the button text and the header's class will automatically change.
 
 No prop drilling. Just clean, reactive state. It's a whole vibe.
+
+---
+
+End.
+
+- [🗂️ Docs](./index.md)
+- [🏠 README](../README.md)
+- [🦆 That's a lot of ducks.](https://www.manyducks.co)

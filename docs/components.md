@@ -228,3 +228,11 @@ function RealtimeClock() {
   return <p>The time is: {$time}</p>;
 }
 ```
+
+---
+
+End.
+
+- [🗂️ Docs](./index.md)
+- [🏠 README](../README.md)
+- [🦆 That's a lot of ducks.](https://www.manyducks.co)

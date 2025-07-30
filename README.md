@@ -10,11 +10,11 @@ Alright, so Dolla is this new web framework. Ngl, it's pretty sick. It feels lik
   - 🖥️ [**Views**](./docs/views.md) are for the UI glow up. You know the drill.
   - 💾 [**Stores**](./docs/stores.md) are for when your components need to share state without all the drama. We don't do prop drilling in this house.
   - ✨ [**Mixins**](./docs/mixins.md) give your plain HTML elements some extra rizz. Slay.
-- 🪝 [**Hooks**](./docs/hooks.md)
+- 🪝 [**Hooks**](./docs/hooks.md) let your components actually cook. They're your familiar, React-style toolkit for state (`useSignal`), lifecycle (`useMount`), and more.
 - 🔀 The client-side [**router**](./docs/router.md) actually understands the assignment. Nested routes, middleware for gatekeeping pages (iykyk), preloading data so it's not laggy... it's all there.
 - 🐕 It comes with its own [**HTTP client**](./docs/http.md) so you can stop installing axios. It's got middleware too, so adding auth headers to every request is easy. We stan.
 - 📍 A lowkey [**i18n system**](./docs/i18n.md). Just yeet your translations into a JSON file and the `t` function pulls them. Simple.
-- 🍳 And the biggest flex? The build system is optional. You can [write your JSX like always](./docs/setup.md), or just [use tagged template literals straight in the browser with HTM](https://github.com/developit/htm). It's a whole vibe.
+- 🍳 And the biggest flex? The build system is optional. You can [write your JSX like always](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm). It's a whole vibe.
 
 ## Check it out: The Counter Example
 
@@ -314,18 +314,25 @@ i18n
 
 ## The Tea: How's Dolla Different?
 
-### vs. React
+<!-- ### vs. React
 
 - **Easier Effects**: You know that annoying dependency array? Gone. Unless you, like, _want_ to use it.
 - **State Management Included**: `Stores` are built in, so you can probably skip installing Redux or Zustand.
 - **Faster**: No VDOM = faster.
-- **Smaller**: Less code for your users to download.
+- **Smaller**: Less code for your users to download. -->
 
-### vs. Vue
+### vs. React
 
-- **No VDOM**: Vue uses a VDOM. Signals are just more direct and faster.
-- **Feels like React**: If you know React, you'll feel right at home here.
-- **Simpler Side Effects**: `useEffect` is usually way easier to think about than `watch` and `watchEffect`.
+- **No More Re-Renders (Fr!)**: This is the big one. In React, when you call `setCount(1)`, your _entire component function runs all over again_. React then has to figure out what changed with the VDOM. In Dolla, your component function only runs once, ever. When you call `setCount(1)`, Dolla just goes and changes the text in that one `<p>` tag. That's it. This makes it way faster and easier to reason about.
+- **Goodbye, `useCallback`**: Because React re-renders all the time, it creates new functions and objects on every single render. This is why you have to wrap everything in `useCallback` and `useMemo` so you don't cause a chain reaction of re-renders in your child components. Since Dolla components don't re-render, you can just pass a regular function as a prop without a single worry. No more referential equality drama.
+- **Easier Effects**: You know that annoying dependency array? Gone. Unless you, like, _want_ to use it for manual control. This means no more stale closure bugs.
+- **State Management Included**: `Stores` are built in, so you can probably skip installing Redux or Zustand and all the boilerplate that comes with them.
+
+### vs. Angular
+
+- **Way Less Boilerplate**: Angular is a whole ceremony. Modules, decorators, dependency injection... it's a lot. Dolla is just functions. You write a function, it becomes a component. It's a much more direct vibe.
+- **Stores are like Services, but chill**: Ngl, our `Stores` were lowkey inspired by Angular's services. It's the same idea of providing a thing in one place and using it somewhere else. But instead of all the module and decorator ceremony, you just use a couple of simple hooks.
+- **Signals First, Not an Add-on**: Yeah, Angular has signals now, but the whole framework was built on a different system (Zone.js). Dolla was born with signals as its main character, so the whole DX is built around them. It's not an optional extra, it's the whole point.
 
 ### vs. Svelte
 

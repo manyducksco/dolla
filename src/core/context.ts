@@ -258,7 +258,7 @@ export class Context implements Logger {
   /**
    * Creates an instance of a store and attaches it to this context.
    */
-  addStore<T>(store: Store<any, T>, options?: any): this {
+  provideStore<T>(store: Store<any, T>, options?: any): this {
     if (this[STORES]?.get(store)) {
       let name = store.name ? `'${store.name}'` : "this store";
       throw this.crash(new Error(`An instance of ${name} was already added on this context.`));
@@ -271,7 +271,7 @@ export class Context implements Logger {
     try {
       if (!this[STORES]) this[STORES] = new Map();
       const prevCtx = setCurrentContext(context);
-      const result = store.call(context, options, context);
+      const result = store(options);
       setCurrentContext(prevCtx);
       this[STORES].set(store, result);
     } catch (error) {
@@ -286,7 +286,7 @@ export class Context implements Logger {
    * 1. An instance of the store is found and returned.
    * 2. No instance is found and an error is thrown.
    */
-  getStore<T>(store: Store<any, T>): T {
+  useStore<T>(store: Store<any, T>): T {
     if (!isFunction(store)) {
       throw new Error(`Invalid store.`);
     }

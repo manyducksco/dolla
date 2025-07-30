@@ -28,17 +28,17 @@ export interface BaseProps {
 /**
  *
  */
-export type View<Props> = (this: Context, props: Props, context: Context) => Renderable;
+export type View<Props> = (props: Props) => Renderable;
 
 /**
  *
  */
-export type Store<Options, Value> = (this: Context, options: Options, context: Context) => Value;
+export type Store<Options, Value> = (options: Options) => Value;
 
 /**
  *
  */
-export type Mixin<E extends Element = Element> = (element: E, context: Context) => void;
+export type Mixin<E extends Element = Element> = (element: E) => void;
 
 /*==================================*\
 ||            JSX Types             ||

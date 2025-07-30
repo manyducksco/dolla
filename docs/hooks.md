@@ -346,3 +346,11 @@ function App() {
   return <AppContent />;
 }
 ```
+
+---
+
+End.
+
+- [🗂️ Docs](./index.md)
+- [🏠 README](../README.md)
+- [🦆 That's a lot of ducks.](https://www.manyducks.co)
