@@ -122,10 +122,10 @@ function ShoppingCart() {
 
   return (
     <div>
-      <p>Price: ${$price}</p>
+      <p>Price: {$price}</p>
       <p>Quantity: {$quantity}</p>
       <hr />
-      <p>Total: ${$total}</p>
+      <p>Total: {$total}</p>
     </div>
   );
 }
@@ -168,7 +168,7 @@ function ReducerCounter() {
 
   return (
     <>
-      <p>Count: {$state().count}</p>
+      <p>Count: {() => $state().count}</p>
       <button onClick={() => dispatch({ type: "INCREMENT" })}>+</button>
       <button onClick={() => dispatch({ type: "DECREMENT" })}>-</button>
     </>
@@ -225,20 +225,22 @@ function useEffect(fn: () => void, deps?: Signal<any>[]): void;
 
 ```tsx
 import { useEffect, useSignal } from "@manyducks.co/dolla";
+import { http } from "@manyducks.co/dolla/http";
 
-function UserData({ userId }) {
+function UserData({ $userId }) {
   const [$user, setUser] = useSignal(null);
 
-  // This effect will re-run whenever the userId prop changes.
-  useEffect(async () => {
-    const res = await fetch(`/api/users/${userId}`);
-    const data = await res.json();
-    setUser(data);
+  // This effect will re-run whenever the $userId prop changes.
+  useEffect(() => {
+    const userId = $userId();
+    http.get(`/api/users/${userId}`).then((res) => {
+      setUser(res.body);
+    });
   });
 
   return (
     <Show when={$user}>
-      <p>User: {$user().name}</p>
+      <p>User: {() => $user().name}</p>
     </Show>
   );
 }

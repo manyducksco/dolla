@@ -10,6 +10,7 @@ Alright, so Dolla is this new web framework. Ngl, it's pretty sick. It feels lik
   - 🖥️ [**Views**](./docs/views.md) are for the UI glow up. You know the drill.
   - 💾 [**Stores**](./docs/stores.md) are for when your components need to share state without all the drama. We don't do prop drilling in this house.
   - ✨ [**Mixins**](./docs/mixins.md) give your plain HTML elements some extra rizz. Slay.
+- 🪝 [**Hooks**](./docs/hooks.md)
 - 🔀 The client-side [**router**](./docs/router.md) actually understands the assignment. Nested routes, middleware for gatekeeping pages (iykyk), preloading data so it's not laggy... it's all there.
 - 🐕 It comes with its own [**HTTP client**](./docs/http.md) so you can stop installing axios. It's got middleware too, so adding auth headers to every request is easy. We stan.
 - 📍 A lowkey [**i18n system**](./docs/i18n.md). Just yeet your translations into a JSON file and the `t` function pulls them. Simple.
@@ -204,7 +205,7 @@ Dolla has a router for making multi-page apps. It just works. Back/forward butto
 #### Route Patterns
 
 - **Static**: `/dashboard/settings`
-- **Number Param** (only matches a numbers): `/users/{#id}`
+- **Number Param** (only matches numbers): `/users/{#id}`
 - **Anything Param**: `/users/{name}`
 - **Wildcard**: `/files/*`
 
