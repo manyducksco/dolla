@@ -63,7 +63,7 @@ You make state with `useSignal()`, and it gives you back a `[getter, setter]` pa
 - `$count`: This is the **signal**. We just use a `$` at the start by convention. Think of it as a reactive value you can just plop into your JSX.
 - `setCount`: This is how you change the value. Works just like you'd think.
 
-When you need the value in your JS code (like in an `useEffect`), just call it like a function: `$count()`.
+When you need the value in your JS code (like in a `useEffect`), just call it like a function: `$count()`.
 
 ### 2\. Effects without the headache
 
@@ -119,6 +119,8 @@ function ExampleView(props) {
 }
 ```
 
+[More on views.](./docs/views.md)
+
 ### 2\. Stores: For your shared state
 
 Got some state you need to use in a bunch of different places? **Stores** are for that. It's Dolla's built-in way to handle state so you don't have to go install another library.
@@ -157,6 +159,8 @@ function CounterView() {
 }
 ```
 
+[More on stores.](./docs/stores.md)
+
 ### 3\. Mixins: Reusable superpowers
 
 **Mixins** are a super cool way to add reusable behaviors to your HTML elements. A mixin is just a function you can slap onto any element, and it can have its own state and lifecycle. It's perfect for stuff like logging, animations, or whatever else you can dream up.
@@ -185,6 +189,8 @@ function MyComponent() {
   );
 }
 ```
+
+[More on mixins.](./docs/mixins.md)
 
 ### 4\. So, what's this "Context" thing anyway?
 
@@ -313,13 +319,6 @@ i18n
 ```
 
 ## The Tea: How's Dolla Different?
-
-<!-- ### vs. React
-
-- **Easier Effects**: You know that annoying dependency array? Gone. Unless you, like, _want_ to use it.
-- **State Management Included**: `Stores` are built in, so you can probably skip installing Redux or Zustand.
-- **Faster**: No VDOM = faster.
-- **Smaller**: Less code for your users to download. -->
 
 ### vs. React
 
