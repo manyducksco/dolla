@@ -1,10 +1,8 @@
-import type { ReactiveFlags, ReactiveNode } from "alien-signals";
+import type { Link, ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
-import { isFunction, typeOf } from "../typeChecking";
+import { isFunction, isObject, typeOf } from "../typeChecking";
 import { strictEqual } from "../utils";
 import { Context } from "./context";
-
-const SIGNAL = Symbol("Signal");
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -23,8 +21,9 @@ interface ComputedGetterState<T> {
 
 interface Computed<T = any> extends ReactiveNode {
   value: T | undefined;
-  getter: (this: ComputedGetterState<T>) => T;
   equals: EqualityFn<T>;
+
+  getter: (this: ComputedGetterState<T>) => T;
 
   // Temp value set when a computed signal has a value passed to it.
   // This value is held until the real value recomputes.
@@ -32,9 +31,10 @@ interface Computed<T = any> extends ReactiveNode {
 }
 
 interface Value<T = any> extends ReactiveNode {
-  previousValue: T;
   value: T;
   equals: EqualityFn<T>;
+
+  previousValue: T;
 }
 
 const queuedEffects: (Effect | EffectScope | undefined)[] = [];
@@ -241,6 +241,14 @@ function _effect(this: Effect | EffectScope): void {
 ||                API                ||
 \*===================================*/
 
+export function isCombinedAtom<T>(value: any): value is CombinedAtom<T> {
+  return isObject(value) && isFunction(value.get);
+}
+
+export function isGettable<T>(value: any): value is Gettable<T> {
+  return isCombinedAtom(value) || isFunction(value);
+}
+
 /* -------------- TYPES --------------- */
 
 /**
@@ -260,17 +268,23 @@ export interface Setter<T> {
 }
 
 /**
- * A getter and setter in a single object. Callable like a getter, but includes a `set` method for updating the signal's value.
- */
-export interface Signal<T> extends Getter<T>, Setter<T> {
-  split(): [Getter<T>, Setter<T>];
-}
-
-/**
  * Utility type for a value that may be a getter or a plain value.
  * This value can be unwrapped to a plain value with `get` or `untracked` (depending on whether you're in a tracking context and need to track it).
  */
-export type MaybeSignal<T> = Getter<T> | T;
+export type MaybeGetter<T> = Getter<T> | T;
+
+/**
+ * A getter and setter in a single object.
+ */
+export interface CombinedAtom<T> {
+  get: Getter<T>;
+  set: Setter<T>;
+}
+
+/**
+ * Any type of value that can be unwrapped by the `get` function.
+ */
+export type Gettable<T> = CombinedAtom<T> | MaybeGetter<T>;
 
 export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
@@ -284,27 +298,24 @@ export interface SignalOptions<T> {
 /* -------------- PUBLIC API --------------- */
 
 /**
- * Creates a new signal.
+ * Creates a new atom, returns a getter and setter.
  *
  * @example
- * const [count, setCount] = signal(0);
+ * const [count, setCount] = atom(0);
  *
  * count(); // get
  * setCount(5); // set
  */
-export function signal<T>(initialValue: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
+export function atom<T>(value: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
 
-export function signal<T>(
-  initialValue: undefined,
-  options: SignalOptions<T>,
-): [Getter<T | undefined>, Setter<T | undefined>];
+export function atom<T>(value: undefined, options: SignalOptions<T>): [Getter<T | undefined>, Setter<T | undefined>];
 
-export function signal<T>(): [Getter<T | undefined>, Setter<T | undefined>];
+export function atom<T>(): [Getter<T | undefined>, Setter<T | undefined>];
 
-export function signal<T>(initialValue?: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>] {
+export function atom<T>(value?: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>] {
   const v: Value<unknown> = {
-    previousValue: initialValue as T,
-    value: initialValue as T,
+    previousValue: value as T,
+    value: value as T,
     equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
     subs: undefined,
     subsTail: undefined,
@@ -314,56 +325,21 @@ export function signal<T>(initialValue?: T, options?: SignalOptions<T>): [Getter
   return [_getter.bind(v) as Getter<T>, _setter.bind(v) as Setter<T>];
 }
 
-const VALUE = Symbol("value");
-
-interface State<T> {
-  [VALUE]: Value<T>;
-}
-
-function isState<T = unknown>(value: any): value is State<T> {
-  return Object.hasOwn(value, VALUE);
-}
-
-type StateOrValue<T> = State<T> | T;
-
-function _get<T>(target: StateOrValue<T>): T {
-  if (isState(target)) {
-    // Do get logic
-  } else {
-    return target as T;
-  }
-}
-
-function set<T>(state: State<T>, value: T | ((current: T) => T)): T {
-  if (!isState(state)) {
-    throw new Error(`First argument must be a state. Got: ${typeOf(state)}`);
-  }
-
-  // Do set logic
-}
-
-function peek<T>(value: MaybeSignal<T>): T {}
-
-export function slot() {
-  const [get, set] = signal();
-  return { get, set };
-}
-
-export interface ComputedOptions<T> extends SignalOptions<T> {
+export interface ComposeOptions<T> extends SignalOptions<T> {
   /**
    * An array of signals this signal depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
    * Instead the `deps` array will be tracked and `fn` will re-run when any value in `deps` changes.
    */
-  deps?: Signal<any>[];
+  deps?: Gettable<any>[];
 }
 
 /**
- * Creates a derived signal that recomputes its value only when its dependencies change.
+ * Creates a composed signal that recomputes its value only when its dependencies change.
  * Subsequent calls will return a cached value.
  * Dependencies are tracked when called inside `fn` by default,
  * but can be overridden by passing a `deps` array in the options object.
  */
-export function computed<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: ComputedOptions<T>): Getter<T> {
+export function compose<T>(compute: (previousValue?: T) => Gettable<T>, options?: ComposeOptions<T>): Getter<T> {
   return _computed.bind({
     value: undefined,
     holdValue: undefined,
@@ -384,6 +360,22 @@ export function computed<T>(compute: (previousValue?: T) => MaybeSignal<T>, opti
 }
 
 /**
+ * Returns a single object with a `get` and `set` method from an Atom's getter and setter array.
+ *
+ * @example
+ * const count = combined(atom(0));
+ *
+ * count.get(); // get value
+ * count.set(12); // set value
+ */
+export function combined<T>(accessors: [Getter<T>, Setter<T>]): CombinedAtom<T> {
+  return {
+    get: accessors[0],
+    set: accessors[1],
+  };
+}
+
+/**
  * Suspends effects during `fn`. Effects for all updated Signal values are called at the end of the batch.
  */
 export function batch(fn: () => void): void {
@@ -395,27 +387,30 @@ export function batch(fn: () => void): void {
 /**
  * Call a Signal function without tracking its value.
  */
-export function untracked<T>(value: MaybeSignal<T>): T {
-  if (isFunction(value)) {
-    let result: T;
-    const pausedSub = setCurrentSub(undefined);
-    result = value();
-    setCurrentSub(pausedSub);
-    return result;
-  } else {
-    return value;
-  }
+export function untracked<T>(value: Gettable<T>): T {
+  let result: T;
+  const pausedSub = setCurrentSub(undefined);
+  result = get(value);
+  setCurrentSub(pausedSub);
+  return result;
 }
 
 /**
- * Unwraps the plain value from a Signal. If the value is not a Signal it is returned as-is.
+ * Unwraps the plain value from a signal. If the value is not a signal it is returned as-is.
  */
-export function get<T>(value: MaybeSignal<T>): T {
-  if (isFunction(value)) {
-    return (value as () => T)();
-  } else {
-    return value;
+export function get<T>(value: Gettable<T>): T {
+  // Handle getter function
+  if (isFunction<Getter<T>>(value)) {
+    return value();
   }
+
+  // Handle combined atom
+  if (isObject(value) && isFunction<Getter<T>>(value.get)) {
+    return value.get();
+  }
+
+  // Otherwise return value as-is
+  return value as T;
 }
 
 /**

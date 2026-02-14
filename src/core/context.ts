@@ -6,11 +6,11 @@ import {
   effect,
   type EffectFn,
   get,
-  type MaybeSignal,
+  type MaybeGetter,
   setCurrentContext,
   type UnsubscribeFn,
   untracked,
-} from "./signals";
+} from "./signal";
 
 export enum LifecycleEvent {
   WILL_MOUNT = "willMount",
@@ -198,7 +198,7 @@ export interface LinkedContextOptions extends ContextOptions {
 export interface Context extends Logger {}
 
 export class Context implements Logger {
-  #name: MaybeSignal<string>;
+  #name: MaybeGetter<string>;
 
   logger: Logger;
 
@@ -216,7 +216,7 @@ export class Context implements Logger {
   /**
    * Returns a new Context with this one as its parent.
    */
-  static createChildOf(parent: Context, name: MaybeSignal<string>, options?: LinkedContextOptions): Context {
+  static createChildOf(parent: Context, name: MaybeGetter<string>, options?: LinkedContextOptions): Context {
     const context = new Context(name, options);
     context[PARENT] = parent;
     if (options?.bindLifecycleToParent) parent[LIFECYCLE].bind(context);
@@ -230,7 +230,7 @@ export class Context implements Logger {
     context[LIFECYCLE].emit(event);
   }
 
-  constructor(name: MaybeSignal<string>, options?: ContextOptions) {
+  constructor(name: MaybeGetter<string>, options?: ContextOptions) {
     this.#name = name;
     this[NAME] = untracked(name);
     this.logger = createLogger(() => get(this.#name), options?.logger);
@@ -246,7 +246,7 @@ export class Context implements Logger {
   /**
    * Sets a new name for this context.
    */
-  setName(name: MaybeSignal<string>) {
+  setName(name: MaybeGetter<string>) {
     this.#name = name;
     this[NAME] = untracked(name); // Try to store name as a readable string for debugging purposes.
   }
@@ -439,6 +439,6 @@ export class Context implements Logger {
   }
 }
 
-export function createContext(name: MaybeSignal<string>, options?: ContextOptions) {
+export function createContext(name: MaybeGetter<string>, options?: ContextOptions) {
   return new Context(name, options);
 }

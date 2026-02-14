@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
-import type { Getter, Signal } from "./core/signals.js";
+import type { Getter } from "./core/signal.js";
 
 export type Env = "production" | "development";
 
@@ -17,8 +17,8 @@ export type Renderable =
   | false
   | null
   | undefined
-  | Signal<any>
-  | (string | number | Node | Markup | MarkupNode | false | null | undefined | Signal<any>)[];
+  | Getter<any>
+  | (string | number | Node | Markup | MarkupNode | false | null | undefined | Getter<any>)[];
 
 export interface BaseProps {
   children?: Renderable;
@@ -43,10 +43,10 @@ export type Mixin<E extends Element = Element> = (element: E) => void;
 ||            JSX Types             ||
 \*==================================*/
 
-type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined> | Getter<T> | Getter<T | undefined>;
+type MaybeGetter<T> = T | Getter<T> | Getter<T | undefined>;
 
-type OptionalProperty<T> = MaybeSignal<T>;
-type RequiredProperty<T> = T | Signal<T>;
+type OptionalProperty<T> = MaybeGetter<T>;
+type RequiredProperty<T> = T | Getter<T>;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -214,12 +214,12 @@ export interface ElementProps {
   style?:
     | string
     | CSSProperties
-    | Signal<string>
-    | Signal<CSSProperties>
-    | Signal<string | CSSProperties>
-    | Signal<string | undefined>
-    | Signal<CSSProperties | undefined>
-    | Signal<string | CSSProperties | undefined>;
+    | Getter<string>
+    | Getter<CSSProperties>
+    | Getter<string | CSSProperties>
+    | Getter<string | undefined>
+    | Getter<CSSProperties | undefined>
+    | Getter<string | CSSProperties | undefined>;
 
   /*=================================*\
   ||              Events             ||
@@ -1554,7 +1554,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeSignal<any>;
+  [className: string]: MaybeGetter<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -2594,14 +2594,14 @@ interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementP
     | MediaSource
     | Blob
     | File
-    | Signal<MediaStream>
-    | Signal<MediaStream | undefined>
-    | Signal<MediaSource>
-    | Signal<MediaSource | undefined>
-    | Signal<Blob>
-    | Signal<Blob | undefined>
-    | Signal<File>
-    | Signal<File | undefined>;
+    | Getter<MediaStream>
+    | Getter<MediaStream | undefined>
+    | Getter<MediaSource>
+    | Getter<MediaSource | undefined>
+    | Getter<Blob>
+    | Getter<Blob | undefined>
+    | Getter<File>
+    | Getter<File | undefined>;
 
   /**
    * The current audio volume of the media element. Must be a number between 0 and 1.
@@ -3185,7 +3185,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeSignal<string>;
+  sizes?: MaybeGetter<string>;
 
   /**
    * The image URL.

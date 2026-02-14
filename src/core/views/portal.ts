@@ -1,7 +1,8 @@
 import { isString } from "../../typeChecking";
 import type { Renderable } from "../../types";
+import { $debug } from "../hooks";
 import { Markup, MarkupType } from "../markup";
-import { getCurrentContext } from "../signals";
+import { getCurrentContext } from "../signal";
 
 export interface PortalProps {
   /**
@@ -19,15 +20,14 @@ export interface PortalProps {
  * Render content into any element on the page.
  */
 export function Portal(props: PortalProps) {
-  const context = getCurrentContext()!;
-  context.setName("Portal");
+  const log = $debug("Portal");
 
   let parent: Element;
 
   if (isString(props.into)) {
     const match = document.querySelector(props.into);
     if (match == null) {
-      throw context.crash(new Error(`Portal: selector '${props.into}' did not match any element`));
+      throw log.crash(new Error(`Portal: selector '${props.into}' did not match any element`));
     }
     parent = match;
   } else {

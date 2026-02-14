@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Context, LifecycleEvent } from "../core/context";
-import { getCurrentContext, setCurrentContext, signal } from "../core/signals";
+import { getCurrentContext, setCurrentContext, atom } from "./signal";
 import { $effect, $setup, $teardown, $on } from "./hooks";
 
 const _emitWillMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.WILL_MOUNT);
@@ -78,7 +78,7 @@ beforeEach(() => {
 
 describe("$effect", () => {
   test("effects are active while context is mounted", () => {
-    const name = signal("Bon");
+    const name = atom("Bon");
 
     const fn = vi.fn(() => {
       name();
@@ -110,8 +110,8 @@ describe("$effect", () => {
   });
 
   test("with auto tracking", () => {
-    const left = signal(5);
-    const right = signal(8);
+    const left = atom(5);
+    const right = atom(8);
 
     const fn = vi.fn(() => {
       left();
@@ -132,8 +132,8 @@ describe("$effect", () => {
   });
 
   test("with explicit deps", () => {
-    const left = signal(5);
-    const right = signal(8);
+    const left = atom(5);
+    const right = atom(8);
 
     const fn = vi.fn(() => {
       left();
@@ -154,7 +154,7 @@ describe("$effect", () => {
   });
 
   test("cleanup function called between invocations and on unmount", () => {
-    const count = signal(0);
+    const count = atom(0);
 
     const cleanup = vi.fn();
     const fn = vi.fn(() => {

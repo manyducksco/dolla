@@ -1,4 +1,4 @@
-import { getCurrentContext } from "../core/signals";
+import { getCurrentContext } from "../core/signal";
 import { type Router, ROUTER } from "./router";
 
 export function $router() {
@@ -22,7 +22,7 @@ type RouteController = {
 
 type RoutePreloadFn = (controller: RouteController) => any;
 
-function useRoutePreload(preload: RoutePreloadFn) {
+function $preload(fn: RoutePreloadFn) {
   // TODO: Suspend route mounting until controller.next() is called by `preload`.
 }
 
@@ -34,7 +34,7 @@ type RouteTransitionOptions = {
   out?: (controller: RouteController) => any;
 };
 
-function useRouteTransitions(options: RouteTransitionOptions) {
+function $transition(options: RouteTransitionOptions) {
   // Starts after preload ends.
   // TODO: On transition in; mount this route, but suspend previous route's unmount until controller.next() is called.
   // TODO: On transition out; mount next route, but suspend this route's unmount until controller.next() is called.

@@ -2,7 +2,7 @@ import type { View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
-import { setCurrentContext } from "../signals.js";
+import { setCurrentContext } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");

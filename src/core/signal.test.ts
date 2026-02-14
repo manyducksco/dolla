@@ -1,12 +1,12 @@
 import { expect, test, vi } from "vitest";
-import { batch, effect, get, Signal, memo, writable, untracked } from "./signals";
+import { batch, effect, get, type Getter, compose, untracked, atom } from "./signal";
 
 test("basic composition & tracking", () => {
-  const count = writable(5);
+  const [count, setCount] = atom(5);
   const doubled = () => count() * 2;
-  const doubledMemo = memo(() => count() * 2);
+  const doubledMemo = compose(() => count() * 2);
 
-  const same = memo(count); // just so happens to follow the signature of a memo; creates a Signal with the same value
+  const same = compose(count); // just so happens to follow the signature of a memo; creates a Signal with the same value
   expect(same()).toBe(5);
 
   expect(count()).toBe(5);
@@ -22,10 +22,10 @@ test("basic composition & tracking", () => {
 
   // Effects should not run until end of batch.
   batch(() => {
-    count.set((c) => c + 1);
-    count.set((c) => c + 1);
-    count.set((c) => c + 1);
-    count.set((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
   });
 
   expect(fn).toBeCalledTimes(2);
@@ -34,41 +34,41 @@ test("basic composition & tracking", () => {
   stop();
 });
 
-test("signals returned from memo function are unwrapped", () => {
-  const count = writable(5);
-  const doubled = memo(() => count);
+test("getters returned from computed function are unwrapped", () => {
+  const [count, setCount] = atom(5);
+  const doubled = compose(() => count);
 
   expect(doubled()).toBe(5);
 
-  count.set((x) => x + 1);
+  setCount((x) => x + 1);
 
   expect(doubled()).toBe(6);
 });
 
 test("untracked callback is not tracked", () => {
-  const a = writable(5);
-  const b = writable(10);
+  const [a, setA] = atom(5);
+  const [b, setB] = atom(10);
 
-  const multiplied = memo(() => a() * untracked(b));
+  const multiplied = compose(() => a() * untracked(b));
 
   expect(multiplied()).toBe(50);
 
-  a.set((x) => x + 1);
+  setA((x) => x + 1);
 
   expect(multiplied()).toBe(60);
 
-  b.set((x) => x + 1);
+  setB((x) => x + 1);
 
   expect(multiplied()).toBe(60);
 });
 
 test("solves diamond problem", () => {
-  const count = writable(1);
+  const [count, setCount] = atom(1);
 
-  const left = memo(() => count() + 5);
-  const right = memo(() => count() / 2);
+  const left = compose(() => count() + 5);
+  const right = compose(() => count() / 2);
 
-  const sum = memo(() => left() + right());
+  const sum = compose(() => left() + right());
 
   const fn = vi.fn(() => {
     sum();
@@ -77,10 +77,10 @@ test("solves diamond problem", () => {
 
   expect(fn).toBeCalledTimes(1);
 
-  count.set((x) => x + 1);
+  setCount((x) => x + 1);
   batch(() => {
-    count.set((x) => x + 1);
-    count.set((x) => x + 1);
+    setCount((x) => x + 1);
+    setCount((x) => x + 1);
   });
 
   expect(fn).toBeCalledTimes(3);
@@ -88,10 +88,10 @@ test("solves diamond problem", () => {
 });
 
 test("nested memo", () => {
-  const count = writable(0);
+  const [count, setCount] = atom(0);
 
-  const plus1 = (source: Signal<number>) => {
-    return memo(() => source() + 1);
+  const plus1 = (source: Getter<number>) => {
+    return compose(() => source() + 1);
   };
 
   const one = plus1(count);
@@ -109,7 +109,7 @@ test("nested memo", () => {
   expect(two()).toBe(2);
   expect(three()).toBe(3);
 
-  count.set((x) => x + 1);
+  setCount((x) => x + 1);
 
   expect(fn).toBeCalledTimes(2);
 
@@ -122,7 +122,7 @@ test("nested memo", () => {
 
 test("effect runs cleanup function", () => {
   const fn = vi.fn();
-  const count = writable(0);
+  const [count, setCount] = atom(0);
 
   const stop = effect(() => {
     count();
@@ -130,10 +130,10 @@ test("effect runs cleanup function", () => {
   });
   expect(fn).toBeCalledTimes(0);
 
-  count.set(2);
+  setCount(2);
   expect(fn).toBeCalledTimes(1);
 
-  count.set(3);
+  setCount(3);
   expect(fn).toBeCalledTimes(2);
 
   stop();

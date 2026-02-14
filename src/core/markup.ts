@@ -8,7 +8,7 @@ import { ElementNode } from "./nodes/element.js";
 import { PortalNode } from "./nodes/portal.js";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat.js";
 import { ViewNode } from "./nodes/view.js";
-import { type Getter } from "./signals.js";
+import { Gettable, isGettable, type Getter } from "./signal.js";
 
 export { MarkupNode };
 
@@ -52,14 +52,14 @@ export interface MarkupNodeProps {
     value: Node;
   };
   [MarkupType.Dynamic]: {
-    source: Getter<any>;
+    source: Gettable<any>;
   };
   [MarkupType.Portal]: {
     content: Renderable;
     parent: Element;
   };
   [MarkupType.Repeat]: {
-    items: Getter<any[]>;
+    items: Gettable<any[]>;
     key: KeyFn<any>;
     render: RenderFn<any>;
   };
@@ -180,7 +180,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       continue;
     }
 
-    if (isFunction(item)) {
+    if (isGettable(item)) {
       nodes.push(new DynamicNode(context, item));
       continue;
     }

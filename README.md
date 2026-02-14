@@ -92,24 +92,18 @@ function Counter(props) {
   // Unmount the whole app and show this error.
   log.crash(new Error("Something terrible happened."));
 
-  const count = state(0);
+  const [count, setCount] = atom(0);
 
-  get(count); // get current value (trackable)
-  peek(count); // get current value (untracked)
-  set(count, current => current + 1); // update value
-  set(count, 5); // set value
+  const doubled = compose(() => count() * 2, [count])
 
-  const [count, setCount] = signal(0);
 
-  count(); // get the current value when no argument is passed (signal trackable)
-  setCount(current => current + 1); // update the value when a function is passed
-  setCount(1); // set the value when any other type of argument is passed
+  const increment = () => setCount((n) => n + 1);
 
-  const increment = () => set(count, (n) => n + 1);
-
-  $effect(() => {
-    log("Count is: " + get(count));
+  $observe(() => {
+    log("Count is: " + count());
   });
+
+
 
   return (
     <div>
@@ -117,11 +111,7 @@ function Counter(props) {
       <p>Counter: {count}</p>
 
       {/* Using signals with helpers like <Show> is a total breeze. */}
-      <Show when={() => get(count) > 100}>
-        <p>Whoa, that's a lotta clicks!</p>
-      </Show>
-
-      <Show when={state(() => get(count) > 100)}>
+      <Show when={() => count() > 100}>
         <p>Whoa, that's a lotta clicks!</p>
       </Show>
 

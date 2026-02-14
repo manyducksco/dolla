@@ -106,11 +106,11 @@ export interface CreateAppOptions {
   context?: Context;
 }
 
-export function createApp(view: View<{}>, options?: CreateAppOptions): App;
-export function createApp(routerOptions: RouterOptions, options?: CreateAppOptions): App;
-export function createApp(router: Router, options?: CreateAppOptions): App;
+export function dolla(view: View<{}>, options?: CreateAppOptions): App;
+export function dolla(routerOptions: RouterOptions, options?: CreateAppOptions): App;
+export function dolla(router: Router, options?: CreateAppOptions): App;
 
-export function createApp(entry: View<{}> | RouterOptions | Router, options?: CreateAppOptions) {
+export function dolla(entry: View<{}> | RouterOptions | Router, options?: CreateAppOptions) {
   if (entry instanceof Router) {
     return new App({ ...options, router: entry });
   } else if (typeOf(entry) === "object") {

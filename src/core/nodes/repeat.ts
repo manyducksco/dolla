@@ -2,7 +2,18 @@ import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
 import { $name } from "../hooks.js";
-import { batch, effect, signal, untracked, type Getter, type Signal, type UnsubscribeFn } from "../signals.js";
+import {
+  atom,
+  batch,
+  combined,
+  effect,
+  get,
+  Gettable,
+  untracked,
+  type CombinedAtom,
+  type Getter,
+  type UnsubscribeFn,
+} from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
 
@@ -15,8 +26,8 @@ export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable
 
 type ConnectedItem<T> = {
   key: Key;
-  item: Signal<T>;
-  index: Signal<number>;
+  item: CombinedAtom<T>;
+  index: CombinedAtom<number>;
   node: MarkupNode;
 };
 
@@ -30,14 +41,14 @@ export class RepeatNode<T> extends MarkupNode {
 
   private context;
 
-  private items: Getter<T[]>;
+  private items: Gettable<T[]>;
   private key: KeyFn<T>;
   private render: RenderFn<T>;
 
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
-  constructor(context: Context, items: Getter<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
+  constructor(context: Context, items: Gettable<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
     this.context = context;
 
@@ -59,7 +70,7 @@ export class RepeatNode<T> extends MarkupNode {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = effect(() => {
-        let value = this.items();
+        let value = get(this.items);
 
         if (value == null) {
           value = [];
@@ -132,22 +143,22 @@ export class RepeatNode<T> extends MarkupNode {
         const connected = this.connectedItems.get(potential.key);
 
         if (connected && connected.node.isMounted()) {
-          connected.item(potential.value);
-          connected.index(potential.index);
+          connected.item.set(potential.value);
+          connected.index.set(potential.index);
 
           newItems[potential.index] = connected;
         } else {
           // deepEqual avoids running update code again if the data is equivalent. In list updates this happens a lot.
-          const item = signal(potential.value, { equals: deepEqual });
-          const index = signal(potential.index);
+          const item = combined(atom(potential.value, { equals: deepEqual }));
+          const index = combined(atom(potential.index));
 
           newItems[potential.index] = {
             key: potential.key,
             item,
             index,
             node: new ViewNode(this.context, RepeatItemView, {
-              item: item.split()[0],
-              index: index.split()[0],
+              item: item.get,
+              index: index.get,
               render: this.render,
             }),
           };

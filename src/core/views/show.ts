@@ -1,18 +1,18 @@
 import type { Renderable } from "../../types";
-import type { Context } from "../context";
+import { $$context } from "../hooks";
 import { DynamicNode } from "../nodes/dynamic";
-import { get, getCurrentContext, type MaybeSignal, signal } from "../signals";
+import { compose, type Gettable } from "../signal";
 
 export interface ShowProps {
   /**
    * If present, children will be rendered only when this signal holds a truthy value.
    */
-  when?: MaybeSignal<any>;
+  when?: Gettable<any>;
 
   /**
    * If present, children will be rendered only when this signal holds a falsy value.
    */
-  unless?: MaybeSignal<any>;
+  unless?: Gettable<any>;
 
   /**
    * Content to render if conditions permit.
@@ -29,22 +29,22 @@ export interface ShowProps {
  * Conditionally display children.
  */
 export function Show(props: ShowProps) {
-  const context = getCurrentContext()!;
+  const context = $$context();
   context.setName("Show");
 
   // Memoize conditions to avoid unnecessarily triggering DynamicNode updates.
-  const when = props.when ? signal(() => props.when) : null;
-  const unless = props.unless ? signal(() => props.unless) : null;
+  const when = props.when ? compose(() => props.when) : null;
+  const unless = props.unless ? compose(() => props.unless) : null;
 
   return new DynamicNode(context, () => {
     let shouldShow = true;
 
     if (when != null && unless != null) {
-      shouldShow = get(when) && !get(unless);
+      shouldShow = when() && !unless();
     } else if (when != null) {
-      shouldShow = get(when);
+      shouldShow = when();
     } else if (unless != null) {
-      shouldShow = !get(unless);
+      shouldShow = !unless();
     }
 
     if (shouldShow) {

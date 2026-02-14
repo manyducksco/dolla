@@ -4,7 +4,7 @@ import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import { effect, get, setCurrentContext, type MaybeSignal, type Getter, type UnsubscribeFn } from "../signals.js";
+import { effect, get, type Gettable, isGettable, setCurrentContext, type UnsubscribeFn } from "../signal.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -173,12 +173,12 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attachProp<T>(value: MaybeSignal<T>, callback: (value: T) => void, key?: string) {
-    if (isFunction(value)) {
+  private attachProp<T>(value: Gettable<T>, callback: (value: T) => void, key?: string) {
+    if (isGettable<T>(value)) {
       this.unsubscribers.push(
         effect(() => {
           try {
-            callback((value as Getter<T>)());
+            callback(get(value));
           } catch (error) {
             this.context.error(error);
             this.context.crash(error as Error);
@@ -237,7 +237,7 @@ export class ElementNode extends MarkupNode {
           });
         } else {
           this.attachProp(
-            value as MaybeSignal<EventListener>,
+            value as Gettable<EventListener>,
             (current) => {
               if (!current && _prev) {
                 element.removeEventListener(_key, _prev);

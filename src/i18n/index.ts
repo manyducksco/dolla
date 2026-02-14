@@ -1,5 +1,5 @@
 import { createLogger, type Logger } from "../core/logger.js";
-import { signal, get, type MaybeSignal, type Signal, Getter, Setter, computed } from "../core/signals.js";
+import { compose, get, atom, type Getter, type MaybeGetter, type Setter, combined } from "../core/signal.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -73,12 +73,12 @@ export type TOptions = {
   /**
    *
    */
-  count?: MaybeSignal<number>;
+  count?: MaybeGetter<number>;
 
   /**
    *
    */
-  context?: MaybeSignal<string>;
+  context?: MaybeGetter<string>;
 
   /**
    * Override formats specified in the template with the ones in the array for each named variable.
@@ -91,9 +91,9 @@ export type TOptions = {
    *   }
    * });
    */
-  formatOverrides?: MaybeSignal<Record<string, Record<string, Format[]>>>;
+  formatOverrides?: MaybeGetter<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: MaybeSignal<any>;
+  [value: string]: MaybeGetter<any>;
 };
 
 export type Formatter = (locale: string, value: unknown, options: Record<string, any>) => string;
@@ -375,15 +375,14 @@ class I18n {
 
   #initialLocale = "auto";
 
-  readonly locale: Getter<string>;
-  #setLocale: Setter<string>;
+  #locale = combined(atom("en"));
+
+  get locale() {
+    return this.#locale.get;
+  }
 
   constructor() {
     this.#logger = createLogger("dolla.i18n");
-
-    const [locale, setLocale] = signal("en");
-    this.locale = locale;
-    this.#setLocale = setLocale;
 
     this.addFormat("number", (_, value, options) => {
       return this.#formatNumber(Number(value), options);
@@ -474,7 +473,7 @@ class I18n {
       await translation.load();
 
       this.#cache = [];
-      this.#setLocale(realName);
+      this.#locale.set(realName);
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -500,7 +499,7 @@ class I18n {
       );
     }
 
-    return computed(() => {
+    return compose(() => {
       const values: Record<string, any> = {};
 
       // Track all option values.
@@ -610,8 +609,8 @@ class I18n {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
-  number(count: MaybeSignal<number | bigint>, options?: Intl.NumberFormatOptions): Getter<string> {
-    return computed(() => this.#formatNumber(get(count), options));
+  number(count: MaybeGetter<number | bigint>, options?: Intl.NumberFormatOptions): Getter<string> {
+    return compose(() => this.#formatNumber(get(count), options));
   }
 
   #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
@@ -629,10 +628,10 @@ class I18n {
    * const $formatted = Dolla.i18n.dateTime(date, { dateFormat: "short" });
    */
   dateTime(
-    date?: MaybeSignal<string | number | Date | undefined>,
+    date?: MaybeGetter<string | number | Date | undefined>,
     options?: Intl.DateTimeFormatOptions,
   ): Getter<string> {
-    return computed(() => this.#formatDateTime(get(date), options));
+    return compose(() => this.#formatDateTime(get(date), options));
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
@@ -649,8 +648,8 @@ class I18n {
    * const list = new Date();
    * const $formatted = Dolla.i18n.list(list, {  });
    */
-  list(list: MaybeSignal<Iterable<string>>, options?: Intl.ListFormatOptions): Getter<string> {
-    return computed(() => this.#formatList(get(list), options));
+  list(list: MaybeGetter<Iterable<string>>, options?: Intl.ListFormatOptions): Getter<string> {
+    return compose(() => this.#formatList(get(list), options));
   }
 
   #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {

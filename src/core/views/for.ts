@@ -1,11 +1,12 @@
-import { type Key, RenderFn, RepeatNode } from "../nodes/repeat";
-import { getCurrentContext, type MaybeSignal, signal } from "../signals";
+import { $$context } from "../hooks";
+import { type Key, type RenderFn, RepeatNode } from "../nodes/repeat";
+import { compose, type Gettable } from "../signal";
 
 export interface ForProps<T> {
   /**
    * An array of items to render.
    */
-  each: MaybeSignal<T[]>;
+  each: Gettable<T[]>;
   /**
    * A function to extract a unique key that identifies each item.
    * If no `key` function is passed, object identity (===) will be used.
@@ -23,11 +24,11 @@ const defaultKeyFn = (x: any) => x;
  *
  */
 export function For<T>(props: ForProps<T>) {
-  const context = getCurrentContext()!;
+  const context = $$context();
   context.setName("For");
   return new RepeatNode(
     context,
-    signal(() => props.each),
+    compose(() => props.each),
     props.key ?? defaultKeyFn,
     props.children,
   );

@@ -1,9 +1,9 @@
 // App
-export { createApp } from "./app.js";
+export { dolla as createApp } from "./app.js";
 
 // Signals
-export { batch, effect, get, signal, untracked } from "./signals.js";
-export type { MaybeSignal, Signal, Getter, Setter } from "./signals.js";
+export { atom, batch, combined, compose, effect, get, untracked } from "./signal.js";
+export type { Getter, MaybeGetter, Setter } from "./signal.js";
 
 // Hooks
 export * from "./hooks.js";
