@@ -1,6 +1,5 @@
-import { useContext } from "../hooks";
 import { type Key, RenderFn, RepeatNode } from "../nodes/repeat";
-import { type MaybeSignal, readable } from "../signals";
+import { getCurrentContext, type MaybeSignal, signal } from "../signals";
 
 export interface ForProps<T> {
   /**
@@ -24,6 +23,12 @@ const defaultKeyFn = (x: any) => x;
  *
  */
 export function For<T>(props: ForProps<T>) {
-  const context = useContext("For");
-  return new RepeatNode(context, readable(props.each), props.key ?? defaultKeyFn, props.children);
+  const context = getCurrentContext()!;
+  context.setName("For");
+  return new RepeatNode(
+    context,
+    signal(() => props.each),
+    props.key ?? defaultKeyFn,
+    props.children,
+  );
 }

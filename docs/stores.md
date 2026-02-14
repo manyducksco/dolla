@@ -30,6 +30,7 @@ function ThemeStore(options) {
 
   // 2. We can even have derived state with useMemo.
   const $isDarkMode = useMemo(() => $theme() === "dark");
+  const $isDarkMode = Y($theme, (t) => t === "dark");
 
   // 3. Create functions that are the ONLY way to change the state.
   const toggleTheme = () => {

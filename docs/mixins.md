@@ -39,7 +39,7 @@ function myMixin(options) {
   return (element) => {
     // `element` is the real HTML element!
     // You can use hooks in here.
-    useMount(() => {
+    $setup(() => {
       console.log(`${options.greeting} from my mixin! I'm attached to:`, element);
     });
   };
@@ -63,11 +63,11 @@ function MyView() {
 Let's start with a super simple one. Sometimes you just want an input to be focused the second it appears on the page.
 
 ```jsx
-import { useMount } from "@manyducks.co/dolla";
+import { $setup, $on } from "@manyducks.co/dolla";
 
 function autofocus() {
   return (element) => {
-    useMount(() => {
+    $setup(() => {
       // Just tell the element to focus itself when it mounts. Done.
       element.focus();
     });

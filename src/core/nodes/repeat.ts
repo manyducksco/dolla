@@ -1,8 +1,8 @@
 import type { Renderable } from "../../types.js";
 import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
-import { useContext } from "../hooks.js";
-import { batch, effect, untracked, writable, type Signal, type UnsubscribeFn, type Writable } from "../signals.js";
+import { $name } from "../hooks.js";
+import { batch, effect, signal, untracked, type Getter, type Signal, type UnsubscribeFn } from "../signals.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
 
@@ -11,12 +11,12 @@ import { ViewNode } from "./view.js";
 export type Key = any;
 
 export type KeyFn<T> = (item: T, index: number) => Key;
-export type RenderFn<T> = (item: Signal<T>, index: Signal<number>) => Renderable;
+export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable;
 
 type ConnectedItem<T> = {
   key: Key;
-  item: Writable<T>;
-  index: Writable<number>;
+  item: Signal<T>;
+  index: Signal<number>;
   node: MarkupNode;
 };
 
@@ -30,14 +30,14 @@ export class RepeatNode<T> extends MarkupNode {
 
   private context;
 
-  private items: Signal<T[]>;
+  private items: Getter<T[]>;
   private key: KeyFn<T>;
   private render: RenderFn<T>;
 
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
-  constructor(context: Context, items: Signal<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
+  constructor(context: Context, items: Getter<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
     this.context = context;
 
@@ -132,22 +132,22 @@ export class RepeatNode<T> extends MarkupNode {
         const connected = this.connectedItems.get(potential.key);
 
         if (connected && connected.node.isMounted()) {
-          connected.item.set(potential.value);
-          connected.index.set(potential.index);
+          connected.item(potential.value);
+          connected.index(potential.index);
 
           newItems[potential.index] = connected;
         } else {
           // deepEqual avoids running update code again if the data is equivalent. In list updates this happens a lot.
-          const item = writable(potential.value, { equals: deepEqual });
-          const index = writable(potential.index);
+          const item = signal(potential.value, { equals: deepEqual });
+          const index = signal(potential.index);
 
           newItems[potential.index] = {
             key: potential.key,
             item,
             index,
             node: new ViewNode(this.context, RepeatItemView, {
-              item: () => item(),
-              index: () => index(),
+              item: item.split()[0],
+              index: index.split()[0],
               render: this.render,
             }),
           };
@@ -180,13 +180,13 @@ export class RepeatNode<T> extends MarkupNode {
   }
 }
 
-interface ListItemProps {
-  item: Signal<any>;
-  index: Signal<number>;
-  render: (item: Signal<any>, index: Signal<number>) => Renderable;
+interface ListItemProps<T> {
+  item: Getter<T>;
+  index: Getter<number>;
+  render: (item: Getter<T>, index: Getter<number>) => Renderable;
 }
 const contextName = "dolla.RepeatItemView";
-function RepeatItemView(props: ListItemProps) {
-  useContext(contextName); // Set the context name.
+function RepeatItemView<T>(props: ListItemProps<T>) {
+  $name(contextName);
   return props.render(props.item, props.index);
 }

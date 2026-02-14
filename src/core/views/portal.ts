@@ -1,7 +1,7 @@
 import { isString } from "../../typeChecking";
 import type { Renderable } from "../../types";
-import { useContext } from "../hooks";
 import { Markup, MarkupType } from "../markup";
+import { getCurrentContext } from "../signals";
 
 export interface PortalProps {
   /**
@@ -19,7 +19,8 @@ export interface PortalProps {
  * Render content into any element on the page.
  */
 export function Portal(props: PortalProps) {
-  const context = useContext("Portal");
+  const context = getCurrentContext()!;
+  context.setName("Portal");
 
   let parent: Element;
 

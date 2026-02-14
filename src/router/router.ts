@@ -3,7 +3,7 @@ import { createLogger } from "../core/logger.js";
 import { createMarkup, MarkupType, type MarkupNode } from "../core/markup.js";
 import { DynamicNode } from "../core/nodes/dynamic.js";
 import { ViewNode } from "../core/nodes/view.js";
-import { writable, memo, batch, untracked, type Writable, type Signal } from "../core/signals.js";
+import { batch, computed, Getter, Setter, signal, untracked, type Signal } from "../core/signals.js";
 import { assertObject, isArray, isArrayOf, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { deepEqual, shallowEqual } from "../utils.js";
@@ -129,7 +129,7 @@ interface ActiveLayer {
   id: number;
   node: MarkupNode;
   context: Context;
-  $slot: Writable<MarkupNode | undefined>;
+  slot: Signal<MarkupNode | undefined>;
 }
 
 /**
@@ -200,12 +200,13 @@ export class Router {
   /**
    * The current match object (internal).
    */
-  #match = writable<RouteMatch>();
+  #match: Getter<RouteMatch | undefined>;
+  #setMatch: Setter<RouteMatch | undefined>;
 
   /**
    * The current match object.
    */
-  readonly $match = memo<Match | undefined>(
+  readonly match = computed<Match | undefined>(
     () => {
       const match = this.#match();
       if (match) {
@@ -224,22 +225,22 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly $pattern = memo(() => this.#match()?.pattern);
+  readonly pattern = signal(() => this.#match()?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly $path = memo(() => this.#match()?.path ?? window.location.pathname);
+  readonly path = signal(() => this.#match()?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly $params = memo(() => this.#match()?.params ?? {}, { equals: shallowEqual });
+  readonly params = signal(() => this.#match()?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params.
    */
-  readonly $query = memo(() => this.#match()?.query ?? {}, { equals: shallowEqual });
+  readonly query = signal(() => this.#match()?.query ?? {}, { equals: shallowEqual });
 
   constructor(options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
@@ -259,16 +260,20 @@ export class Router {
         })),
     );
 
+    const [match, setMatch] = signal<RouteMatch>();
+    this.#match = match;
+    this.#setMatch = setMatch;
+
     assertValidRedirects(this.#routes);
   }
 
   async [MOUNT](parent: Element, context: Context): Promise<MarkupNode> {
-    const $slot = writable<MarkupNode>();
+    const slot = signal<MarkupNode>();
     this.#rootLayer = {
       id: this.#nextLayerId++,
-      node: new DynamicNode(context, $slot),
+      node: new DynamicNode(context, slot),
       context,
-      $slot,
+      slot,
     };
 
     // Listen for popstate events and update route accordingly.
@@ -350,7 +355,7 @@ export class Router {
    */
   updateQuery(values: Record<string, Stringable | null>) {
     const match = untracked(this.#match)!;
-    const query = { ...this.$query() };
+    const query = { ...untracked(this.query) };
 
     for (const key in values) {
       const value = values[key];
@@ -368,7 +373,7 @@ export class Router {
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    this.#match.set({ ...match, query });
+    this.#match({ ...match, query });
 
     window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
   }
@@ -437,10 +442,10 @@ export class Router {
     let queryParts: string[] = [];
 
     if (options.preserveQuery === true) {
-      query = Object.assign({}, this.$query(), match.query);
+      query = Object.assign({}, this.query(), match.query);
     } else if (isArray(options.preserveQuery)) {
       const preserved: Record<string, any> = {};
-      const current = this.$query();
+      const current = this.query();
       for (const key in current) {
         if (options.preserveQuery.includes(key)) {
           preserved[key] = current[key];
@@ -463,9 +468,9 @@ export class Router {
     // Run in batch so all new layers are mounted simultaneously with match signal change.
     // This avoids the old route effects receiving new signal values just before they unmount.
     batch(() => {
-      const oldPattern = untracked(this.$pattern);
+      const oldPattern = untracked(this.pattern);
 
-      this.#match.set({ ...match, query });
+      this.#match({ ...match, query });
 
       if (match.pattern === oldPattern) {
         // If pattern has not changed, update state on current layers.
@@ -493,10 +498,10 @@ export class Router {
 
           const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
-          // Create a $slot and element for this layer.
-          const $slot = writable<MarkupNode>();
+          // Create a slot and element for this layer.
+          const slot = signal<MarkupNode>();
           const node = new ViewNode(parentLayer.context, matchedLayer.view, {
-            children: createMarkup(MarkupType.Dynamic, { source: $slot }),
+            children: createMarkup(MarkupType.Dynamic, { source: slot }),
           });
 
           // Set state for new layer.
@@ -520,11 +525,11 @@ export class Router {
             id: matchedLayer.id,
             node,
             context: node.context,
-            $slot: $slot,
+            slot,
           });
 
           // Slot this layer into parent.
-          parentLayer.$slot.set(node);
+          parentLayer.slot(node);
         } else {
           // Update state for layers that are still active.
           const stateEntries = state.get(activeLayer.id);

@@ -3,47 +3,125 @@
 ![bundle size](https://img.shields.io/bundlephobia/min/@manyducks.co/dolla)
 ![bundle size](https://img.shields.io/bundlephobia/minzip/@manyducks.co/dolla)
 
-Alright, so Dolla is this new web framework. Ngl, it's pretty sick. It feels like you're writing React, which is cool, but it's also got this crazy fast reactivity thing going on under the hood. It’s built to feel super familiar, but like, way easier to figure out and it comes with all the stuff you actually need to build something.
+Dolla is a JavaScript framework built around signals for reactive updates,
 
-- ⚡️ [**Signals**](./docs/signals.md) make your UI updates hit different. Your DOM just refreshes instantly, it's lowkey magic.
-- 📦 You got options for [components](./docs/components.md), three different vibes:
-  - 🖥️ [**Views**](./docs/views.md) are for the UI glow up. You know the drill.
-  - 💾 [**Stores**](./docs/stores.md) are for when your components need to share state without all the drama. We don't do prop drilling in this house.
-  - ✨ [**Mixins**](./docs/mixins.md) give your plain HTML elements some extra rizz. Slay.
+- ⚡️ [**Signals**](./docs/signals.md) for pinpoint DOM updates.
+- 📦 Three types of [components](./docs/components.md):
+  - 🖥️ [**Views**](./docs/views.md) for reusable UI elements.
+  - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
+  - ✨ [**Mixins**](./docs/mixins.md) for augmenting DOM nodes without writing a whole new view.
 - 🪝 [**Hooks**](./docs/hooks.md) let your components actually cook. They're your familiar, React-style toolkit for state (`useSignal`), lifecycle (`useMount`), and more.
-- 🔀 The client-side [**router**](./docs/router.md) actually understands the assignment. Nested routes, middleware for gatekeeping pages (iykyk), preloading data so it's not laggy... it's all there.
-- 🐕 It comes with its own [**HTTP client**](./docs/http.md) so you can stop installing axios. It's got middleware too, so adding auth headers to every request is easy. We stan.
-- 📍 A lowkey [**i18n system**](./docs/i18n.md). Just yeet your translations into a JSON file and the `t` function pulls them. Simple.
-- 🍳 And the biggest flex? The build system is optional. You can [write your JSX like always](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm). It's a whole vibe.
+- 🔀 A client-side [**router**](./docs/router.md) with nested routes and middleware for auth guards, preloading data or analytics.
+- 🐕 A convenient [**HTTP client**](./docs/http.md), also with middleware so adding auth headers to every request is easy.
+- 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translations into a JSON file and access them with the `t` function in your views.
+- 🍳 The build system is optional. You can [write JSX](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm).
 
-## Check it out: The Counter Example
+## A Counter
 
-The best way to get it is to just see it. If you've ever touched React, you'll know what's up, but peep the little things that make your life way easier.
+The best way to get it is to see it. If you've ever touched React, you'll know what's up, but peep the little things that make your life way easier.
 
 ```jsx
-import { useSignal, useEffect, createApp } from "@manyducks.co/dolla";
+import { signal, $effect, $debug } from "@manyducks.co/dolla";
 
-function Counter() {
-  // 1. Make a reactive thingy, we call it a "signal".
-  const [$count, setCount] = useSignal(0);
+// Print only 'warn' messages and above (applies globally)
+$debug.level = "warn"
 
-  function increment() {
-    setCount((current) => current + 1);
-  }
+/**
+ * A simple function that returns a value.
+ * Value may be derived from signals.
+ */
+interface Getter<T> {
+  (): T
+}
 
-  // 2. This effect just works. It knows to re-run when $count changes. No drama.
-  useEffect(() => {
-    // to get a signal's value, just call it like a function. easy.
-    console.log("Count is: " + $count());
+interface Setter<T> {
+  /**
+   * Updates the value in place. Takes the current value and returns a new value.
+   */
+  (fn: (T) => T): T
+
+  /**
+   * Sets the value.
+   */
+  (value: T): T
+}
+
+interface Compute<T> {
+  (current: T): T;
+}
+
+interface Signal<T> extends Getter<T>, Setter<T> {
+  /**
+   *
+   */
+  split(): [Getter<T>, Setter<T>]
+}
+
+interface SignalConstructor<T> {
+  /**
+   *
+   */
+  (compute: Compute<T>): Signal<T>;
+
+  /**
+   *
+   */
+  (value: T): Signal<T>;
+}
+
+// MapSignal
+
+interface MapSignal<T extends Record<string, any>> extends Signal<T> {
+  get<K extends keyof T>(key: K): T[K];
+
+  set<K extends keyof T>(key: K, value: T[K]): T[K];
+  set<P extends Partial<T>>(patch: P): T;
+}
+
+params.get("name") // this is a trackable getter
+
+// Example
+
+function Counter(props) {
+  const log = $debug();
+
+  log("whatever") // default log level
+  log.info("whatever")
+  log.warn("whatever")
+
+  // Unmount the whole app and show this error.
+  log.crash(new Error("Something terrible happened."));
+
+  const count = state(0);
+
+  get(count); // get current value (trackable)
+  peek(count); // get current value (untracked)
+  set(count, current => current + 1); // update value
+  set(count, 5); // set value
+
+  const [count, setCount] = signal(0);
+
+  count(); // get the current value when no argument is passed (signal trackable)
+  setCount(current => current + 1); // update the value when a function is passed
+  setCount(1); // set the value when any other type of argument is passed
+
+  const increment = () => set(count, (n) => n + 1);
+
+  $effect(() => {
+    log("Count is: " + get(count));
   });
 
   return (
     <div>
-      {/* 3. In your HTML, just drop the signal right in. */}
-      <p>Counter: {$count}</p>
+      {/* In your markup, just drop the signal right in. */}
+      <p>Counter: {count}</p>
 
-      {/* 4. Using signals with helpers like <Show> is a total breeze. */}
-      <Show when={() => $count() > 100}>
+      {/* Using signals with helpers like <Show> is a total breeze. */}
+      <Show when={() => get(count) > 100}>
+        <p>Whoa, that's a lotta clicks!</p>
+      </Show>
+
+      <Show when={state(() => get(count) > 100)}>
         <p>Whoa, that's a lotta clicks!</p>
       </Show>
 
@@ -75,26 +153,26 @@ When you need the value in your JS code (like in a `useEffect`), just call it li
 <!-- end list -->
 
 ```jsx
-const [$count, setCount] = useSignal(0);
-const [$name, setName] = useSignal("Dolla");
+const count = signal(0);
+const name = signal("Dolla");
 
 // AUTOMATIC: Runs if $count OR $name changes. Simple.
-useEffect(() => {
-  console.log(`Yo ${$name()}, the count is ${$count()}`);
+$effect(() => {
+  console.log(`Yo ${name()}, the count is ${count()}`);
 });
 
-// MANUAL: This ONLY runs when $count changes.
-// We're using $name() in here, but the effect is like "I don't see it" lol.
-useEffect(() => {
-  console.log(`Yo ${$name()}, the count is ${$count()}`);
-}, [$count]);
+// MANUAL: This ONLY runs when `count` changes.
+// We're calling name() in here too, but the effect will not track it.
+$effect(() => {
+  console.log(`Yo ${name()}, the count is ${count()}`);
+}, [count]);
 ```
 
 ### 3\. No VDOM, no problem
 
 Behind the scenes, Dolla isn't re-running your whole component all the time. Nah. It makes a direct connection from your signal to the exact spot in the HTML that uses it.
 
-When you `setCount(1)`, Dolla knows only the `<p>` tag and the `<Show>` component care. So it just updates those two things. It's like a ninja. This means no VDOM overhead and it's fast af by default.
+When you `setCount(1)`, Dolla knows only the `<p>` tag and the `<Show>` component care. So it just updates those two things. No VDOM rebuild, no diffing.
 
 ## The Dolla Building Blocks
 
@@ -106,8 +184,8 @@ Dolla gives you a few types of components to keep your code from becoming a mess
 
 ```jsx
 function ExampleView(props) {
-  const context = useContext();
-  const [$count, setCount] = useSignal(0);
+  const context = $context();
+  const count = signal(0);
 
   // The logger automatically knows the component's name!
   context.log("sup from ExampleView");
@@ -125,24 +203,27 @@ function ExampleView(props) {
 
 Got some state you need to use in a bunch of different places? **Stores** are for that. It's Dolla's built-in way to handle state so you don't have to go install another library.
 
+You work with stores using two functions, `$provide` and `$use`.
+
 ```jsx
 function CounterStore() {
-  const [$value, setValue] = useSignal(0);
+  // We split for a getter, and a setter which we won't expose.
+  const [value, setValue] = signal(0).split();
 
-  // You can return functions to control how the state gets changed.
+  // Instead we can define our own functions to control how the state gets changed.
   const increment = () => setValue((current) => current + 1);
   const decrement = () => setValue((current) => current - 1);
 
-  return { $value, increment, decrement };
+  return { value, increment, decrement };
 }
 ```
 
-You "provide" a store to a part of your app, and any component inside can just grab it.
+You "provide" a store to a part of your app, and any component inside can now use it.
 
 ```jsx
 function App() {
   // Now, App and any components inside it can use CounterStore.
-  const counter = useStoreProvider(CounterStore);
+  const counter = $provide(CounterStore);
 
   return (
     <div>
@@ -153,9 +234,9 @@ function App() {
 }
 
 function CounterView() {
-  // Just ask for the store you need!
-  const counter = useStore(CounterStore);
-  return <p>Current value: {counter.$value}</p>;
+  // Just use the store you need!
+  const counter = $use(CounterStore);
+  return <p>Current value: {counter.value}</p>;
 }
 ```
 
@@ -169,10 +250,10 @@ function CounterView() {
 function logLifecycle() {
   // A mixin is just a function...
   return (element) => {
-    // ...that takes an element and can use hooks inside.
-    const context = useContext();
-    useMount(() => context.log("element mounted!", element));
-    useUnmount(() => context.log("element unmounted!"));
+    // ...that takes a DOM element and can use hooks inside.
+    const log = $debug();
+    $mount(() => log("element mounted!", element));
+    $unmount(() => log("element unmounted!"));
   };
 }
 
@@ -243,28 +324,30 @@ app.mount(document.body);
 
 #### Using It
 
-Just use the `useRouter()` hook.
+Just use the `$router()` hook.
 
 ```jsx
-import { useEffect } from "@manyducks.co/dolla";
-import { useRouter } from "@manyducks.co/dolla/router";
+import { $effect, $debug } from "@manyducks.co/dolla";
+import { $router } from "@manyducks.co/dolla/router";
 
 function ThingDetails() {
-  const router = useRouter();
-  const { $params } = router; // get reactive params
+  const log = $debug();
+  const router = $router();
+  const { params } = router; // get reactive params
 
-  useEffect(() => {
-    console.log("Current thing ID:", $params().id);
+  $effect(() => {
+    log("Current thing ID:", params().id);
+    // or with MapSignal: log("Current thing ID:", params.get("id"));
   });
 
   function goToNext() {
-    const nextId = $params().id + 1;
+    const nextId = params().id + 1;
     router.go(`/things/${nextId}`);
   }
 
   return (
     <div>
-      <p>Viewing thing #{$params().id}</p>
+      <p>Viewing thing {() => params().id}</p>
       <button onClick={goToNext}>View Next Thing</button>
     </div>
   );
@@ -287,7 +370,7 @@ http.use(async (req, next) => {
 });
 
 const res = await http.get("/api/users");
-console.log(res.body); // already parsed JSON, leggo
+console.log(res.body); // already parsed JSON
 ```
 
 ### Internationalization (i18n)

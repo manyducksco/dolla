@@ -1,7 +1,7 @@
 import { moveBefore, toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes } from "../markup.js";
-import { effect, type Signal, type UnsubscribeFn, untracked } from "../signals.js";
+import { effect, type Getter, type UnsubscribeFn, untracked } from "../signals.js";
 import { MarkupNode } from "./_markup.js";
 
 /**
@@ -14,13 +14,13 @@ export class DynamicNode extends MarkupNode {
   private children: MarkupNode[] = [];
   private context: Context;
 
-  private $slot: Signal<any>;
+  private slot: Getter<any>;
   private unsubscribe?: UnsubscribeFn;
 
-  constructor(context: Context, $slot: Signal<any>) {
+  constructor(context: Context, slot: Getter<any>) {
     super();
     this.context = context;
-    this.$slot = $slot;
+    this.slot = slot;
   }
 
   override getRoot() {
@@ -37,7 +37,7 @@ export class DynamicNode extends MarkupNode {
 
       this.unsubscribe = effect(() => {
         try {
-          const content = this.$slot();
+          const content = this.slot();
           untracked(() => {
             this.update(toArray(content));
           });

@@ -4,7 +4,7 @@ import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import { effect, get, setCurrentContext, type MaybeSignal, type Signal, type UnsubscribeFn } from "../signals.js";
+import { effect, get, setCurrentContext, type MaybeSignal, type Getter, type UnsubscribeFn } from "../signals.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -178,7 +178,7 @@ export class ElementNode extends MarkupNode {
       this.unsubscribers.push(
         effect(() => {
           try {
-            callback((value as Signal<T>)());
+            callback((value as Getter<T>)());
           } catch (error) {
             this.context.error(error);
             this.context.crash(error as Error);

@@ -18,13 +18,15 @@ This is why Dolla doesn't need a Virtual DOM. It doesn't have to guess what chan
 The main way you'll make a signal _inside a component_ is with the `useSignal` hook. It gives you back a pair of things in an array, just like React's `useState`.
 
 ```jsx
-import { useSignal } from "@manyducks.co/dolla";
+import { signal } from "@manyducks.co/dolla";
 
-function MyComponent() {
-  //  [getter, setter]
-  const [$count, setCount] = useSignal(0);
-  // ...
-}
+const count = signal(0);
+
+count(); // call with no argument to get the current value
+count((current) => current + 1); // call with a function to update the value
+count(5); // call with a value to set
+
+
 ```
 
 - `$count`: This is the **getter**. It's a function that you call to get the signal's current value. We use a `$` at the start by convention to make signals easy to spot.

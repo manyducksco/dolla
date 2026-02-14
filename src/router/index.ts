@@ -4,4 +4,4 @@ export function createRouter(options: RouterOptions): Router {
   return new Router(options);
 }
 
-export { useRouter } from "./hooks.js";
+export { $router } from "./hooks.js";

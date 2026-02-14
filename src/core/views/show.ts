@@ -1,8 +1,7 @@
 import type { Renderable } from "../../types";
 import type { Context } from "../context";
-import { useContext } from "../hooks";
 import { DynamicNode } from "../nodes/dynamic";
-import { get, type MaybeSignal, memo, readable } from "../signals";
+import { get, getCurrentContext, type MaybeSignal, signal } from "../signals";
 
 export interface ShowProps {
   /**
@@ -30,11 +29,12 @@ export interface ShowProps {
  * Conditionally display children.
  */
 export function Show(props: ShowProps) {
-  const context = useContext("Show");
+  const context = getCurrentContext()!;
+  context.setName("Show");
 
   // Memoize conditions to avoid unnecessarily triggering DynamicNode updates.
-  const when = props.when ? readable(props.when) : null;
-  const unless = props.unless ? readable(props.unless) : null;
+  const when = props.when ? signal(() => props.when) : null;
+  const unless = props.unless ? signal(() => props.unless) : null;
 
   return new DynamicNode(context, () => {
     let shouldShow = true;

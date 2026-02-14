@@ -1,11 +1,11 @@
 import { getCurrentContext } from "../core/signals";
 import { type Router, ROUTER } from "./router";
 
-export function useRouter() {
+export function $router() {
   const context = getCurrentContext();
   if (!context) throw new Error(`Hooks can only be called in the body of a View, Store or Mixin.`);
   const router = context.getState<Router | null>(ROUTER, { fallback: null });
-  if (!router) throw new Error(`useRoute can only be called within an app that uses a router.`);
+  if (!router) throw new Error(`$router can only be called within an app that uses a router.`);
   return router;
 }
 

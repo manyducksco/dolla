@@ -12,6 +12,7 @@ export interface LogLevels {
 }
 
 export interface Logger {
+  (...args: any[]): void;
   info(...args: any[]): void;
   log(...args: any[]): void;
   warn(...args: any[]): void;
@@ -93,39 +94,48 @@ export function createLogger(name: MaybeSignal<string>, options?: LoggerOptions)
     }
   };
 
-  return {
-    get info() {
-      return bind("info");
-    },
-    get log() {
-      return bind("log");
-    },
-    get warn() {
-      return bind("warn");
-    },
-    get error() {
-      return bind("error");
-    },
-    crash(error: Error) {
-      if (!isCrashed) {
-        isCrashed = true;
-        const ctx: LoggerCrashProps = {
-          error,
-          loggerName: get(name),
-          tag: options?.tag,
-          tagName: options?.tagName,
-        };
+  function logger(...args: any[]) {
+    return bind("log")(...args);
+  }
 
-        for (const listener of crashListeners) {
-          listener(ctx);
+  Object.defineProperties(logger, {
+    info: {
+      get: () => bind("info"),
+    },
+    log: {
+      get: () => bind("log"),
+    },
+    warn: {
+      get: () => bind("warn"),
+    },
+    error: {
+      get: () => bind("error"),
+    },
+    crash: {
+      writable: false,
+      value: (error: Error) => {
+        if (!isCrashed) {
+          isCrashed = true;
+          const ctx: LoggerCrashProps = {
+            error,
+            loggerName: get(name),
+            tag: options?.tag,
+            tagName: options?.tagName,
+          };
+
+          for (const listener of crashListeners) {
+            listener(ctx);
+          }
+
+          throw error;
         }
 
-        throw error;
-      }
-
-      return error;
+        return error;
+      },
     },
-  };
+  });
+
+  return logger as Logger;
 }
 
 export function setLogFilter(filter: string | RegExp) {

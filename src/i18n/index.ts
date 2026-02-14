@@ -1,5 +1,5 @@
 import { createLogger, type Logger } from "../core/logger.js";
-import { writable, get, type MaybeSignal, type Signal, memo } from "../core/signals.js";
+import { signal, get, type MaybeSignal, type Signal, Getter, Setter, computed } from "../core/signals.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
 
@@ -375,12 +375,15 @@ class I18n {
 
   #initialLocale = "auto";
 
-  #locale = writable<string>("en");
-
-  readonly $locale = memo(this.#locale);
+  readonly locale: Getter<string>;
+  #setLocale: Setter<string>;
 
   constructor() {
     this.#logger = createLogger("dolla.i18n");
+
+    const [locale, setLocale] = signal("en");
+    this.locale = locale;
+    this.#setLocale = setLocale;
 
     this.addFormat("number", (_, value, options) => {
       return this.#formatNumber(Number(value), options);
@@ -471,7 +474,7 @@ class I18n {
       await translation.load();
 
       this.#cache = [];
-      this.#locale.set(realName);
+      this.#setLocale(realName);
 
       this.#logger.info("set language to " + realName);
     } catch (error) {
@@ -490,14 +493,14 @@ class I18n {
    * @example
    * const $value = t("your.key.here", { count: 5 });
    */
-  t(selector: string, options?: TOptions): Signal<string> {
+  t(selector: string, options?: TOptions): Getter<string> {
     if (this === undefined) {
       throw new Error(
         `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
       );
     }
 
-    return memo(() => {
+    return computed(() => {
       const values: Record<string, any> = {};
 
       // Track all option values.
@@ -505,7 +508,7 @@ class I18n {
         values[key] = get(options[key]);
       }
 
-      return this.#getValue(this.#locale(), selector, values);
+      return this.#getValue(this.locale(), selector, values);
     });
   }
 
@@ -599,7 +602,7 @@ class I18n {
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
    */
   collator(options?: Intl.CollatorOptions) {
-    return new Intl.Collator(this.#locale(), options);
+    return new Intl.Collator(this.locale(), options);
   }
 
   /**
@@ -607,13 +610,13 @@ class I18n {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
    */
-  number(count: MaybeSignal<number | bigint>, options?: Intl.NumberFormatOptions): Signal<string> {
-    return memo(() => this.#formatNumber(get(count), options));
+  number(count: MaybeSignal<number | bigint>, options?: Intl.NumberFormatOptions): Getter<string> {
+    return computed(() => this.#formatNumber(get(count), options));
   }
 
   #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
     // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.NumberFormat(this.#locale(), options).format(count);
+    return new Intl.NumberFormat(this.locale(), options).format(count);
   }
 
   /**
@@ -628,13 +631,13 @@ class I18n {
   dateTime(
     date?: MaybeSignal<string | number | Date | undefined>,
     options?: Intl.DateTimeFormatOptions,
-  ): Signal<string> {
-    return memo(() => this.#formatDateTime(get(date), options));
+  ): Getter<string> {
+    return computed(() => this.#formatDateTime(get(date), options));
   }
 
   #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
     // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.DateTimeFormat(this.#locale(), options).format(isString(date) ? new Date(date) : date);
+    return new Intl.DateTimeFormat(this.locale(), options).format(isString(date) ? new Date(date) : date);
   }
 
   /**
@@ -646,13 +649,13 @@ class I18n {
    * const list = new Date();
    * const $formatted = Dolla.i18n.list(list, {  });
    */
-  list(list: MaybeSignal<Iterable<string>>, options?: Intl.ListFormatOptions): Signal<string> {
-    return memo(() => this.#formatList(get(list), options));
+  list(list: MaybeSignal<Iterable<string>>, options?: Intl.ListFormatOptions): Getter<string> {
+    return computed(() => this.#formatList(get(list), options));
   }
 
   #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {
     // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.ListFormat(this.#locale(), options).format(list);
+    return new Intl.ListFormat(this.locale(), options).format(list);
   }
 
   // relativeTime(date?: MaybeSignal<string | number | Date | undefined>): Signal<string> {}

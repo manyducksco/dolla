@@ -25,26 +25,31 @@ Fr, this is all you need. Just create an `index.html` file and paste this in.
     <!-- This is the magic part -->
     <script type="module">
       // 1. Import what you need from a CDN
-      import { createApp, useSignal, createMarkup } from "https://esm.sh/@manyducks.co/dolla";
+      import { dolla, signal, m } from "https://esm.sh/@manyducks.co/dolla";
       import htm from "https://esm.sh/htm";
 
       // 2. Tell HTM to use Dolla's markup function
-      const html = htm.bind(createMarkup);
+      const html = htm.bind(m);
 
       // 3. Write your component using the `html` tag
       function App() {
-        const [$count, setCount] = useSignal(0);
+        const count = signal(0);
+
+        return m("div", [
+          m("h1", "Count: ", count),
+          m("button", {onClick: () => count(c => c + 1)}, "Click Me!")
+        ])
 
         return html`
           <div>
-            <h1>Count: ${$count}</h1>
-            <button onClick=${() => setCount((c) => c + 1)}>Click Me!</button>
+            <h1>Count: ${count}</h1>
+            <button onClick=${() => count((c) => c + 1)}>Click Me!</button>
           </div>
         `;
       }
 
       // 4. Mount your app into the #app element
-      createApp(App).mount("#app");
+      dolla(App).mount("#app");
     </script>
   </body>
 </html>

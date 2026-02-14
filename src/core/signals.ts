@@ -1,8 +1,10 @@
 import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
-import { isFunction } from "../typeChecking";
+import { isFunction, typeOf } from "../typeChecking";
 import { strictEqual } from "../utils";
 import { Context } from "./context";
+
+const SIGNAL = Symbol("Signal");
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -23,6 +25,10 @@ interface Computed<T = any> extends ReactiveNode {
   value: T | undefined;
   getter: (this: ComputedGetterState<T>) => T;
   equals: EqualityFn<T>;
+
+  // Temp value set when a computed signal has a value passed to it.
+  // This value is held until the real value recomputes.
+  holdValue: T | undefined;
 }
 
 interface Value<T = any> extends ReactiveNode {
@@ -241,7 +247,7 @@ function _effect(this: Effect | EffectScope): void {
  * A function that returns the current value of a signal.
  * Automatically tracked as a dependency when called within a tracking scope (such as `memo` or `effect` functions).
  */
-export interface Signal<T> {
+export interface Getter<T> {
   (): T;
 }
 
@@ -250,24 +256,21 @@ export interface Signal<T> {
  */
 export interface Setter<T> {
   // This signature is required for Immer `produce` to infer types correctly.
-  (value: T | ((previousValue: T) => T)): void;
-
-  // (value: T): void;
-  // (update: (current: T) => T): void;
+  (value: T | ((current: T) => T)): T;
 }
 
 /**
  * A getter and setter in a single object. Callable like a getter, but includes a `set` method for updating the signal's value.
  */
-export interface Writable<T> extends Signal<T> {
-  set: Setter<T>;
+export interface Signal<T> extends Getter<T>, Setter<T> {
+  split(): [Getter<T>, Setter<T>];
 }
 
 /**
  * Utility type for a value that may be a getter or a plain value.
  * This value can be unwrapped to a plain value with `get` or `untracked` (depending on whether you're in a tracking context and need to track it).
  */
-export type MaybeSignal<T> = Signal<T> | T;
+export type MaybeSignal<T> = Getter<T> | T;
 
 export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
@@ -280,58 +283,25 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
-export function writable<T>(): Writable<T | undefined>;
-export function writable<T>(initialValue: undefined, options: SignalOptions<T | undefined>): Writable<T | undefined>;
-export function writable<T>(initialValue: T, options?: SignalOptions<T>): Writable<T>;
-
-export function writable<T>(initialValue?: T, options?: SignalOptions<T>): Writable<T> {
-  const v: Value<unknown> = {
-    previousValue: initialValue as T,
-    value: initialValue as T,
-    equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-    subs: undefined,
-    subsTail: undefined,
-    flags: 1 satisfies ReactiveFlags.Mutable,
-  };
-  const fn = _getter.bind(v) as Writable<T>;
-  fn.set = _setter.bind(v);
-  return fn;
-}
-
 /**
- * Ensures that a value is a read-only signal.
+ * Creates a new signal.
  *
  * @example
- * const $number = readable(5); // converts plain values to signals
+ * const [count, setCount] = signal(0);
  *
- * const $number = writable(5);
- * const $value = readable($number);
- * $number(); // 5
- * $value(); // 5
- * $number.set(6);
- * $number(); // 6
- * $value(); // 6 (tracks value but can't be written)
+ * count(); // get
+ * setCount(5); // set
  */
-export function readable<T>(signal: MaybeSignal<T>): Signal<T> {
-  return memo(() => signal);
-}
-
-/**
- * Creates a new signal, returning a getter and setter pair.
- *
- * @example
- * const [$count, setCount] = signal(0);
- */
-export function signal<T>(initialValue: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
+export function signal<T>(initialValue: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
 
 export function signal<T>(
   initialValue: undefined,
   options: SignalOptions<T>,
-): [Signal<T | undefined>, Setter<T | undefined>];
+): [Getter<T | undefined>, Setter<T | undefined>];
 
-export function signal<T>(): [Signal<T | undefined>, Setter<T | undefined>];
+export function signal<T>(): [Getter<T | undefined>, Setter<T | undefined>];
 
-export function signal<T>(initialValue?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>] {
+export function signal<T>(initialValue?: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>] {
   const v: Value<unknown> = {
     previousValue: initialValue as T,
     value: initialValue as T,
@@ -340,12 +310,48 @@ export function signal<T>(initialValue?: T, options?: SignalOptions<T>): [Signal
     subsTail: undefined,
     flags: 1 satisfies ReactiveFlags.Mutable,
   };
-  return [_getter.bind(v) as Signal<T>, _setter.bind(v)];
+
+  return [_getter.bind(v) as Getter<T>, _setter.bind(v) as Setter<T>];
 }
 
-export interface MemoOptions<T> extends SignalOptions<T> {
+const VALUE = Symbol("value");
+
+interface State<T> {
+  [VALUE]: Value<T>;
+}
+
+function isState<T = unknown>(value: any): value is State<T> {
+  return Object.hasOwn(value, VALUE);
+}
+
+type StateOrValue<T> = State<T> | T;
+
+function _get<T>(target: StateOrValue<T>): T {
+  if (isState(target)) {
+    // Do get logic
+  } else {
+    return target as T;
+  }
+}
+
+function set<T>(state: State<T>, value: T | ((current: T) => T)): T {
+  if (!isState(state)) {
+    throw new Error(`First argument must be a state. Got: ${typeOf(state)}`);
+  }
+
+  // Do set logic
+}
+
+function peek<T>(value: MaybeSignal<T>): T {}
+
+export function slot() {
+  const [get, set] = signal();
+  return { get, set };
+}
+
+export interface ComputedOptions<T> extends SignalOptions<T> {
   /**
-   * An array of signals this `memo` depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
+   * An array of signals this signal depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
    * Instead the `deps` array will be tracked and `fn` will re-run when any value in `deps` changes.
    */
   deps?: Signal<any>[];
@@ -357,9 +363,10 @@ export interface MemoOptions<T> extends SignalOptions<T> {
  * Dependencies are tracked when called inside `fn` by default,
  * but can be overridden by passing a `deps` array in the options object.
  */
-export function memo<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: MemoOptions<T>): Signal<T> {
+export function computed<T>(compute: (previousValue?: T) => MaybeSignal<T>, options?: ComputedOptions<T>): Getter<T> {
   return _computed.bind({
     value: undefined,
+    holdValue: undefined,
     subs: undefined,
     subsTail: undefined,
     deps: undefined,

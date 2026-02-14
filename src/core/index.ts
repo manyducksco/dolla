@@ -2,8 +2,8 @@
 export { createApp } from "./app.js";
 
 // Signals
-export { batch, effect, get, memo, readable, signal, untracked, writable } from "./signals.js";
-export type { MaybeSignal, Signal, Writable, Setter } from "./signals.js";
+export { batch, effect, get, signal, untracked } from "./signals.js";
+export type { MaybeSignal, Signal, Getter, Setter } from "./signals.js";
 
 // Hooks
 export * from "./hooks.js";

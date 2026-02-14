@@ -1,209 +1,101 @@
 # Dolla Hooks: The Cheat Sheet
 
-Aight, so here's the deal with all the hooks in Dolla. Hooks are basically functions that let you tap into Dolla's brain—its reactive system and all that lifecycle stuff—from any of your components.
+Hooks are functions that begin with a `$` symbol, which signifies that they can only be called at the top level of a component function. This rule will be familiar if you've worked with React.
+
+Hooks use a clever trick to access the internal state of the component they are called in.
 
 ## Lifecycle Hooks
 
 These hooks let you run code when your component is born, when it dies, and all the moments in between.
 
-### `useMount(callback)`
+### `$setup(callback)` and `$teardown(callback)`
 
 Runs your code right after the component shows up on the page. If your function returns _another_ function, Dolla will automatically run that right after the component gets yeeted off the page. Perfect for cleanup\!
 
 **Signature:**
 
 ```ts
-function useMount(callback: () => void | (() => void)): void;
+function $setup(callback: () => void | (() => void)): void;
+
+function $teardown(callback: () => void): void;
 ```
 
 **Example:**
 
 ```tsx
-import { useMount, useSignal } from "@manyducks.co/dolla";
+import { $setup, $teardown, signal } from "@manyducks.co/dolla";
 
 function IntervalTimer() {
-  const [$seconds, setSeconds] = useSignal(0);
+  const seconds = signal(0);
 
-  useMount(() => {
+  $setup(() => {
     // Start a timer when the component shows up
     const intervalId = setInterval(() => {
-      setSeconds((s) => s + 1);
+      seconds((s) => s + 1);
     }, 1000);
 
-    // Return a function to clean up the mess. This runs on unmount.
+    // Returning a function from $setup will run it on teardown.
+    // This is helpful to keep references like `intervalId` inside the $setup scope.
     return () => {
-      console.log("k, bye interval");
+      console.log("cleaning up counter interval");
       clearInterval(intervalId);
     };
   });
-
-  return <p>Seconds on page: {$seconds}</p>;
-}
-```
-
-### `useUnmount(callback)`
-
-Runs your code right after the component is removed. Great for any last-minute cleanup.
-
-**Signature:**
-
-```ts
-function useUnmount(callback: () => void): void;
-```
-
-**Example:**
-
-```tsx
-import { useUnmount } from "@manyducks.co/dolla";
-
-function AnalyticsTracker({ eventName }) {
-  useUnmount(() => {
+  
+  $teardown(() => {
     // Tell your analytics that the user bounced
     fireAnalyticsEvent(`user_left_${eventName}_view`);
   });
 
-  return <div>...</div>;
+  return <p>Seconds on page: {seconds}</p>;
 }
 ```
 
-## State Hooks
+### `$on(event, callback)`
 
-These are the main tools for making your components interactive and smart.
+Components have five lifecycle events. The `$setup` and `$teardown` are shorthand for the most commonly needed transitions. For advanced use cases, the `$on` hook gives you access to everything.
 
-### `useSignal(initialValue?)`
-
-The main way to make reactive state in Dolla. It gives you back a `[getter, setter]` pair.
+- `willMount` (called just before DOM nodes are added to the page)
+- `didMount` (called just after DOM nodes are added to the page; equivalent to `$setup` hook)
+- `willUnmount` (called just before DOM nodes are removed from the page)
+- `didUnmount` (called just after DOM nodes are removed from the page; equivalent to `$teardown` hook)
+- `dispose` (called after unmount when component instance will not be mounted again)
 
 **Signature:**
 
 ```ts
-function useSignal<T>(value?: T, options?: SignalOptions<T>): [Signal<T>, Setter<T>];
+type LifecycleEvent = "willMount" | "didMount" | "willUnmount" | "didUnmount" | "dispose";
+
+function $on(event: LifecycleEvent, callback: () => void): void;
 ```
 
 **Example:**
-
-```tsx
-import { useSignal } from "@manyducks.co/dolla";
-
-function TextInput() {
-  const [$text, setText] = useSignal("");
-  const handleInput = (e) => setText(e.target.value);
-
-  return (
-    <div>
-      <input type="text" value={$text} onInput={handleInput} />
-      <p>You typed: {$text}</p>
-    </div>
-  );
-}
-```
-
-### `useMemo(compute, deps?)`
-
-Makes a new signal that's calculated from other signals. It's smart and only re-calculates when one of the signals it depends on changes.
-
-**Signature:**
 
 ```ts
-function useMemo<T>(compute: () => T, deps?: Signal<any>[]): Signal<T>;
-```
+import { $on } from "@manyducks.co/dolla";
 
-**Example:**
-
-```tsx
-import { useSignal, useMemo } from "@manyducks.co/dolla";
-
-function ShoppingCart() {
-  const [$price, setPrice] = useSignal(100);
-  const [$quantity, setQuantity] = useSignal(2);
-
-  // This signal will always be the right total. No math for you.
-  const $total = useMemo(() => $price() * $quantity());
-
-  return (
-    <div>
-      <p>Price: {$price}</p>
-      <p>Quantity: {$quantity}</p>
-      <hr />
-      <p>Total: {$total}</p>
-    </div>
-  );
-}
-```
-
-### `useReducer(reducer, initialState)`
-
-For when your state gets complicated and you wanna feel like a pro. It's just like the one in React.
-
-**Signature:**
-
-```ts
-type Reducer<State, Action> = (state: State, action: Action) => State;
-type Dispatcher<Action> = (action: Action) => void;
-
-function useReducer<State, Action>(
-  reducer: Reducer<State, Action>,
-  initialState: State,
-): [Signal<State>, Dispatcher<Action>];
-```
-
-**Example:**
-
-```tsx
-import { useReducer } from "@manyducks.co/dolla";
-
-const counterReducer = (state, action) => {
-  switch (action.type) {
-    case "INCREMENT":
-      return { ...state, count: state.count + 1 };
-    case "DECREMENT":
-      return { ...state, count: state.count - 1 };
-    default:
-      return state;
-  }
-};
-
-function ReducerCounter() {
-  const [$state, dispatch] = useReducer(counterReducer, { count: 0 });
-
-  return (
-    <>
-      <p>Count: {() => $state().count}</p>
-      <button onClick={() => dispatch({ type: "INCREMENT" })}>+</button>
-      <button onClick={() => dispatch({ type: "DECREMENT" })}>-</button>
-    </>
-  );
-}
-```
-
-### `useRef(initialValue?)`
-
-Gives you a little box to hold onto something. Super useful for grabbing HTML elements. You can use `.current` or just call it like a function to get the value.
-
-**Signature:**
-
-```ts
-function useRef<T>(initialValue?: T): HybridRef<T>;
-```
-
-**Example:**
-
-```tsx
-import { useRef, useMount } from "@manyducks.co/dolla";
-
-function FocusOnMount() {
-  const inputEl = useRef();
-
-  useMount(() => {
-    // get the element from .current
-    if (inputEl.current) {
-      inputEl.current.focus();
-    }
-    // you can also just call it like a function, lol
-    console.log(inputEl());
+function Lifecycle() {
+  $on("willMount", () => {
+    // Just about to mount. Accessing DOM nodes will not work yet.
   });
-
-  return <input ref={inputEl} placeholder="i'm gonna be focused" />;
+  
+  $on("didMount", () => {
+    // Just mounted. Accessing DOM nodes is possible now.
+  });
+  
+  $on("willUnmount", () => {
+    // Still in the DOM, but going away just after this runs.
+  });
+  
+  $on("didUnmount", () => {
+    // No longer in the DOM.
+  });
+  
+  $on("dispose", () => {
+    // Unmounted and never going to be mounted again.
+  });
+  
+  return <div>...</div>
 }
 ```
 
@@ -211,36 +103,36 @@ function FocusOnMount() {
 
 These are for doing "side effects" - stuff that isn't just rendering, like fetching data or messing with the DOM directly.
 
-### `useEffect(callback, deps?)`
+### `$effect(callback, deps?)`
 
 The go-to hook for side effects. Your code runs after the component shows up, and then again whenever the signals it uses change. It's automatic, but you can give it a `deps` array if you wanna be extra and control it yourself.
 
 **Signature:**
 
 ```ts
-function useEffect(fn: () => void, deps?: Signal<any>[]): void;
+function $effect(fn: () => void, deps?: Signal<any>[]): void;
 ```
 
 **Example:**
 
 ```tsx
-import { useEffect, useSignal } from "@manyducks.co/dolla";
+import { $effect, signal } from "@manyducks.co/dolla";
 import { http } from "@manyducks.co/dolla/http";
 
-function UserData({ $userId }) {
-  const [$user, setUser] = useSignal(null);
+function UserData({ userId }) {
+  const user = signal(null);
 
-  // This effect will re-run whenever the $userId prop changes.
-  useEffect(() => {
-    const userId = $userId();
-    http.get(`/api/users/${userId}`).then((res) => {
-      setUser(res.body);
+  // This effect will re-run whenever the userId prop changes.
+  $effect(() => {
+    const id = userId(); // track a signal
+    http.get(`/api/users/${id}`).then((res) => {
+      user(res.body); // Update user
     });
   });
 
   return (
-    <Show when={$user}>
-      <p>User: {() => $user().name}</p>
+    <Show when={user}>
+      <p>User: {() => user().name}</p>
     </Show>
   );
 }
@@ -250,7 +142,13 @@ function UserData({ $userId }) {
 
 These are the hooks you use to mess with the context system. Think of it like a way to pass stuff down to your components without having to prop drill, which is a total vibe killer.
 
-### `useContext(name?)`
+### `$name(name)`
+
+> TODO: Fill in
+
+Sets the context name for logging purposes.
+
+### `$debug(name?)`
 
 This just grabs the `Context` object for whatever component you're in. The context has useful stuff like loggers and is how stores get passed around.
 
@@ -282,68 +180,68 @@ function UserProfile() {
 }
 ```
 
-### `useStore(Store)`
+### `$provide(Store, options?)` and `$use(Store)`
 
-This hook looks up the component tree and finds the closest `Store` that a parent component hooked you up with.
-
-**Signature:**
-
-```ts
-function useStore<T>(store: Store<any, T>): T;
-```
-
-**Parameters:**
-
-- `store`: Just tell it which Store you're looking for.
-
-**Example:**
-
-```tsx
-// Pretend some parent component already provided the SessionStore
-import { useStore } from "@manyducks.co/dolla";
-import { SessionStore } from "./stores/SessionStore.js";
-
-function Navbar() {
-  const session = useStore(SessionStore);
-
-  return (
-    <nav>
-      <Show when={session.$isLoggedIn}>
-        <p>Yo, {() => session.$user().name}!</p>
-      </Show>
-    </nav>
-  );
-}
-```
-
-### `useStoreProvider(Store, options?)`
-
-This is how you make a `Store` available to a component and all its kids. You create it here, and then any component inside can just use `useStore` to grab it.
+The `$provide` hook creates a new instance of a store and makes it available to the component it's called in. The `$use` hook accesses that instance from a child component.
 
 **Signature:**
 
 ```ts
-function useStoreProvider<T, O>(store: Store<O, T>, options?: O): T;
+function $provide<T, O>(store: Store<O, T>, storeOptions?: O): T;
+
+function $use<T>(store: Store<any, T>): T;
 ```
-
-**Parameters:**
-
-- `store`: The Store you wanna provide.
-- `options` (optional): Any options you need to pass to the Store when it's made.
 
 **Example:**
 
 ```tsx
-import { useStoreProvider } from "@manyducks.co/dolla";
+import { $provide, $use } from "@manyducks.co/dolla";
 import { ThemeStore } from "./stores/ThemeStore.js";
 import { AppContent } from "./AppContent.js";
 
 function App() {
   // Provide the ThemeStore to the whole app.
-  // Any child can now get it with useStore(ThemeStore).
-  useStoreProvider(ThemeStore, { defaultTheme: "dark" });
+  // Any child can now get it with $use(ThemeStore).
+  $provide(ThemeStore, { defaultTheme: "dark" });
 
   return <AppContent />;
+}
+```
+
+**Example:**
+
+```tsx
+import { $provide, $use } from "@manyducks.co/dolla";
+import { AuthStore } from "./stores/auth.js";
+
+function App() {
+  // Provide the AuthStore to the whole app.
+  // Any child can now get it with $use(AuthStore).
+  // We can also access it here since the instance is returned.
+  const auth = $provide(AuthStore);
+  
+  return (
+    <main>
+      <header>
+        <Navbar />
+      </header>
+      <div>
+        ...
+      </div>
+    </main>
+  );
+}
+
+function Navbar() {
+  const { isLoggedIn, user } = $use(AuthStore);
+
+  return (
+    <nav>
+      <Show when={isLoggedIn}>
+        <p>Yo, {() => user().name}!</p>
+      </Show>
+    </nav>
+  );
 }
 ```
 

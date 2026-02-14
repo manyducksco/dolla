@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Context, LifecycleEvent } from "../core/context";
-import { getCurrentContext, setCurrentContext } from "../core/signals";
-import { Reducer, useEffect, useMemo, useMount, useReducer, useRef, useSignal, useUnmount } from "./hooks";
+import { getCurrentContext, setCurrentContext, signal } from "../core/signals";
+import { $effect, $setup, $teardown, $on } from "./hooks";
 
 const _emitWillMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.WILL_MOUNT);
 const _emitDidMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.DID_MOUNT);
@@ -13,77 +13,77 @@ beforeEach(() => {
   setCurrentContext(new Context("test"));
 });
 
-describe("useSignal", () => {
-  test("stores state", () => {
-    const [value, setValue] = useSignal(0);
-    expect(value()).toBe(0);
+// describe("useSignal", () => {
+//   test("stores state", () => {
+//     const [value, setValue] = useSignal(0);
+//     expect(value()).toBe(0);
 
-    setValue(20);
-    expect(value()).toBe(20);
+//     setValue(20);
+//     expect(value()).toBe(20);
 
-    setValue((current) => current + 1);
-    expect(value()).toBe(21);
-  });
-});
+//     setValue((current) => current + 1);
+//     expect(value()).toBe(21);
+//   });
+// });
 
-describe("useMemo", () => {
-  test("with auto tracking", () => {
-    const [left, setLeft] = useSignal(5);
-    const [right, setRight] = useSignal(8);
-    const added = useMemo(() => left() + right());
+// describe("useMemo", () => {
+//   test("with auto tracking", () => {
+//     const [left, setLeft] = useSignal(5);
+//     const [right, setRight] = useSignal(8);
+//     const added = useMemo(() => left() + right());
 
-    expect(added()).toBe(13);
+//     expect(added()).toBe(13);
 
-    setLeft(15);
-    expect(added()).toBe(23);
+//     setLeft(15);
+//     expect(added()).toBe(23);
 
-    setRight((n) => n + 2);
-    expect(added()).toBe(25);
-  });
+//     setRight((n) => n + 2);
+//     expect(added()).toBe(25);
+//   });
 
-  test("with explicit deps", () => {
-    const [left, setLeft] = useSignal(5);
-    const [right, setRight] = useSignal(8);
-    const added = useMemo(() => left() + right(), [right]);
+//   test("with explicit deps", () => {
+//     const [left, setLeft] = useSignal(5);
+//     const [right, setRight] = useSignal(8);
+//     const added = useMemo(() => left() + right(), [right]);
 
-    expect(added()).toBe(13);
+//     expect(added()).toBe(13);
 
-    setLeft(15);
-    expect(added()).toBe(13);
+//     setLeft(15);
+//     expect(added()).toBe(13);
 
-    setRight((n) => n + 2);
-    expect(added()).toBe(25);
-  });
+//     setRight((n) => n + 2);
+//     expect(added()).toBe(25);
+//   });
 
-  test("receives previous value as first argument", () => {
-    const [count, setCount] = useSignal(1);
+//   test("receives previous value as first argument", () => {
+//     const [count, setCount] = useSignal(1);
 
-    const fn = vi.fn((prev) => count() * 2);
-    const doubled = useMemo(fn);
+//     const fn = vi.fn((prev) => count() * 2);
+//     const doubled = useMemo(fn);
 
-    expect(fn).toBeCalledTimes(0);
-    doubled();
-    expect(fn).toBeCalledTimes(1);
-    expect(fn).toBeCalledWith(undefined);
-    setCount(5);
-    doubled();
-    expect(fn).toBeCalledTimes(2);
-    expect(fn).toBeCalledWith(2);
-    setCount(10);
-    doubled();
-    expect(fn).toBeCalledTimes(3);
-    expect(fn).toBeCalledWith(10);
-  });
-});
+//     expect(fn).toBeCalledTimes(0);
+//     doubled();
+//     expect(fn).toBeCalledTimes(1);
+//     expect(fn).toBeCalledWith(undefined);
+//     setCount(5);
+//     doubled();
+//     expect(fn).toBeCalledTimes(2);
+//     expect(fn).toBeCalledWith(2);
+//     setCount(10);
+//     doubled();
+//     expect(fn).toBeCalledTimes(3);
+//     expect(fn).toBeCalledWith(10);
+//   });
+// });
 
-describe("useEffect", () => {
+describe("$effect", () => {
   test("effects are active while context is mounted", () => {
-    const [name, setName] = useSignal("Bon");
+    const name = signal("Bon");
 
     const fn = vi.fn(() => {
       name();
     });
-    useEffect(fn);
+    $effect(fn);
 
     expect(fn).toBeCalledTimes(0);
 
@@ -92,76 +92,76 @@ describe("useEffect", () => {
     expect(fn).toBeCalledTimes(1);
 
     _emitDidMount();
-    setName("Tux");
+    name("Tux");
     expect(fn).toBeCalledTimes(2);
 
     _emitWillUnmount();
-    setName("Abby");
+    name("Abby");
     expect(fn).toBeCalledTimes(3);
 
     // Effects are stopped at DID_UNMOUNT
     _emitDidUnmount();
-    setName("Lacey");
+    name("Lacey");
     expect(fn).toBeCalledTimes(3); // still 3
 
     _emitDispose();
-    setName("Jack");
+    name("Jack");
     expect(fn).toBeCalledTimes(3); // still 3
   });
 
   test("with auto tracking", () => {
-    const [left, setLeft] = useSignal(5);
-    const [right, setRight] = useSignal(8);
+    const left = signal(5);
+    const right = signal(8);
 
     const fn = vi.fn(() => {
       left();
       right();
     });
-    useEffect(fn);
+    $effect(fn);
 
     _emitWillMount();
     _emitDidMount();
 
     expect(fn).toBeCalledTimes(1);
 
-    setLeft(15);
+    left(15);
     expect(fn).toBeCalledTimes(2);
 
-    setRight((n) => n + 2);
+    right((n) => n + 2);
     expect(fn).toBeCalledTimes(3);
   });
 
   test("with explicit deps", () => {
-    const [left, setLeft] = useSignal(5);
-    const [right, setRight] = useSignal(8);
+    const left = signal(5);
+    const right = signal(8);
 
     const fn = vi.fn(() => {
       left();
       right();
     });
-    useEffect(fn, [right]);
+    $effect(fn, [right]);
 
     _emitWillMount();
     _emitDidMount();
 
     expect(fn).toBeCalledTimes(1);
 
-    setLeft(15); // untracked value does not trigger it
+    left(15); // untracked value does not trigger it
     expect(fn).toBeCalledTimes(1);
 
-    setRight((n) => n + 2);
+    right((n) => n + 2);
     expect(fn).toBeCalledTimes(2);
   });
 
   test("cleanup function called between invocations and on unmount", () => {
-    const [count, setCount] = useSignal(0);
+    const count = signal(0);
 
     const cleanup = vi.fn();
     const fn = vi.fn(() => {
       count();
       return cleanup;
     });
-    useEffect(fn);
+    $effect(fn);
 
     _emitWillMount();
     _emitDidMount();
@@ -169,12 +169,12 @@ describe("useEffect", () => {
     expect(fn).toBeCalledTimes(1);
     expect(cleanup).toBeCalledTimes(0);
 
-    setCount((n) => n + 1);
+    count((n) => n + 1);
 
     expect(fn).toBeCalledTimes(2);
     expect(cleanup).toBeCalledTimes(1);
 
-    setCount((n) => n + 1);
+    count((n) => n + 1);
 
     expect(fn).toBeCalledTimes(3);
     expect(cleanup).toBeCalledTimes(2);
@@ -187,79 +187,11 @@ describe("useEffect", () => {
   });
 });
 
-describe("useReducer", () => {
-  test("updates state via dispatched actions", () => {
-    type State = number;
-    type Action = "increment" | "decrement" | "reset";
-
-    const reducer: Reducer<State, Action> = (state, action) => {
-      switch (action) {
-        case "increment":
-          return state + 1;
-        case "decrement":
-          return state - 1;
-        case "reset":
-          return 0;
-      }
-    };
-
-    const [count, dispatch] = useReducer(reducer, 0);
-
-    expect(count()).toBe(0);
-
-    dispatch("increment");
-    expect(count()).toBe(1);
-
-    dispatch("increment");
-    expect(count()).toBe(2);
-
-    dispatch("reset");
-    expect(count()).toBe(0);
-
-    dispatch("decrement");
-    expect(count()).toBe(-1);
-  });
-});
-
-describe("useRef", () => {
-  test("function & object syntax are equal", () => {
-    const value = useRef("TEST");
-
-    expect(value()).toBe("TEST");
-    expect(value.current).toBe("TEST");
-
-    value("FUNCTION");
-    expect(value()).toBe("FUNCTION");
-    expect(value.current).toBe("FUNCTION");
-
-    value.current = "OBJECT";
-    expect(value()).toBe("OBJECT");
-    expect(value.current).toBe("OBJECT");
-  });
-
-  test("throws error if accessed with empty value", () => {
-    const value = useRef();
-
-    expect(() => value()).toThrowError();
-    expect(() => value.current).toThrowError();
-
-    // Not empty
-    value.current = undefined;
-    expect(() => value()).not.toThrowError();
-    expect(() => value.current).not.toThrowError();
-
-    // Also not empty
-    value.current = null;
-    expect(() => value()).not.toThrowError();
-    expect(() => value.current).not.toThrowError();
-  });
-});
-
-describe("useMount", () => {
+describe("$setup", () => {
   test("called on mount, returned function called on unmount", () => {
     const onUnmount = vi.fn();
     const onMount = vi.fn(() => onUnmount);
-    useMount(onMount);
+    $setup(onMount);
 
     expect(onMount).toBeCalledTimes(0);
     expect(onUnmount).toBeCalledTimes(0);
@@ -281,10 +213,10 @@ describe("useMount", () => {
   });
 });
 
-describe("useUnmount", () => {
+describe("$teardown", () => {
   test("called on DID_UNMOUNT", () => {
     const onUnmount = vi.fn();
-    useUnmount(onUnmount);
+    $teardown(onUnmount);
 
     expect(onUnmount).toBeCalledTimes(0);
     _emitWillMount();

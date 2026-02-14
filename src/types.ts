@@ -1,7 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
-import type { Signal } from "./core/signals.js";
-import type { Context } from "./core/context.js";
+import type { Getter, Signal } from "./core/signals.js";
 
 export type Env = "production" | "development";
 
@@ -44,7 +43,7 @@ export type Mixin<E extends Element = Element> = (element: E) => void;
 ||            JSX Types             ||
 \*==================================*/
 
-type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined>;
+type MaybeSignal<T> = T | Signal<T> | Signal<T | undefined> | Getter<T> | Getter<T | undefined>;
 
 type OptionalProperty<T> = MaybeSignal<T>;
 type RequiredProperty<T> = T | Signal<T>;

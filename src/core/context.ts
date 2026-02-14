@@ -200,6 +200,8 @@ export interface Context extends Logger {}
 export class Context implements Logger {
   #name: MaybeSignal<string>;
 
+  logger: Logger;
+
   [NAME]: string;
   [LIFECYCLE] = new ContextLifecycle(this);
   [PARENT]?: Context;
@@ -231,13 +233,7 @@ export class Context implements Logger {
   constructor(name: MaybeSignal<string>, options?: ContextOptions) {
     this.#name = name;
     this[NAME] = untracked(name);
-
-    // Add logger methods.
-    const logger = createLogger(() => get(this.#name), options?.logger);
-    const descriptors = Object.getOwnPropertyDescriptors(logger);
-    for (const key in descriptors) {
-      Object.defineProperty(this, key, descriptors[key]);
-    }
+    this.logger = createLogger(() => get(this.#name), options?.logger);
   }
 
   /**
