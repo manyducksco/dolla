@@ -1,12 +1,11 @@
-import { Context } from "../core/context.js";
-import { createLogger } from "../core/logger.js";
-import { Markup, MarkupType, type MarkupNode } from "../core/markup.js";
-import { DynamicNode } from "../core/nodes/dynamic.js";
-import { ViewNode } from "../core/nodes/view.js";
-import { atom, batch, combined, compose, untracked, type CombinedAtom } from "../core/signal.js";
 import { assertObject, isArray, isArrayOf, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { deepEqual, shallowEqual } from "../utils.js";
+import { Context } from "./context.js";
+import { createLogger } from "./logger.js";
+import { Markup, MarkupType, type MarkupNode } from "./markup.js";
+import { DynamicNode } from "./nodes/dynamic.js";
+import { ViewNode } from "./nodes/view.js";
 import {
   catchLinks,
   joinPath,
@@ -19,6 +18,7 @@ import {
   type ParsedRoute,
   type RouteMatch,
 } from "./router.utils.js";
+import { atom, batch, combined, compose, peek, type CombinedAtom } from "./signal.js";
 
 // ----- Types ----- //
 
@@ -122,6 +122,21 @@ export interface RouteLayer {
   view: View<{}>;
 }
 
+export interface RoutePreloadState {
+  // Info passed to preload functions
+}
+
+export type RoutePreloadFn = (state: RoutePreloadState) => Promise<void>;
+
+export interface RouteTransitionState {
+  // Info passed to transition functions
+}
+
+export interface RouteTransitions {
+  in?: (state: RouteTransitionState) => Promise<void>;
+  out?: (state: RouteTransitionState) => Promise<void>;
+}
+
 /**
  * An active route layer whose markup has been initialized into a view.
  */
@@ -172,9 +187,9 @@ export interface RouterOptions {
 // ----- Code ----- //
 
 export const ROUTER = Symbol("Router");
-export const MOUNT = Symbol();
-export const UNMOUNT = Symbol();
 export const ROOT_VIEW = Symbol();
+
+export type RouterAPI = ReturnType<Router["api"]>;
 
 export class Router {
   #logger = createLogger("dolla.router");
@@ -241,8 +256,16 @@ export class Router {
    */
   readonly query = compose(() => this.#match.get()?.query ?? {}, { equals: shallowEqual });
 
-  constructor(options: RouterOptions) {
+  constructor(context: Context, options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
+
+    const slot = combined(atom<MarkupNode>());
+    this.#rootLayer = {
+      id: this.#nextLayerId++,
+      node: new DynamicNode(context, slot),
+      context,
+      slot,
+    };
 
     if (options.hash) {
       this.#hash = true;
@@ -262,15 +285,7 @@ export class Router {
     assertValidRedirects(this.#routes);
   }
 
-  async [MOUNT](parent: Element, context: Context): Promise<MarkupNode> {
-    const slot = combined(atom<MarkupNode>());
-    this.#rootLayer = {
-      id: this.#nextLayerId++,
-      node: new DynamicNode(context, slot),
-      context,
-      slot,
-    };
-
+  async mount(parent: Element): Promise<void> {
     // Listen for popstate events and update route accordingly.
     const onPopState = () => this.#updateRoute();
     window.addEventListener("popstate", onPopState);
@@ -296,14 +311,16 @@ export class Router {
     // Mount initial route.
     await this.#updateRoute();
 
-    return this.#rootLayer.node;
+    this.#rootLayer.node.mount(parent);
   }
 
-  async [UNMOUNT]() {
+  unmount() {
     for (const callback of this.#cleanup) {
       callback();
     }
     this.#cleanup.length = 0;
+
+    this.#rootLayer.node.unmount(false);
   }
 
   /**
@@ -349,8 +366,8 @@ export class Router {
    * Updates query params, keeping existing ones and applying new ones. Removes the query param if value is set to `null`.
    */
   updateQuery(values: Record<string, Stringable | null>) {
-    const match = untracked(this.#match)!;
-    const query = { ...untracked(this.query) };
+    const match = peek(this.#match)!;
+    const query = { ...peek(this.query) };
 
     for (const key in values) {
       const value = values[key];
@@ -371,6 +388,20 @@ export class Router {
     this.#match.set({ ...match, query });
 
     window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
+  }
+
+  api() {
+    return {
+      match: this.match,
+      pattern: this.pattern,
+      path: this.path,
+      params: this.params,
+      query: this.query,
+      updateQuery: this.updateQuery.bind(this),
+      back: this.back.bind(this),
+      forward: this.forward.bind(this),
+      go: this.go.bind(this),
+    };
   }
 
   #push(href: string, options: NavigateOptions) {
@@ -437,10 +468,10 @@ export class Router {
     let queryParts: string[] = [];
 
     if (options.preserveQuery === true) {
-      query = Object.assign({}, untracked(this.query), match.query);
+      query = Object.assign({}, peek(this.query), match.query);
     } else if (isArray(options.preserveQuery)) {
       const preserved: Record<string, any> = {};
-      const current = untracked(this.query);
+      const current = peek(this.query);
       for (const key in current) {
         if (options.preserveQuery.includes(key)) {
           preserved[key] = current[key];
@@ -463,7 +494,7 @@ export class Router {
     // Run in batch so all new layers are mounted simultaneously with match signal change.
     // This avoids the old route effects receiving new signal values just before they unmount.
     batch(() => {
-      const oldPattern = untracked(this.pattern);
+      const oldPattern = peek(this.pattern);
 
       this.#match.set({ ...match, query });
 

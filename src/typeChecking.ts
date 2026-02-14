@@ -230,7 +230,7 @@ export function assertInstanceOf<T extends Function>(...args: unknown[]) {
 /**
  * Returns true if `value` is a plain JavaScript object.
  */
-export function isObject(value: unknown): value is Record<string | number | symbol, unknown> {
+export function isObject<T = Record<string | number | symbol, unknown>>(value: unknown): value is T {
   return value != null && typeof value === "object" && !isArray(value);
 }
 

@@ -2,7 +2,7 @@ import { isString } from "../typeChecking.js";
 import type { Env } from "../types.js";
 import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
 import { getEnv } from "./env.js";
-import { get, untracked, type MaybeGetter } from "./signal.js";
+import { get, peek, type Gettable } from "./signal.js";
 
 export interface LogLevels {
   info: boolean | Env;
@@ -65,11 +65,11 @@ export function onLoggerCrash(listener: (context: LoggerCrashProps) => void) {
   };
 }
 
-export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions): Logger {
+export function createLogger(name: Gettable<string>, options?: LoggerOptions): Logger {
   const _console = options?.console ?? _getDefaultConsole();
 
   const bind = (method: keyof LogLevels) => {
-    let _name = untracked(name);
+    let _name = peek(name);
     if (levels[method] === false || (isString(levels[method]) && levels[method] !== getEnv()) || !match(_name)) {
       return noOp;
     } else {

@@ -1,38 +1,57 @@
-import { createRouter } from "../router";
-import { MOUNT, ROUTER, Router, RouterOptions, UNMOUNT } from "../router/router";
-import { typeOf } from "../typeChecking";
+import { isFunction, isObject, typeOf } from "../typeChecking";
 import { View } from "../types";
 import { Context, LifecycleEvent } from "./context";
+import { I18N, I18n, I18nOptions } from "./i18n";
 import { LoggerCrashProps, onLoggerCrash } from "./logger";
-import { MarkupNode } from "./markup";
 import { ViewNode } from "./nodes/view";
+import { Route, ROUTER, Router, RouterOptions } from "./router";
 import { DefaultCrashView } from "./views/default-crash-view";
 import { Fragment } from "./views/fragment";
 
-interface AppOptions {
+export interface DollaOptions extends Partial<RouterOptions> {
   view?: View<{}>;
-  router?: Router;
-  context?: Context;
+  i18n?: I18nOptions;
+}
+
+export interface DollaOptionsWithView extends DollaOptions {
+  view: View<{}>;
+}
+
+export interface DollaOptionsWithRoutes extends DollaOptions {
+  routes: Route[];
 }
 
 class App {
-  #root!: MarkupNode;
   #context: Context;
-  #view: View<{}>;
-  #router?: Router;
   #mounted = false;
   #crashView: View<LoggerCrashProps> = DefaultCrashView;
 
   #cleanup: (() => void)[] = [];
 
-  get context() {
-    return this.#context;
-  }
+  #router: Router;
+  #i18n: I18n;
 
-  constructor(options: AppOptions) {
-    this.#view = options.view ?? Fragment;
-    this.#router = options.router;
-    this.#context = options.context ?? new Context("App");
+  readonly router;
+  readonly i18n;
+
+  constructor(options: DollaOptions) {
+    this.#context = new Context("App");
+
+    this.#router = new Router(this.#context, {
+      hash: options.hash ?? false,
+      routes: options.routes ?? [{ path: "*", view: options.view ?? Fragment }],
+    });
+    this.#i18n = new I18n({
+      locale: options.i18n?.locale ?? "auto",
+      translations: options.i18n?.translations ?? [],
+      ...options.i18n,
+    });
+
+    this.router = this.#router.api();
+    this.i18n = this.#i18n.api();
+
+    this.#context.setState(ROUTER, this.router);
+    this.#context.setState(I18N, this.i18n);
   }
 
   setCrashView(view: View<LoggerCrashProps>) {
@@ -56,13 +75,9 @@ class App {
 
     Context.emit(this.#context, LifecycleEvent.WILL_MOUNT);
 
-    if (this.#router) {
-      this.#root = await this.#router[MOUNT](parentElement, this.#context);
-      this.#context.setState(ROUTER, this.#router);
-    } else {
-      this.#root = new ViewNode(this.#context, this.#view, {});
-    }
-    this.#root.mount(parentElement);
+    await this.#i18n.mount();
+    await this.#router.mount(parentElement);
+
     this.#mounted = true;
 
     Context.emit(this.#context, LifecycleEvent.DID_MOUNT);
@@ -74,10 +89,8 @@ class App {
     Context.emit(this.#context, LifecycleEvent.WILL_UNMOUNT);
     this.#mounted = false;
 
-    this.#root.unmount(false);
-    if (this.#router) {
-      await this.#router[UNMOUNT]();
-    }
+    this.#router.unmount();
+    this.#i18n.unmount();
 
     for (const callback of this.#cleanup) {
       callback();
@@ -102,20 +115,29 @@ class App {
   }
 }
 
-export interface CreateAppOptions {
-  context?: Context;
-}
+export function dolla(view: View<{}>): App;
+export function dolla(options: DollaOptionsWithView): App;
+export function dolla(options: DollaOptionsWithRoutes): App;
 
-export function dolla(view: View<{}>, options?: CreateAppOptions): App;
-export function dolla(routerOptions: RouterOptions, options?: CreateAppOptions): App;
-export function dolla(router: Router, options?: CreateAppOptions): App;
-
-export function dolla(entry: View<{}> | RouterOptions | Router, options?: CreateAppOptions) {
-  if (entry instanceof Router) {
-    return new App({ ...options, router: entry });
-  } else if (typeOf(entry) === "object") {
-    return new App({ ...options, router: createRouter(entry as RouterOptions) });
+export function dolla(init: View<{}> | DollaOptionsWithView | DollaOptionsWithRoutes) {
+  if (isFunction<View<{}>>(init)) {
+    return new App({ view: init });
+  } else if (isObject<DollaOptions>(init)) {
+    return new App(init);
   } else {
-    return new App({ ...options, view: entry as View<{}> });
+    throw new Error(`Expected a view function or options object. Got: ${typeOf(init)}`);
   }
 }
+
+const app = dolla({
+  routes: [
+    {
+      path: "*",
+      view: () => {
+        return "hello";
+      },
+    },
+  ],
+});
+
+app.mount(document.body);

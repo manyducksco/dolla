@@ -2,15 +2,7 @@ import { isFunction, typeOf } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
-import {
-  effect,
-  type EffectFn,
-  get,
-  type MaybeGetter,
-  setCurrentContext,
-  type UnsubscribeFn,
-  untracked,
-} from "./signal";
+import { effect, type EffectFn, get, type MaybeGetter, setCurrentContext, type UnsubscribeFn, peek } from "./signal";
 
 export enum LifecycleEvent {
   WILL_MOUNT = "willMount",
@@ -232,7 +224,7 @@ export class Context implements Logger {
 
   constructor(name: MaybeGetter<string>, options?: ContextOptions) {
     this.#name = name;
-    this[NAME] = untracked(name);
+    this[NAME] = peek(name);
     this.logger = createLogger(() => get(this.#name), options?.logger);
   }
 
@@ -240,7 +232,7 @@ export class Context implements Logger {
    * Returns the current name of this context.
    */
   getName(): string {
-    return untracked(this.#name);
+    return peek(this.#name);
   }
 
   /**
@@ -248,7 +240,7 @@ export class Context implements Logger {
    */
   setName(name: MaybeGetter<string>) {
     this.#name = name;
-    this[NAME] = untracked(name); // Try to store name as a readable string for debugging purposes.
+    this[NAME] = peek(name); // Try to store name as a readable string for debugging purposes.
   }
 
   /**

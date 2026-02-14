@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { batch, effect, get, type Getter, compose, untracked, atom } from "./signal";
+import { batch, effect, get, type Getter, compose, peek, atom } from "./signal";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = atom(5);
@@ -49,7 +49,7 @@ test("untracked callback is not tracked", () => {
   const [a, setA] = atom(5);
   const [b, setB] = atom(10);
 
-  const multiplied = compose(() => a() * untracked(b));
+  const multiplied = compose(() => a() * peek(b));
 
   expect(multiplied()).toBe(50);
 

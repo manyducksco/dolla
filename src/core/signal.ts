@@ -1,4 +1,4 @@
-import type { Link, ReactiveFlags, ReactiveNode } from "alien-signals";
+import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
 import { isFunction, isObject, typeOf } from "../typeChecking";
 import { strictEqual } from "../utils";
@@ -298,13 +298,13 @@ export interface SignalOptions<T> {
 /* -------------- PUBLIC API --------------- */
 
 /**
- * Creates a new atom, returns a getter and setter.
+ * Creates a new atom, and returns a getter and setter.
  *
  * @example
  * const [count, setCount] = atom(0);
  *
- * count(); // get
- * setCount(5); // set
+ * count(); // get value
+ * setCount(5); // set value
  */
 export function atom<T>(value: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
 
@@ -323,6 +323,22 @@ export function atom<T>(value?: T, options?: SignalOptions<T>): [Getter<T>, Sett
   };
 
   return [_getter.bind(v) as Getter<T>, _setter.bind(v) as Setter<T>];
+}
+
+/**
+ * Returns a single object with a `get` and `set` method from an Atom's getter and setter array.
+ *
+ * @example
+ * const count = combined(atom(0));
+ *
+ * count.get(); // get value
+ * count.set(12); // set value
+ */
+export function combined<T>(accessors: [Getter<T>, Setter<T>]): CombinedAtom<T> {
+  return {
+    get: accessors[0],
+    set: accessors[1],
+  };
 }
 
 export interface ComposeOptions<T> extends SignalOptions<T> {
@@ -351,28 +367,12 @@ export function compose<T>(compute: (previousValue?: T) => Gettable<T>, options?
     getter: function (this: ComputedGetterState<any>) {
       if (options?.deps) {
         for (let dep of options.deps) get(dep);
-        return get(untracked(() => compute(this.value)));
+        return get(peek(() => compute(this.value)));
       }
       return get(compute(this.value));
     },
     equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-  }) as () => T;
-}
-
-/**
- * Returns a single object with a `get` and `set` method from an Atom's getter and setter array.
- *
- * @example
- * const count = combined(atom(0));
- *
- * count.get(); // get value
- * count.set(12); // set value
- */
-export function combined<T>(accessors: [Getter<T>, Setter<T>]): CombinedAtom<T> {
-  return {
-    get: accessors[0],
-    set: accessors[1],
-  };
+  }) as Getter<T>;
 }
 
 /**
@@ -382,17 +382,6 @@ export function batch(fn: () => void): void {
   ++batchDepth;
   fn();
   if (!--batchDepth) flush();
-}
-
-/**
- * Call a Signal function without tracking its value.
- */
-export function untracked<T>(value: Gettable<T>): T {
-  let result: T;
-  const pausedSub = setCurrentSub(undefined);
-  result = get(value);
-  setCurrentSub(pausedSub);
-  return result;
 }
 
 /**
@@ -411,6 +400,76 @@ export function get<T>(value: Gettable<T>): T {
 
   // Otherwise return value as-is
   return value as T;
+}
+
+/**
+ * Gets a signal value without tracking the signal.
+ */
+export function peek<T>(value: Gettable<T>): T {
+  let result: T;
+  const pausedSub = setCurrentSub(undefined);
+  result = get(value);
+  setCurrentSub(pausedSub);
+  return result;
+}
+
+export interface NextValueOptions<T> {
+  /**
+   * Called each time a new value is received.
+   * If `filter` returns false, we keep waiting. If `filter` returns true, that value is resolved.
+   */
+  filter?: (value: T) => boolean;
+
+  /**
+   * An optional AbortSignal that can be used to cancel waiting.
+   * When aborted, the promise will reject with an AbortError which you can catch and handle.
+   */
+  signal?: AbortSignal; // AbortSignal to cancel waiting
+}
+
+/**
+ * Waits for the next value of `target`. Returns a promise that resolves to the new value.
+ */
+export function nextValue<T>(target: CombinedAtom<T> | Getter<T>, options?: NextValueOptions<T>): Promise<T> {
+  if (!isGettable<T>(target)) {
+    throw new Error(`Target must be a Getter function or CombinedAtom. Got: ${typeOf(target)}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    let initial = true;
+    const unsubscribe = effect(() => {
+      const value = get(target);
+
+      // Skip the immediate invocation; waiting for next.
+      if (initial) {
+        initial = false;
+        return;
+      }
+
+      // If filter exists and returns false, we continue waiting.
+      if (options?.filter && !options.filter(value)) {
+        return;
+      }
+
+      unsubscribe();
+      resolve(value);
+    });
+
+    if (options?.signal) {
+      const onAbort = () => {
+        unsubscribe();
+        reject(new AbortError());
+        options.signal?.removeEventListener("abort", onAbort);
+      };
+      options.signal.addEventListener("abort", onAbort);
+    }
+  });
+}
+
+export class AbortError extends Error {
+  constructor() {
+    super("Aborted by AbortController");
+  }
 }
 
 /**

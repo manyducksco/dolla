@@ -2,7 +2,7 @@
 export { dolla as createApp } from "./app.js";
 
 // Signals
-export { atom, batch, combined, compose, effect, get, untracked } from "./signal.js";
+export { atom, batch, combined, compose, effect, get, nextValue, peek as untracked } from "./signal.js";
 export type { Getter, MaybeGetter, Setter } from "./signal.js";
 
 // Hooks

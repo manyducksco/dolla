@@ -1,7 +1,9 @@
-import { createLogger, type Logger } from "../core/logger.js";
-import { compose, get, atom, type Getter, type MaybeGetter, type Setter, combined } from "../core/signal.js";
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
+import { createLogger, type Logger } from "./logger.js";
+import { atom, combined, compose, get, type Gettable, type Getter } from "./signal.js";
+
+export const I18N = Symbol("I18N");
 
 // ----- Types ----- //
 
@@ -60,25 +62,27 @@ export interface TranslationConfig {
   path?: string;
 }
 
-export type I18nSetupOptions = {
+export type I18nOptions = {
   /**
    * Default locale to load on startup
    */
   locale?: string | null;
 
   translations: TranslationConfig[];
+
+  formatters?: Record<string, Formatter>;
 };
 
 export type TOptions = {
   /**
    *
    */
-  count?: MaybeGetter<number>;
+  count?: Gettable<number>;
 
   /**
    *
    */
-  context?: MaybeGetter<string>;
+  context?: Gettable<string>;
 
   /**
    * Override formats specified in the template with the ones in the array for each named variable.
@@ -91,12 +95,18 @@ export type TOptions = {
    *   }
    * });
    */
-  formatOverrides?: MaybeGetter<Record<string, Record<string, Format[]>>>;
+  formatOverrides?: Gettable<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: MaybeGetter<any>;
+  [value: string]: Gettable<any>;
 };
 
-export type Formatter = (locale: string, value: unknown, options: Record<string, any>) => string;
+export type Formatter = (locale: string, value: any, options: Record<string, any>) => string;
+
+type BuiltInFormatters = {
+  number: [number | bigint, Intl.NumberFormatOptions?];
+  datetime: [Date, Intl.DateTimeFormatOptions?];
+  list: [Iterable<string>, Intl.ListFormatOptions?];
+};
 
 // ----- Code ----- //
 
@@ -364,14 +374,16 @@ class Translation {
   }
 }
 
+export type I18nAPI = ReturnType<I18n["api"]>;
+
 /**
  * Dolla's I(nternationalizatio)n module. Manages language translations and locale-based formatting.
  */
-class I18n {
+export class I18n {
   #logger: Logger;
   #translations = new Map<string, Translation>();
   #cache: [key: string, values: Record<string, any> | undefined, output: string][] = [];
-  #formats = new Map<string, Formatter>();
+  #formatters = new Map<string, Formatter>();
 
   #initialLocale = "auto";
 
@@ -381,36 +393,19 @@ class I18n {
     return this.#locale.get;
   }
 
-  constructor() {
-    this.#logger = createLogger("dolla.i18n");
-
-    this.addFormat("number", (_, value, options) => {
-      return this.#formatNumber(Number(value), options);
-    });
-    this.addFormat("datetime", (_, value, options) => {
-      return this.#formatDateTime(value as any, options);
-    });
-    this.addFormat("list", (_, value, options) => {
-      return this.#formatList(value as any, options);
-    });
-  }
-
   get locales() {
     return [...this.#translations.keys()];
   }
 
-  async setup(options: I18nSetupOptions) {
+  constructor(options: I18nOptions) {
+    this.#logger = createLogger("dolla.i18n");
+
     // Convert languages into Language instances.
     options.translations.forEach((entry) => {
       this.#translations.set(entry.locale, new Translation(entry));
     });
 
-    // Check that initialLanguage is actually registered.
     if (options.locale && options.locale !== "auto") {
-      const isRegistered = options.translations.some((entry) => entry.locale === options.locale);
-      if (!isRegistered) {
-        throw new Error(`Initial locale '${options.locale}' is not registered in the locales array.`);
-      }
       this.#initialLocale = options.locale;
     }
 
@@ -418,9 +413,31 @@ class I18n {
       `${this.#translations.size} language${this.#translations.size === 1 ? "" : "s"} supported: '${[...this.#translations.keys()].join("', '")}'`,
     );
 
+    this.#formatters.set("number", (locale, value, options) => {
+      return new Intl.NumberFormat(locale, options).format(value);
+    });
+    this.#formatters.set("datetime", (locale, value, options) => {
+      return new Intl.DateTimeFormat(locale, options).format(value);
+    });
+    this.#formatters.set("list", (locale, value, options) => {
+      return new Intl.ListFormat(locale, options).format(value);
+    });
+
+    if (options.formatters) {
+      for (const key in options.formatters) {
+        this.#formatters.set(key, options.formatters[key]);
+      }
+    }
+  }
+
+  async mount() {
     if (this.#translations.size > 0) {
       await this.setLocale(this.#initialLocale);
     }
+  }
+
+  unmount() {
+    // TODO: do any necessary cleanup
   }
 
   async setLocale(name: string) {
@@ -493,12 +510,6 @@ class I18n {
    * const $value = t("your.key.here", { count: 5 });
    */
   t(selector: string, options?: TOptions): Getter<string> {
-    if (this === undefined) {
-      throw new Error(
-        `The 't' function cannot be destructured. If you need a standalone version you can import it like so: 'import { t } from "@manyducks.co/dolla"'`,
-      );
-    }
-
     return compose(() => {
       const values: Record<string, any> = {};
 
@@ -509,6 +520,31 @@ class I18n {
 
       return this.#getValue(this.locale(), selector, values);
     });
+  }
+
+  format<K extends keyof BuiltInFormatters, V extends BuiltInFormatters[K][0], O extends BuiltInFormatters[K][1]>(
+    name: K,
+    value: Gettable<V>,
+    options?: O,
+  ): Getter<string>;
+
+  format<V, O>(name: string, value: Gettable<V>, options?: O): Getter<string>;
+
+  format(name: string, value: any, options?: Record<string, any>): Getter<string> {
+    const callback = this.#formatters.get(name);
+    if (!callback) {
+      throw new Error(`Unknown format: ${name}`);
+    }
+
+    return compose(() => callback(get(this.locale), get(value), options ?? {}));
+  }
+
+  api() {
+    return {
+      t: this.t.bind(this),
+      setLocale: this.setLocale.bind(this),
+      format: this.format.bind(this),
+    };
   }
 
   #getValue(locale: string, selector: string, options: Record<string, any>): string {
@@ -558,7 +594,7 @@ class I18n {
         }
 
         for (const format of formats) {
-          const fn = this.#formats.get(format.name);
+          const fn = this.#formatters.get(format.name);
           if (fn == null) {
             const error = new Error(
               `Failed to load format '${format.name}' when processing '${selector}', template: ${template}`,
@@ -575,89 +611,6 @@ class I18n {
 
     return output;
   }
-
-  /**
-   * Add a custom format callback.
-   *
-   * @example
-   * Dolla.i18n.addFormat("uppercase", (locale, value, options) => {
-   *   return value.toUpperCase();
-   * });
-   *
-   * {
-   *   "greeting": "Hello, {{name|uppercase}}!"
-   * }
-   *
-   * t("greeting", {name: "world"}); // State<"Hello, WORLD!">
-   */
-  addFormat(name: string, callback: (locale: string, value: unknown, options: Record<string, any>) => string) {
-    this.#formats.set(name, callback);
-  }
-
-  /**
-   * Creates an `Intl.Collator` configured for the current locale.
-   * NOTE: The locale is tracked if called within a signal tracking context.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator/Collator#options
-   */
-  collator(options?: Intl.CollatorOptions) {
-    return new Intl.Collator(this.locale(), options);
-  }
-
-  /**
-   * Formats a number for the current locale. Uses `Intl.NumberFormat` under the hood.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/NumberFormat#options
-   */
-  number(count: MaybeGetter<number | bigint>, options?: Intl.NumberFormatOptions): Getter<string> {
-    return compose(() => this.#formatNumber(get(count), options));
-  }
-
-  #formatNumber(count: number | bigint, options?: Intl.NumberFormatOptions): string {
-    // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.NumberFormat(this.locale(), options).format(count);
-  }
-
-  /**
-   * Formats a date for the current locale. Uses `Intl.DateTimeFormat` under the hood.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat#options
-   *
-   * @example
-   * const date = new Date();
-   * const $formatted = Dolla.i18n.dateTime(date, { dateFormat: "short" });
-   */
-  dateTime(
-    date?: MaybeGetter<string | number | Date | undefined>,
-    options?: Intl.DateTimeFormatOptions,
-  ): Getter<string> {
-    return compose(() => this.#formatDateTime(get(date), options));
-  }
-
-  #formatDateTime(date?: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
-    // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.DateTimeFormat(this.locale(), options).format(isString(date) ? new Date(date) : date);
-  }
-
-  /**
-   * Formats a list for the current locale. Uses `Intl.ListFormat` under the hood.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/DateTimeFormat#options
-   *
-   * @example
-   * const list = new Date();
-   * const $formatted = Dolla.i18n.list(list, {  });
-   */
-  list(list: MaybeGetter<Iterable<string>>, options?: Intl.ListFormatOptions): Getter<string> {
-    return compose(() => this.#formatList(get(list), options));
-  }
-
-  #formatList(list: Iterable<string>, options?: Intl.ListFormatOptions): string {
-    // NOTE: Locale is tracked if called within a tracking context.
-    return new Intl.ListFormat(this.locale(), options).format(list);
-  }
-
-  // relativeTime(date?: MaybeSignal<string | number | Date | undefined>): Signal<string> {}
 
   #getCached(key: string, values?: Record<string, any>): string | undefined {
     for (const entry of this.#cache) {
@@ -686,6 +639,3 @@ function resolve(object: any, key: string) {
 
   return value;
 }
-
-export const i18n = new I18n();
-export const t = i18n.t.bind(i18n);

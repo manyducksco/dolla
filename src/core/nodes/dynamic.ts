@@ -1,7 +1,7 @@
 import { moveBefore, toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes } from "../markup.js";
-import { effect, get, type Gettable, type UnsubscribeFn, untracked } from "../signal.js";
+import { effect, get, peek, type Gettable, type UnsubscribeFn } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 /**
@@ -38,7 +38,7 @@ export class DynamicNode extends MarkupNode {
       this.unsubscribe = effect(() => {
         try {
           const content = get(this.slot);
-          untracked(() => {
+          peek(() => {
             this.update(toArray(content));
           });
         } catch (error) {

@@ -1,6 +1,8 @@
 import { type Context, type Logger, type Store } from "../core";
-import { LifecycleEventName } from "./context";
-import { type EffectFn, getCurrentContext, type Getter, type MaybeGetter, untracked } from "./signal";
+import { type LifecycleEventName } from "./context";
+import { I18N, type I18nAPI } from "./i18n";
+import { type RoutePreloadFn, ROUTER, type RouterAPI, type RouteTransitions } from "./router";
+import { type EffectFn, getCurrentContext, type Getter, type MaybeGetter, peek } from "./signal";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -78,9 +80,36 @@ export function $effect(fn: EffectFn, deps?: Getter<any>[]): void {
   if (deps) {
     $$context().effect(() => {
       for (const dep of deps) dep();
-      return untracked(fn);
+      return peek(fn);
     });
   } else {
     $$context().effect(fn);
   }
+}
+
+/*=============================*\
+||           Router            ||
+\*=============================*/
+
+export function $router() {
+  return $$context().getState<RouterAPI>(ROUTER);
+}
+
+export function $preload(fn: RoutePreloadFn) {
+  // Wait for `fn` to resolve before navigating to this route.
+  // No effect unless this view is mounted as a route.
+}
+
+export function $transition(config: RouteTransitions) {
+  // Starts after preload ends.
+  // TODO: On transition in; mount this route, but suspend previous route's unmount until controller.next() is called.
+  // TODO: On transition out; mount next route, but suspend this route's unmount until controller.next() is called.
+}
+
+/*=============================*\
+||            i18n             ||
+\*=============================*/
+
+export function $i18n() {
+  return $$context().getState<I18nAPI>(I18N);
 }

@@ -9,13 +9,14 @@ Dolla's router is built right in, and it's designed to be super intuitive but al
 First things first, you gotta create your router. You do this with the `createRouter` function. You give it a list of all the routes in your app. Then, instead of giving `createApp` your main component, you just give it the router you just made. Dolla handles the rest.
 
 ```jsx
-import { createApp } from "@manyducks.co/dolla";
-import { createRouter } from "@manyducks.co/dolla/router";
+import { dolla } from "@manyducks.co/dolla";
 import { HomePage, AboutPage, NotFoundPage } from "./views.js";
 
-const router = createRouter({
-  // Use hash routing if you don't have a fancy server setup
-  // hash: true,
+const app = dolla({
+  // Use `/#/hash` routing if you don't have a fancy server setup
+  hash: true,
+  
+  // Define your routes
   routes: [
     { path: "/", view: HomePage },
     { path: "/about", view: AboutPage },
@@ -23,7 +24,6 @@ const router = createRouter({
   ],
 });
 
-const app = createApp(router);
 app.mount(document.body);
 ```
 
@@ -49,7 +49,7 @@ Dolla uses **specificity-based matching**. That means the most specific route al
 Instead of a `view`, you can give a route a `redirect` property. This is perfect for old URLs or for sending users from `/` to `/dashboard`.
 
 ```jsx
-const router = createRouter({
+const app = dolla({
   routes: [
     { path: "/", redirect: "/dashboard" },
     { path: "/dashboard", view: DashboardPage },
@@ -70,7 +70,7 @@ The `beforeMatch` function gets a context object (`ctx`) where you can call `ctx
 ```jsx
 import { sessionStore } from "./stores"; // Pretend we have a global store
 
-const router = createRouter({
+const app = dolla({
   routes: [
     { path: "/login", view: LoginPage },
     {
@@ -93,7 +93,7 @@ const router = createRouter({
 You can also just stick a `data` object on any route. It's a chill way to attach extra info, like a page title or breadcrumbs. This data will show up in the `$match` signal from the router.
 
 ```jsx
-const router = createRouter({
+const app = dolla({
   routes: [
     {
       path: "/",
@@ -110,10 +110,10 @@ const router = createRouter({
 
 // In some other component...
 function DocumentTitle() {
-  const router = useRouter();
-  useEffect(() => {
+  const router = $router();
+  $effect(() => {
     // Grab the title from the matched route's data!
-    document.title = router.$match().data.title || "My App";
+    document.title = router.match().data.title || "My App";
   });
   return null; // This component doesn't render anything
 }
@@ -160,12 +160,11 @@ function MainLayout(props) {
 **2. Set up the Router to use the Layout:**
 
 ```jsx
-// router.js
-import { createRouter } from "@manyducks.co/dolla/router";
+import { dolla } from "@manyducks.co/dolla";
 import { MainLayout } from "./views/MainLayout.jsx";
 import { HomePage, AboutPage } from "./views.js";
 
-const router = createRouter({
+const app = dolla({
   routes: [
     {
       // This is our layout route
@@ -173,8 +172,8 @@ const router = createRouter({
       view: MainLayout,
       // These routes will be rendered inside MainLayout
       routes: [
-        { path: "/", view: HomePage },
-        { path: "/about", view: AboutPage },
+        { index: true, view: HomePage },
+        { path: "about", view: AboutPage },
       ],
     },
   ],
@@ -187,7 +186,7 @@ Now, when you go to `/` or `/about`, you'll see the `MainLayout` with either `Ho
 
 Sometimes you need to change the page from your code, like after a form submission. For that, you use the `useRouter` hook.
 
-### `useRouter()`
+### `$router()`
 
 This hook gives you the router instance, which has a bunch of useful methods and signals.
 
@@ -201,10 +200,10 @@ This hook gives you the router instance, which has a bunch of useful methods and
 <!-- end list -->
 
 ```jsx
-import { useRouter } from "@manyducks.co/dolla/router";
+import { $router } from "@manyducks.co/dolla";
 
 function SomeComponent() {
-  const router = useRouter();
+  const router = $router();
 
   const goToUser = () => {
     // This will go to /users/42 but won't add a new history entry
@@ -227,29 +226,27 @@ function SomeComponent() {
 
 ## Spying on the Route
 
-Your components often need to know what the current URL is, especially to get params like a user's ID. The `useRouter` hook gives you reactive signals for this too\!
+Your components often need to know what the current URL is, especially to get params like a user's ID. The `$router` hook gives you reactive signals for this too\!
 
-- `$match`: A signal with the whole match object, including path, params, query, and any `data` you added to the route.
-- `$path`: A signal with the current path (e.g., `/users/123`).
-- `$params`: A signal with an object of the dynamic parts of the URL (e.g., `{ id: 123 }`).
-- `$query`: A signal with an object of the query params (e.g., `?sort=asc` becomes `{ sort: 'asc' }`).
-- `$pattern`: A signal with the full route pattern that was matched (e.g., `/users/{#id}`). If you're in a nested route, this will be the full joined path, like `/users/{#id}/posts`.
+- `match`: A getter with the whole match object, including path, params, query, and any `data` you added to the route.
+- `path`: A getter with the current path (e.g., `/users/123`).
+- `params`: A getter with an object of the dynamic parts of the URL (e.g., `{ id: 123 }`).
+- `query`: A getter with an object of the query params (e.g., `?sort=asc` becomes `{ sort: 'asc' }`).
+- `pattern`: A getter with the full route pattern that was matched (e.g., `/users/{#id}`). If you're in a nested route, this will be the full joined path, like `/users/{#id}/posts`.
 
 <!-- end list -->
 
 ```jsx
-import { useRouter } from "@manyducks.co/dolla/router";
-import { useEffect, useSignal } from "@manyducks.co/dolla";
+import { $router, $effect, atom } from "@manyducks.co/dolla";
 
 function UserProfilePage() {
-  const router = useRouter();
-  const { $params } = router;
-  const [$user, setUser] = useSignal(null);
+  const { params } = $router();
+  const [user, setUser] = atom(null);
 
   // This effect will automatically re-run if the user ID in the URL changes!
-  useEffect(() => {
-    const userId = $params().id;
-    // You can't pass an async function directly to useEffect,
+  $effect(() => {
+    const userId = params().id;
+    // You can't pass an async function directly to $effect,
     // so we define one inside and call it.
     const fetchUser = async () => {
       const data = await fetch(`/api/users/${userId}`).then((res) => res.json());
@@ -264,8 +261,8 @@ function UserProfilePage() {
   return (
     <div>
       <h1>User Profile</h1>
-      <Show when={$user}>
-        <p>Name: {() => $user().name}</p>
+      <Show when={user}>
+        <p>Name: {() => user().name}</p>
       </Show>
     </div>
   );

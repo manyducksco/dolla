@@ -9,7 +9,7 @@ import {
   effect,
   get,
   Gettable,
-  untracked,
+  peek,
   type CombinedAtom,
   type Getter,
   type UnsubscribeFn,
@@ -77,7 +77,7 @@ export class RepeatNode<T> extends MarkupNode {
           this.context.warn("repeat() received empty value for items", value);
         }
 
-        untracked(() => {
+        peek(() => {
           this._update(Array.from(value));
         });
       });

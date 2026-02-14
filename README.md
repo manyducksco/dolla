@@ -12,8 +12,8 @@ Dolla is a JavaScript framework built around signals for reactive updates,
   - ✨ [**Mixins**](./docs/mixins.md) for augmenting DOM nodes without writing a whole new view.
 - 🪝 [**Hooks**](./docs/hooks.md) let your components actually cook. They're your familiar, React-style toolkit for state (`useSignal`), lifecycle (`useMount`), and more.
 - 🔀 A client-side [**router**](./docs/router.md) with nested routes and middleware for auth guards, preloading data or analytics.
-- 🐕 A convenient [**HTTP client**](./docs/http.md), also with middleware so adding auth headers to every request is easy.
 - 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translations into a JSON file and access them with the `t` function in your views.
+- 🐕 A convenient [**HTTP client**](./docs/http.md), also with middleware so adding auth headers to every request is easy.
 - 🍳 The build system is optional. You can [write JSX](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm).
 
 ## A Counter

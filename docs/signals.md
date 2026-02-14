@@ -2,6 +2,12 @@
 
 Wanna know how Dolla works? It's all about **Signals**. Fr, they're the most important thing to get. They're like little magic boxes that hold your data, and they're the reason Dolla is so fast and reactive without all the drama of other frameworks.
 
+Outline
+- Atoms
+- Composition
+- Effects
+- Utils (get, peek, batch)
+
 ## So, what even IS a Signal?
 
 A signal is just a little box that holds a value. That's it. But it's a special box.
@@ -18,15 +24,14 @@ This is why Dolla doesn't need a Virtual DOM. It doesn't have to guess what chan
 The main way you'll make a signal _inside a component_ is with the `useSignal` hook. It gives you back a pair of things in an array, just like React's `useState`.
 
 ```jsx
-import { signal } from "@manyducks.co/dolla";
+import { atom } from "@manyducks.co/dolla";
 
-const count = signal(0);
+const [count, setCount] = atom(0);
 
 count(); // call with no argument to get the current value
-count((current) => current + 1); // call with a function to update the value
-count(5); // call with a value to set
 
-
+setCount((current) => current + 1); // call with a function to update the value
+setCount(5); // call with a value to set
 ```
 
 - `$count`: This is the **getter**. It's a function that you call to get the signal's current value. We use a `$` at the start by convention to make signals easy to spot.
