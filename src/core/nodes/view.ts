@@ -1,20 +1,24 @@
-import type { View } from "../../types.js";
+import type { Renderable, View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
+import { ROUTER_PRELOAD_CONTROLLER } from "../router.js";
 import { setCurrentContext, untracked } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");
+export const VIEW_PRELOAD_CALLBACK = Symbol();
+export const VIEW_TRANSITIONS_CONFIG = Symbol();
 
 /**
  * Renders a View.
  */
 export class ViewNode<P> extends MarkupNode {
   readonly id = getUniqueId();
-  readonly props;
+  readonly props: P;
   readonly context: Context;
-  readonly view;
+  readonly view: View<P>;
+  readonly viewContent: Renderable;
 
   node?: MarkupNode;
 
@@ -34,6 +38,21 @@ export class ViewNode<P> extends MarkupNode {
     this.context.setState(VIEW, this);
     this.props = props;
     this.view = view;
+
+    // TODO: Handle $preload with router
+
+    const prevCtx = setCurrentContext(context);
+    try {
+      this.viewContent = view(props);
+    } catch (error) {
+      context.logger.error(error);
+      if (error instanceof Error) {
+        context.logger.crash(error as Error);
+      }
+      return;
+    } finally {
+      setCurrentContext(prevCtx);
+    }
   }
 
   getRoot() {
@@ -42,6 +61,37 @@ export class ViewNode<P> extends MarkupNode {
 
   isMounted() {
     return this.context.isMounted;
+  }
+
+  _routePreload(): Promise<void> {
+    // Callback should have been set via $preload hook.
+    const callback = this.context.getState(VIEW_PRELOAD_CALLBACK, { shallow: true });
+    if (!callback) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      console.log("PRELOAD CALLBACK FOUND");
+      resolve();
+    });
+  }
+
+  _routeTransitionIn(): Promise<void> {
+    const callback = this.context.getState<any>(VIEW_TRANSITIONS_CONFIG, { shallow: true })?.in;
+    if (!callback) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      console.log("TRANSITION IN FOUND");
+      resolve();
+    });
+  }
+
+  _routeTransitionOut(): Promise<void> {
+    const callback = this.context.getState<any>(VIEW_TRANSITIONS_CONFIG, { shallow: true })?.out;
+    if (!callback) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      console.log("TRANSITION OUT FOUND");
+      resolve();
+    });
   }
 
   mount(parent: Element, after?: Node) {
@@ -59,20 +109,24 @@ export class ViewNode<P> extends MarkupNode {
     // Routes are a suspense boundary of a sort where they don't unmount the previous view until the next leaves suspense.
 
     if (!wasMounted) {
-      const { context, props, view } = this;
-      try {
-        const prevCtx = setCurrentContext(context);
-        const result = view(props);
-        setCurrentContext(prevCtx);
-        if (result != null && result !== false) {
-          this.node = render(result, context);
-        }
-      } catch (error) {
-        context.logger.error(error);
-        if (error instanceof Error) {
-          context.logger.crash(error as Error);
-        }
-        return;
+      // const { context, props, view } = this;
+      // try {
+      //   const prevCtx = setCurrentContext(context);
+      //   const result = view(props);
+      //   setCurrentContext(prevCtx);
+      //   if (result != null && result !== false) {
+      //     this.node = render(result, context);
+      //   }
+      // } catch (error) {
+      //   context.logger.error(error);
+      //   if (error instanceof Error) {
+      //     context.logger.crash(error as Error);
+      //   }
+      //   return;
+      // }
+
+      if (this.viewContent != null && this.viewContent !== false) {
+        this.node = render(this.viewContent, this.context);
       }
 
       Context.emit(this.context, LifecycleEvent.WILL_MOUNT);

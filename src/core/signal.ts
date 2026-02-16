@@ -69,6 +69,7 @@ let notifyIndex = 0;
 let queuedEffectsLength = 0;
 let activeSub: ReactiveNode | undefined;
 let activeContext: Context | undefined;
+let trackedCount = 0;
 
 function setCurrentSub(sub: ReactiveNode | undefined) {
   const prevSub = activeSub;
@@ -88,6 +89,7 @@ export function setCurrentContext(context: Context | undefined) {
 
 function updateComputed(c: ComputedNode): boolean {
   const prevSub = setCurrentSub(c);
+  trackedCount = 0;
   startTracking(c);
   try {
     const oldValue = c.value;
@@ -97,12 +99,15 @@ function updateComputed(c: ComputedNode): boolean {
   } finally {
     setCurrentSub(prevSub);
     endTracking(c);
+
+    if (trackedCount === 0) {
+      // TODO: Warn that computed is not tracking anything.
+    }
   }
 }
 
 function updateSignal(s: ValueNode, value: any): boolean {
   s.flags = 1 satisfies ReactiveFlags.Mutable;
-  // return s.previousValue !== (s.previousValue = value);
   return !s.equals(s.previousValue, (s.previousValue = value));
 }
 
@@ -125,6 +130,7 @@ function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
     (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(e.deps!, e))
   ) {
     const prev = setCurrentSub(e);
+    trackedCount = 0;
     startTracking(e);
     try {
       if ("cleanup" in e && e.cleanup !== undefined) {
@@ -137,6 +143,10 @@ function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
     } finally {
       setCurrentSub(prev);
       endTracking(e);
+
+      if (trackedCount === 0) {
+        // TODO: Warn that effect is not tracking anything.
+      }
     }
     return;
   } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
@@ -225,24 +235,25 @@ export interface SignalOptions<T> {
 
 export interface Readable<T> {
   /**
-   * Returns the current value.
+   * Returns the stored value.
    */
   read(): T;
 
   /**
-   * Returns the current value and tracks this state as a dependency when called within a reactive context (like a `compose` or `$observe` callback).
+   * Returns the stored value. Tracks this value as a dependency of the function it's called in (like a `computed` or `$watch` callback).
+   * Tracking functions will be called again each time their dependencies change.
    */
   track(): T;
 }
 
 export interface Writable<T> extends Readable<T> {
   /**
-   * Sets the value and returns the updated value.
+   * Stores the new value and returns the updated value.
    */
   write(value: T): T;
 
   /**
-   * Calls `callback` with the current value and sets its result as the new value. Returns the updated value.
+   * Stores the return value of `callback` as the new value, and returns the updated value.
    */
   update(callback: (current: T) => T): T;
 }
@@ -262,11 +273,11 @@ class State<T> implements Writable<T> {
   }
 
   read(): T {
-    const signal = this.#node;
-    const value = signal.value;
-    if (signal.flags & (16 satisfies ReactiveFlags.Dirty)) {
-      if (updateSignal(signal, value)) {
-        const subs = signal.subs;
+    const node = this.#node;
+    const value = node.value;
+    if (node.flags & (16 satisfies ReactiveFlags.Dirty)) {
+      if (updateSignal(node, value)) {
+        const subs = node.subs;
         if (subs !== undefined) {
           shallowPropagate(subs);
         }
@@ -276,7 +287,8 @@ class State<T> implements Writable<T> {
   }
 
   track(): T {
-    warnIfOutsideTrackingScope();
+    assertInsideTrackingScope();
+    trackedCount++;
     const value = this.read();
     if (activeSub !== undefined) {
       link(this.#node, activeSub);
@@ -285,11 +297,11 @@ class State<T> implements Writable<T> {
   }
 
   write(value: T): T {
-    const v = this.#node;
-    if (!v.equals(v.value, value)) {
-      v.value = value;
-      v.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-      const subs = v.subs;
+    const node = this.#node;
+    if (!node.equals(node.value, value)) {
+      node.value = value;
+      node.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+      const subs = node.subs;
       if (subs !== undefined) {
         propagate(subs);
         if (!batchDepth) {
@@ -301,8 +313,7 @@ class State<T> implements Writable<T> {
   }
 
   update(fn: (current: T) => T): T {
-    const v = this.#node;
-    return this.write(fn(v.value));
+    return this.write(fn(this.#node.value));
   }
 }
 
@@ -345,8 +356,9 @@ export class Computed<T> implements Readable<T> {
   }
 
   track(): T {
+    assertInsideTrackingScope();
+    trackedCount++;
     const value = this.read();
-    warnIfOutsideTrackingScope();
     if (activeSub !== undefined) {
       link(this.#node, activeSub);
     }
@@ -385,7 +397,7 @@ class GetterReader<T> implements Readable<T> {
   }
 
   track(): T {
-    warnIfOutsideTrackingScope();
+    assertInsideTrackingScope();
     // Getter may contain trackable signals.
     return this.#getter();
   }
@@ -403,17 +415,15 @@ class StaticReader<T> implements Readable<T> {
   }
 
   track(): T {
-    warnIfOutsideTrackingScope();
+    assertInsideTrackingScope();
     // Static values don't change, so no tracking actually happens.
     return this.#value;
   }
 }
 
-function warnIfOutsideTrackingScope(
-  message = ".track() called outside of a tracking scope. You might want to .read() instead.",
-) {
+function assertInsideTrackingScope(message = "track() called outside of a tracking scope. Use read() instead.") {
   if (getEnv() === "development" && activeSub == undefined) {
-    console.trace(message);
+    throw new Error(message);
   }
 }
 
@@ -486,11 +496,12 @@ export function track<T>(value: Readable<T> | Getter<T> | T): T {
 }
 
 export function untracked<T>(callback: () => T): T {
-  let result: T;
   const pausedSub = setCurrentSub(undefined);
-  result = callback();
-  setCurrentSub(pausedSub);
-  return result;
+  try {
+    return callback();
+  } finally {
+    setCurrentSub(pausedSub);
+  }
 }
 
 export interface NextValueOptions<T> {
@@ -510,7 +521,7 @@ export interface NextValueOptions<T> {
 /**
  * Waits for the next value of `target`. Returns a promise that resolves to the new value.
  */
-export function nextValue<T>(target: Readable<T> | Getter<T>, options?: NextValueOptions<T>): Promise<T> {
+export function nextValue<T>(target: Trackable<T>, options?: NextValueOptions<T>): Promise<T> {
   if (!isGettable<T>(target)) {
     throw new Error(`Target must be a Getter function or Readable. Got: ${typeOf(target)}`);
   }

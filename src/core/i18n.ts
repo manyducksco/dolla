@@ -97,7 +97,7 @@ export type TOptions = {
    */
   formatOverrides?: MaybeReadable<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: MaybeReadable<any> | any;
+  [value: string]: MaybeReadable<any>;
 };
 
 export type Formatter = (locale: string, value: any, options: Record<string, any>) => string;

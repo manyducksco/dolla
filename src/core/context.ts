@@ -11,6 +11,7 @@ import {
   read,
   setCurrentContext,
   type UnsubscribeFn,
+  Readable,
 } from "./signal";
 
 export enum LifecycleEvent {
@@ -232,7 +233,7 @@ export class Context {
     context[LIFECYCLE].emit(event);
   }
 
-  constructor(name: MaybeReadable<string> | Getter<string>, options?: ContextOptions) {
+  constructor(name: Readable<string> | Getter<string> | string, options?: ContextOptions) {
     this.#name = name;
 
     // Wrapping the get in another getter in case this.#name changes to a different object between calls.
@@ -249,7 +250,7 @@ export class Context {
   /**
    * Sets a new name for this context.
    */
-  setName(name: MaybeReadable<string>) {
+  setName(name: Readable<string> | Getter<string> | string) {
     this.#name = name;
   }
 

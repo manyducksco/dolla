@@ -15,7 +15,7 @@ import { HomePage, AboutPage, NotFoundPage } from "./views.js";
 const app = dolla({
   // Use `/#/hash` routing if you don't have a fancy server setup
   hash: true,
-  
+
   // Define your routes
   routes: [
     { path: "/", view: HomePage },
@@ -114,10 +114,10 @@ const app = dolla({
 
 // In some other component...
 function DocumentTitle() {
-  const { match } = $router();
-  $effect(() => {
-    // Grab the title from the matched route's data!
-    document.title = match.track().data.title || "My App";
+  const { data } = $route();
+  $watch(() => {
+    // Grab the data from the current route!
+    document.title = data.track().title || "My App";
   });
   return null; // This component doesn't render anything
 }

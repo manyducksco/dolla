@@ -1,16 +1,16 @@
 import type { Renderable } from "../../types.js";
-import { deepEqual } from "../../utils.js";
+import { deepEqual, moveBefore } from "../../utils.js";
 import type { Context } from "../context.js";
 import { $name } from "../hooks.js";
 import {
   batch,
-  watch,
   state,
   toReadable,
+  untracked,
+  watch,
   type Readable,
   type UnsubscribeFn,
   type Writable,
-  untracked,
 } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
@@ -179,6 +179,7 @@ export class RepeatNode<T> extends MarkupNode {
       }
     }
 
+    // Update connectedItems map.
     this.connectedItems.clear();
     for (const item of newItems) {
       this.connectedItems.set(item.key, item);
@@ -186,7 +187,10 @@ export class RepeatNode<T> extends MarkupNode {
 
     // Move marker node to end.
     const lastItem = newItems.at(-1)?.node.getRoot() ?? this.root;
-    this.root.parentNode?.insertBefore(this.root, lastItem.nextSibling);
+
+    if (this.root.parentNode) {
+      moveBefore(this.root.parentNode, this.root!, lastItem.nextSibling);
+    }
   }
 }
 

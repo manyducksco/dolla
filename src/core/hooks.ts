@@ -3,7 +3,7 @@ import { type Context, type LifecycleEventName } from "./context";
 import { I18N, type I18n } from "./i18n";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
 import { type RoutePreloadFn, ROUTER, type RouterAPI, type RouteTransitions } from "./router";
-import { type WatchCallback, getCurrentContext, type MaybeReadable } from "./signal";
+import { type WatchCallback, getCurrentContext, type MaybeReadable, type Readable, type Getter } from "./signal";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -19,19 +19,19 @@ export function $$context(): Context {
 /**
  * Sets the component name for logging purposes.
  */
-export function $name(name: MaybeReadable<string>): void {
+export function $name(name: Readable<string> | Getter<string> | string): void {
   $$context().setName(name);
 }
 
 export interface DebugHook {
-  (name?: MaybeReadable<string>): Logger;
+  (name?: Readable<string> | Getter<string> | string): Logger;
 
   level: LogLevel;
   filter: string | RegExp | ((value: string) => boolean);
 }
 
 function createDebugHook(): DebugHook {
-  function $debug(name?: string) {
+  function $debug(name?: Readable<string> | Getter<string> | string) {
     const context = $$context();
     if (name) context.setName(name);
     return context.logger;
@@ -117,12 +117,23 @@ export function $watch(callback: WatchCallback): void {
 ||           Router            ||
 \*=============================*/
 
-export function $router() {
-  return $$context().getState<RouterAPI>(ROUTER);
+export function $navigate() {
+  return $$context().getState<RouterAPI>(ROUTER).navigate;
 }
 
-export function $preload(fn: RoutePreloadFn) {
-  // Wait for `fn` to resolve before navigating to this route.
+export function $route() {
+  const router = $$context().getState<RouterAPI>(ROUTER);
+  return {
+    pattern: router.pattern,
+    path: router.path,
+    params: router.params,
+    query: router.query,
+    data: router.data,
+  };
+}
+
+export function $preload(loader: RoutePreloadFn) {
+  // Wait for `loader` to resolve before navigating to this route.
   // No effect unless this view is mounted as a route.
 }
 

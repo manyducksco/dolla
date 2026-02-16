@@ -1,5 +1,5 @@
 import { isFunction, isNumber, isObject, isString } from "../../typeChecking.js";
-import { getIntegerId, omit, toArray, toCamelCase } from "../../utils.js";
+import { getIntegerId, moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
@@ -121,10 +121,8 @@ export class ElementNode extends MarkupNode {
       }
     }
 
-    if (this.root.parentNode === parent && "moveBefore" in parent) {
-      (parent as any).moveBefore(this.root!, after?.nextSibling ?? null);
-    } else {
-      parent.insertBefore(this.root!, after?.nextSibling ?? null);
+    if (this.root.parentNode === parent) {
+      moveBefore(this.root.parentNode, this.root!, after?.nextSibling ?? null);
     }
 
     this.canClickAway = true;

@@ -1,4 +1,4 @@
-import { assertObject, isArray, isArrayOf, isFunction, isObject, isString } from "../typeChecking.js";
+import { assertObject, isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { deepEqual, shallowEqual } from "../utils.js";
 import { Context } from "./context.js";
@@ -187,18 +187,10 @@ export interface RouterOptions {
 // ----- Code ----- //
 
 export const ROUTER = Symbol("Router");
+export const ROUTER_PRELOAD_CONTROLLER = Symbol("RouterPreloadController");
+export const ROUTER_TRANSITIONS_CONTROLLER = Symbol("RouterTransitionsController");
 
 export type RouterAPI = ReturnType<Router["api"]>;
-
-// export function createRouter(context: Context, options: RouterOptions) {
-//   const logger = createLogger("dolla.router");
-
-//   let nextLayerId = 0;
-//   let activeLayers: ActiveLayer[] = [];
-//   let routes: ParsedRoute<RouteMeta>[] = [];
-
-//   const match = state<RouteMatch>();
-// }
 
 export class Router {
   #logger = createLogger("dolla.router");
@@ -308,7 +300,7 @@ export class Router {
         const href = anchor.getAttribute("href")!;
         const preserveQuery = anchor.getAttribute("data-router-preserve-query");
 
-        this.go(href, {
+        this.navigate(href, {
           preserveQuery: parsePreserveQueryAttribute(preserveQuery),
         });
       }),
@@ -333,33 +325,40 @@ export class Router {
   }
 
   /**
-   * Navigate backward. Pass a number of steps to hit the back button that many times.
-   */
-  back(steps = 1) {
-    window.history.go(-steps);
-  }
-
-  /**
-   * Navigate forward. Pass a number of steps to hit the forward button that many times.
-   */
-  forward(steps = 1) {
-    window.history.go(steps);
-  }
-
-  /**
-   * Navigates to another route.
+   * Navigates to another path.
    *
    * @example
-   * router.go("/login"); // navigate to `/login`
-   * router.go["/users", 215], { replace: true }); // replace current history entry with `/users/215`
+   * navigate("/products/123"); // navigate to `/products/123`
+   * navigate("/users/215", { replace: true }); // replace current history entry with `/users/215`
    */
-  go(path: Stringable | Stringable[], options: NavigateOptions = {}) {
+  navigate(path: string, options?: NavigateOptions): void;
+
+  /**
+   * Navigates to another path.
+   *
+   * @example
+   * navigate(["/products", 123]); // navigate to `/products/123`
+   * navigate(["/users", 215], { replace: true }); // replace current history entry with `/users/215`
+   */
+  navigate(segments: Stringable[], options?: NavigateOptions): void;
+
+  /**
+   * Navigate through the history by index. Pass a negative number to go back or a positive number to go forward.
+   */
+  navigate(delta: number): void;
+
+  navigate(target: Stringable | Stringable[] | number, options: NavigateOptions = {}) {
+    if (isNumber(target)) {
+      window.history.go(target);
+      return;
+    }
+
     let joined: string;
 
-    if (Array.isArray(path)) {
-      joined = joinPath(path);
+    if (Array.isArray(target)) {
+      joined = joinPath(target);
     } else {
-      joined = path.toString();
+      joined = target.toString();
     }
 
     joined = resolvePath(window.location.pathname, joined);
@@ -401,16 +400,37 @@ export class Router {
 
   api() {
     return {
-      match: this.match,
       pattern: this.pattern,
       path: this.path,
       params: this.params,
       query: this.query,
+      data: computed(() => this.match.track()?.data ?? {}),
       updateQuery: this.updateQuery.bind(this),
-      back: this.back.bind(this),
-      forward: this.forward.bind(this),
-      go: this.go.bind(this),
+      navigate: this.navigate.bind(this),
     };
+
+    // match
+
+    // const { pattern, path, params, query } = $route()
+    // pattern.read()
+    // [query as WritableMap?]
+    // query.read("name")
+    // query.track("id")
+    // query.write("id", 5)
+    // query.update((p) => ({...p, id: 12}))
+
+    // navigate
+
+    // [option 1; single function]
+    // const navigate = $navigate()
+    // navigate(-1) and navigate(1) for back and forward
+    // navigate("/some/path") for route
+
+    // [option 2; object]
+    // const go = $navigate()
+    // go.back()
+    // go.forward()
+    // go.to("/path")
   }
 
   #push(href: string, options: NavigateOptions) {
@@ -443,11 +463,11 @@ export class Router {
     const logger = this.#logger;
     const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
 
-    const { match, journey, state: routeState } = await this.#resolveRoute(url);
+    const route = await this.#resolveRoute(url);
 
-    for (let i = 0; i < journey.length; i++) {
-      const step = journey[i];
-      const tag = `(update: step ${i + 1} of ${journey.length})`;
+    for (let i = 0; i < route.journey.length; i++) {
+      const step = route.journey[i];
+      const tag = `(update: step ${i + 1} of ${route.journey.length})`;
 
       switch (step.kind) {
         case "match":
@@ -464,7 +484,7 @@ export class Router {
       }
     }
 
-    if (!match) {
+    if (!route.match) {
       // Only crash if routing has been configured.
       if (this.#isMounted) {
         throw logger.crash(new NoRouteError(`Failed to match route '${url.pathname}'`));
@@ -473,11 +493,11 @@ export class Router {
     }
 
     // Merge query params.
-    let query = match.query;
+    let query = route.match.query;
     let queryParts: string[] = [];
 
     if (options.preserveQuery === true) {
-      query = Object.assign({}, this.query.read(), match.query);
+      query = Object.assign({}, this.query.read(), route.match.query);
     } else if (isArray(options.preserveQuery)) {
       const preserved: Record<string, any> = {};
       const current = this.query.read();
@@ -486,7 +506,7 @@ export class Router {
           preserved[key] = current[key];
         }
       }
-      query = Object.assign({}, preserved, match.query);
+      query = Object.assign({}, preserved, route.match.query);
     }
 
     for (const key in query) {
@@ -496,21 +516,26 @@ export class Router {
 
     // Update the URL if matched path differs from navigator path.
     // This happens if route resolution involved redirects.
-    if (match.path !== location.pathname || location.search !== queryString) {
-      window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
+    if (route.match.path !== location.pathname || location.search !== queryString) {
+      window.history.replaceState(
+        null,
+        "",
+        this.#hash ? "/#" + route.match.path + queryString : route.match.path + queryString,
+      );
     }
 
     // Run in batch so all new layers are mounted simultaneously with match signal change.
     // This avoids the old route effects receiving new signal values just before they unmount.
     batch(() => {
+      const match = route.match!;
       const oldPattern = this.pattern.read();
 
-      this.#match.write({ ...match, query });
+      this.#match.write({ ...route.match!, query });
 
       if (match.pattern === oldPattern) {
         // If pattern has not changed, update state on current layers.
         for (const layer of this.#activeLayers) {
-          const stateEntries = routeState.get(layer.id);
+          const stateEntries = route.state.get(layer.id);
           if (stateEntries) {
             layer.context.setState(stateEntries);
           }
@@ -527,11 +552,7 @@ export class Router {
         const activeLayer = this.#activeLayers[i];
 
         if (activeLayer?.id !== matchedLayer.id) {
-          // Discard all previously active layers starting at this depth.
-          this.#activeLayers = this.#activeLayers.slice(0, i);
-          activeLayer?.node.unmount();
-
-          const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
+          const parentLayer = this.#activeLayers.at(i - 1) ?? this.#rootLayer;
 
           // Create a slot and element for this layer.
           const slot = state<MarkupNode>();
@@ -539,8 +560,21 @@ export class Router {
             children: new Markup(MarkupType.Dynamic, { source: slot }),
           });
 
+          // Handle $preload()
+          node._routePreload().then(() => {
+            console.log("preloaded");
+          });
+
+          // Discard all previously active layers starting at this depth.
+          this.#activeLayers = this.#activeLayers.slice(0, i);
+          activeLayer?.node.unmount();
+
+          const parentLayer0 = this.#activeLayers.at(-1) ?? this.#rootLayer;
+
+          console.log("parent layers", parentLayer0 === parentLayer);
+
           // Set state for new layer.
-          const stateEntries = routeState.get(matchedLayer.id);
+          const stateEntries = route.state.get(matchedLayer.id);
           if (stateEntries) {
             node.context.setState(stateEntries);
           }
@@ -567,7 +601,7 @@ export class Router {
           parentLayer.slot.write(node);
         } else {
           // Update state for layers that are still active.
-          const stateEntries = routeState.get(activeLayer.id);
+          const stateEntries = route.state.get(activeLayer.id);
           if (stateEntries) {
             activeLayer.context.setState(stateEntries);
           }
@@ -575,7 +609,7 @@ export class Router {
       }
     });
 
-    return { match, journey };
+    return { match: route.match, journey: route.journey };
   }
 
   /**
