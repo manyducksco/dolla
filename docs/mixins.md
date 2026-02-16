@@ -65,18 +65,16 @@ Let's start with a super simple one. Sometimes you just want an input to be focu
 ```jsx
 import { $setup, $on } from "@manyducks.co/dolla";
 
-function autofocus() {
-  return (element) => {
-    $setup(() => {
-      // Just tell the element to focus itself when it mounts. Done.
-      element.focus();
-    });
-  };
+function autofocus(element) {
+  $setup(() => {
+    // Just tell the element to focus itself when it mounts. Done.
+    element.focus();
+  });
 }
 
 // How to use it:
 function LoginForm() {
-  return <input type="text" placeholder="Username" mixin={autofocus()} />;
+  return <input type="text" placeholder="Username" mixin={autofocus} />;
 }
 ```
 
@@ -98,8 +96,8 @@ function clickOutside(onOutsideClick) {
         }
       };
 
-      document.addEventListener("mousedown", handleClick);
-      return () => document.removeEventListener("mousedown", handleClick);
+      document.addEventListener("pointerdown", handleClick);
+      return () => document.removeEventListener("pointerdown", handleClick);
     });
   };
 }

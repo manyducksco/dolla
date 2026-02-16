@@ -23,15 +23,15 @@ function $teardown(callback: () => void): void;
 **Example:**
 
 ```tsx
-import { $setup, $teardown, signal } from "@manyducks.co/dolla";
+import { $setup, $teardown, atom } from "@manyducks.co/dolla";
 
 function IntervalTimer() {
-  const seconds = signal(0);
+  const [seconds, setSeconds] = atom(0);
 
   $setup(() => {
     // Start a timer when the component shows up
     const intervalId = setInterval(() => {
-      seconds((s) => s + 1);
+      setSeconds((s) => s + 1);
     }, 1000);
 
     // Returning a function from $setup will run it on teardown.
@@ -53,7 +53,7 @@ function IntervalTimer() {
 
 ### `$on(event, callback)`
 
-Components have five lifecycle events. The `$setup` and `$teardown` are shorthand for the most commonly needed transitions. For advanced use cases, the `$on` hook gives you access to everything.
+Components have five lifecycle events. The `$setup` and `$teardown` are shorthand for `$on("didMount", ...)` and `$on("didUnmount", ...)` respectively. Those are the most commonly needed transitions. For advanced use cases, the `$on` hook gives you access to everything.
 
 - `willMount` (called just before DOM nodes are added to the page)
 - `didMount` (called just after DOM nodes are added to the page; equivalent to `$setup` hook)
@@ -103,36 +103,36 @@ function Lifecycle() {
 
 These are for doing "side effects" - stuff that isn't just rendering, like fetching data or messing with the DOM directly.
 
-### `$effect(callback, deps?)`
+### `$watch(callback, deps?)`
 
 The go-to hook for side effects. Your code runs after the component shows up, and then again whenever the signals it uses change. It's automatic, but you can give it a `deps` array if you wanna be extra and control it yourself.
 
 **Signature:**
 
 ```ts
-function $effect(fn: () => void, deps?: Signal<any>[]): void;
+function $watch(fn: () => void, deps?: Signal<any>[]): void;
 ```
 
 **Example:**
 
 ```tsx
-import { $effect, signal } from "@manyducks.co/dolla";
+import { $watch, state } from "@manyducks.co/dolla";
 import { http } from "@manyducks.co/dolla/http";
 
 function UserData({ userId }) {
-  const user = signal(null);
+  const user = state();
 
-  // This effect will re-run whenever the userId prop changes.
-  $effect(() => {
-    const id = userId(); // track a signal
+  // This function will re-run whenever the userId prop changes.
+  $watch(() => {
+    const id = userId.track(); // track a signal
     http.get(`/api/users/${id}`).then((res) => {
-      user(res.body); // Update user
+      user.set(res.body); // Update user
     });
   });
 
   return (
     <Show when={user}>
-      <p>User: {() => user().name}</p>
+      <p>User: {computed(() => user.track().name)}</p>
     </Show>
   );
 }

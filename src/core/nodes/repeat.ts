@@ -3,16 +3,14 @@ import { deepEqual } from "../../utils.js";
 import type { Context } from "../context.js";
 import { $name } from "../hooks.js";
 import {
-  atom,
   batch,
-  combined,
-  effect,
-  get,
-  Gettable,
-  peek,
-  type CombinedAtom,
-  type Getter,
+  watch,
+  state,
+  toReadable,
+  type Readable,
   type UnsubscribeFn,
+  type Writable,
+  untracked,
 } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
@@ -22,12 +20,12 @@ import { ViewNode } from "./view.js";
 export type Key = any;
 
 export type KeyFn<T> = (item: T, index: number) => Key;
-export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable;
+export type RenderFn<T> = (item: Readable<T>, index: Readable<number>) => Renderable;
 
 type ConnectedItem<T> = {
   key: Key;
-  item: CombinedAtom<T>;
-  index: CombinedAtom<number>;
+  item: Writable<T>;
+  index: Writable<number>;
   node: MarkupNode;
 };
 
@@ -41,14 +39,14 @@ export class RepeatNode<T> extends MarkupNode {
 
   private context;
 
-  private items: Gettable<T[]>;
+  private items: Readable<T[]>;
   private key: KeyFn<T>;
   private render: RenderFn<T>;
 
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
-  constructor(context: Context, items: Gettable<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
+  constructor(context: Context, items: Readable<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
     this.context = context;
 
@@ -69,15 +67,15 @@ export class RepeatNode<T> extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = effect(() => {
-        let value = get(this.items);
+      this.unsubscribe = watch(() => {
+        let value = this.items.track();
 
         if (value == null) {
           value = [];
-          this.context.warn("repeat() received empty value for items", value);
+          this.context.logger.warn("repeat() received empty value for items", value);
         }
 
-        peek(() => {
+        untracked(() => {
           this._update(Array.from(value));
         });
       });
@@ -137,28 +135,29 @@ export class RepeatNode<T> extends MarkupNode {
       }
     }
 
+    // Do all connected item changes in a single batch.
     batch(() => {
       // Add new views and update state for existing ones.
       for (const potential of potentialItems.values()) {
         const connected = this.connectedItems.get(potential.key);
 
         if (connected && connected.node.isMounted()) {
-          connected.item.set(potential.value);
-          connected.index.set(potential.index);
+          connected.item.write(potential.value);
+          connected.index.write(potential.index);
 
           newItems[potential.index] = connected;
         } else {
           // deepEqual avoids running update code again if the data is equivalent. In list updates this happens a lot.
-          const item = combined(atom(potential.value, { equals: deepEqual }));
-          const index = combined(atom(potential.index));
+          const item = state(potential.value, { equals: deepEqual });
+          const index = state(potential.index);
 
           newItems[potential.index] = {
             key: potential.key,
             item,
             index,
             node: new ViewNode(this.context, RepeatItemView, {
-              item: item.get,
-              index: index.get,
+              item: toReadable(item),
+              index: toReadable(index),
               render: this.render,
             }),
           };
@@ -192,9 +191,9 @@ export class RepeatNode<T> extends MarkupNode {
 }
 
 interface ListItemProps<T> {
-  item: Getter<T>;
-  index: Getter<number>;
-  render: (item: Getter<T>, index: Getter<number>) => Renderable;
+  item: Readable<T>;
+  index: Readable<number>;
+  render: (item: Readable<T>, index: Readable<number>) => Renderable;
 }
 const contextName = "dolla.RepeatItemView";
 function RepeatItemView<T>(props: ListItemProps<T>) {

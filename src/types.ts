@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
-import type { Getter } from "./core/signal.js";
+import type { Gettable, Getter, Readable } from "./core/signal.js";
 
 export type Env = "production" | "development";
 
@@ -17,8 +17,8 @@ export type Renderable =
   | false
   | null
   | undefined
-  | Getter<any>
-  | (string | number | Node | Markup | MarkupNode | false | null | undefined | Getter<any>)[];
+  | Gettable<any>
+  | (string | number | Node | Markup | MarkupNode | false | null | undefined | Gettable<any>)[];
 
 export interface BaseProps {
   children?: Renderable;
@@ -43,10 +43,8 @@ export type Mixin<E extends Element = Element> = (element: E) => void;
 ||            JSX Types             ||
 \*==================================*/
 
-type MaybeGetter<T> = T | Getter<T> | Getter<T | undefined>;
-
-type OptionalProperty<T> = MaybeGetter<T>;
-type RequiredProperty<T> = T | Getter<T>;
+type RequiredProperty<T> = Readable<T> | Getter<T> | T;
+type OptionalProperty<T> = Readable<T> | Readable<T | undefined> | Getter<T> | Getter<T | undefined> | T;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -1554,7 +1552,7 @@ export type CSSProperties = {
 };
 
 export interface ClassMap {
-  [className: string]: MaybeGetter<any>;
+  [className: string]: OptionalProperty<any>;
 }
 
 export type EventHandler<E> = (event: E) => void;
@@ -3185,7 +3183,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/sizes
    */
-  sizes?: MaybeGetter<string>;
+  sizes?: OptionalProperty<string>;
 
   /**
    * The image URL.

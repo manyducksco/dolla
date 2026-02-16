@@ -76,6 +76,10 @@ const app = dolla({
     {
       path: "/dashboard",
       view: DashboardPage,
+      loader: async ({ redirect }) => {
+        // Preload data. Whatever you return from this function is passed to the page as a prop called `data`.
+        // Or... would it be better to rely on the $preload hook inside the view?
+      },
       beforeMatch: (ctx) => {
         // Gatekeep this route!
         if (!sessionStore.isLoggedIn()) {
@@ -110,10 +114,10 @@ const app = dolla({
 
 // In some other component...
 function DocumentTitle() {
-  const router = $router();
+  const { match } = $router();
   $effect(() => {
     // Grab the title from the matched route's data!
-    document.title = router.match().data.title || "My App";
+    document.title = match.track().data.title || "My App";
   });
   return null; // This component doesn't render anything
 }

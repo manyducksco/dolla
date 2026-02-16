@@ -18,7 +18,7 @@ import {
   type ParsedRoute,
   type RouteMatch,
 } from "./router.utils.js";
-import { atom, batch, combined, compose, peek, type CombinedAtom } from "./signal.js";
+import { batch, state, computed, type Writable } from "./signal.js";
 
 // ----- Types ----- //
 
@@ -144,7 +144,7 @@ interface ActiveLayer {
   id: number;
   node: MarkupNode;
   context: Context;
-  slot: CombinedAtom<MarkupNode | undefined>;
+  slot: Writable<MarkupNode | undefined>;
 }
 
 /**
@@ -187,9 +187,18 @@ export interface RouterOptions {
 // ----- Code ----- //
 
 export const ROUTER = Symbol("Router");
-export const ROOT_VIEW = Symbol();
 
 export type RouterAPI = ReturnType<Router["api"]>;
+
+// export function createRouter(context: Context, options: RouterOptions) {
+//   const logger = createLogger("dolla.router");
+
+//   let nextLayerId = 0;
+//   let activeLayers: ActiveLayer[] = [];
+//   let routes: ParsedRoute<RouteMeta>[] = [];
+
+//   const match = state<RouteMatch>();
+// }
 
 export class Router {
   #logger = createLogger("dolla.router");
@@ -215,14 +224,14 @@ export class Router {
   /**
    * The current match object (internal).
    */
-  #match = combined(atom<RouteMatch>());
+  #match = state<RouteMatch>();
 
   /**
    * The current match object.
    */
-  readonly match = compose<Match | undefined>(
+  readonly match = computed<Match | undefined>(
     () => {
-      const match = this.#match.get();
+      const match = this.#match.track();
       if (match) {
         return {
           path: match.path,
@@ -239,27 +248,27 @@ export class Router {
   /**
    * The currently matched route pattern, if any.
    */
-  readonly pattern = compose(() => this.#match.get()?.pattern);
+  readonly pattern = computed(() => this.#match.track()?.pattern);
 
   /**
    * The current URL path.
    */
-  readonly path = compose(() => this.#match.get()?.path ?? window.location.pathname);
+  readonly path = computed(() => this.#match.track()?.path ?? window.location.pathname);
 
   /**
    * The current named path params.
    */
-  readonly params = compose(() => this.#match.get()?.params ?? {}, { equals: shallowEqual });
+  readonly params = computed(() => this.#match.track()?.params ?? {}, { equals: shallowEqual });
 
   /**
    * The current query params.
    */
-  readonly query = compose(() => this.#match.get()?.query ?? {}, { equals: shallowEqual });
+  readonly query = computed(() => this.#match.track()?.query ?? {}, { equals: shallowEqual });
 
   constructor(context: Context, options: RouterOptions) {
     assertObject(options, "Options must be an object. Got: %t");
 
-    const slot = combined(atom<MarkupNode>());
+    const slot = state<MarkupNode>();
     this.#rootLayer = {
       id: this.#nextLayerId++,
       node: new DynamicNode(context, slot),
@@ -366,8 +375,8 @@ export class Router {
    * Updates query params, keeping existing ones and applying new ones. Removes the query param if value is set to `null`.
    */
   updateQuery(values: Record<string, Stringable | null>) {
-    const match = peek(this.#match)!;
-    const query = { ...peek(this.query) };
+    const match = this.#match.read()!;
+    const query = { ...this.query.read() };
 
     for (const key in values) {
       const value = values[key];
@@ -385,7 +394,7 @@ export class Router {
     }
     const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
 
-    this.#match.set({ ...match, query });
+    this.#match.write({ ...match, query });
 
     window.history.replaceState(null, "", this.#hash ? "/#" + match.path + queryString : match.path + queryString);
   }
@@ -434,7 +443,7 @@ export class Router {
     const logger = this.#logger;
     const url = href ? new URL(href, window.location.origin) : this.#getCurrentURL();
 
-    const { match, journey, state } = await this.#resolveRoute(url);
+    const { match, journey, state: routeState } = await this.#resolveRoute(url);
 
     for (let i = 0; i < journey.length; i++) {
       const step = journey[i];
@@ -468,10 +477,10 @@ export class Router {
     let queryParts: string[] = [];
 
     if (options.preserveQuery === true) {
-      query = Object.assign({}, peek(this.query), match.query);
+      query = Object.assign({}, this.query.read(), match.query);
     } else if (isArray(options.preserveQuery)) {
       const preserved: Record<string, any> = {};
-      const current = peek(this.query);
+      const current = this.query.read();
       for (const key in current) {
         if (options.preserveQuery.includes(key)) {
           preserved[key] = current[key];
@@ -494,14 +503,14 @@ export class Router {
     // Run in batch so all new layers are mounted simultaneously with match signal change.
     // This avoids the old route effects receiving new signal values just before they unmount.
     batch(() => {
-      const oldPattern = peek(this.pattern);
+      const oldPattern = this.pattern.read();
 
-      this.#match.set({ ...match, query });
+      this.#match.write({ ...match, query });
 
       if (match.pattern === oldPattern) {
         // If pattern has not changed, update state on current layers.
         for (const layer of this.#activeLayers) {
-          const stateEntries = state.get(layer.id);
+          const stateEntries = routeState.get(layer.id);
           if (stateEntries) {
             layer.context.setState(stateEntries);
           }
@@ -525,13 +534,13 @@ export class Router {
           const parentLayer = this.#activeLayers.at(-1) ?? this.#rootLayer;
 
           // Create a slot and element for this layer.
-          const slot = combined(atom<MarkupNode>());
+          const slot = state<MarkupNode>();
           const node = new ViewNode(parentLayer.context, matchedLayer.view, {
             children: new Markup(MarkupType.Dynamic, { source: slot }),
           });
 
           // Set state for new layer.
-          const stateEntries = state.get(matchedLayer.id);
+          const stateEntries = routeState.get(matchedLayer.id);
           if (stateEntries) {
             node.context.setState(stateEntries);
           }
@@ -555,10 +564,10 @@ export class Router {
           });
 
           // Slot this layer into parent.
-          parentLayer.slot.set(node);
+          parentLayer.slot.write(node);
         } else {
           // Update state for layers that are still active.
-          const stateEntries = state.get(activeLayer.id);
+          const stateEntries = routeState.get(activeLayer.id);
           if (stateEntries) {
             activeLayer.context.setState(stateEntries);
           }

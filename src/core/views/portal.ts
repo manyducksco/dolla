@@ -2,7 +2,6 @@ import { isString } from "../../typeChecking";
 import type { Renderable } from "../../types";
 import { $debug } from "../hooks";
 import { Markup, MarkupType } from "../markup";
-import { getCurrentContext } from "../signal";
 
 export interface PortalProps {
   /**
@@ -20,7 +19,7 @@ export interface PortalProps {
  * Render content into any element on the page.
  */
 export function Portal(props: PortalProps) {
-  const log = $debug("Portal");
+  const log = $debug("dolla:Portal");
 
   let parent: Element;
 
@@ -35,7 +34,7 @@ export function Portal(props: PortalProps) {
   }
 
   return new Markup(MarkupType.Portal, {
-    parent: props.into,
+    parent,
     content: props.children,
   });
 }

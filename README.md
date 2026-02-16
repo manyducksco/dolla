@@ -13,7 +13,6 @@ Dolla is a JavaScript framework built around signals for reactive updates,
 - 🪝 [**Hooks**](./docs/hooks.md) let your components actually cook. They're your familiar, React-style toolkit for state (`useSignal`), lifecycle (`useMount`), and more.
 - 🔀 A client-side [**router**](./docs/router.md) with nested routes and middleware for auth guards, preloading data or analytics.
 - 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translations into a JSON file and access them with the `t` function in your views.
-- 🐕 A convenient [**HTTP client**](./docs/http.md), also with middleware so adding auth headers to every request is easy.
 - 🍳 The build system is optional. You can [write JSX](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm).
 
 ## A Counter
@@ -21,141 +20,41 @@ Dolla is a JavaScript framework built around signals for reactive updates,
 The best way to get it is to see it. If you've ever touched React, you'll know what's up, but peep the little things that make your life way easier.
 
 ```jsx
-import { signal, $effect, $debug } from "@manyducks.co/dolla";
+import { state, computed, $watch, $debug } from "@manyducks.co/dolla";
 
 // Print only 'warn' messages and above (applies globally)
 $debug.level = "warn"
-
-/**
- * A simple function that returns a value.
- * Value may be derived from signals.
- */
-interface Getter<T> {
-  (): T
-}
-
-interface Setter<T> {
-  /**
-   * Updates the value in place. Takes the current value and returns a new value.
-   */
-  (fn: (T) => T): T
-
-  /**
-   * Sets the value.
-   */
-  (value: T): T
-}
-
-interface Compute<T> {
-  (current: T): T;
-}
-
-interface Signal<T> extends Getter<T>, Setter<T> {
-  /**
-   *
-   */
-  split(): [Getter<T>, Setter<T>]
-}
-
-interface SignalConstructor<T> {
-  /**
-   *
-   */
-  (compute: Compute<T>): Signal<T>;
-
-  /**
-   *
-   */
-  (value: T): Signal<T>;
-}
-
-// MapSignal
-
-interface MapSignal<T extends Record<string, any>> extends Signal<T> {
-  get<K extends keyof T>(key: K): T[K];
-
-  set<K extends keyof T>(key: K, value: T[K]): T[K];
-  set<P extends Partial<T>>(patch: P): T;
-}
-
-params.get("name") // this is a trackable getter
+// Print all but those with prefix "dolla."
+$debug.filter = "*,-dolla.*"
 
 // Example
 
 function Counter(props) {
-  const log = $debug();
-
-  log("whatever") // default log level
-  log.info("whatever")
-  log.warn("whatever")
-
-  // Unmount the whole app and show this error.
-  log.crash(new Error("Something terrible happened."));
-
-  const [count, setCount] = atom(0);
-
-  const doubled = compose(() => count() * 2, [count])
-
-
-  const increment = () => setCount((n) => n + 1);
-
-  $observe(() => {
-    log("Count is: " + count());
+  const count = state(0);
+  
+  const debug = $debug();
+  
+  $watch(() => {
+    debug.log("Count is: " + count.track());
   });
-
-
 
   return (
     <div>
-      {/* In your markup, just drop the signal right in. */}
+      {/*  */}
       <p>Counter: {count}</p>
 
-      {/* Using signals with helpers like <Show> is a total breeze. */}
-      <Show when={() => count() > 100}>
+      {/*  */}
+      <Show when={() => count.track() > 100}>
         <p>Whoa, that's a lotta clicks!</p>
       </Show>
 
-      <div>
-        <button onClick={increment}>+1</button>
-        {/* ... other buttons */}
-      </div>
+      {/*  */}
+      <button onClick={() => count.update((value) => value + 1)}>Increment</button>
+      <button onClick={() => count.update((value) => value - 1)}>Decrement</button>
+      <button onClick={() => count.write(0)}>Reset</button>
     </div>
   );
 }
-```
-
-### 1\. `useSignal` - State that's actually simple
-
-You make state with `useSignal()`, and it gives you back a `[getter, setter]` pair, just like `useState` in React.
-
-- `$count`: This is the **signal**. We just use a `$` at the start by convention. Think of it as a reactive value you can just plop into your JSX.
-- `setCount`: This is how you change the value. Works just like you'd think.
-
-When you need the value in your JS code (like in a `useEffect`), just call it like a function: `$count()`.
-
-### 2\. Effects without the headache
-
-`useEffect` and `useMemo` are here, but they're way more chill.
-
-- **Automatic Tracking (by default\!)**: You literally don't have to do anything. Dolla just sees what signals you used and re-runs your code when they change.
-- **Manual Tracking (if you're feeling extra)**: If you _really_ want to, you can give it an array of signals to watch. Then it'll _only_ pay attention to those.
-
-<!-- end list -->
-
-```jsx
-const count = signal(0);
-const name = signal("Dolla");
-
-// AUTOMATIC: Runs if $count OR $name changes. Simple.
-$effect(() => {
-  console.log(`Yo ${name()}, the count is ${count()}`);
-});
-
-// MANUAL: This ONLY runs when `count` changes.
-// We're calling name() in here too, but the effect will not track it.
-$effect(() => {
-  console.log(`Yo ${name()}, the count is ${count()}`);
-}, [count]);
 ```
 
 ### 3\. No VDOM, no problem
@@ -197,13 +96,14 @@ You work with stores using two functions, `$provide` and `$use`.
 
 ```jsx
 function CounterStore() {
-  // We split for a getter, and a setter which we won't expose.
-  const [value, setValue] = signal(0).split();
+  // We create an atom which gives us a getter, and a setter which we won't expose.
+  const [value, setValue] = atom(0);
 
   // Instead we can define our own functions to control how the state gets changed.
   const increment = () => setValue((current) => current + 1);
   const decrement = () => setValue((current) => current - 1);
 
+  // This object is accessible to other components that use this store. 
   return { value, increment, decrement };
 }
 ```
@@ -212,7 +112,7 @@ You "provide" a store to a part of your app, and any component inside can now us
 
 ```jsx
 function App() {
-  // Now, App and any components inside it can use CounterStore.
+  // Now this component and any components inside it share an instance of CounterStore.
   const counter = $provide(CounterStore);
 
   return (
@@ -263,14 +163,6 @@ function MyComponent() {
 
 [More on mixins.](./docs/mixins.md)
 
-### 4\. So, what's this "Context" thing anyway?
-
-**Context** is basically the glue that holds all your components together. Think of it like a family tree. Every component has its own context, but it's linked to its parent. This lets you do some cool stuff:
-
-- **Finding Things**: When you do `useStore(CounterStore)`, Dolla just climbs up the family tree from your component until it finds where you provided the store. It's how some component deep in your app can get state from way up top.
-- **Helpful Tools**: The context itself has some neat tricks. The logging methods (`.log()`, `.warn()`, etc.) automatically know your component's name, which is awesome for debugging. There's even a `.crash()` that'll just stop the app and show an error page if things go really wrong. You can get and set the component's name with `context.getName()` and `context.setName()`.
-- **Deep-level State**: Context has its own key-value state system with `setState()` and `getState()`. The framework uses this a bunch. It's there if you wanna get wild, but tbh, for your app's state, **you should probably just use Stores.** They're way easier.
-
 ## Batteries Included: All The Stuff You Get\! 🧰
 
 Dolla isn't just for rendering. We threw in a bunch of tools so you can stop hunting around on npm.
@@ -289,11 +181,14 @@ Dolla has a router for making multi-page apps. It just works. Back/forward butto
 #### Setting it Up
 
 ```jsx
-import { createApp } from "@manyducks.co/dolla";
-import { createRouter } from "@manyducks.co/dolla/router";
+import { dolla } from "@manyducks.co/dolla";
 import { ThingIndex, ThingDetails, ThingEdit } from "./views.js";
 
-const router = createRouter({
+const app = dolla({
+  // You can use `/#/hash` routes if you don't have a server configured to handle client route fallback.
+  hash: true,
+  
+  // Configure `routes` instead of providing a `view`.
   routes: [
     {
       path: "/things",
@@ -308,7 +203,6 @@ const router = createRouter({
   ],
 });
 
-const app = createApp(router);
 app.mount(document.body);
 ```
 
@@ -317,50 +211,30 @@ app.mount(document.body);
 Just use the `$router()` hook.
 
 ```jsx
-import { $effect, $debug } from "@manyducks.co/dolla";
-import { $router } from "@manyducks.co/dolla/router";
+import { $effect, $debug, $router } from "@manyducks.co/dolla";
 
 function ThingDetails() {
   const log = $debug();
   const router = $router();
-  const { params } = router; // get reactive params
+  
+  const id = compose(() => router.params().id);
 
   $effect(() => {
-    log("Current thing ID:", params().id);
-    // or with MapSignal: log("Current thing ID:", params.get("id"));
+    log("Current thing ID:", id());
   });
 
   function goToNext() {
-    const nextId = params().id + 1;
+    const nextId = id() + 1;
     router.go(`/things/${nextId}`);
   }
 
   return (
     <div>
-      <p>Viewing thing {() => params().id}</p>
+      <p>Viewing thing {id}</p>
       <button onClick={goToNext}>View Next Thing</button>
     </div>
   );
 }
-```
-
-### A Built-in HTTP Client
-
-Dolla has a little `http` client for API calls. It automatically parses JSON and has a sick middleware system.
-
-```jsx
-import { http } from "@manyducks.co/dolla/http";
-
-// Automatically add an auth header to all API calls
-http.use(async (req, next) => {
-  if (req.url.pathname.startsWith("/api/")) {
-    req.headers.set("authorization", `Bearer ${localStorage.getItem("api-key")}`);
-  }
-  await next(); // don't forget this part!
-});
-
-const res = await http.get("/api/users");
-console.log(res.body); // already parsed JSON
 ```
 
 ### Internationalization (i18n)
@@ -370,55 +244,29 @@ Wanna make your app speak different languages? We got you. Dolla's i18n stuff is
 The best part? `t()` gives you back a **signal**. So if the user switches languages, your whole app just updates. Automatically. It's kinda magic.
 
 ```jsx
-import { createApp, useSignal } from "@manyducks.co/dolla";
-import { i18n, t } from "@manyducks.co/dolla/i18n";
+import { dolla, $i18n } from "@manyducks.co/dolla";
 
 function CounterView() {
+  const { t, setLocale } = $i18n();
+  
+  // setLocale("ja")
+  
   return <button>{t("buttonLabel")}</button>;
 }
 
-const app = createApp(CounterView);
-
-// Set up your languages before you start the app
-i18n
-  .setup({
+const app = dolla({
+  view: CounterView,
+  i18n: {
     locale: "en",
     translations: [
       { locale: "en", strings: { buttonLabel: "Click me!" } },
       { locale: "ja", strings: { buttonLabel: "押してね！" } },
     ],
-  })
-  .then(() => app.mount(document.body));
+  }
+});
+
+app.mount(document.body);
 ```
-
-## The Tea: How's Dolla Different?
-
-### vs. React
-
-- **No More Re-Renders (Fr!)**: This is the big one. In React, when you call `setCount(1)`, your _entire component function runs all over again_. React then has to figure out what changed with the VDOM. In Dolla, your component function only runs once, ever. When you call `setCount(1)`, Dolla just goes and changes the text in that one `<p>` tag. That's it. This makes it way faster and easier to reason about.
-- **Goodbye, `useCallback`**: Because React re-renders all the time, it creates new functions and objects on every single render. This is why you have to wrap everything in `useCallback` and `useMemo` so you don't cause a chain reaction of re-renders in your child components. Since Dolla components don't re-render, you can just pass a regular function as a prop without a single worry. No more referential equality drama.
-- **Easier Effects**: You know that annoying dependency array? Gone. Unless you, like, _want_ to use it for manual control. This means no more stale closure bugs.
-- **State Management Included**: `Stores` are built in, so you can probably skip installing Redux or Zustand and all the boilerplate that comes with them.
-
-### vs. Angular
-
-- **Way Less Boilerplate**: Angular is a whole ceremony. Modules, decorators, dependency injection... it's a lot. Dolla is just functions. You write a function, it becomes a component. It's a much more direct vibe.
-- **Stores are like Services, but chill**: Ngl, our `Stores` were lowkey inspired by Angular's services. It's the same idea of providing a thing in one place and using it somewhere else. But instead of all the module and decorator ceremony, you just use a couple of simple hooks.
-- **Signals First, Not an Add-on**: Yeah, Angular has signals now, but the whole framework was built on a different system (Zone.js). Dolla was born with signals as its main character, so the whole DX is built around them. It's not an optional extra, it's the whole point.
-
-### vs. Svelte
-
-- **It's Just JS**: Dolla is just functions and JSX. Svelte has its own `.svelte` file type and special syntax. Dolla just fits into the normal JS world.
-- **Clearer Updates**: In Dolla, you `setCount(1)`. You know what's happening. In Svelte, `count += 1` is kinda magic.
-- **Consistent Vibe**: Everything in Dolla uses the same hook style. It all feels the same.
-
-### vs. SolidJS
-
-Okay, Solid is sick, ngl. It uses signals too. The main difference is the vibe. Solid is like getting a super-tuned car engine. **Dolla is the whole car.** With heated seats and a good sound system.
-
-Choose **SolidJS** if you wanna build your car from scratch.
-
-Choose **Dolla** if you wanna just get in and drive.
 
 ---
 

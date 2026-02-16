@@ -4,7 +4,7 @@ import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import { effect, get, type Gettable, isGettable, setCurrentContext, type UnsubscribeFn } from "../signal.js";
+import { watch, type Gettable, isGettable, setCurrentContext, track, type UnsubscribeFn } from "../signal.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -176,12 +176,12 @@ export class ElementNode extends MarkupNode {
   private attachProp<T>(value: Gettable<T>, callback: (value: T) => void, key?: string) {
     if (isGettable<T>(value)) {
       this.unsubscribers.push(
-        effect(() => {
+        watch(() => {
           try {
-            callback(get(value));
+            callback(track(value));
           } catch (error) {
-            this.context.error(error);
-            this.context.crash(error as Error);
+            this.context.logger.error(error);
+            this.context.logger.crash(error as Error);
           }
         }),
       );
@@ -455,13 +455,13 @@ export class ElementNode extends MarkupNode {
     if (isFunction(styles)) {
       let unapply: () => void;
 
-      const unsubscribe = effect(() => {
+      const unsubscribe = watch(() => {
         if (isFunction(unapply)) {
           unapply();
         }
         element.style.cssText = "";
 
-        unapply = this.applyStyles(element, get(styles), unsubscribers);
+        unapply = this.applyStyles(element, track(styles), unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
@@ -472,10 +472,10 @@ export class ElementNode extends MarkupNode {
       for (const name in mapped) {
         const { value, priority } = mapped[name];
 
-        if (isFunction(value)) {
-          const unsubscribe = effect(() => {
-            if (get(value)) {
-              element.style.setProperty(name, String(asPixelsIfNumber(get(value))), priority);
+        if (isGettable(value)) {
+          const unsubscribe = watch(() => {
+            if (track(value)) {
+              element.style.setProperty(name, String(asPixelsIfNumber(track(value))), priority);
             } else {
               element.style.removeProperty(name);
             }
@@ -500,15 +500,15 @@ export class ElementNode extends MarkupNode {
   private applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFn[]) {
     const classUnsubscribers: UnsubscribeFn[] = [];
 
-    if (isFunction(classes)) {
+    if (isGettable(classes)) {
       let unapply: () => void;
 
-      const unsubscribe = effect(() => {
+      const unsubscribe = watch(() => {
         if (isFunction(unapply)) {
           unapply();
         }
         element.removeAttribute("class");
-        unapply = this.applyClasses(element, get(classes), unsubscribers);
+        unapply = this.applyClasses(element, track(classes), unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
@@ -519,9 +519,9 @@ export class ElementNode extends MarkupNode {
       for (const name in mapped) {
         const value = mapped[name];
 
-        if (isFunction(value)) {
-          const unsubscribe = effect(() => {
-            if (get(value)) {
+        if (isGettable(value)) {
+          const unsubscribe = watch(() => {
+            if (track(value)) {
               element.classList.add(name);
             } else {
               element.classList.remove(name);

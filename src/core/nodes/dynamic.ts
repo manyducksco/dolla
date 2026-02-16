@@ -1,7 +1,7 @@
 import { moveBefore, toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes } from "../markup.js";
-import { effect, get, peek, type Gettable, type UnsubscribeFn } from "../signal.js";
+import { untracked, watch, type Readable, type UnsubscribeFn } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 /**
@@ -14,10 +14,10 @@ export class DynamicNode extends MarkupNode {
   private children: MarkupNode[] = [];
   private context: Context;
 
-  private slot: Gettable<any>;
+  private slot: Readable<any>;
   private unsubscribe?: UnsubscribeFn;
 
-  constructor(context: Context, slot: Gettable<any>) {
+  constructor(context: Context, slot: Readable<any>) {
     super();
     this.context = context;
     this.slot = slot;
@@ -35,14 +35,14 @@ export class DynamicNode extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = effect(() => {
+      this.unsubscribe = watch(() => {
         try {
-          const content = get(this.slot);
-          peek(() => {
+          const content = this.slot.track();
+          untracked(() => {
             this.update(toArray(content));
           });
         } catch (error) {
-          this.context.crash(error as Error);
+          this.context.logger.crash(error as Error);
         }
       });
     }

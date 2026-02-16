@@ -3,6 +3,7 @@ import { createReactiveSystem } from "alien-signals/system";
 import { isFunction, isObject, typeOf } from "../typeChecking";
 import { strictEqual } from "../utils";
 import { Context } from "./context";
+import { getEnv } from "./env";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -19,7 +20,7 @@ interface ComputedGetterState<T> {
   value?: T;
 }
 
-interface Computed<T = any> extends ReactiveNode {
+interface ComputedNode<T = any> extends ReactiveNode {
   value: T | undefined;
   equals: EqualityFn<T>;
 
@@ -30,7 +31,7 @@ interface Computed<T = any> extends ReactiveNode {
   holdValue: T | undefined;
 }
 
-interface Value<T = any> extends ReactiveNode {
+interface ValueNode<T = any> extends ReactiveNode {
   value: T;
   equals: EqualityFn<T>;
 
@@ -39,7 +40,7 @@ interface Value<T = any> extends ReactiveNode {
 
 const queuedEffects: (Effect | EffectScope | undefined)[] = [];
 const { link, unlink, propagate, checkDirty, endTracking, startTracking, shallowPropagate } = createReactiveSystem({
-  update(signal: Value | Computed): boolean {
+  update(signal: ValueNode | ComputedNode): boolean {
     if ("getter" in signal) {
       return updateComputed(signal);
     } else {
@@ -47,7 +48,7 @@ const { link, unlink, propagate, checkDirty, endTracking, startTracking, shallow
     }
   },
   notify,
-  unwatched(node: Value | Computed | Effect | EffectScope) {
+  unwatched(node: ValueNode | ComputedNode | Effect | EffectScope) {
     if ("getter" in node) {
       let toRemove = node.deps;
       if (toRemove !== undefined) {
@@ -67,12 +68,7 @@ let batchDepth = 0;
 let notifyIndex = 0;
 let queuedEffectsLength = 0;
 let activeSub: ReactiveNode | undefined;
-let activeScope: EffectScope | undefined;
 let activeContext: Context | undefined;
-
-function getCurrentSub(): ReactiveNode | undefined {
-  return activeSub;
-}
 
 function setCurrentSub(sub: ReactiveNode | undefined) {
   const prevSub = activeSub;
@@ -90,7 +86,7 @@ export function setCurrentContext(context: Context | undefined) {
   return prevContext;
 }
 
-function updateComputed(c: Computed): boolean {
+function updateComputed(c: ComputedNode): boolean {
   const prevSub = setCurrentSub(c);
   startTracking(c);
   try {
@@ -104,7 +100,7 @@ function updateComputed(c: Computed): boolean {
   }
 }
 
-function updateSignal(s: Value, value: any): boolean {
+function updateSignal(s: ValueNode, value: any): boolean {
   s.flags = 1 satisfies ReactiveFlags.Mutable;
   // return s.previousValue !== (s.previousValue = value);
   return !s.equals(s.previousValue, (s.previousValue = value));
@@ -167,60 +163,6 @@ function flush(): void {
   queuedEffectsLength = 0;
 }
 
-function _computed<T>(this: Computed<T>): T {
-  const flags = this.flags;
-  if (
-    flags & (16 satisfies ReactiveFlags.Dirty) ||
-    (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(this.deps!, this))
-  ) {
-    if (updateComputed(this)) {
-      const subs = this.subs;
-      if (subs !== undefined) {
-        shallowPropagate(subs);
-      }
-    }
-  } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
-    this.flags = flags & ~(32 satisfies ReactiveFlags.Pending);
-  }
-  if (activeSub !== undefined) {
-    link(this, activeSub);
-  } else if (activeScope !== undefined) {
-    link(this, activeScope);
-  }
-  return this.value!;
-}
-
-function _getter<T>(this: Value<T>): T {
-  const value = this.value;
-  if (this.flags & (16 satisfies ReactiveFlags.Dirty)) {
-    if (updateSignal(this, value)) {
-      const subs = this.subs;
-      if (subs !== undefined) {
-        shallowPropagate(subs);
-      }
-    }
-  }
-  if (activeSub !== undefined) {
-    link(this, activeSub);
-  }
-  return value;
-}
-
-function _setter<T>(this: Value<T>, value: T | ((current: T) => T)): void {
-  let next = isFunction(value) ? (get(value(this.value)) as T) : (value as T);
-  if (!this.equals(this.value, next)) {
-    this.value = next;
-    this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-    const subs = this.subs;
-    if (subs !== undefined) {
-      propagate(subs);
-      if (!batchDepth) {
-        flush();
-      }
-    }
-  }
-}
-
 function _effect(this: Effect | EffectScope): void {
   let dep = this.deps;
   while (dep !== undefined) {
@@ -241,12 +183,8 @@ function _effect(this: Effect | EffectScope): void {
 ||                API                ||
 \*===================================*/
 
-export function isCombinedAtom<T>(value: any): value is CombinedAtom<T> {
-  return isObject(value) && isFunction(value.get);
-}
-
 export function isGettable<T>(value: any): value is Gettable<T> {
-  return isCombinedAtom(value) || isFunction(value);
+  return isFunction(value) || isReadable(value);
 }
 
 /* -------------- TYPES --------------- */
@@ -260,31 +198,19 @@ export interface Getter<T> {
 }
 
 /**
- * A function that sets the value of the signal.
- */
-export interface Setter<T> {
-  // This signature is required for Immer `produce` to infer types correctly.
-  (value: T | ((current: T) => T)): T;
-}
-
-/**
  * Utility type for a value that may be a getter or a plain value.
  * This value can be unwrapped to a plain value with `get` or `untracked` (depending on whether you're in a tracking context and need to track it).
  */
 export type MaybeGetter<T> = Getter<T> | T;
 
 /**
- * A getter and setter in a single object.
- */
-export interface CombinedAtom<T> {
-  get: Getter<T>;
-  set: Setter<T>;
-}
-
-/**
  * Any type of value that can be unwrapped by the `get` function.
  */
-export type Gettable<T> = CombinedAtom<T> | MaybeGetter<T>;
+export type Gettable<T> = Readable<T> | Getter<T> | T;
+
+export type Trackable<T> = Readable<T> | Getter<T>;
+
+export type MaybeReadable<T> = Readable<T> | T;
 
 export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
@@ -297,82 +223,237 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
-/**
- * Creates a new atom, and returns a getter and setter.
- *
- * @example
- * const [count, setCount] = atom(0);
- *
- * count(); // get value
- * setCount(5); // set value
- */
-export function atom<T>(value: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
-
-export function atom<T>(value: undefined, options: SignalOptions<T>): [Getter<T | undefined>, Setter<T | undefined>];
-
-export function atom<T>(): [Getter<T | undefined>, Setter<T | undefined>];
-
-export function atom<T>(value?: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>] {
-  const v: Value<unknown> = {
-    previousValue: value as T,
-    value: value as T,
-    equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-    subs: undefined,
-    subsTail: undefined,
-    flags: 1 satisfies ReactiveFlags.Mutable,
-  };
-
-  return [_getter.bind(v) as Getter<T>, _setter.bind(v) as Setter<T>];
-}
-
-/**
- * Returns a single object with a `get` and `set` method from an Atom's getter and setter array.
- *
- * @example
- * const count = combined(atom(0));
- *
- * count.get(); // get value
- * count.set(12); // set value
- */
-export function combined<T>(accessors: [Getter<T>, Setter<T>]): CombinedAtom<T> {
-  return {
-    get: accessors[0],
-    set: accessors[1],
-  };
-}
-
-export interface ComposeOptions<T> extends SignalOptions<T> {
+export interface Readable<T> {
   /**
-   * An array of signals this signal depends on. If this is passed, calls to signals within `fn` will NOT be tracked.
-   * Instead the `deps` array will be tracked and `fn` will re-run when any value in `deps` changes.
+   * Returns the current value.
    */
-  deps?: Gettable<any>[];
+  read(): T;
+
+  /**
+   * Returns the current value and tracks this state as a dependency when called within a reactive context (like a `compose` or `$observe` callback).
+   */
+  track(): T;
+}
+
+export interface Writable<T> extends Readable<T> {
+  /**
+   * Sets the value and returns the updated value.
+   */
+  write(value: T): T;
+
+  /**
+   * Calls `callback` with the current value and sets its result as the new value. Returns the updated value.
+   */
+  update(callback: (current: T) => T): T;
+}
+
+class State<T> implements Writable<T> {
+  #node: ValueNode<T>;
+
+  constructor(initialValue: T, options?: SignalOptions<T>) {
+    this.#node = {
+      previousValue: initialValue as T,
+      value: initialValue as T,
+      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+      subs: undefined,
+      subsTail: undefined,
+      flags: 1 satisfies ReactiveFlags.Mutable,
+    };
+  }
+
+  read(): T {
+    const signal = this.#node;
+    const value = signal.value;
+    if (signal.flags & (16 satisfies ReactiveFlags.Dirty)) {
+      if (updateSignal(signal, value)) {
+        const subs = signal.subs;
+        if (subs !== undefined) {
+          shallowPropagate(subs);
+        }
+      }
+    }
+    return value;
+  }
+
+  track(): T {
+    warnIfOutsideTrackingScope();
+    const value = this.read();
+    if (activeSub !== undefined) {
+      link(this.#node, activeSub);
+    }
+    return value;
+  }
+
+  write(value: T): T {
+    const v = this.#node;
+    if (!v.equals(v.value, value)) {
+      v.value = value;
+      v.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+      const subs = v.subs;
+      if (subs !== undefined) {
+        propagate(subs);
+        if (!batchDepth) {
+          flush();
+        }
+      }
+    }
+    return value;
+  }
+
+  update(fn: (current: T) => T): T {
+    const v = this.#node;
+    return this.write(fn(v.value));
+  }
+}
+
+export class Computed<T> implements Readable<T> {
+  #node: ComputedNode<T>;
+
+  constructor(callback: (previous?: T) => T, options?: SignalOptions<T>) {
+    this.#node = {
+      value: undefined,
+      holdValue: undefined,
+      subs: undefined,
+      subsTail: undefined,
+      deps: undefined,
+      depsTail: undefined,
+      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
+      getter: function (this: ComputedGetterState<any>) {
+        return track(callback(this.value));
+      },
+      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
+    };
+  }
+
+  read(): T {
+    const node = this.#node;
+    const flags = node.flags;
+    if (
+      flags & (16 satisfies ReactiveFlags.Dirty) ||
+      (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(node.deps!, node))
+    ) {
+      if (updateComputed(node)) {
+        const subs = node.subs;
+        if (subs !== undefined) {
+          shallowPropagate(subs);
+        }
+      }
+    } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
+      node.flags = flags & ~(32 satisfies ReactiveFlags.Pending);
+    }
+    return node.value!;
+  }
+
+  track(): T {
+    const value = this.read();
+    warnIfOutsideTrackingScope();
+    if (activeSub !== undefined) {
+      link(this.#node, activeSub);
+    }
+    return value;
+  }
 }
 
 /**
- * Creates a composed signal that recomputes its value only when its dependencies change.
- * Subsequent calls will return a cached value.
- * Dependencies are tracked when called inside `fn` by default,
- * but can be overridden by passing a `deps` array in the options object.
+ * Exposes a read-only interface to a Writable.
  */
-export function compose<T>(compute: (previousValue?: T) => Gettable<T>, options?: ComposeOptions<T>): Getter<T> {
-  return _computed.bind({
-    value: undefined,
-    holdValue: undefined,
-    subs: undefined,
-    subsTail: undefined,
-    deps: undefined,
-    depsTail: undefined,
-    flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
-    getter: function (this: ComputedGetterState<any>) {
-      if (options?.deps) {
-        for (let dep of options.deps) get(dep);
-        return get(peek(() => compute(this.value)));
-      }
-      return get(compute(this.value));
-    },
-    equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-  }) as Getter<T>;
+class WritableReader<T> implements Readable<T> {
+  #source: Writable<T>;
+
+  constructor(source: Writable<T>) {
+    this.#source = source;
+  }
+
+  read(): T {
+    return this.#source.read();
+  }
+
+  track(): T {
+    return this.#source.track();
+  }
+}
+
+class GetterReader<T> implements Readable<T> {
+  #getter: Getter<T>;
+
+  constructor(getter: Getter<T>) {
+    this.#getter = getter;
+  }
+
+  read(): T {
+    return read(this.#getter);
+  }
+
+  track(): T {
+    warnIfOutsideTrackingScope();
+    // Getter may contain trackable signals.
+    return this.#getter();
+  }
+}
+
+class StaticReader<T> implements Readable<T> {
+  #value: T;
+
+  constructor(value: T) {
+    this.#value = value;
+  }
+
+  read(): T {
+    return this.#value;
+  }
+
+  track(): T {
+    warnIfOutsideTrackingScope();
+    // Static values don't change, so no tracking actually happens.
+    return this.#value;
+  }
+}
+
+function warnIfOutsideTrackingScope(
+  message = ".track() called outside of a tracking scope. You might want to .read() instead.",
+) {
+  if (getEnv() === "development" && activeSub == undefined) {
+    console.trace(message);
+  }
+}
+
+export function state<T>(value: T, options?: SignalOptions<T>): Writable<T>;
+export function state<T>(value: undefined, options: SignalOptions<T>): Writable<T>;
+export function state<T>(): Writable<T | undefined>;
+export function state<T>(value?: T, options?: SignalOptions<T>): Writable<T> {
+  return new State(value as T, options);
+}
+
+export function computed<T>(callback: () => T, options?: SignalOptions<T>): Readable<T> {
+  // TODO: Warn if getter doesn't track anything.
+  // If so you probably used .read() instead of .track()
+  return new Computed(callback, options);
+}
+
+export function isReadable<T>(value: any): value is Readable<T> {
+  return isObject<Readable<T>>(value) && isFunction(value.read) && isFunction(value.track);
+}
+
+export function isWritable<T>(value: any): value is Writable<T> {
+  return (
+    isObject<Writable<T>>(value) &&
+    isFunction(value.read) &&
+    isFunction(value.track) &&
+    isFunction(value.write) &&
+    isFunction(value.update)
+  );
+}
+
+export function toReadable<T>(value: Readable<T> | Getter<T> | T): Readable<T> {
+  if (isWritable<T>(value)) {
+    return new WritableReader(value);
+  } else if (isReadable<T>(value)) {
+    return value;
+  } else if (isFunction<Getter<T>>(value)) {
+    return new GetterReader(value);
+  } else {
+    return new StaticReader(value);
+  }
 }
 
 /**
@@ -384,31 +465,30 @@ export function batch(fn: () => void): void {
   if (!--batchDepth) flush();
 }
 
-/**
- * Unwraps the plain value from a signal. If the value is not a signal it is returned as-is.
- */
-export function get<T>(value: Gettable<T>): T {
-  // Handle getter function
-  if (isFunction<Getter<T>>(value)) {
-    return value();
+export function read<T>(value: Readable<T> | Getter<T> | T): T {
+  if (isReadable(value)) {
+    return value.read();
+  } else if (isFunction(value)) {
+    return untracked(() => value());
+  } else {
+    return value;
   }
-
-  // Handle combined atom
-  if (isObject(value) && isFunction<Getter<T>>(value.get)) {
-    return value.get();
-  }
-
-  // Otherwise return value as-is
-  return value as T;
 }
 
-/**
- * Gets a signal value without tracking the signal.
- */
-export function peek<T>(value: Gettable<T>): T {
+export function track<T>(value: Readable<T> | Getter<T> | T): T {
+  if (isReadable(value)) {
+    return value.track();
+  } else if (isFunction(value)) {
+    return value();
+  } else {
+    return value;
+  }
+}
+
+export function untracked<T>(callback: () => T): T {
   let result: T;
   const pausedSub = setCurrentSub(undefined);
-  result = get(value);
+  result = callback();
   setCurrentSub(pausedSub);
   return result;
 }
@@ -430,15 +510,15 @@ export interface NextValueOptions<T> {
 /**
  * Waits for the next value of `target`. Returns a promise that resolves to the new value.
  */
-export function nextValue<T>(target: CombinedAtom<T> | Getter<T>, options?: NextValueOptions<T>): Promise<T> {
+export function nextValue<T>(target: Readable<T> | Getter<T>, options?: NextValueOptions<T>): Promise<T> {
   if (!isGettable<T>(target)) {
-    throw new Error(`Target must be a Getter function or CombinedAtom. Got: ${typeOf(target)}`);
+    throw new Error(`Target must be a Getter function or Readable. Got: ${typeOf(target)}`);
   }
 
   return new Promise((resolve, reject) => {
     let initial = true;
-    const unsubscribe = effect(() => {
-      const value = get(target);
+    const unsubscribe = watch(() => {
+      const value = track(target);
 
       // Skip the immediate invocation; waiting for next.
       if (initial) {
@@ -475,7 +555,7 @@ export class AbortError extends Error {
 /**
  * Function to be invoked for the effect. Can return an optional cleanup function to be called between invocations.
  */
-export type EffectFn = () => void | (() => void);
+export type WatchCallback = () => void | (() => void);
 
 export type UnsubscribeFn = () => void;
 
@@ -486,9 +566,9 @@ export type UnsubscribeFn = () => void;
  * NOTE: You must call the unsubscribe function to clean up the effect.
  * If you are using an effect inside a View or Store, try the `useEffect` hook instead, which cleans up automatically when the component unmounts.
  */
-export function effect(fn: EffectFn): UnsubscribeFn {
+export function watch(callback: WatchCallback): UnsubscribeFn {
   const e: Effect = {
-    fn,
+    fn: callback,
     subs: undefined,
     subsTail: undefined,
     deps: undefined,
@@ -497,8 +577,6 @@ export function effect(fn: EffectFn): UnsubscribeFn {
   };
   if (activeSub !== undefined) {
     link(e, activeSub);
-  } else if (activeScope !== undefined) {
-    link(e, activeScope);
   }
   const prev = setCurrentSub(e);
   try {

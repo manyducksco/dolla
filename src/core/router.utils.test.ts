@@ -1,6 +1,12 @@
 import { test, expect } from "vitest";
-
-import { type ParsedRoute, joinPath, matchRoutes, patternToFragments, resolvePath, sortRoutes } from "./router.utils";
+import {
+  type ParsedRoute,
+  joinPath,
+  matchRoutes,
+  patternToFragments,
+  resolvePath,
+  sortRoutes,
+} from "./router.utils.js";
 
 test("add and match routes", () => {
   let routes: ParsedRoute<{ testId: number }>[] = [];

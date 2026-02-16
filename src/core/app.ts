@@ -1,15 +1,27 @@
-import { isFunction, isObject, typeOf } from "../typeChecking";
-import { View } from "../types";
-import { Context, LifecycleEvent } from "./context";
-import { I18N, I18n, I18nOptions } from "./i18n";
-import { LoggerCrashProps, onLoggerCrash } from "./logger";
-import { ViewNode } from "./nodes/view";
-import { Route, ROUTER, Router, RouterOptions } from "./router";
-import { DefaultCrashView } from "./views/default-crash-view";
-import { Fragment } from "./views/fragment";
+import { isFunction, isObject, typeOf } from "../typeChecking.js";
+import type { View } from "../types";
+import { Context, LifecycleEvent } from "./context.js";
+import { createI18n, I18N, type I18n, I18nHandle, type I18nOptions } from "./i18n.js";
+import { LoggerCrashProps, onLoggerCrash } from "./logger.js";
+import { ViewNode } from "./nodes/view.js";
+import { Route, ROUTER, Router, RouterOptions } from "./router.js";
+import { DefaultCrashView } from "./views/default-crash-view.js";
+import { Fragment } from "./views/fragment.js";
 
 export interface DollaOptions extends Partial<RouterOptions> {
+  /**
+   * Main view to mount in the app. Used unless `routes` is defined.
+   */
   view?: View<{}>;
+
+  /**
+   * View to show when a $debug crash is invoked. Takes information about the crash.
+   */
+  crashView?: View<LoggerCrashProps>;
+
+  /**
+   * Options for language translations.
+   */
   i18n?: I18nOptions;
 }
 
@@ -28,35 +40,34 @@ class App {
 
   #cleanup: (() => void)[] = [];
 
-  #router: Router;
-  #i18n: I18n;
+  #router;
+  #i18n: I18nHandle;
 
   readonly router;
-  readonly i18n;
+  readonly i18n: I18n;
 
   constructor(options: DollaOptions) {
     this.#context = new Context("App");
+
+    if (options.crashView) {
+      this.#crashView = options.crashView;
+    }
 
     this.#router = new Router(this.#context, {
       hash: options.hash ?? false,
       routes: options.routes ?? [{ path: "*", view: options.view ?? Fragment }],
     });
-    this.#i18n = new I18n({
+    this.router = this.#router.api();
+    this.#context.setState(ROUTER, this.router);
+
+    const i18n = createI18n({
       locale: options.i18n?.locale ?? "auto",
       translations: options.i18n?.translations ?? [],
       ...options.i18n,
     });
-
-    this.router = this.#router.api();
-    this.i18n = this.#i18n.api();
-
-    this.#context.setState(ROUTER, this.router);
-    this.#context.setState(I18N, this.i18n);
-  }
-
-  setCrashView(view: View<LoggerCrashProps>) {
-    this.#crashView = view;
-    return this;
+    this.#i18n = i18n.handle;
+    this.i18n = i18n.exports;
+    this.#context.setState(I18N, i18n.exports);
   }
 
   async mount(element: string | Element): Promise<void> {
@@ -67,9 +78,12 @@ class App {
     this.#cleanup.push(
       onLoggerCrash((props) => {
         if (this.#mounted) {
-          this.unmount();
+          this.unmount().then(() => {
+            new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
+          });
+        } else {
+          new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
         }
-        new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
       }),
     );
 
@@ -128,16 +142,3 @@ export function dolla(init: View<{}> | DollaOptionsWithView | DollaOptionsWithRo
     throw new Error(`Expected a view function or options object. Got: ${typeOf(init)}`);
   }
 }
-
-const app = dolla({
-  routes: [
-    {
-      path: "*",
-      view: () => {
-        return "hello";
-      },
-    },
-  ],
-});
-
-app.mount(document.body);

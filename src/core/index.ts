@@ -1,16 +1,12 @@
 // App
-export { dolla as createApp } from "./app.js";
+export { dolla } from "./app.js";
 
 // Signals
-export { atom, batch, combined, compose, effect, get, nextValue, peek as untracked } from "./signal.js";
-export type { Getter, MaybeGetter, Setter } from "./signal.js";
+export { batch, computed, isReadable, isWritable, nextValue, read, state, toReadable, track, watch } from "./signal.js";
+export type { Gettable, Getter, MaybeGetter, MaybeReadable, Readable, Writable } from "./signal.js";
 
 // Hooks
 export * from "./hooks.js";
-
-// Context
-export { createContext } from "./context.js";
-export type { Context } from "./context.js";
 
 // Markup
 export { createMarkup, Markup, MarkupNode, render } from "./markup.js";
@@ -30,8 +26,8 @@ export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
 export { getEnv, setEnv } from "./env.js";
 
 // Logger
-export { createLogger, onLoggerCrash, setLogFilter, setLogLevels } from "./logger.js";
-export type { Logger, LoggerCrashProps, LoggerOptions, LogLevels } from "./logger.js";
+export { createLogger, onLoggerCrash } from "./logger.js";
+export type { Logger, LoggerCrashProps, LoggerOptions, LogLevel } from "./logger.js";
 
 // Other types
 export type { CSSProperties, Env, InputType, Mixin, Renderable, Store, View } from "../types.js";

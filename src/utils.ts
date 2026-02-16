@@ -231,9 +231,13 @@ export type MatcherFunction = (value: string) => boolean;
  *
  * @param pattern - A string or regular expression that specifies a pattern for names of loggers whose messages you want to display.
  */
-export function createMatcher(pattern: string | RegExp): MatcherFunction {
+export function createMatcher(pattern: string | RegExp | MatcherFunction): MatcherFunction {
   if (pattern instanceof RegExp) {
     return (value: string) => pattern.test(value);
+  }
+
+  if (isFunction<MatcherFunction>(pattern)) {
+    return pattern;
   }
 
   const matchers: Record<"positive" | "negative", MatcherFunction[]> = {

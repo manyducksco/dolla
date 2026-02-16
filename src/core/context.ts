@@ -1,8 +1,17 @@
-import { isFunction, typeOf } from "../typeChecking";
+import { assertFunction, typeOf } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
-import { effect, type EffectFn, get, type MaybeGetter, setCurrentContext, type UnsubscribeFn, peek } from "./signal";
+import {
+  watch,
+  type WatchCallback,
+  Gettable,
+  Getter,
+  MaybeReadable,
+  read,
+  setCurrentContext,
+  type UnsubscribeFn,
+} from "./signal";
 
 export enum LifecycleEvent {
   WILL_MOUNT = "willMount",
@@ -80,7 +89,7 @@ class ContextLifecycle {
           this.state = LifecycleState.WillMount;
           this.notify(event);
         } else {
-          this.context.crash(new Error(`Tried to WILL_MOUNT context at state ${this.state}`));
+          this.context.logger.crash(new Error(`Tried to WILL_MOUNT context at state ${this.state}`));
         }
         break;
       }
@@ -89,7 +98,7 @@ class ContextLifecycle {
           this.state = LifecycleState.DidMount;
           this.notify(event);
         } else {
-          this.context.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
+          this.context.logger.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
         }
         break;
       }
@@ -98,7 +107,7 @@ class ContextLifecycle {
           this.notify(event);
           this.state = LifecycleState.WillUnmount;
         } else {
-          this.context.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
+          this.context.logger.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
         }
         break;
       }
@@ -108,7 +117,7 @@ class ContextLifecycle {
           this.state = LifecycleState.DidUnmount % LifecycleState.DidUnmount;
           this.notify(event);
         } else {
-          this.context.crash(new Error(`Tried to DID_UNMOUNT context at state ${this.state}`));
+          this.context.logger.crash(new Error(`Tried to DID_UNMOUNT context at state ${this.state}`));
         }
         break;
       }
@@ -121,7 +130,7 @@ class ContextLifecycle {
           this.context[STORES] = undefined;
           this.state = LifecycleState.Disposed;
         } else {
-          this.context.crash(new Error(`Tried to DISPOSE context at state ${this.state}`));
+          this.context.logger.crash(new Error(`Tried to DISPOSE context at state ${this.state}`));
         }
         break;
       }
@@ -165,7 +174,7 @@ export interface ContextGetStateOptions<T> {
   /**
    * Only check this context; skip parent contexts.
    */
-  immediate?: boolean;
+  shallow?: boolean;
 }
 
 export interface ContextGetStateOptionsWithFallbackValue<T> extends ContextGetStateOptions<T> {
@@ -187,14 +196,11 @@ export interface LinkedContextOptions extends ContextOptions {
   bindLifecycleToParent?: boolean;
 }
 
-export interface Context extends Logger {}
-
-export class Context implements Logger {
-  #name: MaybeGetter<string>;
+export class Context {
+  #name: Gettable<string>;
 
   logger: Logger;
 
-  [NAME]: string;
   [LIFECYCLE] = new ContextLifecycle(this);
   [PARENT]?: Context;
   [STORES]?: Map<Store<any, any>, any>;
@@ -208,7 +214,11 @@ export class Context implements Logger {
   /**
    * Returns a new Context with this one as its parent.
    */
-  static createChildOf(parent: Context, name: MaybeGetter<string>, options?: LinkedContextOptions): Context {
+  static createChildOf(
+    parent: Context,
+    name: MaybeReadable<string> | Getter<string>,
+    options?: LinkedContextOptions,
+  ): Context {
     const context = new Context(name, options);
     context[PARENT] = parent;
     if (options?.bindLifecycleToParent) parent[LIFECYCLE].bind(context);
@@ -222,25 +232,25 @@ export class Context implements Logger {
     context[LIFECYCLE].emit(event);
   }
 
-  constructor(name: MaybeGetter<string>, options?: ContextOptions) {
+  constructor(name: MaybeReadable<string> | Getter<string>, options?: ContextOptions) {
     this.#name = name;
-    this[NAME] = peek(name);
-    this.logger = createLogger(() => get(this.#name), options?.logger);
+
+    // Wrapping the get in another getter in case this.#name changes to a different object between calls.
+    this.logger = createLogger(() => read(this.#name), options?.logger);
   }
 
   /**
    * Returns the current name of this context.
    */
   getName(): string {
-    return peek(this.#name);
+    return read(this.#name);
   }
 
   /**
    * Sets a new name for this context.
    */
-  setName(name: MaybeGetter<string>) {
+  setName(name: MaybeReadable<string>) {
     this.#name = name;
-    this[NAME] = peek(name); // Try to store name as a readable string for debugging purposes.
   }
 
   /**
@@ -249,7 +259,7 @@ export class Context implements Logger {
   provideStore<T>(store: Store<any, T>, options?: any): this {
     if (this[STORES]?.get(store)) {
       let name = store.name ? `'${store.name}'` : "this store";
-      throw this.crash(new Error(`An instance of ${name} was already added on this context.`));
+      throw this.logger.crash(new Error(`An instance of ${name} was already added on this context.`));
     }
 
     const context = Context.createChildOf(this, store.name, {
@@ -263,7 +273,7 @@ export class Context implements Logger {
       setCurrentContext(prevCtx);
       this[STORES].set(store, result);
     } catch (error) {
-      throw this.crash(error as Error);
+      throw this.logger.crash(error as Error);
     }
 
     return this;
@@ -275,9 +285,8 @@ export class Context implements Logger {
    * 2. No instance is found and an error is thrown.
    */
   useStore<T>(store: Store<any, T>): T {
-    if (!isFunction(store)) {
-      throw new Error(`Invalid store.`);
-    }
+    assertFunction(store, "Expected a store function. Got: %t");
+
     let context: Context = this;
     let result: unknown;
     while (true) {
@@ -289,7 +298,7 @@ export class Context implements Logger {
       }
     }
     if (result == null) {
-      throw this.crash(new Error(`Store '${store.name}' is not provided by this context.`));
+      throw this.logger.crash(new Error(`Store '${store.name}' is not provided by this context.`));
     }
     return result as T;
   }
@@ -304,25 +313,25 @@ export class Context implements Logger {
     return () => this[LIFECYCLE].off(event as LifecycleEvent, listener);
   }
 
-  effect(callback: EffectFn) {
+  watch(callback: WatchCallback) {
     const fn = () => {
       try {
         return callback(); // Return callback so cleanup function passes through to effect handler
       } catch (error) {
-        this.error(error);
+        this.logger.error(error);
         if (error instanceof Error) {
-          this.crash(error);
+          this.logger.crash(error);
         } else if (typeof error === "string") {
-          this.crash(new Error(error));
+          this.logger.crash(new Error(error));
         } else {
-          this.crash(new Error(`Unknown error thrown in effect callback`));
+          this.logger.crash(new Error(`Unknown error thrown in effect callback`));
         }
       }
     };
 
     if (this[LIFECYCLE].state >= LifecycleState.WillMount) {
       // This code is probably in a lifecycle hook; run the effect immediately and trigger unsubscribe when context unmounts.
-      const unsubscribe = effect(fn);
+      const unsubscribe = watch(fn);
       this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
       return unsubscribe;
     } else {
@@ -331,7 +340,7 @@ export class Context implements Logger {
       let disposed = false;
       this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, () => {
         if (!disposed) {
-          unsubscribe = effect(fn);
+          unsubscribe = watch(fn);
           this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
         }
       });
@@ -355,12 +364,12 @@ export class Context implements Logger {
   getState<T>(key: any, options?: ContextGetStateOptions<T>): T;
 
   getState<T>(key: any, options?: ContextGetStateOptions<T>): T {
-    const immediate = options?.immediate ?? false;
+    const shallow = options?.shallow ?? false;
     let context: Context = this;
     let value: any;
     while (true) {
       value = context[STATE]?.get(key);
-      if (value === undefined && !immediate && context[PARENT] != null) {
+      if (value === undefined && !shallow && context[PARENT] != null) {
         context = context[PARENT];
       } else {
         break;
@@ -429,8 +438,4 @@ export class Context implements Logger {
 
     return this;
   }
-}
-
-export function createContext(name: MaybeGetter<string>, options?: ContextOptions) {
-  return new Context(name, options);
 }

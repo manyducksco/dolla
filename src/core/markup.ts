@@ -6,9 +6,9 @@ import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
 import { PortalNode } from "./nodes/portal.js";
-import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat.js";
+import { type KeyFn, type RenderFn, RepeatNode } from "./nodes/repeat.js";
 import { ViewNode } from "./nodes/view.js";
-import { Gettable, isGettable, type Getter } from "./signal.js";
+import { type Readable, computed, isReadable, toReadable } from "./signal.js";
 
 export { MarkupNode };
 
@@ -52,14 +52,14 @@ export interface MarkupNodeProps {
     value: Node;
   };
   [MarkupType.Dynamic]: {
-    source: Gettable<any>;
+    source: Readable<any>;
   };
   [MarkupType.Portal]: {
     content: Renderable;
     parent: Element;
   };
   [MarkupType.Repeat]: {
-    items: Gettable<any[]>;
+    items: Readable<any[]>;
     key: KeyFn<any>;
     render: RenderFn<any>;
   };
@@ -119,7 +119,7 @@ export function render(content: Renderable, context = new Context("$")): MarkupN
   if (nodes.length === 1) {
     return nodes[0];
   }
-  return new DynamicNode(context, () => nodes);
+  return new DynamicNode(context, toReadable(nodes));
 }
 
 /**
@@ -180,8 +180,13 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       continue;
     }
 
-    if (isGettable(item)) {
+    if (isReadable(item)) {
       nodes.push(new DynamicNode(context, item));
+      continue;
+    }
+
+    if (isFunction(item)) {
+      nodes.push(new DynamicNode(context, computed(item)));
       continue;
     }
 

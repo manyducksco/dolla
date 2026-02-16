@@ -1,8 +1,9 @@
-import { type Context, type Logger, type Store } from "../core";
-import { type LifecycleEventName } from "./context";
-import { I18N, type I18nAPI } from "./i18n";
+import { type Logger, type Store } from "../core";
+import { type Context, type LifecycleEventName } from "./context";
+import { I18N, type I18n } from "./i18n";
+import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
 import { type RoutePreloadFn, ROUTER, type RouterAPI, type RouteTransitions } from "./router";
-import { type EffectFn, getCurrentContext, type Getter, type MaybeGetter, peek } from "./signal";
+import { type WatchCallback, getCurrentContext, type MaybeReadable } from "./signal";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -18,18 +19,42 @@ export function $$context(): Context {
 /**
  * Sets the component name for logging purposes.
  */
-export function $name(name: MaybeGetter<string>): void {
+export function $name(name: MaybeReadable<string>): void {
   $$context().setName(name);
+}
+
+export interface DebugHook {
+  (name?: MaybeReadable<string>): Logger;
+
+  level: LogLevel;
+  filter: string | RegExp | ((value: string) => boolean);
+}
+
+function createDebugHook(): DebugHook {
+  function $debug(name?: string) {
+    const context = $$context();
+    if (name) context.setName(name);
+    return context.logger;
+  }
+
+  Object.defineProperties($debug, {
+    level: {
+      get: getLogLevel,
+      set: setLogLevel,
+    },
+    filter: {
+      get: getLogFilter,
+      set: setLogFilter,
+    },
+  });
+
+  return $debug as DebugHook;
 }
 
 /**
  * Returns the component's logger. Updates `name` if passed.
  */
-export function $debug(name?: MaybeGetter<string>): Logger {
-  const context = $$context();
-  if (name) context.setName(name);
-  return context.logger;
-}
+export const $debug = createDebugHook();
 
 /**
  * Adds a store to this context and returns the store instance.
@@ -72,19 +97,20 @@ export function $on(event: LifecycleEventName, callback: () => void): void {
   $$context().onLifecycleTransition(event, callback);
 }
 
+export function $state() {
+  const context = $$context();
+  return {
+    get: context.getState.bind(context),
+    set: context.setState.bind(context),
+  };
+}
+
 /**
- * Creates an effect bound to the current context.
- * The `fn` is called when the component is mounted, then again each time the dependencies are updated until the component is unmounted.
+ * Runs `callback` when component mounts, then again each time one of its tracked values changes.
+ * The watcher will be cleaned up automatically when the component unmounts.
  */
-export function $effect(fn: EffectFn, deps?: Getter<any>[]): void {
-  if (deps) {
-    $$context().effect(() => {
-      for (const dep of deps) dep();
-      return peek(fn);
-    });
-  } else {
-    $$context().effect(fn);
-  }
+export function $watch(callback: WatchCallback): void {
+  $$context().watch(callback);
 }
 
 /*=============================*\
@@ -111,5 +137,5 @@ export function $transition(config: RouteTransitions) {
 \*=============================*/
 
 export function $i18n() {
-  return $$context().getState<I18nAPI>(I18N);
+  return $$context().getState<I18n>(I18N);
 }

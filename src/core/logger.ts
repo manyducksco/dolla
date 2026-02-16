@@ -1,18 +1,8 @@
-import { isString } from "../typeChecking.js";
-import type { Env } from "../types.js";
 import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
 import { getEnv } from "./env.js";
-import { get, peek, type Gettable } from "./signal.js";
-
-export interface LogLevels {
-  info: boolean | Env;
-  log: boolean | Env;
-  warn: boolean | Env;
-  error: boolean | Env;
-}
+import { Getter, MaybeGetter, read, type MaybeReadable } from "./signal.js";
 
 export interface Logger {
-  (...args: any[]): void;
   info(...args: any[]): void;
   log(...args: any[]): void;
   warn(...args: any[]): void;
@@ -44,13 +34,39 @@ export interface LoggerCrashProps {
   tagName?: string;
 }
 
-let levels: LogLevels = {
-  info: "development",
-  log: "development",
-  warn: "development",
-  error: true,
-};
-let match: MatcherFunction = createMatcher("*,-dolla.*");
+enum LogLevelValue {
+  /**
+   * Print 'info' level messages and above.
+   */
+  info = 1,
+  /**
+   * Print 'log' (standard) level messages and above.
+   */
+  log = 2,
+  /**
+   * Print 'warn' level messages and above.
+   */
+  warn = 3,
+  /**
+   * Print 'error' level messages only.
+   */
+  error = 4,
+  /**
+   * Don't print anything.
+   */
+  silent = 5,
+}
+
+export type LogLevel = "info" | "log" | "warn" | "error" | "silent";
+
+/**
+ * Log level defaults to Error in production mode and Info in development mode.
+ */
+const DEFAULT_LOG_LEVEL = Symbol();
+
+let logLevel: LogLevel | Symbol = DEFAULT_LOG_LEVEL;
+let logFilter: string | RegExp | MatcherFunction = "*,-dolla.*";
+let match: MatcherFunction = createMatcher(logFilter);
 let crashListeners: ((context: LoggerCrashProps) => void)[] = [];
 let isCrashed = false;
 
@@ -65,12 +81,12 @@ export function onLoggerCrash(listener: (context: LoggerCrashProps) => void) {
   };
 }
 
-export function createLogger(name: Gettable<string>, options?: LoggerOptions): Logger {
+export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions): Logger {
   const _console = options?.console ?? _getDefaultConsole();
 
-  const bind = (method: keyof LogLevels) => {
-    let _name = peek(name);
-    if (levels[method] === false || (isString(levels[method]) && levels[method] !== getEnv()) || !match(_name)) {
+  const bind = (method: LogLevel) => {
+    let _name = read(name);
+    if (!_canPrint(method) || !match(_name)) {
       return noOp;
     } else {
       let label = `%c${_name}`;
@@ -94,61 +110,75 @@ export function createLogger(name: Gettable<string>, options?: LoggerOptions): L
     }
   };
 
-  function logger(...args: any[]) {
-    return bind("log")(...args);
-  }
+  return {
+    get info() {
+      return bind("info");
+    },
+    get log() {
+      return bind("log");
+    },
+    get warn() {
+      return bind("warn");
+    },
+    get error() {
+      return bind("error");
+    },
+    crash(error: Error) {
+      if (!isCrashed) {
+        isCrashed = true;
+        const ctx: LoggerCrashProps = {
+          error,
+          loggerName: read(name),
+          tag: options?.tag,
+          tagName: options?.tagName,
+        };
 
-  Object.defineProperties(logger, {
-    info: {
-      get: () => bind("info"),
-    },
-    log: {
-      get: () => bind("log"),
-    },
-    warn: {
-      get: () => bind("warn"),
-    },
-    error: {
-      get: () => bind("error"),
-    },
-    crash: {
-      writable: false,
-      value: (error: Error) => {
-        if (!isCrashed) {
-          isCrashed = true;
-          const ctx: LoggerCrashProps = {
-            error,
-            loggerName: get(name),
-            tag: options?.tag,
-            tagName: options?.tagName,
-          };
-
-          for (const listener of crashListeners) {
-            listener(ctx);
-          }
-
-          throw error;
+        for (const listener of crashListeners) {
+          listener(ctx);
         }
 
-        return error;
-      },
-    },
-  });
+        throw error;
+      }
 
-  return logger as Logger;
+      return error;
+    },
+  };
 }
 
-export function setLogFilter(filter: string | RegExp) {
+export function getLogFilter() {
+  return logFilter;
+}
+
+export function setLogFilter(filter: string | RegExp | ((value: string) => boolean)) {
+  logFilter = filter;
   match = createMatcher(filter);
 }
 
-export function setLogLevels(options: Partial<LogLevels>) {
-  for (const key in options) {
-    const value = options[key as keyof LogLevels];
-    if (value) {
-      levels[key as keyof LogLevels] = value;
+export function getLogLevel(): LogLevel {
+  if (logLevel === DEFAULT_LOG_LEVEL) {
+    if (getEnv() === "production") {
+      return "error";
+    } else {
+      return "info";
     }
+  } else {
+    return logLevel as LogLevel;
   }
+}
+
+export function setLogLevel(level: LogLevel | null) {
+  if (level === null) {
+    logLevel = DEFAULT_LOG_LEVEL;
+  } else {
+    logLevel = level;
+  }
+}
+
+function _canPrint(method: LogLevel): boolean {
+  const methodValue = LogLevelValue[method];
+  const currentValue = LogLevelValue[getLogLevel()];
+
+  return methodValue > currentValue;
 }
 
 function _getDefaultConsole() {

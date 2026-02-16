@@ -2,7 +2,7 @@ import type { View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
-import { setCurrentContext } from "../signal.js";
+import { setCurrentContext, untracked } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");
@@ -68,10 +68,11 @@ export class ViewNode<P> extends MarkupNode {
           this.node = render(result, context);
         }
       } catch (error) {
+        context.logger.error(error);
         if (error instanceof Error) {
-          context.crash(error);
+          context.logger.crash(error as Error);
         }
-        throw error;
+        return;
       }
 
       Context.emit(this.context, LifecycleEvent.WILL_MOUNT);

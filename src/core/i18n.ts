@@ -1,7 +1,7 @@
 import { isFunction, isObject, isString, typeOf } from "../typeChecking.js";
 import { deepEqual } from "../utils.js";
-import { createLogger, type Logger } from "./logger.js";
-import { atom, combined, compose, get, type Gettable, type Getter } from "./signal.js";
+import { createLogger } from "./logger.js";
+import { computed, state, track, type MaybeReadable, type Readable } from "./signal.js";
 
 export const I18N = Symbol("I18N");
 
@@ -77,12 +77,12 @@ export type TOptions = {
   /**
    *
    */
-  count?: Gettable<number>;
+  count?: MaybeReadable<number>;
 
   /**
    *
    */
-  context?: Gettable<string>;
+  context?: MaybeReadable<string>;
 
   /**
    * Override formats specified in the template with the ones in the array for each named variable.
@@ -95,9 +95,9 @@ export type TOptions = {
    *   }
    * });
    */
-  formatOverrides?: Gettable<Record<string, Record<string, Format[]>>>;
+  formatOverrides?: MaybeReadable<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: Gettable<any>;
+  [value: string]: MaybeReadable<any> | any;
 };
 
 export type Formatter = (locale: string, value: any, options: Record<string, any>) => string;
@@ -374,73 +374,49 @@ class Translation {
   }
 }
 
-export type I18nAPI = ReturnType<I18n["api"]>;
+export type I18nHandle = ReturnType<typeof createI18n>["handle"];
+export type I18n = ReturnType<typeof createI18n>["exports"];
 
-/**
- * Dolla's I(nternationalizatio)n module. Manages language translations and locale-based formatting.
- */
-export class I18n {
-  #logger: Logger;
-  #translations = new Map<string, Translation>();
-  #cache: [key: string, values: Record<string, any> | undefined, output: string][] = [];
-  #formatters = new Map<string, Formatter>();
+export function createI18n(options: I18nOptions) {
+  const logger = createLogger("dolla.i18n");
+  const translations = new Map<string, Translation>();
+  const formatters = new Map<string, Formatter>();
 
-  #initialLocale = "auto";
+  let cache: [key: string, values: Record<string, any> | undefined, output: string][] = [];
 
-  #locale = combined(atom("en"));
+  let initialLocale = "auto";
+  const locale = state("en");
 
-  get locale() {
-    return this.#locale.get;
+  // Convert languages into Language instances.
+  options.translations.forEach((entry) => {
+    translations.set(entry.locale, new Translation(entry));
+  });
+
+  if (options.locale && options.locale !== "auto") {
+    initialLocale = options.locale;
   }
 
-  get locales() {
-    return [...this.#translations.keys()];
-  }
+  logger.info(
+    `${translations.size} language${translations.size === 1 ? "" : "s"} supported: '${[...translations.keys()].join("', '")}'`,
+  );
 
-  constructor(options: I18nOptions) {
-    this.#logger = createLogger("dolla.i18n");
+  formatters.set("number", (locale, value, options) => {
+    return new Intl.NumberFormat(locale, options).format(value);
+  });
+  formatters.set("datetime", (locale, value, options) => {
+    return new Intl.DateTimeFormat(locale, options).format(value);
+  });
+  formatters.set("list", (locale, value, options) => {
+    return new Intl.ListFormat(locale, options).format(value);
+  });
 
-    // Convert languages into Language instances.
-    options.translations.forEach((entry) => {
-      this.#translations.set(entry.locale, new Translation(entry));
-    });
-
-    if (options.locale && options.locale !== "auto") {
-      this.#initialLocale = options.locale;
-    }
-
-    this.#logger.info(
-      `${this.#translations.size} language${this.#translations.size === 1 ? "" : "s"} supported: '${[...this.#translations.keys()].join("', '")}'`,
-    );
-
-    this.#formatters.set("number", (locale, value, options) => {
-      return new Intl.NumberFormat(locale, options).format(value);
-    });
-    this.#formatters.set("datetime", (locale, value, options) => {
-      return new Intl.DateTimeFormat(locale, options).format(value);
-    });
-    this.#formatters.set("list", (locale, value, options) => {
-      return new Intl.ListFormat(locale, options).format(value);
-    });
-
-    if (options.formatters) {
-      for (const key in options.formatters) {
-        this.#formatters.set(key, options.formatters[key]);
-      }
+  if (options.formatters) {
+    for (const key in options.formatters) {
+      formatters.set(key, options.formatters[key]);
     }
   }
 
-  async mount() {
-    if (this.#translations.size > 0) {
-      await this.setLocale(this.#initialLocale);
-    }
-  }
-
-  unmount() {
-    // TODO: do any necessary cleanup
-  }
-
-  async setLocale(name: string) {
+  async function setLocale(name: string) {
     let realName!: string;
 
     if (name === "auto") {
@@ -461,97 +437,90 @@ export class I18n {
       }
 
       for (const name of names) {
-        if (this.#translations.has(name)) {
+        if (translations.has(name)) {
           // Found a matching language.
           realName = name;
+          break;
         }
       }
     } else {
       // Tag is the actual tag to set.
-      if (this.#translations.has(name)) {
+      if (translations.has(name)) {
         realName = name;
       }
     }
 
     if (realName == null) {
-      const firstLanguage = this.#translations.keys().next().value;
+      const firstLanguage = translations.keys().next().value;
       if (firstLanguage) {
         realName = firstLanguage;
       }
     }
 
-    if (!realName || !this.#translations.has(realName)) {
+    if (!realName || !translations.has(realName)) {
       throw new Error(`Locale '${name}' has no translation.`);
     }
 
-    const translation = this.#translations.get(realName)!;
+    const translation = translations.get(realName)!;
 
     try {
       await translation.load();
 
-      this.#cache = [];
-      this.#locale.set(realName);
+      cache = [];
+      locale.write(realName);
 
-      this.#logger.info("set language to " + realName);
+      logger.info("set language to " + realName);
     } catch (error) {
       if (error instanceof Error) {
-        this.#logger.crash(error);
+        logger.crash(error);
       }
     }
   }
 
   /**
-   * Returns a State containing the value at `key`.
+   * Returns a Readable of the value at `key`.
 
    * @param selector - Key to the translated value.
    * @param options - A map of `{{placeholder}}` names and the values to replace them with.
    *
    * @example
-   * const $value = t("your.key.here", { count: 5 });
+   * const value = t("your.key.here", { count: 5 });
    */
-  t(selector: string, options?: TOptions): Getter<string> {
-    return compose(() => {
+  function t(selector: string, options?: TOptions): Readable<string> {
+    return computed(() => {
       const values: Record<string, any> = {};
 
       // Track all option values.
       for (const key in options) {
-        values[key] = get(options[key]);
+        values[key] = track(options[key]);
       }
 
-      return this.#getValue(this.locale(), selector, values);
+      return _getValue(locale.track(), selector, values);
     });
   }
 
-  format<K extends keyof BuiltInFormatters, V extends BuiltInFormatters[K][0], O extends BuiltInFormatters[K][1]>(
-    name: K,
-    value: Gettable<V>,
-    options?: O,
-  ): Getter<string>;
+  function format<
+    K extends keyof BuiltInFormatters,
+    V extends BuiltInFormatters[K][0],
+    O extends BuiltInFormatters[K][1],
+  >(name: K, value: MaybeReadable<V>, options?: O): Readable<string>;
 
-  format<V, O>(name: string, value: Gettable<V>, options?: O): Getter<string>;
+  function format<V, O>(name: string, value: MaybeReadable<V>, options?: O): Readable<string>;
 
-  format(name: string, value: any, options?: Record<string, any>): Getter<string> {
-    const callback = this.#formatters.get(name);
+  function format(name: string, value: MaybeReadable<any>, options?: Record<string, any>): Readable<string> {
+    const callback = formatters.get(name);
     if (!callback) {
       throw new Error(`Unknown format: ${name}`);
     }
 
-    return compose(() => callback(get(this.locale), get(value), options ?? {}));
+    return computed(() => callback(locale.track(), track(value), options ?? {}));
   }
 
-  api() {
-    return {
-      t: this.t.bind(this),
-      setLocale: this.setLocale.bind(this),
-      format: this.format.bind(this),
-    };
-  }
-
-  #getValue(locale: string, selector: string, options: Record<string, any>): string {
-    const cached = this.#getCached(selector, options);
+  function _getValue(locale: string, selector: string, options: Record<string, any>): string {
+    const cached = _getCached(selector, options);
     if (cached) return cached;
 
-    const translation = this.#translations.get(locale)!;
+    const translation = translations.get(locale)!;
 
     // Handle count (pluralization) and context. Keys become "key_context_pluralization".
 
@@ -594,12 +563,12 @@ export class I18n {
         }
 
         for (const format of formats) {
-          const fn = this.#formatters.get(format.name);
+          const fn = formatters.get(format.name);
           if (fn == null) {
             const error = new Error(
               `Failed to load format '${format.name}' when processing '${selector}', template: ${template}`,
             );
-            this.#logger.crash(error);
+            logger.crash(error);
             throw error;
           }
           value = fn(locale, value, format.options);
@@ -612,13 +581,30 @@ export class I18n {
     return output;
   }
 
-  #getCached(key: string, values?: Record<string, any>): string | undefined {
-    for (const entry of this.#cache) {
+  function _getCached(key: string, values?: Record<string, any>): string | undefined {
+    for (const entry of cache) {
       if (entry[0] === key && deepEqual(entry[1], values)) {
         return entry[2];
       }
     }
   }
+
+  return {
+    handle: {
+      async mount() {
+        if (translations.size > 0) {
+          await setLocale(initialLocale);
+        }
+      },
+      unmount() {},
+    },
+    exports: {
+      locale,
+      setLocale,
+      t,
+      format,
+    },
+  };
 }
 
 function resolve(object: any, key: string) {

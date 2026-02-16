@@ -1,86 +1,85 @@
 import { expect, test, vi } from "vitest";
-import { batch, effect, get, type Getter, compose, peek, atom } from "./signal";
+import { batch, computed, watch, read, Readable, state, toReadable } from "./signal";
 
 test("basic composition & tracking", () => {
-  const [count, setCount] = atom(5);
-  const doubled = () => count() * 2;
-  const doubledMemo = compose(() => count() * 2);
+  const count = state(5);
+  const doubled = computed(() => count.track() * 2);
 
-  const same = compose(count); // just so happens to follow the signature of a memo; creates a Signal with the same value
-  expect(same()).toBe(5);
+  const same = toReadable(count); // just so happens to follow the signature of a memo; creates a Signal with the same value
+  expect(same.read()).toBe(5);
 
-  expect(count()).toBe(5);
-  expect(get(doubled)).toBe(10);
-  expect(doubledMemo()).toBe(10);
+  expect(count.read()).toBe(5);
+  expect(read(doubled)).toBe(10);
+  expect(doubled.read()).toBe(10);
 
   const fn = vi.fn(() => {
-    doubled();
+    doubled.track();
   });
-  const stop = effect(fn);
+  const stop = watch(fn);
 
   expect(fn).toBeCalledTimes(1);
 
   // Effects should not run until end of batch.
   batch(() => {
-    setCount((c) => c + 1);
-    setCount((c) => c + 1);
-    setCount((c) => c + 1);
-    setCount((c) => c + 1);
+    count.update((c) => c + 1);
+    count.update((c) => c + 1);
+    count.update((c) => c + 1);
+    count.update((c) => c + 1);
   });
 
   expect(fn).toBeCalledTimes(2);
-  expect(same()).toBe(9);
+  expect(same.read()).toBe(9);
 
   stop();
 });
 
-test("getters returned from computed function are unwrapped", () => {
-  const [count, setCount] = atom(5);
-  const doubled = compose(() => count);
+test("readables returned from computed function are unwrapped", () => {
+  const count = state(5);
+  const doubled = computed(() => count);
 
-  expect(doubled()).toBe(5);
+  expect(doubled.read()).toBe(5);
 
-  setCount((x) => x + 1);
+  count.update((x) => x + 1);
 
-  expect(doubled()).toBe(6);
+  expect(doubled.read()).toBe(6);
 });
 
-test("untracked callback is not tracked", () => {
-  const [a, setA] = atom(5);
-  const [b, setB] = atom(10);
+test("values are only tracked when accessed with .track()", () => {
+  const a = state(5);
+  const b = state(10);
 
-  const multiplied = compose(() => a() * peek(b));
+  const multiplied = computed(() => a.track() * b.read());
 
-  expect(multiplied()).toBe(50);
+  expect(multiplied.read()).toBe(50);
 
-  setA((x) => x + 1);
+  a.update((x) => x + 1);
 
-  expect(multiplied()).toBe(60);
+  expect(multiplied.read()).toBe(60);
 
-  setB((x) => x + 1);
+  b.update((x) => x + 1);
 
-  expect(multiplied()).toBe(60);
+  expect(multiplied.read()).toBe(60);
 });
 
 test("solves diamond problem", () => {
-  const [count, setCount] = atom(1);
+  const count = state(1);
 
-  const left = compose(() => count() + 5);
-  const right = compose(() => count() / 2);
+  const left = computed(() => count.track() + 5);
+  const right = computed(() => count.track() / 2);
 
-  const sum = compose(() => left() + right());
+  const sum = computed(() => left.track() + right.track());
 
   const fn = vi.fn(() => {
-    sum();
+    sum.track();
   });
-  const unsubscribe = effect(fn);
+  const unsubscribe = watch(fn);
 
   expect(fn).toBeCalledTimes(1);
 
-  setCount((x) => x + 1);
+  count.update((x) => x + 1);
   batch(() => {
-    setCount((x) => x + 1);
-    setCount((x) => x + 1);
+    count.update((x) => x + 1);
+    count.update((x) => x + 1);
   });
 
   expect(fn).toBeCalledTimes(3);
@@ -88,10 +87,10 @@ test("solves diamond problem", () => {
 });
 
 test("nested memo", () => {
-  const [count, setCount] = atom(0);
+  const count = state(0);
 
-  const plus1 = (source: Getter<number>) => {
-    return compose(() => source() + 1);
+  const plus1 = (source: Readable<number>) => {
+    return computed(() => source.track() + 1);
   };
 
   const one = plus1(count);
@@ -99,41 +98,41 @@ test("nested memo", () => {
   const three = plus1(two);
 
   const fn = vi.fn(() => {
-    three();
+    three.track();
   });
-  const stop = effect(fn);
+  const stop = watch(fn);
 
   expect(fn).toBeCalledTimes(1);
 
-  expect(one()).toBe(1);
-  expect(two()).toBe(2);
-  expect(three()).toBe(3);
+  expect(one.read()).toBe(1);
+  expect(two.read()).toBe(2);
+  expect(three.read()).toBe(3);
 
-  setCount((x) => x + 1);
+  count.update((x) => x + 1);
 
   expect(fn).toBeCalledTimes(2);
 
-  expect(one()).toBe(2);
-  expect(two()).toBe(3);
-  expect(three()).toBe(4);
+  expect(one.read()).toBe(2);
+  expect(two.read()).toBe(3);
+  expect(three.read()).toBe(4);
 
   stop();
 });
 
 test("effect runs cleanup function", () => {
   const fn = vi.fn();
-  const [count, setCount] = atom(0);
+  const count = state(0);
 
-  const stop = effect(() => {
-    count();
+  const stop = watch(() => {
+    count.track();
     return fn;
   });
   expect(fn).toBeCalledTimes(0);
 
-  setCount(2);
+  count.write(2);
   expect(fn).toBeCalledTimes(1);
 
-  setCount(3);
+  count.write(3);
   expect(fn).toBeCalledTimes(2);
 
   stop();

@@ -57,11 +57,11 @@ If you're passing the whole signal, you can just pass it directly. It'll stay re
 
 ```jsx
 function App() {
-  const [$userName, setUserName] = useSignal("Guest");
-  setTimeout(() => setUserName("Bob"), 2000);
+  const name = state("Guest");
+  setTimeout(() => name.set("Bob"), 2000);
 
   // Just pass the signal directly! It stays reactive.
-  return <Greeting name={$userName} />;
+  return <Greeting name={name} />;
 }
 ```
 
