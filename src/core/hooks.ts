@@ -2,6 +2,7 @@ import { type Logger, type Store } from "../core";
 import { type Context, type LifecycleEventName } from "./context";
 import { I18N, type I18n } from "./i18n";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
+import { VIEW_PRELOAD_CALLBACK, VIEW_TRANSITIONS_CONFIG } from "./nodes/view";
 import { type RoutePreloadFn, ROUTER, type RouterAPI, type RouteTransitions } from "./router";
 import { type WatchCallback, getCurrentContext, type MaybeReadable, type Readable, type Getter } from "./signal";
 
@@ -133,11 +134,15 @@ export function $route() {
 }
 
 export function $preload(loader: RoutePreloadFn) {
+  $$context().setState(VIEW_PRELOAD_CALLBACK, loader);
+
   // Wait for `loader` to resolve before navigating to this route.
   // No effect unless this view is mounted as a route.
 }
 
 export function $transition(config: RouteTransitions) {
+  $$context().setState(VIEW_TRANSITIONS_CONFIG, config);
+
   // Starts after preload ends.
   // TODO: On transition in; mount this route, but suspend previous route's unmount until controller.next() is called.
   // TODO: On transition out; mount next route, but suspend this route's unmount until controller.next() is called.

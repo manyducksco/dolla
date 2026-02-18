@@ -2,7 +2,7 @@ import type { Renderable, View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
-import { ROUTER_PRELOAD_CONTROLLER } from "../router.js";
+import { RoutePreloadFn, ROUTER_PRELOAD_CONTROLLER, RouteTransitions } from "../router.js";
 import { setCurrentContext, untracked } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
@@ -18,9 +18,11 @@ export class ViewNode<P> extends MarkupNode {
   readonly props: P;
   readonly context: Context;
   readonly view: View<P>;
-  readonly viewContent: Renderable;
 
+  viewContent?: Renderable;
   node?: MarkupNode;
+
+  initialized = false;
 
   /**
    * @param context - Parent contenxt to link to.
@@ -38,21 +40,6 @@ export class ViewNode<P> extends MarkupNode {
     this.context.setState(VIEW, this);
     this.props = props;
     this.view = view;
-
-    // TODO: Handle $preload with router
-
-    const prevCtx = setCurrentContext(context);
-    try {
-      this.viewContent = view(props);
-    } catch (error) {
-      context.logger.error(error);
-      if (error instanceof Error) {
-        context.logger.crash(error as Error);
-      }
-      return;
-    } finally {
-      setCurrentContext(prevCtx);
-    }
   }
 
   getRoot() {
@@ -63,20 +50,45 @@ export class ViewNode<P> extends MarkupNode {
     return this.context.isMounted;
   }
 
-  _routePreload(): Promise<void> {
+  _init() {
+    if (this.initialized) return;
+
+    const { context, view, props } = this;
+    const prevCtx = setCurrentContext(context);
+    try {
+      this.viewContent = view(props);
+    } catch (error) {
+      context.logger.error(error);
+      if (error instanceof Error) {
+        context.logger.crash(error as Error);
+      }
+    } finally {
+      setCurrentContext(prevCtx);
+      this.initialized = true;
+    }
+  }
+
+  async _routePreload() {
+    this._init();
+
     // Callback should have been set via $preload hook.
-    const callback = this.context.getState(VIEW_PRELOAD_CALLBACK, { shallow: true });
+    const callback = this.context.getState<RoutePreloadFn>(VIEW_PRELOAD_CALLBACK, {
+      shallow: true,
+      fallback: undefined,
+    });
     if (!callback) return Promise.resolve();
 
-    return new Promise((resolve, reject) => {
-      console.log("PRELOAD CALLBACK FOUND");
-      resolve();
-    });
+    console.log("PRELOAD CALLBACK FOUND");
+
+    await callback({});
   }
 
   _routeTransitionIn(): Promise<void> {
-    const callback = this.context.getState<any>(VIEW_TRANSITIONS_CONFIG, { shallow: true })?.in;
-    if (!callback) return Promise.resolve();
+    const config = this.context.getState<RouteTransitions>(VIEW_TRANSITIONS_CONFIG, {
+      shallow: true,
+      fallback: undefined,
+    });
+    if (!config?.in) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
       console.log("TRANSITION IN FOUND");
@@ -85,8 +97,8 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   _routeTransitionOut(): Promise<void> {
-    const callback = this.context.getState<any>(VIEW_TRANSITIONS_CONFIG, { shallow: true })?.out;
-    if (!callback) return Promise.resolve();
+    const config = this.context.getState<any>(VIEW_TRANSITIONS_CONFIG, { shallow: true, fallback: undefined });
+    if (!config?.out) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
       console.log("TRANSITION OUT FOUND");
@@ -99,31 +111,8 @@ export class ViewNode<P> extends MarkupNode {
     // Calling connect again can be used to re-order elements that are already connected to the DOM.
     const wasMounted = this.isMounted();
 
-    // TODO: Look into own state and find route controller.
-    // If preload function exists, pass the route controller to it.
-    // If no preload function exists, just call .next() on the route.
-    // Preload function is added by useRoutePreload hook.
-
-    // One problem is mounting and unmounting is entirely synchronous, but we need async and suspense.
-    // While a view is in suspense, the nearest suspense boundary shows fallback content.
-    // Routes are a suspense boundary of a sort where they don't unmount the previous view until the next leaves suspense.
-
     if (!wasMounted) {
-      // const { context, props, view } = this;
-      // try {
-      //   const prevCtx = setCurrentContext(context);
-      //   const result = view(props);
-      //   setCurrentContext(prevCtx);
-      //   if (result != null && result !== false) {
-      //     this.node = render(result, context);
-      //   }
-      // } catch (error) {
-      //   context.logger.error(error);
-      //   if (error instanceof Error) {
-      //     context.logger.crash(error as Error);
-      //   }
-      //   return;
-      // }
+      this._init();
 
       if (this.viewContent != null && this.viewContent !== false) {
         this.node = render(this.viewContent, this.context);

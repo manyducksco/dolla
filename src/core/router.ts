@@ -552,7 +552,7 @@ export class Router {
         const activeLayer = this.#activeLayers[i];
 
         if (activeLayer?.id !== matchedLayer.id) {
-          const parentLayer = this.#activeLayers.at(i - 1) ?? this.#rootLayer;
+          const parentLayer = this.#activeLayers[i - 1] ?? this.#rootLayer;
 
           // Create a slot and element for this layer.
           const slot = state<MarkupNode>();
@@ -560,45 +560,33 @@ export class Router {
             children: new Markup(MarkupType.Dynamic, { source: slot }),
           });
 
-          // Handle $preload()
-          node._routePreload().then(() => {
-            console.log("preloaded");
-          });
+          // Set state for new layer.
+          // TODO: Route state will probably go away when preload is working.
+          // const stateEntries = route.state.get(matchedLayer.id);
+          // if (stateEntries) {
+          //   node.context.setState(stateEntries);
+          // }
 
           // Discard all previously active layers starting at this depth.
-          this.#activeLayers = this.#activeLayers.slice(0, i);
-          activeLayer?.node.unmount();
+          this.#activeLayers.splice(i);
 
-          const parentLayer0 = this.#activeLayers.at(-1) ?? this.#rootLayer;
+          // Handle $preload()
+          node._routePreload().then(() => {
+            console.log("preloaded", parentLayer, node);
 
-          console.log("parent layers", parentLayer0 === parentLayer);
+            activeLayer?.node.unmount();
 
-          // Set state for new layer.
-          const stateEntries = route.state.get(matchedLayer.id);
-          if (stateEntries) {
-            node.context.setState(stateEntries);
-          }
+            // Add new layer to activeLayers.
+            this.#activeLayers.push({
+              id: matchedLayer.id,
+              node,
+              context: node.context,
+              slot,
+            });
 
-          // TODO: Handle route suspense. Route views should be able to suspend route mounting until they have loaded their data.
-
-          // const routeLoader = {
-          //   next() {},
-          //   error(err: Error) {},
-          // };
-          // node.context.setState("ROUTE_LOADER", routeLoader);
-          // TODO: Views will look for a ROUTE_LOADER on their own context and call next() on it if they find it.
-          // This will complete the mounting of the route.
-
-          // Add new layer to activeLayers.
-          this.#activeLayers.push({
-            id: matchedLayer.id,
-            node,
-            context: node.context,
-            slot,
+            // Slot this layer into parent.
+            parentLayer.slot.write(node);
           });
-
-          // Slot this layer into parent.
-          parentLayer.slot.write(node);
         } else {
           // Update state for layers that are still active.
           const stateEntries = route.state.get(activeLayer.id);
