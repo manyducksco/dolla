@@ -15,23 +15,38 @@ Runs your code right after the component shows up on the page. If your function 
 **Signature:**
 
 ```ts
-function $setup(callback: () => void | (() => void)): void;
+type CleanupCallback = () => void;
 
-function $teardown(callback: () => void): void;
+interface SetupCallback {
+  (): void;
+  (): CleanupCallback;
+  (signal: AbortSignal): Promise<void>;
+  (signal: AbortSignal): Promise<CleanupCallback>;
+}
+
+function $setup(callback: SetupCallback): void;
+
+interface TeardownCallback {
+  (): void;
+}
+
+function $teardown(callback: TeardownCallback): void;
 ```
 
 **Example:**
 
 ```tsx
-import { $setup, $teardown, atom } from "@manyducks.co/dolla";
+import { $setup, $teardown, state } from "@manyducks.co/dolla";
 
 function IntervalTimer() {
-  const [seconds, setSeconds] = atom(0);
+  const seconds = state(0);
+
+  const debug = $debug();
 
   $setup(() => {
     // Start a timer when the component shows up
     const intervalId = setInterval(() => {
-      setSeconds((s) => s + 1);
+      seconds.update((s) => s + 1);
     }, 1000);
 
     // Returning a function from $setup will run it on teardown.
@@ -41,7 +56,22 @@ function IntervalTimer() {
       clearInterval(intervalId);
     };
   });
-  
+
+  // An async setup callback takes an AbortSignal that aborts when the view is unmounted.
+  // Use it to cancel in-flight requests and other pending logic.
+  $setup(async (signal) => {
+    fetch("/api/data", { signal })
+      .then((res) => res.json())
+      .then((data) => {
+        seconds.set(data.count);
+      })
+      .catch((err) => {
+        if (err instanceof AbortError) {
+          debug.info("view unmounted; fetch aborted");
+        }
+      });
+  });
+
   $teardown(() => {
     // Tell your analytics that the user bounced
     fireAnalyticsEvent(`user_left_${eventName}_view`);
@@ -78,23 +108,23 @@ function Lifecycle() {
   $on("willMount", () => {
     // Just about to mount. Accessing DOM nodes will not work yet.
   });
-  
+
   $on("didMount", () => {
     // Just mounted. Accessing DOM nodes is possible now.
   });
-  
+
   $on("willUnmount", () => {
     // Still in the DOM, but going away just after this runs.
   });
-  
+
   $on("didUnmount", () => {
     // No longer in the DOM.
   });
-  
+
   $on("dispose", () => {
     // Unmounted and never going to be mounted again.
   });
-  
+
   return <div>...</div>
 }
 ```
@@ -219,15 +249,13 @@ function App() {
   // Any child can now get it with $use(AuthStore).
   // We can also access it here since the instance is returned.
   const auth = $provide(AuthStore);
-  
+
   return (
     <main>
       <header>
         <Navbar />
       </header>
-      <div>
-        ...
-      </div>
+      <div>...</div>
     </main>
   );
 }

@@ -1,132 +1,87 @@
-# Going Buildless: The No-Stress Setup
+# Dolla without a build step.
 
-Aight, so we've been talking about setting up Dolla with Vite, which is sick for real projects. But what if you just wanna vibe? What if you wanna throw together a quick demo on CodePen, or just mess around in a single HTML file without all the setup drama?
+You're probably going to want to bundle with Vite for a big production app, but being able to drop a couple of script tags into an HTML file is great for a few scenarios:
 
-Bet. You can totally run Dolla **buildless**. No npm, no Vite, no `tsconfig.json`. Just you, a browser, and an HTML file.
+- **Quick Prototypes & Demos:** You can spin up a demo in seconds. Perfect for CodePen, Glitch, or just a file on your desktop.
+- **Learning:** It's a good way to learn Dolla without getting bogged down in build tool configuration, especially if you're new to web dev.
+- **Embedding in Existing Sites:** Have a simple static site and just want to add a little island of reactivity without going overboard? Perfect.
 
-The magic that makes this happen is a tiny library called [HTM (Hyperscript Tagged Markup)](https://github.com/developit/htm). It's basically JSX, but for the browser. It lets you write your UI using tagged template literals, which look a little weird at first but are actually super intuitive.
+JSX is the main feature that won't work, so there are two options for writing views without a build step.
 
-## The Setup: One HTML File to Rule Them All
+## The `m` function.
 
-Fr, this is all you need. Just create an `index.html` file and paste this in.
+The `@manyducks.co/dolla` package exports a function named `m` with the purpose of creating markup nodes. JSX compiles down to `m` calls.
+
+Its signature is `m(tag[, options], ...children)`.
 
 ```html
-<!doctype html>
-<html lang="en">
+<html>
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dolla Buildless Demo</title>
+    <title>Look ma, no build step!</title>
   </head>
   <body>
-    <!-- Your app will go here! -->
     <div id="app"></div>
 
-    <!-- This is the magic part -->
     <script type="module">
-      // 1. Import what you need from a CDN
-      import { dolla, signal, m } from "https://esm.sh/@manyducks.co/dolla";
-      import htm from "https://esm.sh/htm";
+      import { dolla, state, m } from "https://esm.sh/@manyducks.co/dolla";
 
-      // 2. Tell HTM to use Dolla's markup function
-      const html = htm.bind(m);
-
-      // 3. Write your component using the `html` tag
-      function App() {
-        const count = signal(0);
-
-        return m("div", [
-          m("h1", "Count: ", count),
-          m("button", {onClick: () => count(c => c + 1)}, "Click Me!")
-        ])
-
-        return html`
-          <div>
-            <h1>Count: ${count}</h1>
-            <button onClick=${() => count((c) => c + 1)}>Click Me!</button>
-          </div>
-        `;
+      function Layout({ children }) {
+        return m("div", { class: "flex flex-col gap-2 p-8 rounded-xl bg-stone-300" }, children);
       }
 
-      // 4. Mount your app into the #app element
-      dolla(App).mount("#app");
+      function Counter() {
+        const count = state(0);
+
+        return m(Layout, [
+          m("span", "Count is: ", count),
+          m("button", { onClick: () => count.update((c) => c + 1) }, "Increment"),
+        ]);
+      }
+
+      dolla(Counter).mount("#app");
     </script>
   </body>
 </html>
 ```
 
-Just save that file and open it in your browser. That's it. You have a fully reactive Dolla app running. No terminal, no `npm install`.
+## The `htm` library.
 
-## How it Works: The `html` Tag
-
-Let's break down the key part. This line:
-
-```js
-const html = htm.bind(createMarkup);
-```
-
-...is the secret sauce. It creates a special "tag" for your template literals. Whenever you write `html\`...\``, HTM intercepts it and, instead of making a normal string, it uses Dolla's `createMarkup\` function to turn it into the same Markup Nodes that JSX would create.
-
-So, this JSX:
-
-```jsx
-<div class="greeting">Hello, {$name}</div>
-```
-
-Becomes this with HTM:
-
-```js
-html`<div class="greeting">Hello, ${$name}</div>`;
-```
-
-It's basically the same thing, just with a slightly different syntax. You use `${...}` to embed any JavaScript expression, whether it's a signal, a string, or an event handler.
-
-## A More Complex Example
-
-Let's see how our usual `Counter` example looks with HTM. It's almost identical.
+You can use the [`htm`](https://github.com/developit/htm) library for a more JSX-like experience. It binds to the `m` function and enables you to write your views with tagged template literals.
 
 ```html
-<script type="module">
-  import { createApp, useSignal, useEffect, Show, createMarkup } from "https://esm.sh/@manyducks.co/dolla";
-  import htm from "https://esm.sh/htm";
+<html>
+  <head>
+    <title>Look ma, no build step!</title>
+  </head>
+  <body>
+    <div id="app"></div>
 
-  const html = htm.bind(createMarkup);
+    <script type="module">
+      import { dolla, state, m } from "https://esm.sh/@manyducks.co/dolla";
+      import htm from "https://esm.sh/htm";
 
-  function Counter() {
-    const [$count, setCount] = useSignal(0);
+      const html = htm.bind(m);
 
-    useEffect(() => {
-      console.log("The count is now:", $count());
-    });
+      function Layout({ children }) {
+        return html`<div class="flex flex-col gap-2 p-8 rounded-xl bg-stone-300">${children}</div>`;
+      }
 
-    return html`
-      <div>
-        <p>Count: ${$count}</p>
-        <button onClick=${() => setCount((c) => c + 1)}>+1</button>
+      function Counter() {
+        const count = state(0);
 
-        {/* You can even use other components inside! */}
-        <${Show} when=${() => $count() > 5}>
-          <p>It's over 5!</p>
-        <//>
-      </div>
-    `;
-  }
+        return html`
+          <${Layout}>
+            <span>Count is: ${count}</span>
+            <button onClick=${() => count.update((c) => c + 1)}>Increment</button>
+          <//>
+        `;
+      }
 
-  createApp(Counter).mount("#app");
-</script>
+      dolla(Counter).mount("#app");
+    </script>
+  </body>
+</html>
 ```
-
-The only weird part is using other components. You have to use the `${...}` syntax for the component itself, like `<${Show} ...>`. It's a little quirky, but you get used to it.
-
-## So, Why Bother?
-
-Going buildless is the main character for a few situations:
-
-- **Quick Prototypes & Demos:** You can spin up a reactive demo in seconds. Perfect for CodePen, Glitch, or just a file on your desktop.
-- **Learning:** It's a sick way to learn Dolla without getting bogged down in build tool configuration.
-- **Embedding in Existing Sites:** Got a simple static site and just want to add a little island of reactivity? This is perfect.
-
-For a huge, complex production app, you'll probably still want a build step with Vite for stuff like code splitting, bundling, and all that optimization. But for getting started or for smaller projects, going buildless is a total power move.
 
 ---
 
