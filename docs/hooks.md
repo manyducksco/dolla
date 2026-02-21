@@ -57,19 +57,22 @@ function IntervalTimer() {
     };
   });
 
-  // An async setup callback takes an AbortSignal that aborts when the view is unmounted.
+  // The setup callback is passed an AbortSignal that aborts when the view is unmounted.
   // Use it to cancel in-flight requests and other pending logic.
   $setup(async (signal) => {
-    fetch("/api/data", { signal })
-      .then((res) => res.json())
-      .then((data) => {
-        seconds.set(data.count);
-      })
-      .catch((err) => {
-        if (err instanceof AbortError) {
-          debug.info("view unmounted; fetch aborted");
-        }
-      });
+    try {
+      const res = await fetch("/api/data", { signal });
+      const data = await res.json();
+      seconds.set(data.count);
+    } catch (error) {
+      if (err instanceof AbortError) {
+        debug.info("view unmounted; fetch aborted");
+      } else {
+        throw error;
+      }
+    }
+
+    // NOTE: If your async setup function returns a cleanup function it WON'T be called if the signal is aborted.
   });
 
   $teardown(() => {

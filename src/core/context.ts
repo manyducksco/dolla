@@ -35,7 +35,6 @@ enum LifecycleState {
   Disposed = 5,
 }
 
-const NAME = Symbol("name");
 const LIFECYCLE = Symbol("lifecycle");
 const PARENT = Symbol("parent");
 const STORES = Symbol("stores");
@@ -206,6 +205,8 @@ export class Context {
   [PARENT]?: Context;
   [STORES]?: Map<Store<any, any>, any>;
   [STATE]?: Map<any, any>;
+
+  #errorHandler?: (error: unknown) => void;
 
   get isMounted() {
     const { state } = this[LIFECYCLE];
@@ -438,5 +439,32 @@ export class Context {
     }
 
     return this;
+  }
+
+  /**
+   * Propagates an error up the context tree.
+   */
+  throwError(error: unknown) {
+    this.bubbleError(error, []);
+  }
+
+  /**
+   * Catches errors thrown on this context or a child context.
+   */
+  catchError(callback: (error: unknown) => void) {
+    if (this.#errorHandler) {
+      this.logger.warn("Overwriting existing error handler");
+    }
+    this.#errorHandler = callback;
+  }
+
+  bubbleError(error: unknown, chain: Context[]) {
+    if (this.#errorHandler) {
+      this.#errorHandler(error);
+    } else if (this[PARENT]) {
+      this[PARENT].bubbleError(error, [...chain, this]);
+    } else {
+      // Crash app
+    }
   }
 }

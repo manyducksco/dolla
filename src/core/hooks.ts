@@ -114,6 +114,10 @@ export function $watch(callback: WatchCallback): void {
   $$context().watch(callback);
 }
 
+export function $catch(callback: (error: unknown) => void) {
+  $$context().catchError(callback);
+}
+
 /*=============================*\
 ||           Router            ||
 \*=============================*/

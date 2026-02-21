@@ -59,9 +59,7 @@ export class ViewNode<P> extends MarkupNode {
       this.viewContent = view(props);
     } catch (error) {
       context.logger.error(error);
-      if (error instanceof Error) {
-        context.logger.crash(error as Error);
-      }
+      context.throwError(error);
     } finally {
       setCurrentContext(prevCtx);
       this.initialized = true;
