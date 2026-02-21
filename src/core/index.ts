@@ -26,8 +26,8 @@ export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
 export { getEnv, setEnv } from "./env.js";
 
 // Logger
-export { createLogger, onLoggerCrash } from "./logger.js";
-export type { Logger, LoggerCrashProps, LoggerOptions, LogLevel } from "./logger.js";
+export { createLogger } from "./logger.js";
+export type { Logger, LoggerOptions, LogLevel } from "./logger.js";
 
 // Other types
 export type { CSSProperties, Env, InputType, Mixin, Renderable, Store, View } from "../types.js";

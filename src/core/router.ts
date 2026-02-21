@@ -54,16 +54,6 @@ export interface Match {
 
 export interface RouteMatchContext extends Match {
   /**
-   * Stores `value` at `key` in this context's state.
-   */
-  setState<T>(key: any, value: T): void;
-
-  /**
-   * For each tuple in `entries`, stores `value` at `key` in this context's state.
-   */
-  setState(entries: [key: any, value: any][]): void;
-
-  /**
    * Redirects the user to a different route instead of matching the current one.
    */
   redirect(path: string): void;
@@ -193,7 +183,13 @@ export const ROUTER_TRANSITIONS_CONTROLLER = Symbol("RouterTransitionsController
 export type RouterAPI = ReturnType<Router["api"]>;
 
 export class Router {
-  #logger = createLogger("dolla.router");
+  #logger = createLogger("dolla.router", {
+    onCrash: (error) => {
+      this.#context.throwError(error);
+    },
+  });
+
+  #context: Context;
 
   #nextLayerId = 0;
   #activeLayers: ActiveLayer[] = [];
@@ -268,6 +264,8 @@ export class Router {
       slot,
     };
 
+    this.#context = context;
+
     if (options.hash) {
       this.#hash = true;
     }
@@ -298,7 +296,7 @@ export class Router {
         this.#logger.info("intercepted click on <a> tag", anchor);
 
         const href = anchor.getAttribute("href")!;
-        const preserveQuery = anchor.getAttribute("data-router-preserve-query");
+        const preserveQuery = anchor.getAttribute("data-preserve-query");
 
         this.navigate(href, {
           preserveQuery: parsePreserveQueryAttribute(preserveQuery),
@@ -364,10 +362,12 @@ export class Router {
     joined = resolvePath(window.location.pathname, joined);
 
     if (options.replace) {
-      this.#replace(joined, options);
+      window.history.replaceState(null, "", this.#hash ? "/#" + joined : joined);
     } else {
-      this.#push(joined, options);
+      window.history.pushState(null, "", this.#hash ? "/#" + joined : joined);
     }
+
+    this.#updateRoute(joined, options);
   }
 
   /**
@@ -408,43 +408,6 @@ export class Router {
       updateQuery: this.updateQuery.bind(this),
       navigate: this.navigate.bind(this),
     };
-
-    // match
-
-    // const { pattern, path, params, query } = $route()
-    // pattern.read()
-    // [query as WritableMap?]
-    // query.read("name")
-    // query.track("id")
-    // query.write("id", 5)
-    // query.update((p) => ({...p, id: 12}))
-
-    // navigate
-
-    // [option 1; single function]
-    // const navigate = $navigate()
-    // navigate(-1) and navigate(1) for back and forward
-    // navigate("/some/path") for route
-
-    // [option 2; object]
-    // const go = $navigate()
-    // go.back()
-    // go.forward()
-    // go.to("/path")
-  }
-
-  #push(href: string, options: NavigateOptions) {
-    this.#logger.info("(push)", href);
-
-    window.history.pushState(null, "", this.#hash ? "/#" + href : href);
-    this.#updateRoute(href, options);
-  }
-
-  #replace(href: string, options: NavigateOptions) {
-    this.#logger.info("(replace)", href);
-
-    window.history.replaceState(null, "", this.#hash ? "/#" + href : href);
-    this.#updateRoute(href, options);
   }
 
   #getCurrentURL(): URL {
@@ -524,80 +487,60 @@ export class Router {
       );
     }
 
+    const match = route.match!;
+
     // Run in batch so all new layers are mounted simultaneously with match signal change.
     // This avoids the old route effects receiving new signal values just before they unmount.
     batch(() => {
-      const match = route.match!;
-      const oldPattern = this.pattern.read();
-
       this.#match.write({ ...route.match!, query });
-
-      if (match.pattern === oldPattern) {
-        // If pattern has not changed, update state on current layers.
-        for (const layer of this.#activeLayers) {
-          const stateEntries = route.state.get(layer.id);
-          if (stateEntries) {
-            layer.context.setState(stateEntries);
-          }
-        }
-        return;
-      }
 
       const layers = match.meta.layers!;
       logger.info("mounting", match);
 
       // Diff and update route layers.
       for (let i = 0; i < layers.length; i++) {
-        const matchedLayer = layers[i];
-        const activeLayer = this.#activeLayers[i];
+        const currentLayer = layers[i];
+        const previousLayer = this.#activeLayers[i];
 
-        if (activeLayer?.id !== matchedLayer.id) {
+        if (previousLayer?.id !== currentLayer.id) {
           const parentLayer = this.#activeLayers[i - 1] ?? this.#rootLayer;
 
           // Create a slot and element for this layer.
           const slot = state<MarkupNode>();
-          const node = new ViewNode(parentLayer.context, matchedLayer.view, {
+          const node = new ViewNode(parentLayer.context, currentLayer.view, {
             children: new Markup(MarkupType.Dynamic, { source: slot }),
           });
-
-          // Set state for new layer.
-          // TODO: Route state will probably go away when preload is working.
-          // const stateEntries = route.state.get(matchedLayer.id);
-          // if (stateEntries) {
-          //   node.context.setState(stateEntries);
-          // }
 
           // Discard all previously active layers starting at this depth.
           this.#activeLayers.splice(i);
 
-          // Handle $preload()
-          node._routePreload().then(() => {
-            console.log("preloaded", parentLayer, node);
-
-            activeLayer?.node.unmount();
-
-            // Add new layer to activeLayers.
-            this.#activeLayers.push({
-              id: matchedLayer.id,
-              node,
-              context: node.context,
-              slot,
-            });
-
-            // Slot this layer into parent.
-            parentLayer.slot.write(node);
+          // Add new layer to activeLayers.
+          this.#activeLayers.push({
+            id: currentLayer.id,
+            node,
+            context: node.context,
+            slot,
           });
-        } else {
-          // Update state for layers that are still active.
-          const stateEntries = route.state.get(activeLayer.id);
-          if (stateEntries) {
-            activeLayer.context.setState(stateEntries);
-          }
+
+          previousLayer?.node.unmount();
+
+          // Slot this layer into parent.
+          parentLayer.slot.write(node);
+
+          // TODO: Handle $preload()
+
+          // All preloads for newly matched layers should fire simultaneously.
+          // Then when all are done the layers should mount at once.
+
+          // node._routePreload().then(() => {
+          //   console.log("preloaded", parentLayer, node);
+
+          // });
         }
       }
     });
 
-    return { match: route.match, journey: route.journey };
+    return route;
   }
 
   /**
@@ -606,11 +549,9 @@ export class Router {
   async #resolveRoute(
     url: URL,
     journey: JourneyStep[] = [],
-    state = new Map<number, [any, any][]>(),
   ): Promise<{
     match: RouteMatch<RouteMeta> | null;
     journey: JourneyStep[];
-    state: Map<number, [any, any][]>; // map of layerId to state entries
   }> {
     return new Promise((resolve, reject) => {
       const match = matchRoutes(this.#routes, url.pathname);
@@ -619,7 +560,6 @@ export class Router {
         return resolve({
           match: null,
           journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
-          state,
         });
       }
 
@@ -658,7 +598,7 @@ export class Router {
             ]),
           );
         } else {
-          resolve({ match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }], state });
+          resolve({ match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] });
         }
       };
 
@@ -679,26 +619,6 @@ export class Router {
               params: match.params,
               query: match.query,
               data: match.meta.data ?? {},
-
-              setState: (...args: any[]) => {
-                const id = callbacks[i].layerId;
-                const entries: [any, any][] = [];
-
-                if (args.length === 1 && isArrayOf(isArray, args[0])) {
-                  entries.push(...(args[0] as [any, any][]));
-                } else if (args.length === 2) {
-                  entries.push([args[0], args[1]]);
-                } else {
-                  throw new Error("Invalid arguments.");
-                }
-
-                const current = state.get(id);
-                if (!current) {
-                  state.set(id, entries);
-                } else {
-                  entries.push(...entries);
-                }
-              },
 
               redirect: (path) => {
                 redirect = path;

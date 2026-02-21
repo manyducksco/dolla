@@ -3,11 +3,11 @@ import { Context, LifecycleEvent } from "../core/context";
 import { $watch, $setup, $teardown } from "./hooks";
 import { getCurrentContext, setCurrentContext, state } from "./signal";
 
-const _emitWillMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.WILL_MOUNT);
-const _emitDidMount = () => Context.emit(getCurrentContext()!, LifecycleEvent.DID_MOUNT);
-const _emitWillUnmount = () => Context.emit(getCurrentContext()!, LifecycleEvent.WILL_UNMOUNT);
-const _emitDidUnmount = () => Context.emit(getCurrentContext()!, LifecycleEvent.DID_UNMOUNT);
-const _emitDispose = () => Context.emit(getCurrentContext()!, LifecycleEvent.DISPOSE);
+const _emitWillMount = () => getCurrentContext()!.emit(LifecycleEvent.WILL_MOUNT);
+const _emitDidMount = () => getCurrentContext()!.emit(LifecycleEvent.DID_MOUNT);
+const _emitWillUnmount = () => getCurrentContext()!.emit(LifecycleEvent.WILL_UNMOUNT);
+const _emitDidUnmount = () => getCurrentContext()!.emit(LifecycleEvent.DID_UNMOUNT);
+const _emitDispose = () => getCurrentContext()!.emit(LifecycleEvent.DISPOSE);
 
 beforeEach(() => {
   setCurrentContext(new Context("test"));

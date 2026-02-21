@@ -462,19 +462,12 @@ export function createI18n(options: I18nOptions) {
     }
 
     const translation = translations.get(realName)!;
+    await translation.load();
 
-    try {
-      await translation.load();
+    cache = [];
+    locale.write(realName);
 
-      cache = [];
-      locale.write(realName);
-
-      logger.info("set language to " + realName);
-    } catch (error) {
-      if (error instanceof Error) {
-        logger.crash(error);
-      }
-    }
+    logger.info("set language to " + realName);
   }
 
   /**
@@ -565,11 +558,9 @@ export function createI18n(options: I18nOptions) {
         for (const format of formats) {
           const fn = formatters.get(format.name);
           if (fn == null) {
-            const error = new Error(
+            throw new Error(
               `Failed to load format '${format.name}' when processing '${selector}', template: ${template}`,
             );
-            logger.crash(error);
-            throw error;
           }
           value = fn(locale, value, format.options);
         }

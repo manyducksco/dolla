@@ -24,7 +24,7 @@ export enum LifecycleEvent {
 
 export type LifecycleEventName = "willMount" | "didMount" | "willUnmount" | "didUnmount" | "dispose";
 
-type LifecycleListener = () => void;
+type LifecycleListener = () => any;
 
 enum LifecycleState {
   Unmounted = 0,
@@ -34,11 +34,6 @@ enum LifecycleState {
   DidUnmount = 4,
   Disposed = 5,
 }
-
-const LIFECYCLE = Symbol("lifecycle");
-const PARENT = Symbol("parent");
-const STORES = Symbol("stores");
-const STATE = Symbol("state");
 
 /**
  * Manages lifecycle events for a Context.
@@ -64,6 +59,7 @@ class ContextLifecycle {
     } else {
       listeners.add(listener);
     }
+    return () => this.off(event, listener);
   }
 
   /**
@@ -126,8 +122,8 @@ class ContextLifecycle {
           this.notify(event);
           this.listeners.clear();
           this.bound = undefined;
-          this.context[STATE] = undefined;
-          this.context[STORES] = undefined;
+          this.context.state = undefined;
+          this.context.stores = undefined;
           this.state = LifecycleState.Disposed;
         } else {
           this.context.logger.crash(new Error(`Tried to DISPOSE context at state ${this.state}`));
@@ -162,30 +158,10 @@ class ContextLifecycle {
     // Emit to bound contexts.
     if (this.bound) {
       for (const context of this.bound) {
-        context[LIFECYCLE].emit(event);
+        context.lifecycle.emit(event);
       }
     }
   }
-}
-
-export interface ContextGetStateOptions<T> {
-  fallback?: T;
-
-  /**
-   * Only check this context; skip parent contexts.
-   */
-  shallow?: boolean;
-}
-
-export interface ContextGetStateOptionsWithFallbackValue<T> extends ContextGetStateOptions<T> {
-  fallback: T;
-}
-
-export interface ContextGetStateMapOptions {
-  /**
-   * Only include state from this context; skip parent contexts.
-   */
-  immediate?: boolean;
 }
 
 export interface ContextOptions {
@@ -196,49 +172,53 @@ export interface LinkedContextOptions extends ContextOptions {
   bindLifecycleToParent?: boolean;
 }
 
+export interface ErrorInfo {
+  contextStack: string;
+}
+
 export class Context {
   #name: Gettable<string>;
 
+  lifecycle = new ContextLifecycle(this);
   logger: Logger;
+  parent?: Context;
+  stores?: Map<Store<any, any>, any>;
+  state?: Map<any, any>;
 
-  [LIFECYCLE] = new ContextLifecycle(this);
-  [PARENT]?: Context;
-  [STORES]?: Map<Store<any, any>, any>;
-  [STATE]?: Map<any, any>;
-
-  #errorHandler?: (error: unknown) => void;
+  #errorHandler?: (error: unknown, info: ErrorInfo) => void;
 
   get isMounted() {
-    const { state } = this[LIFECYCLE];
+    const { state } = this.lifecycle;
     return state >= LifecycleState.DidMount && state < LifecycleState.DidUnmount;
-  }
-
-  /**
-   * Returns a new Context with this one as its parent.
-   */
-  static createChildOf(
-    parent: Context,
-    name: MaybeReadable<string> | Getter<string>,
-    options?: LinkedContextOptions,
-  ): Context {
-    const context = new Context(name, options);
-    context[PARENT] = parent;
-    if (options?.bindLifecycleToParent) parent[LIFECYCLE].bind(context);
-    return context;
-  }
-
-  /**
-   * Emit a lifecycle event to `context`.
-   */
-  static emit(context: Context, event: LifecycleEvent) {
-    context[LIFECYCLE].emit(event);
   }
 
   constructor(name: Readable<string> | Getter<string> | string, options?: ContextOptions) {
     this.#name = name;
 
     // Wrapping the get in another getter in case this.#name changes to a different object between calls.
-    this.logger = createLogger(() => read(this.#name), options?.logger);
+    this.logger = createLogger(() => read(this.#name), {
+      ...options?.logger,
+      onCrash: (error) => {
+        this.throwError(error);
+      },
+    });
+  }
+
+  /**
+   * Returns a new Context with this one as its parent.
+   */
+  createChild(name: MaybeReadable<string> | Getter<string>, options?: LinkedContextOptions): Context {
+    const context = new Context(name, options);
+    context.parent = this;
+    if (options?.bindLifecycleToParent) this.lifecycle.bind(context);
+    return context;
+  }
+
+  /**
+   * Emits a lifecycle event to this context.
+   */
+  emit(event: LifecycleEvent) {
+    this.lifecycle.emit(event);
   }
 
   /**
@@ -259,23 +239,24 @@ export class Context {
    * Creates an instance of a store and attaches it to this context.
    */
   provideStore<T>(store: Store<any, T>, options?: any): this {
-    if (this[STORES]?.get(store)) {
+    if (this.stores?.get(store)) {
       let name = store.name ? `'${store.name}'` : "this store";
       throw this.logger.crash(new Error(`An instance of ${name} was already added on this context.`));
     }
 
-    const context = Context.createChildOf(this, store.name, {
+    const context = this.createChild(store.name, {
       bindLifecycleToParent: true,
       logger: { tag: getUniqueId(), tagName: "uid" },
     });
+
+    const prevCtx = setCurrentContext(context);
     try {
-      if (!this[STORES]) this[STORES] = new Map();
-      const prevCtx = setCurrentContext(context);
-      const result = store(options);
-      setCurrentContext(prevCtx);
-      this[STORES].set(store, result);
+      if (!this.stores) this.stores = new Map();
+      this.stores.set(store, store(options));
     } catch (error) {
-      throw this.logger.crash(error as Error);
+      throw this.throwError(error);
+    } finally {
+      setCurrentContext(prevCtx);
     }
 
     return this;
@@ -292,15 +273,15 @@ export class Context {
     let context: Context = this;
     let result: unknown;
     while (true) {
-      result = context[STORES]?.get(store);
-      if (result == null && context[PARENT] != null) {
-        context = context[PARENT];
+      result = context.stores?.get(store);
+      if (result == null && context.parent != null) {
+        context = context.parent;
       } else {
         break;
       }
     }
     if (result == null) {
-      throw this.logger.crash(new Error(`Store '${store.name}' is not provided by this context.`));
+      throw this.throwError(new Error(`Store '${store.name}' is not provided by this context.`));
     }
     return result as T;
   }
@@ -311,8 +292,16 @@ export class Context {
    * Prefer `useMount` and `useUnmount` hooks for general usage.
    */
   onLifecycleTransition(event: LifecycleEventName, listener: LifecycleListener) {
-    this[LIFECYCLE].on(event as LifecycleEvent, listener);
-    return () => this[LIFECYCLE].off(event as LifecycleEvent, listener);
+    return this.lifecycle.on(event as LifecycleEvent, () => {
+      try {
+        const result = listener();
+        if (result instanceof Promise) {
+          result.catch(this.throwError);
+        }
+      } catch (error) {
+        this.throwError(error);
+      }
+    });
   }
 
   watch(callback: WatchCallback) {
@@ -320,30 +309,23 @@ export class Context {
       try {
         return callback(); // Return callback so cleanup function passes through to effect handler
       } catch (error) {
-        this.logger.error(error);
-        if (error instanceof Error) {
-          this.logger.crash(error);
-        } else if (typeof error === "string") {
-          this.logger.crash(new Error(error));
-        } else {
-          this.logger.crash(new Error(`Unknown error thrown in effect callback`));
-        }
+        this.throwError(error);
       }
     };
 
-    if (this[LIFECYCLE].state >= LifecycleState.WillMount) {
+    if (this.lifecycle.state >= LifecycleState.WillMount) {
       // This code is probably in a lifecycle hook; run the effect immediately and trigger unsubscribe when context unmounts.
       const unsubscribe = watch(fn);
-      this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
+      this.lifecycle.on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
       return unsubscribe;
     } else {
       // Prime the effect to run when the context is mounted and unsubscribe when unmounted, unless unsubscribed before `willMount`.
       let unsubscribe: UnsubscribeFn | undefined;
       let disposed = false;
-      this[LIFECYCLE].on(LifecycleEvent.WILL_MOUNT, () => {
+      this.lifecycle.on(LifecycleEvent.WILL_MOUNT, () => {
         if (!disposed) {
           unsubscribe = watch(fn);
-          this[LIFECYCLE].on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
+          this.lifecycle.on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
         }
       });
       return () => {
@@ -356,89 +338,35 @@ export class Context {
   }
 
   /**
-   * Gets the value stored at `key`, or returns `options.fallback` if none is set.
+   * Gets the value stored at `key`. Searches up the context chain if this context doesn't have it.
    */
-  getState<T>(key: any, options: ContextGetStateOptionsWithFallbackValue<T>): T;
-
-  /**
-   * Gets the value stored at `key`, or throws an error if none is set.
-   */
-  getState<T>(key: any, options?: ContextGetStateOptions<T>): T;
-
-  getState<T>(key: any, options?: ContextGetStateOptions<T>): T {
-    const shallow = options?.shallow ?? false;
+  getState<T>(key: any): T | undefined {
     let context: Context = this;
     let value: any;
     while (true) {
-      value = context[STATE]?.get(key);
-      if (value === undefined && !shallow && context[PARENT] != null) {
-        context = context[PARENT];
+      value = context.state?.get(key);
+      if (value === undefined && context.parent != null) {
+        context = context.parent;
       } else {
         break;
-      }
-    }
-    if (value === undefined) {
-      if (options != null && Object.hasOwn(options, "fallback")) {
-        return options.fallback!;
-      } else {
-        throw new Error(`Expected a value for '${String(key)}' but got undefined.`);
       }
     }
     return value;
   }
 
   /**
-   * Returns a Map containing all state values available to this context.
-   *
-   * Pass `options.immediate` to only include state stored on this context.
-   * By default all state stored on parent contexts is also included.
+   * Gets the value stored at `key` on this context.
    */
-  getStateMap(options?: ContextGetStateMapOptions): Map<any, any> {
-    let context: Context = this;
-    const immediate = options?.immediate ?? false;
-    const entries: [any, any][] = [];
-    while (true) {
-      if (context[STATE]) {
-        entries.push(...context[STATE].entries());
-      }
-      if (!immediate && context[PARENT] != null) {
-        context = context[PARENT];
-      } else {
-        break;
-      }
-    }
-    return new Map(entries.reverse());
+  getOwnState<T>(key: any): T | undefined {
+    return this.state?.get(key);
   }
 
   /**
    * Stores `value` at `key` in this context's state.
    */
-  setState<T>(key: any, value: T): void;
-
-  /**
-   * For each tuple in `entries`, stores `value` at `key` in this context's state.
-   */
-  setState(entries: [key: any, value: any][]): void;
-
-  setState(...args: any[]) {
-    if (!this[STATE]) {
-      this[STATE] = new Map();
-    }
-    if (args.length === 2) {
-      this[STATE].set(args[0], args[1]);
-    } else if (typeOf(args[0]) === "array") {
-      for (const [key, value] of args[0]) {
-        if (value === undefined) {
-          this[STATE].delete(key);
-        } else {
-          this[STATE].set(key, value);
-        }
-      }
-    } else {
-      throw new Error(`Invalid arguments.`);
-    }
-
-    return this;
+  setState<T>(key: any, value: T) {
+    if (!this.state) this.state = new Map();
+    this.state.set(key, value);
   }
 
   /**
@@ -451,20 +379,34 @@ export class Context {
   /**
    * Catches errors thrown on this context or a child context.
    */
-  catchError(callback: (error: unknown) => void) {
+  catchError(callback: (error: unknown, info: ErrorInfo) => void) {
     if (this.#errorHandler) {
       this.logger.warn("Overwriting existing error handler");
     }
     this.#errorHandler = callback;
+    return () => (this.#errorHandler = undefined);
   }
 
   bubbleError(error: unknown, chain: Context[]) {
     if (this.#errorHandler) {
-      this.#errorHandler(error);
-    } else if (this[PARENT]) {
-      this[PARENT].bubbleError(error, [...chain, this]);
+      this.#errorHandler(error, this.getErrorInfo(error, [...chain, this]));
+    } else if (this.parent) {
+      this.parent.bubbleError(error, [...chain, this]);
     } else {
-      // Crash app
+      // The top level (app) context should be attaching a handler when it mounts.
+      throw error;
     }
+  }
+
+  private getErrorInfo(error: unknown, chain: Context[]): ErrorInfo {
+    const contextStack = chain.reduceRight((str, ctx) => `${str}-> ${ctx.getName()}\n`, "");
+
+    const source = chain[0];
+    return {
+      // source: {
+      //   name: source.getName(),
+      // },
+      contextStack,
+    };
   }
 }

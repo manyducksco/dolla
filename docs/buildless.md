@@ -6,13 +6,9 @@ You're probably going to want to bundle with Vite for a big production app, but 
 - **Learning:** It's a good way to learn Dolla without getting bogged down in build tool configuration, especially if you're new to web dev.
 - **Embedding in Existing Sites:** Have a simple static site and just want to add a little island of reactivity without going overboard? Perfect.
 
-JSX is the main feature that won't work, so there are two options for writing views without a build step.
+## Enter `htm`.
 
-## The `m` function.
-
-The `@manyducks.co/dolla` package exports a function named `m` with the purpose of creating markup nodes. JSX compiles down to `m` calls.
-
-Its signature is `m(tag[, options], ...children)`.
+JSX is the main feature that needs a build step. Fortunately you can use the [`htm`](https://github.com/developit/htm) library for a more JSX-like experience. It binds to the `createMarkup` function (the same one JSX is calling under the hood) and enables you to write your views with tagged template literals.
 
 ```html
 <html>
@@ -23,44 +19,10 @@ Its signature is `m(tag[, options], ...children)`.
     <div id="app"></div>
 
     <script type="module">
-      import { dolla, state, m } from "https://esm.sh/@manyducks.co/dolla";
-
-      function Layout({ children }) {
-        return m("div", { class: "flex flex-col gap-2 p-8 rounded-xl bg-stone-300" }, children);
-      }
-
-      function Counter() {
-        const count = state(0);
-
-        return m(Layout, [
-          m("span", "Count is: ", count),
-          m("button", { onClick: () => count.update((c) => c + 1) }, "Increment"),
-        ]);
-      }
-
-      dolla(Counter).mount("#app");
-    </script>
-  </body>
-</html>
-```
-
-## The `htm` library.
-
-You can use the [`htm`](https://github.com/developit/htm) library for a more JSX-like experience. It binds to the `m` function and enables you to write your views with tagged template literals.
-
-```html
-<html>
-  <head>
-    <title>Look ma, no build step!</title>
-  </head>
-  <body>
-    <div id="app"></div>
-
-    <script type="module">
-      import { dolla, state, m } from "https://esm.sh/@manyducks.co/dolla";
+      import { dolla, state, createMarkup } from "https://esm.sh/@manyducks.co/dolla";
       import htm from "https://esm.sh/htm";
 
-      const html = htm.bind(m);
+      const html = htm.bind(createMarkup);
 
       function Layout({ children }) {
         return html`<div class="flex flex-col gap-2 p-8 rounded-xl bg-stone-300">${children}</div>`;

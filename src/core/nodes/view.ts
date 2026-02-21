@@ -2,8 +2,8 @@ import type { Renderable, View } from "../../types.js";
 import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
-import { RoutePreloadFn, ROUTER_PRELOAD_CONTROLLER, RouteTransitions } from "../router.js";
-import { setCurrentContext, untracked } from "../signal.js";
+import { RoutePreloadFn, RouteTransitions } from "../router.js";
+import { setCurrentContext } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");
@@ -31,7 +31,7 @@ export class ViewNode<P> extends MarkupNode {
    */
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = Context.createChildOf(context, view.name ?? "anonymous view", {
+    this.context = context.createChild(view.name ?? "anonymous view", {
       logger: {
         tag: this.id,
         tagName: "uid",
@@ -50,7 +50,7 @@ export class ViewNode<P> extends MarkupNode {
     return this.context.isMounted;
   }
 
-  _init() {
+  #init() {
     if (this.initialized) return;
 
     const { context, view, props } = this;
@@ -58,7 +58,6 @@ export class ViewNode<P> extends MarkupNode {
     try {
       this.viewContent = view(props);
     } catch (error) {
-      context.logger.error(error);
       context.throwError(error);
     } finally {
       setCurrentContext(prevCtx);
@@ -67,13 +66,10 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   async _routePreload() {
-    this._init();
+    this.#init();
 
     // Callback should have been set via $preload hook.
-    const callback = this.context.getState<RoutePreloadFn>(VIEW_PRELOAD_CALLBACK, {
-      shallow: true,
-      fallback: undefined,
-    });
+    const callback = this.context.getOwnState<RoutePreloadFn>(VIEW_PRELOAD_CALLBACK);
     if (!callback) return Promise.resolve();
 
     console.log("PRELOAD CALLBACK FOUND");
@@ -82,10 +78,7 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   _routeTransitionIn(): Promise<void> {
-    const config = this.context.getState<RouteTransitions>(VIEW_TRANSITIONS_CONFIG, {
-      shallow: true,
-      fallback: undefined,
-    });
+    const config = this.context.getOwnState<RouteTransitions>(VIEW_TRANSITIONS_CONFIG);
     if (!config?.in) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
@@ -95,7 +88,7 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   _routeTransitionOut(): Promise<void> {
-    const config = this.context.getState<any>(VIEW_TRANSITIONS_CONFIG, { shallow: true, fallback: undefined });
+    const config = this.context.getOwnState<any>(VIEW_TRANSITIONS_CONFIG);
     if (!config?.out) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
@@ -110,31 +103,35 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      this._init();
+      this.#init();
 
       if (this.viewContent != null && this.viewContent !== false) {
         this.node = render(this.viewContent, this.context);
       }
 
-      Context.emit(this.context, LifecycleEvent.WILL_MOUNT);
+      this.context.emit(LifecycleEvent.WILL_MOUNT);
     }
 
     if (this.node) {
       this.node.mount(parent, after);
     }
 
-    if (!wasMounted) Context.emit(this.context, LifecycleEvent.DID_MOUNT);
+    // TODO: Handle transition in
+
+    if (!wasMounted) this.context.emit(LifecycleEvent.DID_MOUNT);
   }
 
   unmount(skipDOM = false) {
-    Context.emit(this.context, LifecycleEvent.WILL_UNMOUNT);
+    this.context.emit(LifecycleEvent.WILL_UNMOUNT);
+
+    // TODO: Handle transition out
 
     if (this.node) {
       this.node.unmount(skipDOM);
     }
 
-    Context.emit(this.context, LifecycleEvent.DID_UNMOUNT);
-    Context.emit(this.context, LifecycleEvent.DISPOSE);
+    this.context.emit(LifecycleEvent.DID_UNMOUNT);
+    this.context.emit(LifecycleEvent.DISPOSE);
   }
 
   move(parent: Element, after?: Node) {

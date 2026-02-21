@@ -1,10 +1,18 @@
-import { isFunction, isNumber, isObject, isString } from "../../typeChecking.js";
+import { isFunction, isNumber, isObject, isString, typeOf } from "../../typeChecking.js";
 import { getIntegerId, moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import { watch, type Gettable, isGettable, setCurrentContext, track, type UnsubscribeFn } from "../signal.js";
+import {
+  watch,
+  type Gettable,
+  isGettable,
+  setCurrentContext,
+  track,
+  type UnsubscribeFn,
+  isWritable,
+} from "../signal.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -34,15 +42,12 @@ export class ElementNode extends MarkupNode {
   // Track the ref so we can nullify it on unmount.
   private ref?: Ref<any>;
 
-  // Prevents 'onClickOutside' handlers from firing in the same cycle in which the element is connected.
-  private canClickAway = false;
-
   constructor(context: Context, tag: string, props: Record<string, any>) {
     super();
 
     this.tag = tag;
     this.props = props;
-    this.context = Context.createChildOf(context, getLoggerName.bind(this));
+    this.context = context.createChild(getLoggerName.bind(this));
 
     // This and all nested views will be created as SVG elements.
     if (tag.toLowerCase() === "svg") {
@@ -50,7 +55,7 @@ export class ElementNode extends MarkupNode {
     }
 
     // Create node with the appropriate constructor.
-    if (this.context.getState(IS_SVG, { fallback: false })) {
+    if (this.context.getState(IS_SVG)) {
       this.root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
       this.root = document.createElement(tag);
@@ -58,7 +63,7 @@ export class ElementNode extends MarkupNode {
 
     // Add view name as a data attribute in development mode for better debugging.
     if (getEnv() === "development") {
-      const view = this.context.getState<ViewNode<any> | null>(VIEW, { fallback: null });
+      const view = this.context.getState<ViewNode<any>>(VIEW);
       if (view) {
         this.root.dataset.view = view.context.getName();
       }
@@ -90,7 +95,7 @@ export class ElementNode extends MarkupNode {
 
       if (props.mixin) {
         for (const mixin of toArray(props.mixin)) {
-          const context = Context.createChildOf(this.context, getLoggerName.bind(this), {
+          const context = this.context.createChild(getLoggerName.bind(this), {
             bindLifecycleToParent: true,
             logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
           });
@@ -100,7 +105,7 @@ export class ElementNode extends MarkupNode {
         }
       }
 
-      Context.emit(this.context, LifecycleEvent.WILL_MOUNT);
+      this.context.emit(LifecycleEvent.WILL_MOUNT);
 
       const classes = props.className ?? props.class;
 
@@ -111,9 +116,7 @@ export class ElementNode extends MarkupNode {
       if (props.children) {
         this.childNodes = toMarkupNodes(this.context, props.children);
       }
-    }
 
-    if (!wasMounted) {
       for (let i = 0; i < this.childNodes.length; i++) {
         const child = this.childNodes[i];
         const previous = i > 0 ? this.childNodes[i - 1].getRoot() : undefined;
@@ -122,16 +125,16 @@ export class ElementNode extends MarkupNode {
     }
 
     if (this.root.parentNode === parent) {
-      moveBefore(this.root.parentNode, this.root!, after?.nextSibling ?? null);
+      moveBefore(parent, this.root!, after?.nextSibling ?? null);
+    } else {
+      parent.insertBefore(this.root!, after?.nextSibling ?? null);
     }
 
-    this.canClickAway = true;
-
-    if (!wasMounted) Context.emit(this.context, LifecycleEvent.DID_MOUNT);
+    if (!wasMounted) this.context.emit(LifecycleEvent.DID_MOUNT);
   }
 
   override unmount(skipDOM = false) {
-    Context.emit(this.context, LifecycleEvent.WILL_UNMOUNT);
+    this.context.emit(LifecycleEvent.WILL_UNMOUNT);
 
     if (!skipDOM) {
       this.root!.parentNode?.removeChild(this.root!);
@@ -141,15 +144,13 @@ export class ElementNode extends MarkupNode {
       child.unmount(true);
     }
 
-    this.canClickAway = false;
-
     for (const unsubscribe of this.unsubscribers) {
       unsubscribe();
     }
     this.unsubscribers.length = 0;
 
-    Context.emit(this.context, LifecycleEvent.DID_UNMOUNT);
-    Context.emit(this.context, LifecycleEvent.DISPOSE);
+    this.context.emit(LifecycleEvent.DID_UNMOUNT);
+    this.context.emit(LifecycleEvent.DISPOSE);
 
     // Free ref after all lifecycle hooks have completed.
     queueMicrotask(() => {
@@ -196,23 +197,7 @@ export class ElementNode extends MarkupNode {
     for (const key in omit(ignoredProps, props)) {
       const value = props[key];
 
-      if (key === "on:clickoutside" || key === "onClickOutside" || key === "onclickoutside") {
-        // Synthetic onclickoutside event.
-
-        const listener = (e: Event) => {
-          if (this.canClickAway && !element.contains(e.target as any)) {
-            (value as (e: Event) => void)(e);
-          }
-        };
-
-        // Capture is set to avoid intermediate elements cancelling this event before it gets to the window.
-        const options = { capture: true };
-
-        window.addEventListener("click", listener, options);
-        this.unsubscribers.push(() => {
-          window.removeEventListener("click", listener, options);
-        });
-      } else if (key.startsWith("prop:")) {
+      if (key.startsWith("prop:")) {
         // Keys starting with `prop:` are set as props.
 
         const _key = key.substring(5);
@@ -265,6 +250,29 @@ export class ElementNode extends MarkupNode {
           },
           this.getKey(_key),
         );
+      } else if (key.toLowerCase() === "bindvalue") {
+        if (!isWritable(value)) {
+          throw new Error(`bindValue must be a Writable. Got: ${typeOf(value)}`);
+        }
+
+        const e = element as HTMLInputElement;
+
+        this.attachProp(
+          value,
+          (current) => {
+            e.value = String(current);
+          },
+          this.getKey(key),
+        );
+
+        const onInput = () => {
+          value.write(e.value);
+        };
+
+        element.addEventListener("input", onInput);
+        this.unsubscribers.push(() => {
+          element.removeEventListener("input", onInput);
+        });
       } else if (isFunction(value) && isCamelCaseEventName(key)) {
         // camelCase event names are applied with addEventListener.
 
@@ -297,7 +305,7 @@ export class ElementNode extends MarkupNode {
           },
           this.getKey(key),
         );
-      } else if (this.context.getState(IS_SVG, { fallback: false })) {
+      } else if (this.context.getState(IS_SVG)) {
         // SVG gets everything set as an attribute.
 
         // TODO: This isn't exactly right. SVGElement supports props as well.

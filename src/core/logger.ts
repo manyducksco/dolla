@@ -1,13 +1,13 @@
 import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
 import { getEnv } from "./env.js";
-import { Getter, MaybeGetter, read, type MaybeReadable } from "./signal.js";
+import { MaybeGetter, read } from "./signal.js";
 
 export interface Logger {
   info(...args: any[]): void;
   log(...args: any[]): void;
   warn(...args: any[]): void;
   error(...args: any[]): void;
-  crash(error: Error): Error;
+  crash(error: any): void;
 }
 
 export interface LoggerOptions {
@@ -25,13 +25,8 @@ export interface LoggerOptions {
    * Console object to use for logging (mostly for testing). Uses window.console by default.
    */
   console?: any;
-}
 
-export interface LoggerCrashProps {
-  error: Error;
-  loggerName: string;
-  tag?: string;
-  tagName?: string;
+  onCrash?: (error: unknown) => void;
 }
 
 enum LogLevelValue {
@@ -67,19 +62,6 @@ const DEFAULT_LOG_LEVEL = Symbol();
 let logLevel: LogLevel | Symbol = DEFAULT_LOG_LEVEL;
 let logFilter: string | RegExp | MatcherFunction = "*,-dolla.*";
 let match: MatcherFunction = createMatcher(logFilter);
-let crashListeners: ((context: LoggerCrashProps) => void)[] = [];
-let isCrashed = false;
-
-/**
- * Listen for logged crashes.
- */
-export function onLoggerCrash(listener: (context: LoggerCrashProps) => void) {
-  crashListeners.push(listener);
-
-  return function cancel() {
-    crashListeners.splice(crashListeners.indexOf(listener), 1);
-  };
-}
 
 export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions): Logger {
   const _console = options?.console ?? _getDefaultConsole();
@@ -123,24 +105,12 @@ export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions)
     get error() {
       return bind("error");
     },
-    crash(error: Error) {
-      if (!isCrashed) {
-        isCrashed = true;
-        const ctx: LoggerCrashProps = {
-          error,
-          loggerName: read(name),
-          tag: options?.tag,
-          tagName: options?.tagName,
-        };
-
-        for (const listener of crashListeners) {
-          listener(ctx);
-        }
-
+    crash(error) {
+      if (options?.onCrash) {
+        options.onCrash(error);
+      } else {
         throw error;
       }
-
-      return error;
     },
   };
 }

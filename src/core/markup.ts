@@ -48,21 +48,21 @@ export enum MarkupType {
 }
 
 export interface MarkupNodeProps {
-  [MarkupType.DOM]: {
-    value: Node;
-  };
+  // [MarkupType.DOM]: {
+  //   value: Node;
+  // };
   [MarkupType.Dynamic]: {
     source: Readable<any>;
   };
-  [MarkupType.Portal]: {
-    content: Renderable;
-    parent: Element;
-  };
-  [MarkupType.Repeat]: {
-    items: Readable<any[]>;
-    key: KeyFn<any>;
-    render: RenderFn<any>;
-  };
+  // [MarkupType.Portal]: {
+  //   content: Renderable;
+  //   parent: Element;
+  // };
+  // [MarkupType.Repeat]: {
+  //   items: Readable<any[]>;
+  //   key: KeyFn<any>;
+  //   render: RenderFn<any>;
+  // };
 }
 
 export interface MarkupCustomElementProps {
@@ -145,26 +145,26 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
         continue;
       } else if (isString(item.type)) {
         switch (item.type) {
-          case MarkupType.DOM: {
-            const attrs = item.props! as MarkupNodeProps[MarkupType.DOM];
-            nodes.push(new DOMNode(attrs.value));
-            continue;
-          }
+          // case MarkupType.DOM: {
+          //   const attrs = item.props! as MarkupNodeProps[MarkupType.DOM];
+          //   nodes.push(new DOMNode(attrs.value));
+          //   continue;
+          // }
           case MarkupType.Dynamic: {
             const attrs = item.props! as MarkupNodeProps[MarkupType.Dynamic];
             nodes.push(new DynamicNode(context, attrs.source));
             continue;
           }
-          case MarkupType.Portal: {
-            const attrs = item.props! as MarkupNodeProps[MarkupType.Portal];
-            nodes.push(new PortalNode(context, attrs.content, attrs.parent));
-            continue;
-          }
-          case MarkupType.Repeat: {
-            const attrs = item.props! as MarkupNodeProps[MarkupType.Repeat];
-            nodes.push(new RepeatNode(context, attrs.items, attrs.key, attrs.render));
-            continue;
-          }
+          // case MarkupType.Portal: {
+          //   const attrs = item.props! as MarkupNodeProps[MarkupType.Portal];
+          //   nodes.push(new PortalNode(context, attrs.content, attrs.parent));
+          //   continue;
+          // }
+          // case MarkupType.Repeat: {
+          //   const attrs = item.props! as MarkupNodeProps[MarkupType.Repeat];
+          //   nodes.push(new RepeatNode(context, attrs.items, attrs.key, attrs.render));
+          //   continue;
+          // }
           default:
             // Assume `type` is an HTML/SVG tag.
             nodes.push(new ElementNode(context, item.type, item.props));

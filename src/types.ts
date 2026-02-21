@@ -1,6 +1,6 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
-import type { Gettable, Getter, Readable } from "./core/signal.js";
+import type { Gettable, Getter, Readable, Writable } from "./core/signal.js";
 
 export type Env = "production" | "development";
 
@@ -3875,7 +3875,14 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   src?: OptionalProperty<string>;
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
+  /**
+   *
+   */
   value?: OptionalProperty<string>;
+  /**
+   *
+   */
+  bindValue?: Writable<string>;
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 

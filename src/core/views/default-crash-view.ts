@@ -1,28 +1,27 @@
+import { ErrorInfo } from "../context.js";
 import { createMarkup as m } from "../markup.js";
 
 /**
  * Props passed to the crash view when a crash occurs.
  */
 export interface CrashViewProps {
-  /**
-   * JavaScript Error object.
-   */
-  error: Error;
+  error: unknown;
+  info: ErrorInfo;
 
   /**
    * A string to identify the logger that reported this error.
    */
-  loggerName: string;
+  // loggerName: string;
 
   /**
    * Unique identifier to pinpoint the specific view that reported the crash.
    */
-  tag?: string;
+  // tag?: string;
 
   /**
    * Label for the tag.
    */
-  tagName?: string;
+  // tagName?: string;
 }
 
 /**
@@ -43,16 +42,21 @@ export function DefaultCrashView(props: CrashViewProps) {
       m("p", {
         style: { marginBottom: "0.25rem" },
         children: [
-          m("span", {
-            style: { fontFamily: "monospace" },
-            children: props.loggerName,
-          }),
-          props.tag &&
-            m("span", {
-              style: { fontFamily: "monospace", opacity: 0.5 },
-              children: ` [${props.tagName ? `${props.tagName}: ` : ""}${props.tag}]`,
+          // m("span", {
+          //   style: { fontFamily: "monospace" },
+          //   children: props.loggerName,
+          // }),
+          // props.tag &&
+          //   m("span", {
+          //     style: { fontFamily: "monospace", opacity: 0.5 },
+          //     children: ` [${props.tagName ? `${props.tagName}: ` : ""}${props.tag}]`,
+          //   }),
+          // " says:",
+          m("pre", {
+            children: m("code", {
+              children: props.info.contextStack,
             }),
-          " says:",
+          }),
         ],
       }),
       m("blockquote", {
@@ -74,12 +78,28 @@ export function DefaultCrashView(props: CrashViewProps) {
               fontSize: "0.9em",
               fontWeight: "bold",
             },
-            children: props.error.name,
+            children: getErrorName(props.error),
           }),
-          props.error.message,
+          getErrorMessage(props.error),
         ],
       }),
       m("p", { children: "Please see the browser console for details." }),
     ],
   });
+}
+
+function getErrorName(error: unknown) {
+  if (error instanceof Error) {
+    return error.name;
+  } else {
+    return "Error";
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  } else {
+    return String(error);
+  }
 }

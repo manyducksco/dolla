@@ -15,7 +15,19 @@ Dolla is a JavaScript framework built around signals for reactive updates,
 - 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translations into a JSON file and access them with the `t` function in your views.
 - 🍳 The build system is optional. You can [write JSX](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm).
 
-## A Counter
+## ...
+
+Static Execution (Setup Once): Unlike React, a Dolla component is a constructor that runs exactly once. It builds the UI and "wires up" the reactivity, then steps out of the way. This eliminates the overhead of constant re-renders and the "stale closure" bugs common in other frameworks.
+
+Explicit Dependency Tracking: Dolla solves the "function coloring" problem by making reactivity opt-in. You must explicitly call .track() to subscribe the UI to a signal. If you just want a snapshot of the data without triggering an update, you use .read(). This makes the data flow predictable and easy to debug.
+
+Boxed, Universal Reactivity: State (state) and derived logic (computed) are "boxed" in Writable and Readable signals. These exist independently of the UI, meaning you can share, test, and manipulate your entire application’s logic in pure JavaScript without ever mounting a component.
+
+Hooks ($): Functions prefixed with $ are "Dolla Hooks" that strictly manage the component's relationship with the DOM and time. From $setup and $teardown for connection logic to $debug for contextual logging and $catch for local error handling, they provide a standardized way to tap into the framework's internal engine.
+
+Fine-Grained DOM Reconciliation: Dolla bypasses the Virtual DOM entirely. By using specialized control flow like <For> and <Show>, the framework maps signals directly to specific DOM nodes. When a value changes, the framework pushes that update directly to the affected node, ensuring performance is proportional only to what changed.
+
+## Example: Counter
 
 The best way to get it is to see it. If you've ever touched React, you'll know what's up, but peep the little things that make your life way easier.
 
@@ -23,17 +35,100 @@ The best way to get it is to see it. If you've ever touched React, you'll know w
 import { state, computed, $watch, $debug } from "@manyducks.co/dolla";
 
 // Print only 'warn' messages and above (applies globally)
-$debug.level = "warn"
+$debug.level = "warn";
 // Print all but those with prefix "dolla."
-$debug.filter = "*,-dolla.*"
+$debug.filter = "*,-dolla.*";
 
 // Example
 
+function Counter() {
+  const count = state(0);
+
+  return (
+    <div>
+      <p>Count: {count}</p>
+
+      <button onclick={() => count.update((c) => c + 1)}>Increment</button>
+    </div>
+  );
+}
+
+function TemperatureConverter() {
+  const celsius = state(0);
+
+  const fahrenheit = computed(() => {
+    return (celsius.track() * 9) / 5 + 32;
+  });
+
+  const description = computed(() => {
+    const f = fahrenheit.track();
+    if (f <= 32) return "Freezing ❄️";
+    if (f >= 90) return "Hot! 🔥";
+    return "Moderate 🌤️";
+  });
+
+  return (
+    <div>
+      <input type="number" bindValue={celsius} />
+
+      <p>Celsius: {celsius}°C</p>
+      <p>Fahrenheit: {fahrenheit}°F</p>
+      <p>Condition: {description}</p>
+    </div>
+  );
+}
+
+function ToDoList() {
+  const items = ["React", "Vue", "Angular", "Svelte", "Solid", "Dolla"];
+  const query = state("");
+
+  const filteredItems = computed(() => {
+    const term = query.track();
+    return items.toLowerCase().includes(term.toLowerCase());
+  });
+
+  return (
+    <div>
+      <input type="text" placeholder="Search..." bindValue={query} />
+
+      <ul>
+        <For each={filteredItems} key={(item) => item}>
+          {(item, index) => <li>{item}</li>}
+        </For>
+      </ul>
+
+      <p>Showing {() => filteredItems.track().length} result(s)</p>
+    </div>
+  );
+}
+
+function $fetch(url) {
+  const data = state();
+
+  $watch(() => {
+    fetch(url)
+      .then((res) => res.json())
+      .then((json) => data.write(json));
+  });
+
+  return { data };
+}
+
+function Fetcher() {
+  const { data } = $fetch("https://api.example.com/data");
+
+  return (
+    <Show when={data} fallback={<p>Loading...</p>}>
+      <pre>{() => JSON.stringify(data.track(), null, 2)}</pre>
+    </Show>
+  );
+}
+
 function Counter(props) {
   const count = state(0);
-  
+
   const debug = $debug();
-  
+
   $watch(() => {
     debug.log("Count is: " + count.track());
   });
@@ -103,7 +198,7 @@ function CounterStore() {
   const increment = () => setValue((current) => current + 1);
   const decrement = () => setValue((current) => current - 1);
 
-  // This object is accessible to other components that use this store. 
+  // This object is accessible to other components that use this store.
   return { value, increment, decrement };
 }
 ```
@@ -187,7 +282,7 @@ import { ThingIndex, ThingDetails, ThingEdit } from "./views.js";
 const app = dolla({
   // You can use `/#/hash` routes if you don't have a server configured to handle client route fallback.
   hash: true,
-  
+
   // Configure `routes` instead of providing a `view`.
   routes: [
     {
@@ -216,7 +311,7 @@ import { $effect, $debug, $router } from "@manyducks.co/dolla";
 function ThingDetails() {
   const log = $debug();
   const router = $router();
-  
+
   const id = compose(() => router.params().id);
 
   $effect(() => {
@@ -248,9 +343,9 @@ import { dolla, $i18n } from "@manyducks.co/dolla";
 
 function CounterView() {
   const { t, setLocale } = $i18n();
-  
+
   // setLocale("ja")
-  
+
   return <button>{t("buttonLabel")}</button>;
 }
 
@@ -262,7 +357,7 @@ const app = dolla({
       { locale: "en", strings: { buttonLabel: "Click me!" } },
       { locale: "ja", strings: { buttonLabel: "押してね！" } },
     ],
-  }
+  },
 });
 
 app.mount(document.body);

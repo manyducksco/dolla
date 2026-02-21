@@ -1,5 +1,5 @@
 import { type Logger, type Store } from "../core";
-import { type Context, type LifecycleEventName } from "./context";
+import { ErrorInfo, type Context, type LifecycleEventName } from "./context";
 import { I18N, type I18n } from "./i18n";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
 import { VIEW_PRELOAD_CALLBACK, VIEW_TRANSITIONS_CONFIG } from "./nodes/view";
@@ -71,22 +71,51 @@ export function $use<T>(store: Store<any, T>): T {
   return $$context().useStore(store);
 }
 
+type CleanupFnOrVoid = void | (() => void);
+type SetupCallback = (signal: AbortSignal) => CleanupFnOrVoid;
+type AsyncSetupCallback = (signal: AbortSignal) => Promise<CleanupFnOrVoid>;
+
 /**
  * Schedules `callback` to run just after the component is mounted.
  * If `callback` returns a function, that function will run when the component is unmounted.
  */
-export function $setup(callback: () => void | (() => void)): void {
+export function $setup(callback: SetupCallback): void;
+
+/**
+ * Schedules `callback` to run just after the component is mounted.
+ * The callback receives an `AbortSignal` that will abort if the component unmounts before the promise resolves.
+ * If the promies resolves to a function, that function will run when the component is unmounted.
+ */
+export function $setup(callback: AsyncSetupCallback): void;
+
+export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
   const context = $$context();
+
+  const controller = new AbortController();
+  context.onLifecycleTransition("didUnmount", () => {
+    controller.abort();
+  });
+
   context.onLifecycleTransition("didMount", () => {
-    const result = callback();
-    if (result) context.onLifecycleTransition("didUnmount", result);
+    const result = callback(controller.signal);
+    if (result instanceof Promise) {
+      result.then((callback) => {
+        if (!controller.signal.aborted && typeof callback === "function") {
+          context.onLifecycleTransition("didUnmount", callback);
+        }
+      });
+    } else {
+      if (typeof result === "function") {
+        context.onLifecycleTransition("didUnmount", result);
+      }
+    }
   });
 }
 
 /**
  * Schedules `callback` to run when the component is unmounted.
  */
-export function $teardown(callback: () => void): void {
+export function $teardown(callback: () => void | Promise<void>): void {
   $$context().onLifecycleTransition("didUnmount", callback);
 }
 
@@ -98,14 +127,6 @@ export function $on(event: LifecycleEventName, callback: () => void): void {
   $$context().onLifecycleTransition(event, callback);
 }
 
-export function $state() {
-  const context = $$context();
-  return {
-    get: context.getState.bind(context),
-    set: context.setState.bind(context),
-  };
-}
-
 /**
  * Runs `callback` when component mounts, then again each time one of its tracked values changes.
  * The watcher will be cleaned up automatically when the component unmounts.
@@ -114,7 +135,10 @@ export function $watch(callback: WatchCallback): void {
   $$context().watch(callback);
 }
 
-export function $catch(callback: (error: unknown) => void) {
+/**
+ * Catches errors thrown in child components, including in event handlers and lifecycle hooks.
+ */
+export function $catch(callback: (error: unknown, info: ErrorInfo) => void) {
   $$context().catchError(callback);
 }
 
@@ -123,11 +147,11 @@ export function $catch(callback: (error: unknown) => void) {
 \*=============================*/
 
 export function $navigate() {
-  return $$context().getState<RouterAPI>(ROUTER).navigate;
+  return $$context().getState<RouterAPI>(ROUTER)!.navigate;
 }
 
 export function $route() {
-  const router = $$context().getState<RouterAPI>(ROUTER);
+  const router = $$context().getState<RouterAPI>(ROUTER)!;
   return {
     pattern: router.pattern,
     path: router.path,

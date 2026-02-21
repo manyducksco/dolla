@@ -2,10 +2,9 @@ import { isFunction, isObject, typeOf } from "../typeChecking.js";
 import type { View } from "../types";
 import { Context, LifecycleEvent } from "./context.js";
 import { createI18n, I18N, type I18n, I18nHandle, type I18nOptions } from "./i18n.js";
-import { LoggerCrashProps, onLoggerCrash } from "./logger.js";
 import { ViewNode } from "./nodes/view.js";
 import { Route, ROUTER, Router, RouterOptions } from "./router.js";
-import { DefaultCrashView } from "./views/default-crash-view.js";
+import { CrashViewProps, DefaultCrashView } from "./views/default-crash-view.js";
 import { Fragment } from "./views/fragment.js";
 
 export interface DollaOptions extends Partial<RouterOptions> {
@@ -17,7 +16,7 @@ export interface DollaOptions extends Partial<RouterOptions> {
   /**
    * View to show when a $debug crash is invoked. Takes information about the crash.
    */
-  crashView?: View<LoggerCrashProps>;
+  crashView?: View<CrashViewProps>;
 
   /**
    * Options for language translations.
@@ -36,7 +35,7 @@ export interface DollaOptionsWithRoutes extends DollaOptions {
 class App {
   #context: Context;
   #mounted = false;
-  #crashView: View<LoggerCrashProps> = DefaultCrashView;
+  #crashView: View<CrashViewProps> = DefaultCrashView;
 
   #cleanup: (() => void)[] = [];
 
@@ -76,31 +75,39 @@ class App {
     const parentElement = this.#getElement(element);
 
     this.#cleanup.push(
-      onLoggerCrash((props) => {
-        if (this.#mounted) {
-          this.unmount().then(() => {
-            new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
-          });
-        } else {
-          new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
-        }
+      this.#context.catchError((error, info) => {
+        this.unmount().then(() => {
+          new ViewNode(this.#context, this.#crashView, { error, info }).mount(parentElement);
+        });
       }),
     );
 
-    Context.emit(this.#context, LifecycleEvent.WILL_MOUNT);
+    // this.#cleanup.push(
+    //   onLoggerCrash((props) => {
+    //     if (this.#mounted) {
+    //       this.unmount().then(() => {
+    //         new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
+    //       });
+    //     } else {
+    //       new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
+    //     }
+    //   }),
+    // );
+
+    this.#context.emit(LifecycleEvent.WILL_MOUNT);
 
     await this.#i18n.mount();
     await this.#router.mount(parentElement);
 
     this.#mounted = true;
 
-    Context.emit(this.#context, LifecycleEvent.DID_MOUNT);
+    this.#context.emit(LifecycleEvent.DID_MOUNT);
   }
 
   async unmount() {
     if (!this.#mounted) return Promise.resolve();
 
-    Context.emit(this.#context, LifecycleEvent.WILL_UNMOUNT);
+    this.#context.emit(LifecycleEvent.WILL_UNMOUNT);
     this.#mounted = false;
 
     this.#router.unmount();
@@ -111,7 +118,7 @@ class App {
     }
     this.#cleanup = [];
 
-    Context.emit(this.#context, LifecycleEvent.DID_UNMOUNT);
+    this.#context.emit(LifecycleEvent.DID_UNMOUNT);
   }
 
   #getElement(element: string | Element): Element {
