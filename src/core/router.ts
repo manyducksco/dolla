@@ -193,6 +193,54 @@ function createRouter(options: RouterOptions): View {
 
   const match = state<RouteMatch>();
 
+  /**
+   * Navigates to another path.
+   *
+   * @example
+   * navigate("/products/123"); // navigate to `/products/123`
+   * navigate("/users/215", { replace: true }); // replace current history entry with `/users/215`
+   */
+  function navigate(path: string, options?: NavigateOptions): void;
+
+  /**
+   * Navigates to another path.
+   *
+   * @example
+   * navigate(["/products", 123]); // navigate to `/products/123`
+   * navigate(["/users", 215], { replace: true }); // replace current history entry with `/users/215`
+   */
+  function navigate(segments: Stringable[], options?: NavigateOptions): void;
+
+  /**
+   * Navigate through the history by index. Pass a negative number to go back or a positive number to go forward.
+   */
+  function navigate(delta: number): void;
+
+  function navigate(target: Stringable | Stringable[] | number, options: NavigateOptions = {}) {
+    if (isNumber(target)) {
+      window.history.go(target);
+      return;
+    }
+
+    let joined: string;
+
+    if (Array.isArray(target)) {
+      joined = joinPath(target);
+    } else {
+      joined = target.toString();
+    }
+
+    joined = resolvePath(window.location.pathname, joined);
+
+    if (options.replace) {
+      window.history.replaceState(null, "", options.hash ? "/#" + joined : joined);
+    } else {
+      window.history.pushState(null, "", this.#hash ? "/#" + joined : joined);
+    }
+
+    this.#updateRoute(joined, options);
+  }
+
   // This is a view.
   // Mount it in your app like any other view. Probably at the root.
   return function router() {
