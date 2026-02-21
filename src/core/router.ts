@@ -1,7 +1,9 @@
 import { assertObject, isArray, isArrayOf, isFunction, isNumber, isObject, isString } from "../typeChecking.js";
-import type { View } from "../types.js";
+import type { Renderable, View } from "../types.js";
 import { deepEqual, shallowEqual } from "../utils.js";
+import { PARENT_ELEMENT } from "./app.js";
 import { Context } from "./context.js";
+import { $$context, $debug, $on, $setup } from "./hooks.js";
 import { createLogger } from "./logger.js";
 import { Markup, MarkupType, type MarkupNode } from "./markup.js";
 import { DynamicNode } from "./nodes/dynamic.js";
@@ -175,6 +177,59 @@ export interface RouterOptions {
 }
 
 // ----- Code ----- //
+
+function createRouter(options: RouterOptions): View {
+  // Process routes.
+  const routes = sortRoutes(
+    options.routes
+      .flatMap((route) => this.#prepareRoute(route))
+      .map((route) => ({
+        pattern: route.pattern,
+        meta: route.meta,
+        fragments: patternToFragments(route.pattern),
+      })),
+  );
+  assertValidRedirects(routes);
+
+  const match = state<RouteMatch>();
+
+  // This is a view.
+  // Mount it in your app like any other view. Probably at the root.
+  return function router() {
+    const context = $$context();
+    context.setName("dolla:router");
+
+    const debug = $debug();
+    // context.setState<RouterAPI>(ROUTER, )
+
+    const parentElement = context.getState<Element>(PARENT_ELEMENT)!;
+
+    // Listen for popstate events and update route accordingly.
+    $setup(() => {
+      const onPopState = () => updateRoute();
+      window.addEventListener("popstate", onPopState);
+      return () => window.removeEventListener("popstate", onPopState);
+    });
+
+    $setup(() => {
+      debug.info("will intercept clicks on <a> tags within parent element:", parentElement);
+      return catchLinks(parentElement, (anchor) => {
+        debug.info("intercepted click on <a> tag", anchor);
+
+        const href = anchor.getAttribute("href")!;
+        const preserveQuery = anchor.getAttribute("data-preserve-query");
+
+        this.navigate(href, {
+          preserveQuery: parsePreserveQueryAttribute(preserveQuery),
+        });
+      });
+    });
+
+    const rootSlot = state<MarkupNode>();
+
+    return new DynamicNode(context, rootSlot);
+  };
+}
 
 export const ROUTER = Symbol("Router");
 export const ROUTER_PRELOAD_CONTROLLER = Symbol("RouterPreloadController");
@@ -742,6 +797,240 @@ export class Router {
 
     return routes;
   }
+}
+
+function updateQuery(match: Writable<RouteMatch>, options: RouterOptions, values: Record<string, Stringable | null>) {
+  const info = match.read()!;
+  const query = { ...info.query };
+
+  for (const key in values) {
+    const value = values[key];
+    if (value === null) {
+      delete query[key];
+    } else {
+      query[key] = value.toString();
+    }
+  }
+
+  let queryParts: string[] = [];
+
+  for (const key in query) {
+    queryParts.push(`${key}=${query[key]}`);
+  }
+  const queryString = queryParts.length > 0 ? "?" + queryParts.join("&") : "";
+
+  match.update((current) => ({ ...current, query }));
+
+  window.history.replaceState(null, "", options.hash ? "/#" + info.path + queryString : info.path + queryString);
+}
+
+function getCurrentURL(options: RouterOptions): URL {
+  if (options.hash) {
+    return new URL(window.location.hash.slice(1), window.location.origin);
+  } else {
+    return new URL(window.location.pathname, window.location.origin);
+  }
+}
+
+/**
+ * Parses a route definition object into a set of matchable routes.
+ *
+ * @param route - Route config object.
+ * @param layers - Array of parent layers. Passed when this function calls itself on nested routes.
+ */
+function prepareRoute(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
+  if (!isObject(route) || !isString(route.path)) {
+    throw new TypeError(`Route configs must be objects with a 'path' string property. Got: ${route}`);
+  }
+
+  if (route.redirect && route.routes) {
+    throw new Error(`Route cannot have both a 'redirect' and nested 'routes'.`);
+  } else if (route.redirect && route.view) {
+    throw new Error(`Route cannot have both a 'redirect' and a 'view'.`);
+  } else if (!route.view && !route.routes && !route.redirect) {
+    throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
+  }
+
+  let parts: string[] = [];
+
+  for (const parent of parents) {
+    parts.push(...splitPath(parent.path));
+  }
+
+  parts.push(...splitPath(route.path));
+
+  // Remove trailing wildcard for joining with nested routes.
+  if (parts[parts.length - 1] === "*") {
+    parts.pop();
+  }
+
+  const routes: RouteConfig[] = [];
+
+  if (route.redirect) {
+    let redirect = route.redirect;
+
+    if (isString(redirect)) {
+      redirect = resolvePath(joinPath(parts), redirect);
+
+      if (!redirect.startsWith("/")) {
+        redirect = "/" + redirect;
+      }
+    }
+
+    const config: RouteConfig = {
+      pattern: "/" + joinPath([...parts, ...splitPath(route.path)]),
+      meta: {
+        redirect,
+      },
+    };
+    routes.push(config);
+
+    return routes;
+  }
+
+  let view: View<any> = (props: any) => props.children;
+
+  if (isFunction(route.view)) {
+    view = route.view;
+  } else if (route.view) {
+    throw new TypeError(`Route '${route.path}' expected a view function or undefined. Got: ${route.view}`);
+  }
+
+  const layer: RouteLayer = { id: this.#nextLayerId++, view };
+
+  // Parse nested routes if they exist.
+  if (route.routes) {
+    for (const subroute of route.routes) {
+      routes.push(...prepareRoute(subroute, [...parents, route], [...layers, layer]));
+    }
+  } else {
+    const config: RouteConfig = {
+      pattern: parents.length ? joinPath([...parents.map((p) => p.path), route.path]) : route.path,
+      meta: {
+        pattern: route.path,
+        layers: [...layers, layer],
+        // Store the layer ID with each beforeMatch so we can correlate which context needs to get any state that is set.
+        beforeMatch: parents
+          .flatMap((parent, i) => (parent.beforeMatch ? { fn: parent.beforeMatch, layerId: layers[i].id } : null))
+          .concat(route.beforeMatch ? { fn: route.beforeMatch, layerId: layer.id } : null)
+          .filter((x) => x != null),
+      },
+    };
+    if (route.data) {
+      const parent = parents.at(-1);
+      if (parent) {
+        config.meta.data = { ...parent.data, ...route.data };
+      } else {
+        config.meta.data = route.data;
+      }
+    }
+    routes.push(config);
+  }
+
+  return routes;
+}
+
+/**
+ * Takes a URL and finds a match, following redirects.
+ */
+async function resolveRoute<M extends RouteMeta>(
+  routes: ParsedRoute<M>[],
+  url: URL,
+  journey: JourneyStep[] = [],
+): Promise<{
+  match: RouteMatch<RouteMeta> | null;
+  journey: JourneyStep[];
+}> {
+  return new Promise((resolve, reject) => {
+    const match = matchRoutes(routes, url.pathname);
+
+    if (!match) {
+      return resolve({
+        match: null,
+        journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
+      });
+    }
+
+    let redirect = match.meta.redirect;
+
+    const finalize = async () => {
+      if (redirect != null) {
+        let path: string;
+
+        if (isString(redirect)) {
+          path = replaceParams(redirect, match.params);
+        } else if (isFunction(redirect)) {
+          const redirectContext: RouteRedirectContext = {
+            path: match.path,
+            pattern: match.pattern,
+            params: match.params,
+            query: match.query,
+            data: match.meta.data ?? {},
+          };
+          path = await redirect(redirectContext);
+          if (!isString(path)) {
+            return reject(new Error(`Redirect function must return a path to redirect to.`));
+          }
+          if (!path.startsWith("/")) {
+            // Not absolute. Resolve against matched path.
+            path = resolvePath(match.path, path);
+          }
+        } else {
+          return reject(new TypeError(`Redirect must either be a path string or a function.`));
+        }
+
+        resolve(
+          resolveRoute(routes, new URL(path, window.location.origin), [
+            ...journey,
+            { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
+          ]),
+        );
+      } else {
+        resolve({ match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] });
+      }
+    };
+
+    if (match.meta.beforeMatch?.length) {
+      const callbacks = match.meta.beforeMatch;
+      let i = -1;
+      const next = () => {
+        i++;
+        if (i === callbacks.length) {
+          // Mount route
+          finalize();
+        } else {
+          // Next callback
+          let finalized = false;
+          const result = callbacks[i].fn({
+            path: match.path,
+            pattern: match.pattern,
+            params: match.params,
+            query: match.query,
+            data: match.meta.data ?? {},
+
+            redirect: (path) => {
+              redirect = path;
+              finalized = true;
+              finalize();
+            },
+          });
+          if (!finalized) {
+            if (result instanceof Promise) {
+              result.then(next);
+            } else {
+              next();
+            }
+          }
+        }
+      };
+
+      next();
+
+      // TODO: Show warning after timeout if next hasn't been called?
+    } else {
+      finalize();
+    }
+  });
 }
 
 function assertValidRedirects(routes: ParsedRoute<RouteMeta>[]) {

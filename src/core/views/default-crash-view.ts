@@ -7,21 +7,6 @@ import { createMarkup as m } from "../markup.js";
 export interface CrashViewProps {
   error: unknown;
   info: ErrorInfo;
-
-  /**
-   * A string to identify the logger that reported this error.
-   */
-  // loggerName: string;
-
-  /**
-   * Unique identifier to pinpoint the specific view that reported the crash.
-   */
-  // tag?: string;
-
-  /**
-   * Label for the tag.
-   */
-  // tagName?: string;
 }
 
 /**
@@ -42,23 +27,18 @@ export function DefaultCrashView(props: CrashViewProps) {
       m("p", {
         style: { marginBottom: "0.25rem" },
         children: [
-          // m("span", {
-          //   style: { fontFamily: "monospace" },
-          //   children: props.loggerName,
-          // }),
-          // props.tag &&
-          //   m("span", {
-          //     style: { fontFamily: "monospace", opacity: 0.5 },
-          //     children: ` [${props.tagName ? `${props.tagName}: ` : ""}${props.tag}]`,
-          //   }),
-          // " says:",
-          m("pre", {
-            children: m("code", {
-              children: props.info.contextStack,
-            }),
+          m("span", {
+            style: { fontFamily: "monospace" },
+            children: props.info.source.name,
           }),
+          m("span", {
+            style: { fontFamily: "monospace", opacity: 0.5 },
+            children: ` [id: ${props.info.source.id}]`,
+          }),
+          " says:",
         ],
       }),
+
       m("blockquote", {
         style: {
           backgroundColor: "#991111",
@@ -84,6 +64,16 @@ export function DefaultCrashView(props: CrashViewProps) {
         ],
       }),
       m("p", { children: "Please see the browser console for details." }),
+
+      m("p", {
+        children: [
+          m("pre", {
+            children: m("code", {
+              children: props.info.contextStack,
+            }),
+          }),
+        ],
+      }),
     ],
   });
 }

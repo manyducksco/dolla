@@ -173,10 +173,22 @@ export interface LinkedContextOptions extends ContextOptions {
 }
 
 export interface ErrorInfo {
+  /**
+   * The context where this error was originally thrown.
+   */
+  source: {
+    id: string;
+    name: string;
+  };
+
+  /**
+   * A string representing the stack of contexts this error bubbled through before being caught.
+   */
   contextStack: string;
 }
 
 export class Context {
+  readonly id = getUniqueId();
   #name: Gettable<string>;
 
   lifecycle = new ContextLifecycle(this);
@@ -187,21 +199,22 @@ export class Context {
 
   #errorHandler?: (error: unknown, info: ErrorInfo) => void;
 
-  get isMounted() {
-    const { state } = this.lifecycle;
-    return state >= LifecycleState.DidMount && state < LifecycleState.DidUnmount;
-  }
-
   constructor(name: Readable<string> | Getter<string> | string, options?: ContextOptions) {
     this.#name = name;
 
     // Wrapping the get in another getter in case this.#name changes to a different object between calls.
     this.logger = createLogger(() => read(this.#name), {
-      ...options?.logger,
+      tag: this.id,
+      tagName: "id",
       onCrash: (error) => {
         this.throwError(error);
       },
     });
+  }
+
+  isMounted() {
+    const { state } = this.lifecycle;
+    return state >= LifecycleState.DidMount && state < LifecycleState.DidUnmount;
   }
 
   /**
@@ -399,13 +412,14 @@ export class Context {
   }
 
   private getErrorInfo(error: unknown, chain: Context[]): ErrorInfo {
-    const contextStack = chain.reduceRight((str, ctx) => `${str}-> ${ctx.getName()}\n`, "");
+    const contextStack = chain.reduceRight((str, ctx) => `${str}-> ${ctx.getName()} [id: ${ctx.id}]\n`, "");
 
     const source = chain[0];
     return {
-      // source: {
-      //   name: source.getName(),
-      // },
+      source: {
+        id: source.id,
+        name: source.getName(),
+      },
       contextStack,
     };
   }

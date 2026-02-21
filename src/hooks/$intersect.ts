@@ -11,6 +11,9 @@ export function $intersect(options?: IntersectOptions) {
   const intersecting = state(false);
 
   const view = context.getState<ViewNode<unknown>>(VIEW);
+  if (view == null) {
+    throw new Error("$intersect must be called inside a view.");
+  }
 
   $setup(() => {
     const observer = new IntersectionObserver(([entry]) => {

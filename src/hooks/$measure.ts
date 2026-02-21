@@ -24,6 +24,9 @@ export function $measure(): Readable<Dimensions> {
 
   const context = $$context();
   const view = context.getState<ViewNode<unknown>>(VIEW);
+  if (view == null) {
+    throw new Error("$measure must be called inside a view.");
+  }
 
   $setup(() => {
     const observer = new ResizeObserver(([entry]) => {

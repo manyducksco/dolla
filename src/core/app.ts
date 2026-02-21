@@ -7,6 +7,11 @@ import { Route, ROUTER, Router, RouterOptions } from "./router.js";
 import { CrashViewProps, DefaultCrashView } from "./views/default-crash-view.js";
 import { Fragment } from "./views/fragment.js";
 
+/**
+ * Represents the Dolla app's parent element in context state.
+ */
+export const PARENT_ELEMENT = Symbol("parentElement");
+
 export interface DollaOptions extends Partial<RouterOptions> {
   /**
    * Main view to mount in the app. Used unless `routes` is defined.
@@ -73,6 +78,8 @@ class App {
     if (this.#mounted) return Promise.resolve();
 
     const parentElement = this.#getElement(element);
+
+    this.#context.setState(PARENT_ELEMENT, parentElement);
 
     this.#cleanup.push(
       this.#context.catchError((error, info) => {

@@ -18,6 +18,9 @@ export interface BoundaryProps {
    */
   fallback: View<CrashViewProps> | Renderable;
 
+  /**
+   * Called when this boundary catches an error.
+   */
   onError?: (error: unknown, info: ErrorInfo) => void;
 }
 

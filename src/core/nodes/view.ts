@@ -1,5 +1,4 @@
 import type { Renderable, View } from "../../types.js";
-import { getUniqueId } from "../../utils.js";
 import { Context, LifecycleEvent } from "../context.js";
 import { render } from "../markup.js";
 import { RoutePreloadFn, RouteTransitions } from "../router.js";
@@ -14,7 +13,6 @@ export const VIEW_TRANSITIONS_CONFIG = Symbol();
  * Renders a View.
  */
 export class ViewNode<P> extends MarkupNode {
-  readonly id = getUniqueId();
   readonly props: P;
   readonly context: Context;
   readonly view: View<P>;
@@ -31,12 +29,7 @@ export class ViewNode<P> extends MarkupNode {
    */
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = context.createChild(view.name ?? "anonymous view", {
-      logger: {
-        tag: this.id,
-        tagName: "uid",
-      },
-    });
+    this.context = context.createChild(view.name);
     this.context.setState(VIEW, this);
     this.props = props;
     this.view = view;
@@ -47,7 +40,7 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   isMounted() {
-    return this.context.isMounted;
+    return this.context.isMounted();
   }
 
   #init() {

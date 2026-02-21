@@ -1,4 +1,5 @@
 import { type Logger, type Store } from "../core";
+import { isFunction, isPromise } from "../typeChecking";
 import { ErrorInfo, type Context, type LifecycleEventName } from "./context";
 import { I18N, type I18n } from "./i18n";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
@@ -98,16 +99,14 @@ export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
 
   context.onLifecycleTransition("didMount", () => {
     const result = callback(controller.signal);
-    if (result instanceof Promise) {
+    if (isPromise(result)) {
       result.then((callback) => {
         if (!controller.signal.aborted && typeof callback === "function") {
           context.onLifecycleTransition("didUnmount", callback);
         }
       });
-    } else {
-      if (typeof result === "function") {
-        context.onLifecycleTransition("didUnmount", result);
-      }
+    } else if (isFunction(result)) {
+      context.onLifecycleTransition("didUnmount", result);
     }
   });
 }

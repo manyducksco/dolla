@@ -228,6 +228,24 @@ export function assertInstanceOf<T extends Function>(...args: unknown[]) {
 }
 
 /**
+ * Returns true if `value` is a JavaScript Promise.
+ */
+export function isPromise<T = unknown>(value: unknown): value is Promise<T> {
+  return value instanceof Promise;
+}
+
+/**
+ * Throws a TypeError unless `value` is a JavaScript Promise.
+ */
+export function assertPromise<T = unknown>(value: unknown, errorMessage?: string): value is Promise<T> {
+  if (isPromise(value)) {
+    return true;
+  }
+
+  throw new TypeError(formatError(value, errorMessage ?? "Expected a Promise. Got type: %t, value: %v"));
+}
+
+/**
  * Returns true if `value` is a plain JavaScript object.
  */
 export function isObject<T = Record<string | number | symbol, unknown>>(value: unknown): value is T {
