@@ -5,8 +5,6 @@ import { MarkupNode } from "./nodes/_markup.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
-import { PortalNode } from "./nodes/portal.js";
-import { type KeyFn, type RenderFn, RepeatNode } from "./nodes/repeat.js";
 import { ViewNode } from "./nodes/view.js";
 import { type Readable, computed, isReadable, toReadable } from "./signal.js";
 
@@ -41,28 +39,13 @@ export class Markup<Type extends string | View<any> = string | View<any>> {
 }
 
 export enum MarkupType {
-  DOM = "$dom",
   Dynamic = "$dynamic",
-  Portal = "$portal",
-  Repeat = "$repeat",
 }
 
 export interface MarkupNodeProps {
-  // [MarkupType.DOM]: {
-  //   value: Node;
-  // };
   [MarkupType.Dynamic]: {
     source: Readable<any>;
   };
-  // [MarkupType.Portal]: {
-  //   content: Renderable;
-  //   parent: Element;
-  // };
-  // [MarkupType.Repeat]: {
-  //   items: Readable<any[]>;
-  //   key: KeyFn<any>;
-  //   render: RenderFn<any>;
-  // };
 }
 
 export interface MarkupCustomElementProps {

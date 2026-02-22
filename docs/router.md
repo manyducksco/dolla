@@ -12,7 +12,9 @@ First things first, you gotta create your router. You do this with the `createRo
 import { dolla } from "@manyducks.co/dolla";
 import { HomePage, AboutPage, NotFoundPage } from "./views.js";
 
-const app = dolla({
+import { createRouter, $router } from "@manyducks.co/dolla/router";
+
+const router = createRouter({
   // Use `/#/hash` routing if you don't have a fancy server setup
   hash: true,
 
@@ -24,7 +26,7 @@ const app = dolla({
   ],
 });
 
-app.mount(document.body);
+dolla(router).mount("#app");
 ```
 
 That's the basic setup. Now, when you go to `/about`, Dolla will automatically show the `AboutPage` component. Easy peasy.
@@ -49,7 +51,7 @@ Dolla uses **specificity-based matching**. That means the most specific route al
 Instead of a `view`, you can give a route a `redirect` property. This is perfect for old URLs or for sending users from `/` to `/dashboard`.
 
 ```jsx
-const app = dolla({
+const router = createRouter({
   routes: [
     { path: "/", redirect: "/dashboard" },
     { path: "/dashboard", view: DashboardPage },
@@ -70,12 +72,17 @@ The `beforeMatch` function gets a context object (`ctx`) where you can call `ctx
 ```jsx
 import { sessionStore } from "./stores"; // Pretend we have a global store
 
-const app = dolla({
+const router = createRouter({
   routes: [
     { path: "/login", view: LoginPage },
     {
       path: "/dashboard",
       view: DashboardPage,
+      guard: () => {
+
+
+        return "/other/path"
+      }
       loader: async ({ redirect }) => {
         // Preload data. Whatever you return from this function is passed to the page as a prop called `data`.
         // Or... would it be better to rely on the $preload hook inside the view?
@@ -97,7 +104,7 @@ const app = dolla({
 You can also just stick a `data` object on any route. It's a chill way to attach extra info, like a page title or breadcrumbs. This data will show up in the `$match` signal from the router.
 
 ```jsx
-const app = dolla({
+const router = createRouter({
   routes: [
     {
       path: "/",
@@ -168,7 +175,7 @@ import { dolla } from "@manyducks.co/dolla";
 import { MainLayout } from "./views/MainLayout.jsx";
 import { HomePage, AboutPage } from "./views.js";
 
-const app = dolla({
+const router = createRouter({
   routes: [
     {
       // This is our layout route
@@ -194,8 +201,7 @@ Sometimes you need to change the page from your code, like after a form submissi
 
 This hook gives you the router instance, which has a bunch of useful methods and signals.
 
-- `router.go(path, options?)`: The main way to navigate. You can also pass an `options` object.
-  - `replace: true`: Replaces the current page in history instead of adding a new one. The back button will skip it.
+- `router.push(path, options?)`: The main way to navigate. You can also pass an `options` object.
   - `preserveQuery: true`: Keeps the current query params and merges them with any new ones.
 - `router.back()`: Goes back one step in the browser history.
 - `router.forward()`: Goes forward one step.
@@ -211,12 +217,12 @@ function SomeComponent() {
 
   const goToUser = () => {
     // This will go to /users/42 but won't add a new history entry
-    router.go("/users/42", { replace: true });
+    router.replace("/users/42");
   };
 
   const setSort = () => {
     // This will just change the URL to ?sort=name without reloading
-    router.updateQuery({ sort: "name" });
+    router.query.update((current) => ({ ...current, sort: "name" }));
   };
 
   return (

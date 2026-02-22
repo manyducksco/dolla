@@ -3,20 +3,18 @@ import type { View } from "../types";
 import { Context, LifecycleEvent } from "./context.js";
 import { createI18n, I18N, type I18n, I18nHandle, type I18nOptions } from "./i18n.js";
 import { ViewNode } from "./nodes/view.js";
-import { Route, ROUTER, Router, RouterOptions } from "./router.js";
 import { CrashViewProps, DefaultCrashView } from "./views/default-crash-view.js";
-import { Fragment } from "./views/fragment.js";
 
 /**
  * Represents the Dolla app's parent element in context state.
  */
 export const PARENT_ELEMENT = Symbol("parentElement");
 
-export interface DollaOptions extends Partial<RouterOptions> {
+export interface DollaOptions {
   /**
    * Main view to mount in the app. Used unless `routes` is defined.
    */
-  view?: View<{}>;
+  view: View<{}>;
 
   /**
    * View to show when a $debug crash is invoked. Takes information about the crash.
@@ -29,40 +27,28 @@ export interface DollaOptions extends Partial<RouterOptions> {
   i18n?: I18nOptions;
 }
 
-export interface DollaOptionsWithView extends DollaOptions {
-  view: View<{}>;
-}
-
-export interface DollaOptionsWithRoutes extends DollaOptions {
-  routes: Route[];
-}
-
 class App {
   #context: Context;
   #mounted = false;
+
+  #view: View<{}>;
   #crashView: View<CrashViewProps> = DefaultCrashView;
+  #root?: ViewNode<{}>;
 
   #cleanup: (() => void)[] = [];
 
-  #router;
   #i18n: I18nHandle;
 
-  readonly router;
   readonly i18n: I18n;
 
   constructor(options: DollaOptions) {
     this.#context = new Context("App");
 
+    this.#view = options.view;
+
     if (options.crashView) {
       this.#crashView = options.crashView;
     }
-
-    this.#router = new Router(this.#context, {
-      hash: options.hash ?? false,
-      routes: options.routes ?? [{ path: "*", view: options.view ?? Fragment }],
-    });
-    this.router = this.#router.api();
-    this.#context.setState(ROUTER, this.router);
 
     const i18n = createI18n({
       locale: options.i18n?.locale ?? "auto",
@@ -89,22 +75,13 @@ class App {
       }),
     );
 
-    // this.#cleanup.push(
-    //   onLoggerCrash((props) => {
-    //     if (this.#mounted) {
-    //       this.unmount().then(() => {
-    //         new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
-    //       });
-    //     } else {
-    //       new ViewNode(this.#context, this.#crashView, props).mount(parentElement);
-    //     }
-    //   }),
-    // );
-
     this.#context.emit(LifecycleEvent.WILL_MOUNT);
 
     await this.#i18n.mount();
-    await this.#router.mount(parentElement);
+
+    // Mount root view.
+    this.#root = new ViewNode(this.#context, this.#view, {});
+    this.#root.mount(parentElement);
 
     this.#mounted = true;
 
@@ -117,7 +94,8 @@ class App {
     this.#context.emit(LifecycleEvent.WILL_UNMOUNT);
     this.#mounted = false;
 
-    this.#router.unmount();
+    this.#root?.unmount(false);
+
     this.#i18n.unmount();
 
     for (const callback of this.#cleanup) {
@@ -144,10 +122,9 @@ class App {
 }
 
 export function dolla(view: View<{}>): App;
-export function dolla(options: DollaOptionsWithView): App;
-export function dolla(options: DollaOptionsWithRoutes): App;
+export function dolla(options: DollaOptions): App;
 
-export function dolla(init: View<{}> | DollaOptionsWithView | DollaOptionsWithRoutes) {
+export function dolla(init: View<{}> | DollaOptions) {
   if (isFunction<View<{}>>(init)) {
     return new App({ view: init });
   } else if (isObject<DollaOptions>(init)) {

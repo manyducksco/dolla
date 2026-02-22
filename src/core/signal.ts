@@ -68,23 +68,12 @@ let batchDepth = 0;
 let notifyIndex = 0;
 let queuedEffectsLength = 0;
 let activeSub: ReactiveNode | undefined;
-let activeContext: Context | undefined;
 let trackedCount = 0;
 
 function setCurrentSub(sub: ReactiveNode | undefined) {
   const prevSub = activeSub;
   activeSub = sub;
   return prevSub;
-}
-
-export function getCurrentContext(): Context | undefined {
-  return activeContext;
-}
-
-export function setCurrentContext(context: Context | undefined) {
-  const prevContext = activeContext;
-  activeContext = context;
-  return prevContext;
 }
 
 function updateComputed(c: ComputedNode): boolean {

@@ -1,8 +1,7 @@
 import type { Renderable, View } from "../../types.js";
-import { Context, LifecycleEvent } from "../context.js";
+import { Context, LifecycleEvent, performInContext } from "../context.js";
 import { render } from "../markup.js";
 import { RoutePreloadFn, RouteTransitions } from "../router.js";
-import { setCurrentContext } from "../signal.js";
 import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");
@@ -47,14 +46,14 @@ export class ViewNode<P> extends MarkupNode {
     if (this.initialized) return;
 
     const { context, view, props } = this;
-    const prevCtx = setCurrentContext(context);
+
     try {
-      this.viewContent = view(props);
-    } catch (error) {
-      context.throwError(error);
-    } finally {
-      setCurrentContext(prevCtx);
+      performInContext(context, () => {
+        this.viewContent = view(props);
+      });
       this.initialized = true;
+    } catch (error) {
+      this.context.throwError(error);
     }
   }
 

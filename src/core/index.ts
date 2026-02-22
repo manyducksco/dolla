@@ -11,6 +11,9 @@ export * from "./hooks.js";
 // Markup
 export { createMarkup, Markup, MarkupNode, render } from "./markup.js";
 
+// html
+export { html } from "./html.js";
+
 // Ref
 export { ref, type Ref } from "./ref.js";
 
@@ -28,6 +31,10 @@ export { getEnv, setEnv } from "./env.js";
 // Logger
 export { createLogger } from "./logger.js";
 export type { Logger, LoggerOptions, LogLevel } from "./logger.js";
+
+// Router
+export { createRouter } from "./router.js";
+export type {} from "./router.js";
 
 // Other types
 export type { CSSProperties, Env, InputType, Mixin, Renderable, Store, View } from "../types.js";

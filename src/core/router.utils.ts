@@ -359,7 +359,11 @@ const protocolLink = /^[\w-_]+:/;
  * @param callback - Function to call when a click event is intercepted
  * @param _window - (optional) Override for global window object
  */
-export function catchLinks(root: Element, callback: (anchor: HTMLAnchorElement) => void, _window = window) {
+export function catchLinks(
+  root: Element,
+  callback: (href: string, anchor: HTMLAnchorElement) => void,
+  _window = window,
+) {
   function traverse(node: HTMLElement | null): HTMLAnchorElement | null {
     if (!node || node === root) {
       return null;
@@ -373,15 +377,12 @@ export function catchLinks(root: Element, callback: (anchor: HTMLAnchorElement) 
   }
 
   function handler(e: MouseEvent) {
-    if ((e.button && e.button !== 0) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented) {
-      return;
-    }
+    if ((e.button && e.button !== 0) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
 
     const anchor = traverse(e.target as HTMLElement);
+    if (!anchor) return;
 
-    if (!anchor) {
-      return;
-    }
+    const href = anchor.getAttribute("href")!;
 
     if (
       _window.location.protocol !== anchor.protocol ||
@@ -390,13 +391,13 @@ export function catchLinks(root: Element, callback: (anchor: HTMLAnchorElement) 
       anchor.hasAttribute("data-router-ignore") ||
       anchor.hasAttribute("download") ||
       (anchor.getAttribute("target") === "_blank" && safeExternalLink.test(anchor.getAttribute("rel")!)) ||
-      protocolLink.test(anchor.getAttribute("href")!)
+      protocolLink.test(href)
     ) {
       return;
     }
 
     e.preventDefault();
-    callback(anchor);
+    callback(href, anchor);
   }
 
   root.addEventListener("click", handler as any);

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Context, LifecycleEvent } from "../core/context";
-import { $watch, $setup, $teardown } from "./hooks";
-import { getCurrentContext, setCurrentContext, state } from "./signal";
+import { Context, getCurrentContext, LifecycleEvent, setCurrentContext } from "../core/context";
+import { $setup, $teardown, $watch } from "./hooks";
+import { state } from "./signal";
 
 const _emitWillMount = () => getCurrentContext()!.emit(LifecycleEvent.WILL_MOUNT);
 const _emitDidMount = () => getCurrentContext()!.emit(LifecycleEvent.DID_MOUNT);

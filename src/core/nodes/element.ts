@@ -1,18 +1,10 @@
 import { isFunction, isNumber, isObject, isString, typeOf } from "../../typeChecking.js";
 import { getIntegerId, moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
-import { Context, LifecycleEvent } from "../context.js";
+import { Context, LifecycleEvent, performInContext } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import {
-  watch,
-  type Gettable,
-  isGettable,
-  setCurrentContext,
-  track,
-  type UnsubscribeFn,
-  isWritable,
-} from "../signal.js";
+import { watch, type Gettable, isGettable, track, type UnsubscribeFn, isWritable } from "../signal.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -84,7 +76,7 @@ export class ElementNode extends MarkupNode {
   }
 
   override isMounted() {
-    return this.context.isMounted;
+    return this.context.isMounted();
   }
 
   override mount(parent: Node, after?: Node) {
@@ -99,9 +91,9 @@ export class ElementNode extends MarkupNode {
             bindLifecycleToParent: true,
             logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
           });
-          const prevCtx = setCurrentContext(context);
-          mixin(this.root, context);
-          setCurrentContext(prevCtx);
+          performInContext(context, () => {
+            mixin(this.root);
+          });
         }
       }
 

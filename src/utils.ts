@@ -15,6 +15,15 @@ export function getIntegerId(): number {
   return intCounter;
 }
 
+export class IdGenerator {
+  #counter = 1;
+
+  next() {
+    this.#counter = (this.#counter % Number.MAX_SAFE_INTEGER) + 1;
+    return this.#counter.toString(36) + Date.now().toString(36);
+  }
+}
+
 /*=============================*\
 ||       Object Equality       ||
 \*=============================*/

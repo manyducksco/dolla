@@ -1,18 +1,39 @@
-import { assertFunction, typeOf } from "../typeChecking";
+import { assertFunction } from "../typeChecking";
 import type { Store } from "../types";
 import { getUniqueId } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
 import {
+  type Gettable,
+  type Getter,
+  type MaybeReadable,
+  read,
+  type Readable,
+  type UnsubscribeFn,
   watch,
   type WatchCallback,
-  Gettable,
-  Getter,
-  MaybeReadable,
-  read,
-  setCurrentContext,
-  type UnsubscribeFn,
-  Readable,
 } from "./signal";
+
+let currentContext: Context | undefined;
+
+export function getCurrentContext(): Context | undefined {
+  return currentContext;
+}
+
+export function setCurrentContext(context: Context | undefined) {
+  const prevContext = currentContext;
+  currentContext = context;
+  return prevContext;
+}
+
+export function performInContext(context: Context | undefined, callback: () => void) {
+  const prevContext = currentContext;
+  currentContext = context;
+  try {
+    callback();
+  } finally {
+    currentContext = prevContext;
+  }
+}
 
 export enum LifecycleEvent {
   WILL_MOUNT = "willMount",
@@ -257,20 +278,15 @@ export class Context {
       throw this.logger.crash(new Error(`An instance of ${name} was already added on this context.`));
     }
 
+    // Context is bound and therefore will be disposed when this context is disposed.
     const context = this.createChild(store.name, {
       bindLifecycleToParent: true,
-      logger: { tag: getUniqueId(), tagName: "uid" },
     });
 
-    const prevCtx = setCurrentContext(context);
-    try {
+    performInContext(context, () => {
       if (!this.stores) this.stores = new Map();
       this.stores.set(store, store(options));
-    } catch (error) {
-      throw this.throwError(error);
-    } finally {
-      setCurrentContext(prevCtx);
-    }
+    });
 
     return this;
   }

@@ -6,9 +6,11 @@ You're probably going to want to bundle with Vite for a big production app, but 
 - **Learning:** It's a good way to learn Dolla without getting bogged down in build tool configuration, especially if you're new to web dev.
 - **Embedding in Existing Sites:** Have a simple static site and just want to add a little island of reactivity without going overboard? Perfect.
 
-## Enter `htm`.
+## Enter `html`.
 
-JSX is the main feature that needs a build step. Fortunately you can use the [`htm`](https://github.com/developit/htm) library for a more JSX-like experience. It binds to the `createMarkup` function (the same one JSX is calling under the hood) and enables you to write your views with tagged template literals.
+Dolla includes an `html` utility for writing JSX-like views without needing a compiler. Perfect when you want to drop in a script tag and spin up a quick demo or sprinkle in a bit of reactivity without taking over the whole page.
+
+It's also a good way to learn Dolla without getting bogged down in build tools if you're just starting out in the world of web dev.
 
 ```html
 <html>
@@ -16,13 +18,14 @@ JSX is the main feature that needs a build step. Fortunately you can use the [`h
     <title>Look ma, no build step!</title>
   </head>
   <body>
-    <div id="app"></div>
+    <main>
+      <!-- ...the rest of the site... -->
+
+      <div id="reactive-widget" />
+    </main>
 
     <script type="module">
-      import { dolla, state, createMarkup } from "https://esm.sh/@manyducks.co/dolla";
-      import htm from "https://esm.sh/htm";
-
-      const html = htm.bind(createMarkup);
+      import { dolla, state, html } from "https://esm.sh/@manyducks.co/dolla";
 
       function Layout({ children }) {
         return html`<div class="flex flex-col gap-2 p-8 rounded-xl bg-stone-300">${children}</div>`;
@@ -39,7 +42,7 @@ JSX is the main feature that needs a build step. Fortunately you can use the [`h
         `;
       }
 
-      dolla(Counter).mount("#app");
+      dolla(Counter).mount("#reactive-widget");
     </script>
   </body>
 </html>

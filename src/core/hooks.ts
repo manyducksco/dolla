@@ -1,11 +1,11 @@
 import { type Logger, type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
-import { ErrorInfo, type Context, type LifecycleEventName } from "./context";
+import { getCurrentContext, type Context, ErrorInfo, type LifecycleEventName } from "./context";
 import { I18N, type I18n } from "./i18n";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
 import { VIEW_PRELOAD_CALLBACK, VIEW_TRANSITIONS_CONFIG } from "./nodes/view";
-import { type RoutePreloadFn, ROUTER, type RouterAPI, type RouteTransitions } from "./router";
-import { type WatchCallback, getCurrentContext, type MaybeReadable, type Readable, type Getter } from "./signal";
+import { type RoutePreloadFn, RouterStore, type RouteTransitions } from "./router";
+import { type Getter, type Readable, type WatchCallback } from "./signal";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -145,26 +145,12 @@ export function $catch(callback: (error: unknown, info: ErrorInfo) => void) {
 ||           Router            ||
 \*=============================*/
 
-export function $navigate() {
-  return $$context().getState<RouterAPI>(ROUTER)!.navigate;
-}
-
-export function $route() {
-  const router = $$context().getState<RouterAPI>(ROUTER)!;
-  return {
-    pattern: router.pattern,
-    path: router.path,
-    params: router.params,
-    query: router.query,
-    data: router.data,
-  };
+export function $router() {
+  return $use(RouterStore);
 }
 
 export function $preload(loader: RoutePreloadFn) {
   $$context().setState(VIEW_PRELOAD_CALLBACK, loader);
-
-  // Wait for `loader` to resolve before navigating to this route.
-  // No effect unless this view is mounted as a route.
 }
 
 export function $transition(config: RouteTransitions) {
