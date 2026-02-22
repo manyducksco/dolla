@@ -1,6 +1,6 @@
 import { isFunction, isNumber, isObject, isString, typeOf } from "../../typeChecking.js";
 import { getIntegerId, moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
-import { Context, LifecycleEvent, performInContext } from "../context.js";
+import { Context, performInContext } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
@@ -97,7 +97,7 @@ export class ElementNode extends MarkupNode {
         }
       }
 
-      this.context.emit(LifecycleEvent.WILL_MOUNT);
+      this.context.emit("willMount");
 
       const classes = props.className ?? props.class;
 
@@ -122,11 +122,11 @@ export class ElementNode extends MarkupNode {
       parent.insertBefore(this.root!, after?.nextSibling ?? null);
     }
 
-    if (!wasMounted) this.context.emit(LifecycleEvent.DID_MOUNT);
+    if (!wasMounted) this.context.emit("didMount");
   }
 
   override unmount(skipDOM = false) {
-    this.context.emit(LifecycleEvent.WILL_UNMOUNT);
+    this.context.emit("willUnmount");
 
     if (!skipDOM) {
       this.root!.parentNode?.removeChild(this.root!);
@@ -141,8 +141,8 @@ export class ElementNode extends MarkupNode {
     }
     this.unsubscribers.length = 0;
 
-    this.context.emit(LifecycleEvent.DID_UNMOUNT);
-    this.context.emit(LifecycleEvent.DISPOSE);
+    this.context.emit("didUnmount");
+    this.context.emit("dispose");
 
     // Free ref after all lifecycle hooks have completed.
     queueMicrotask(() => {

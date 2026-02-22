@@ -35,15 +35,7 @@ export function performInContext(context: Context | undefined, callback: () => v
   }
 }
 
-export enum LifecycleEvent {
-  WILL_MOUNT = "willMount",
-  DID_MOUNT = "didMount",
-  WILL_UNMOUNT = "willUnmount",
-  DID_UNMOUNT = "didUnmount",
-  DISPOSE = "dispose",
-}
-
-export type LifecycleEventName = "willMount" | "didMount" | "willUnmount" | "didUnmount" | "dispose";
+export type LifecycleEvent = "willMount" | "didMount" | "willUnmount" | "didUnmount" | "dispose";
 
 type LifecycleListener = () => any;
 
@@ -101,7 +93,7 @@ class ContextLifecycle {
    */
   emit<E extends LifecycleEvent>(event: E) {
     switch (event) {
-      case LifecycleEvent.WILL_MOUNT: {
+      case "willMount": {
         if (this.state < LifecycleState.WillMount) {
           this.state = LifecycleState.WillMount;
           this.notify(event);
@@ -110,7 +102,7 @@ class ContextLifecycle {
         }
         break;
       }
-      case LifecycleEvent.DID_MOUNT: {
+      case "didMount": {
         if (this.state >= LifecycleState.WillMount && this.state < LifecycleState.DidMount) {
           this.state = LifecycleState.DidMount;
           this.notify(event);
@@ -119,7 +111,7 @@ class ContextLifecycle {
         }
         break;
       }
-      case LifecycleEvent.WILL_UNMOUNT: {
+      case "willUnmount": {
         if (this.state >= LifecycleState.DidMount && this.state < LifecycleState.WillUnmount) {
           this.notify(event);
           this.state = LifecycleState.WillUnmount;
@@ -128,7 +120,7 @@ class ContextLifecycle {
         }
         break;
       }
-      case LifecycleEvent.DID_UNMOUNT: {
+      case "didUnmount": {
         if (this.state >= LifecycleState.WillUnmount && this.state < LifecycleState.DidUnmount) {
           // Loop back to .Unmounted
           this.state = LifecycleState.DidUnmount % LifecycleState.DidUnmount;
@@ -138,7 +130,7 @@ class ContextLifecycle {
         }
         break;
       }
-      case LifecycleEvent.DISPOSE: {
+      case "dispose": {
         if (this.state === LifecycleState.Unmounted) {
           this.notify(event);
           this.listeners.clear();
@@ -320,8 +312,8 @@ export class Context {
    *
    * Prefer `useMount` and `useUnmount` hooks for general usage.
    */
-  onLifecycleTransition(event: LifecycleEventName, listener: LifecycleListener) {
-    return this.lifecycle.on(event as LifecycleEvent, () => {
+  onLifecycleTransition(event: LifecycleEvent, listener: LifecycleListener) {
+    return this.lifecycle.on(event, () => {
       try {
         const result = listener();
         if (result instanceof Promise) {
@@ -345,16 +337,16 @@ export class Context {
     if (this.lifecycle.state >= LifecycleState.WillMount) {
       // This code is probably in a lifecycle hook; run the effect immediately and trigger unsubscribe when context unmounts.
       const unsubscribe = watch(fn);
-      this.lifecycle.on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
+      this.lifecycle.on("didUnmount", unsubscribe);
       return unsubscribe;
     } else {
       // Prime the effect to run when the context is mounted and unsubscribe when unmounted, unless unsubscribed before `willMount`.
       let unsubscribe: UnsubscribeFn | undefined;
       let disposed = false;
-      this.lifecycle.on(LifecycleEvent.WILL_MOUNT, () => {
+      this.lifecycle.on("willMount", () => {
         if (!disposed) {
           unsubscribe = watch(fn);
-          this.lifecycle.on(LifecycleEvent.DID_UNMOUNT, unsubscribe);
+          this.lifecycle.on("didUnmount", unsubscribe);
         }
       });
       return () => {

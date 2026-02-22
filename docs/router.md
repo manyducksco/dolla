@@ -9,7 +9,7 @@ Dolla's router is built right in, and it's designed to be super intuitive but al
 First things first, you gotta create your router. You do this with the `createRouter` function. You give it a list of all the routes in your app. Then, instead of giving `createApp` your main component, you just give it the router you just made. Dolla handles the rest.
 
 ```jsx
-import { dolla } from "@manyducks.co/dolla";
+import { createApp } from "@manyducks.co/dolla";
 import { HomePage, AboutPage, NotFoundPage } from "./views.js";
 
 import { createRouter, $router } from "@manyducks.co/dolla/router";
@@ -26,7 +26,7 @@ const router = createRouter({
   ],
 });
 
-dolla(router).mount("#app");
+createApp(router).mount("#app");
 ```
 
 That's the basic setup. Now, when you go to `/about`, Dolla will automatically show the `AboutPage` component. Easy peasy.

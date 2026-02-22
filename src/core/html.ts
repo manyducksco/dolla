@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { createMarkup } from "./markup.js";
+import { createMarkup, type Markup } from "./markup.js";
+
+export type Template = Markup | Markup[];
 
 const MODE_SLASH = 0;
 const MODE_TEXT = 1;
@@ -22,7 +24,7 @@ const MODE_COMMENT = 4;
 const MODE_PROP_SET = 5;
 const MODE_PROP_APPEND = 6;
 
-export function html(statics: TemplateStringsArray, ...args: any[]): any {
+export function html(statics: TemplateStringsArray, ...args: any[]): Template {
   const fields = [statics, ...args];
 
   let mode = MODE_TEXT;

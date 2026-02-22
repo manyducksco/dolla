@@ -1,5 +1,5 @@
 // App
-export { dolla } from "./app.js";
+export { createApp } from "./app.js";
 
 // Signals
 export { batch, computed, isReadable, isWritable, nextValue, read, state, toReadable, track, watch } from "./signal.js";

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Context, getCurrentContext, LifecycleEvent, setCurrentContext } from "../core/context";
+import { Context, getCurrentContext, setCurrentContext } from "../core/context";
 import { $setup, $teardown, $watch } from "./hooks";
 import { state } from "./signal";
 
-const _emitWillMount = () => getCurrentContext()!.emit(LifecycleEvent.WILL_MOUNT);
-const _emitDidMount = () => getCurrentContext()!.emit(LifecycleEvent.DID_MOUNT);
-const _emitWillUnmount = () => getCurrentContext()!.emit(LifecycleEvent.WILL_UNMOUNT);
-const _emitDidUnmount = () => getCurrentContext()!.emit(LifecycleEvent.DID_UNMOUNT);
-const _emitDispose = () => getCurrentContext()!.emit(LifecycleEvent.DISPOSE);
+const _emitWillMount = () => getCurrentContext()!.emit("willMount");
+const _emitDidMount = () => getCurrentContext()!.emit("didMount");
+const _emitWillUnmount = () => getCurrentContext()!.emit("willUnmount");
+const _emitDidUnmount = () => getCurrentContext()!.emit("didUnmount");
+const _emitDispose = () => getCurrentContext()!.emit("dispose");
 
 beforeEach(() => {
   setCurrentContext(new Context("test"));

@@ -1,7 +1,6 @@
-import { isFunction, isObject, typeOf } from "../typeChecking.js";
 import type { View } from "../types";
-import { Context, LifecycleEvent } from "./context.js";
-import { createI18n, I18N, type I18n, I18nHandle, type I18nOptions } from "./i18n.js";
+import { Context } from "./context.js";
+import { createI18n, I18N, type I18nOptions } from "./i18n.js";
 import { ViewNode } from "./nodes/view.js";
 import { CrashViewProps, DefaultCrashView } from "./views/default-crash-view.js";
 
@@ -27,109 +26,73 @@ export interface DollaOptions {
   i18n?: I18nOptions;
 }
 
-class App {
-  #context: Context;
-  #mounted = false;
+export interface DollaApp {}
 
-  #view: View<{}>;
-  #crashView: View<CrashViewProps> = DefaultCrashView;
-  #root?: ViewNode<{}>;
+export function createApp(view: View<{}>, options?: DollaOptions) {
+  const context = new Context("dolla:app");
+  const crashView = options?.crashView ?? DefaultCrashView;
+  const cleanup: (() => void)[] = [];
+  const root = new ViewNode(context, view, {});
 
-  #cleanup: (() => void)[] = [];
+  const i18n = createI18n({
+    locale: options?.i18n?.locale ?? "auto",
+    translations: options?.i18n?.translations ?? [],
+    ...options?.i18n,
+  });
+  context.setState(I18N, i18n.exports);
 
-  #i18n: I18nHandle;
+  async function mount(parent: string | Element): Promise<void> {
+    if (context.isMounted()) return;
 
-  readonly i18n: I18n;
+    const element = getElement(parent);
 
-  constructor(options: DollaOptions) {
-    this.#context = new Context("App");
+    context.setState(PARENT_ELEMENT, element);
 
-    this.#view = options.view;
-
-    if (options.crashView) {
-      this.#crashView = options.crashView;
-    }
-
-    const i18n = createI18n({
-      locale: options.i18n?.locale ?? "auto",
-      translations: options.i18n?.translations ?? [],
-      ...options.i18n,
-    });
-    this.#i18n = i18n.handle;
-    this.i18n = i18n.exports;
-    this.#context.setState(I18N, i18n.exports);
-  }
-
-  async mount(element: string | Element): Promise<void> {
-    if (this.#mounted) return Promise.resolve();
-
-    const parentElement = this.#getElement(element);
-
-    this.#context.setState(PARENT_ELEMENT, parentElement);
-
-    this.#cleanup.push(
-      this.#context.catchError((error, info) => {
-        this.unmount().then(() => {
-          new ViewNode(this.#context, this.#crashView, { error, info }).mount(parentElement);
+    cleanup.push(
+      context.catchError((error, info) => {
+        unmount().then(() => {
+          new ViewNode(context, crashView, { error, info }).mount(element);
         });
       }),
     );
 
-    this.#context.emit(LifecycleEvent.WILL_MOUNT);
+    context.emit("willMount");
 
-    await this.#i18n.mount();
+    await i18n.handle.mount();
+    root.mount(element);
 
-    // Mount root view.
-    this.#root = new ViewNode(this.#context, this.#view, {});
-    this.#root.mount(parentElement);
-
-    this.#mounted = true;
-
-    this.#context.emit(LifecycleEvent.DID_MOUNT);
+    context.emit("didMount");
   }
 
-  async unmount() {
-    if (!this.#mounted) return Promise.resolve();
+  async function unmount(): Promise<void> {
+    if (!context.isMounted()) return;
 
-    this.#context.emit(LifecycleEvent.WILL_UNMOUNT);
-    this.#mounted = false;
+    context.emit("willUnmount");
 
-    this.#root?.unmount(false);
+    root.unmount(false);
+    i18n.handle.unmount();
 
-    this.#i18n.unmount();
-
-    for (const callback of this.#cleanup) {
+    for (const callback of cleanup) {
       callback();
     }
-    this.#cleanup = [];
+    cleanup.length = 0;
 
-    this.#context.emit(LifecycleEvent.DID_UNMOUNT);
+    context.emit("didUnmount");
   }
 
-  #getElement(element: string | Element): Element {
-    if (typeof element === "string") {
-      const match = document.querySelector(element);
-      if (!match) {
-        throw new Error(`Selector '${element}' did not many any element.`);
-      }
-      return match;
-    } else if (element instanceof Element) {
-      return element;
-    } else {
-      throw new Error("Expected a selector string or DOM element.");
-    }
-  }
+  return { mount, unmount, setLocale: i18n.exports.setLocale };
 }
 
-export function dolla(view: View<{}>): App;
-export function dolla(options: DollaOptions): App;
-
-export function dolla(init: View<{}> | DollaOptions) {
-  if (isFunction<View<{}>>(init)) {
-    return new App({ view: init });
-  } else if (isObject<DollaOptions>(init)) {
-    return new App(init);
+function getElement(element: string | Element): Element {
+  if (typeof element === "string") {
+    const match = document.querySelector(element);
+    if (!match) {
+      throw new Error(`Selector '${element}' did not many any element.`);
+    }
+    return match;
+  } else if (element instanceof Element) {
+    return element;
   } else {
-    throw new Error(`Expected a view function or options object. Got: ${typeOf(init)}`);
+    throw new Error("Expected a selector string or DOM element.");
   }
 }

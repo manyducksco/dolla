@@ -1,6 +1,6 @@
 import { type Logger, type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
-import { getCurrentContext, type Context, ErrorInfo, type LifecycleEventName } from "./context";
+import { getCurrentContext, type Context, ErrorInfo, type LifecycleEvent } from "./context";
 import { I18N, type I18n } from "./i18n";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
 import { VIEW_PRELOAD_CALLBACK, VIEW_TRANSITIONS_CONFIG } from "./nodes/view";
@@ -122,7 +122,7 @@ export function $teardown(callback: () => void | Promise<void>): void {
  * Schedules `callback` to be run on a lifecycle `event`.
  * Prefer using `$setup` and `$teardown` unless you have an advanced use case.
  */
-export function $on(event: LifecycleEventName, callback: () => void): void {
+export function $on(event: LifecycleEvent, callback: () => void): void {
   $$context().onLifecycleTransition(event, callback);
 }
 
@@ -146,7 +146,7 @@ export function $catch(callback: (error: unknown, info: ErrorInfo) => void) {
 \*=============================*/
 
 export function $router() {
-  return $use(RouterStore);
+  return $$context().useStore(RouterStore);
 }
 
 export function $preload(loader: RoutePreloadFn) {

@@ -101,7 +101,7 @@ export class ViewNode<P> extends MarkupNode {
         this.node = render(this.viewContent, this.context);
       }
 
-      this.context.emit(LifecycleEvent.WILL_MOUNT);
+      this.context.emit("willMount");
     }
 
     if (this.node) {
@@ -110,11 +110,11 @@ export class ViewNode<P> extends MarkupNode {
 
     // TODO: Handle transition in
 
-    if (!wasMounted) this.context.emit(LifecycleEvent.DID_MOUNT);
+    if (!wasMounted) this.context.emit("didMount");
   }
 
   unmount(skipDOM = false) {
-    this.context.emit(LifecycleEvent.WILL_UNMOUNT);
+    this.context.emit("willUnmount");
 
     // TODO: Handle transition out
 
@@ -122,8 +122,8 @@ export class ViewNode<P> extends MarkupNode {
       this.node.unmount(skipDOM);
     }
 
-    this.context.emit(LifecycleEvent.DID_UNMOUNT);
-    this.context.emit(LifecycleEvent.DISPOSE);
+    this.context.emit("didUnmount");
+    this.context.emit("dispose");
   }
 
   move(parent: Element, after?: Node) {
