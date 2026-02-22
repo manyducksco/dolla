@@ -32,7 +32,7 @@ Fine-Grained DOM Reconciliation: Dolla bypasses the Virtual DOM entirely. By usi
 The best way to get it is to see it. If you've ever touched React, you'll know what's up, but peep the little things that make your life way easier.
 
 ```jsx
-import { state, computed, html, $watch, $debug } from "@manyducks.co/dolla";
+import { state, computed, html, mount, $watch, $debug } from "@manyducks.co/dolla";
 
 // Print only 'warn' messages and above (applies globally)
 $debug.level = "warn";
@@ -60,6 +60,8 @@ function Counter() {
   // );
 }
 
+mount(document.body, Counter);
+
 function TemperatureConverter() {
   const celsius = state(0);
 
@@ -76,7 +78,7 @@ function TemperatureConverter() {
 
   return (
     <div>
-      <input type="number" bindValue={celsius} />
+      <input type="number" value={bind(celsius, (el) => el.valueAsNumber)} />
 
       <p>Celsius: {celsius}°C</p>
       <p>Fahrenheit: {fahrenheit}°F</p>
@@ -96,7 +98,7 @@ function ToDoList() {
 
   return (
     <div>
-      <input type="text" placeholder="Search..." bindValue={query} />
+      <input type="text" placeholder="Search..." value={bind(query)} />
 
       <ul>
         <For each={filteredItems} key={(item) => item}>

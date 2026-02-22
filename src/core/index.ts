@@ -1,5 +1,7 @@
 // App
-export { createApp } from "./app.js";
+// export { createApp } from "./app.js";
+
+export { mount } from "./mount.js";
 
 // Signals
 export { batch, computed, isReadable, isWritable, nextValue, read, state, toReadable, track, watch } from "./signal.js";

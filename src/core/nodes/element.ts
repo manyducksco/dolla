@@ -4,7 +4,7 @@ import { Context, performInContext } from "../context.js";
 import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import { watch, type Gettable, isGettable, track, type UnsubscribeFn, isWritable } from "../signal.js";
+import { watch, type Gettable, isGettable, track, type UnsubscribeFn, isWritable, Writable } from "../signal.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -242,28 +242,26 @@ export class ElementNode extends MarkupNode {
           },
           this.getKey(_key),
         );
-      } else if (key.toLowerCase() === "bindvalue") {
-        if (!isWritable(value)) {
-          throw new Error(`bindValue must be a Writable. Got: ${typeOf(value)}`);
-        }
-
-        const e = element as HTMLInputElement;
-
+      } else if (key === "value" && isBinding(value)) {
+        // Two-way value binding.
+        const el = element as HTMLInputElement;
         this.attachProp(
-          value,
+          value.value,
           (current) => {
-            e.value = String(current);
+            el.value = String(current);
           },
           this.getKey(key),
         );
-
-        const onInput = () => {
-          value.write(e.value);
+        const listener = () => {
+          if (value.get) {
+            value.value.write(value.get(el));
+          } else {
+            value.value.write(el.value);
+          }
         };
-
-        element.addEventListener("input", onInput);
+        el.addEventListener(value.event, listener);
         this.unsubscribers.push(() => {
-          element.removeEventListener("input", onInput);
+          el.removeEventListener(value.event, listener);
         });
       } else if (isFunction(value) && isCamelCaseEventName(key)) {
         // camelCase event names are applied with addEventListener.
@@ -641,6 +639,50 @@ function asPixelsIfNumber(value: any): string {
   } else {
     return value;
   }
+}
+
+export type BindingEvent = "input" | "change" | "keydown" | "keyup";
+
+export interface Binding<T> {
+  type: "binding";
+  value: Writable<T>;
+  event: BindingEvent;
+  get?: (element: HTMLInputElement) => T;
+}
+
+export interface BindFn {
+  <T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  change<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  input<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  keyup<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  keydown<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+}
+
+function _bind<T>(this: BindingEvent, value: Writable<T>, get?: (element: HTMLInputElement) => T) {
+  return {
+    type: "binding",
+    event: this ?? "input",
+    value,
+    get,
+  };
+}
+
+/**
+ * Creates a two-way binding between a Writable and an element's `value` field.
+ * Changes to the value will by propagated back to the Writable.
+ *
+ * If a `get` function is passed, the writable will receive the result of
+ * calling that function with the input element. Otherwise the writable receives
+ * the `.value` of the element.
+ */
+export const bind = new Proxy(_bind, {
+  get(target, prop, receiver) {
+    return target.bind(prop as BindingEvent);
+  },
+}) as BindFn;
+
+function isBinding<T>(value: unknown): value is Binding<T> {
+  return isObject(value) && value.type === "binding";
 }
 
 // A list of all known event names. These will be handled as event listeners.

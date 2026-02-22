@@ -1,6 +1,7 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
 import type { Gettable, Getter, Readable, Writable } from "./core/signal.js";
+import type { Binding } from "./core/nodes/element.js";
 
 export type Env = "production" | "development";
 
@@ -3848,7 +3849,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   accept?: OptionalProperty<string>;
   alt?: OptionalProperty<string>;
   autocomplete?: OptionalProperty<AutocompleteValues>;
-  checked?: OptionalProperty<boolean>;
+  checked?: OptionalProperty<boolean> | Binding<boolean>;
   dirName?: OptionalProperty<string>;
   disabled?: OptionalProperty<boolean>;
   form?: OptionalProperty<string>;
@@ -3875,14 +3876,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   src?: OptionalProperty<string>;
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
-  /**
-   *
-   */
-  value?: OptionalProperty<string>;
-  /**
-   *
-   */
-  bindValue?: Writable<string>;
+  value?: OptionalProperty<string> | Binding<string>;
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 
