@@ -9,9 +9,9 @@ defineElement("my-counter", {
   props: {
     // Defines props and their types
   },
-  setup: (props, ctx) => {
+  view: (props) => {
     // Returns markup (this is a view)
-    return html` <div></div> `;
+    return html`<div></div>`;
   },
 });
 ```

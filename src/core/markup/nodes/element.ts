@@ -1,12 +1,13 @@
-import { isFunction, isNumber, isObject, isString } from "../../typeChecking.js";
-import { moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
-import { Context, performInContext } from "../context.js";
-import { toMarkupNodes } from "../markup.js";
-import { EMPTY_REF, Ref } from "../ref.js";
-import { isGettable, track, watch, Mutable, type Gettable, type UnsubscribeFn } from "../reactive.js";
-import { DEBUG } from "../symbols.js";
+import { isFunction, isNumber, isObject, isString } from "../../../typeChecking.js";
+import { moveBefore, omit, toArray, toCamelCase } from "../../../utils.js";
+import { Context } from "../../context/context.js";
+import { performInContext } from "../../context/current.js";
+import { toMarkupNodes } from "../index.js";
+import { Ref } from "../../ref.js";
+import { isGettable, track, watch, Mutable, type Gettable, type UnsubscribeFn } from "../../reactive.js";
+import { DEBUG } from "../../symbols.js";
 
-import { MarkupNode } from "./_markup.js";
+import { MarkupNode } from "../markup.js";
 import { VIEW, ViewNode } from "./view.js";
 
 const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
@@ -146,7 +147,7 @@ export class ElementNode extends MarkupNode {
     // Free ref after all lifecycle hooks have completed.
     queueMicrotask(() => {
       if (this.ref) {
-        this.ref(EMPTY_REF);
+        this.ref(undefined);
       }
     });
   }

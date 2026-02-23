@@ -1,10 +1,10 @@
-import { isFunction } from "../typeChecking";
-import { Renderable, View } from "../types";
-import { getElement } from "../utils";
-import { Context } from "./context";
-import { LogLevel } from "./logger";
-import { MarkupNode, render } from "./markup";
-import { DEBUG, PARENT_ELEMENT } from "./symbols";
+import { isFunction } from "../typeChecking.js";
+import { Renderable, View } from "../types.js";
+import { getElement } from "../utils.js";
+import { Context } from "./context/context.js";
+import { LogLevel } from "./context/logger.js";
+import { MarkupNode, render } from "./markup/index.js";
+import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
 export type CleanupCallback = () => void | Promise<void>;
 

@@ -1,8 +1,10 @@
-import type { Renderable, View } from "../../types.js";
-import { Context, LifecycleEvent, performInContext } from "../context.js";
-import { render } from "../markup.js";
+import type { Renderable, View } from "../../../types.js";
+import type { Context } from "../../context/context.js";
+import { performInContext } from "../../context/current.js";
+// import { LifecycleEvent } from "../../context/lifecycle.js";
+import { render } from "../utils.js";
 // import { RoutePreloadFn, RouteTransitions } from "../../router/router.js";
-import { MarkupNode } from "./_markup.js";
+import { MarkupNode } from "../markup.js";
 
 export const VIEW = Symbol("ViewNode");
 export const VIEW_PRELOAD_CALLBACK = Symbol();
@@ -44,12 +46,9 @@ export class ViewNode<P> extends MarkupNode {
 
   #init() {
     if (this.initialized) return;
-
-    const { context, view, props } = this;
-
     try {
-      performInContext(context, () => {
-        this.viewContent = view(props);
+      performInContext(this.context, () => {
+        this.viewContent = this.view(this.props);
       });
       this.initialized = true;
     } catch (error) {

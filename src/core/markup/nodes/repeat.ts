@@ -1,9 +1,9 @@
-import type { Renderable } from "../../types.js";
-import { deepEqual, moveBefore } from "../../utils.js";
-import type { Context } from "../context.js";
-import { $name } from "../hooks.js";
-import { batch, reader, state, subscribe, type Mutable, type Reactive, type UnsubscribeFn } from "../reactive.js";
-import { MarkupNode } from "./_markup.js";
+import type { Renderable } from "../../../types.js";
+import { deepEqual, moveBefore } from "../../../utils.js";
+import type { Context } from "../../context/context.js";
+import { $name } from "../../hooks.js";
+import { batch, reader, state, subscribe, type Mutable, type Reactive, type UnsubscribeFn } from "../../reactive.js";
+import { MarkupNode } from "../markup.js";
 import { ViewNode } from "./view.js";
 
 // ----- Types ----- //

@@ -1,5 +1,5 @@
-import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
-import { MaybeGetter, get } from "./reactive.js";
+import { createMatcher, noOp, okhash, type MatcherFunction } from "../../utils.js";
+import { MaybeGetter, get } from "../reactive.js";
 
 export interface Logger {
   info(...args: any[]): void;

@@ -1,5 +1,5 @@
 import { $$context } from "../hooks";
-import { type Key, type RenderFn, RepeatNode } from "../nodes/repeat";
+import { type Key, type RenderFn, RepeatNode } from "../markup/nodes/repeat";
 import { reader, type Trackable } from "../reactive";
 
 export interface ForProps<T> {

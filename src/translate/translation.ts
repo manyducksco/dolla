@@ -54,31 +54,8 @@ export class Translation {
     this.cache.clear();
   }
 
-  getTemplate(selector: string): StringTemplate {
-    return (
-      this.templates.get(selector) ?? {
-        segments: [{ type: SegmentType.Static, text: `[MISSING: ${selector}]` }],
-      }
-    );
-  }
-
-  hasTemplate(selector: string): boolean {
-    return this.templates.has(selector);
-  }
-
-  getCached(key: string, values?: Record<string, any>): string | undefined {
-    const entries = this.cache.get(key);
-    if (entries) {
-      for (const entry of entries) {
-        if (deepEqual(entry.values, values)) {
-          return entry.output;
-        }
-      }
-    }
-  }
-
   getValue(selector: string, options: Record<string, any>): string {
-    const cached = this.getCached(selector, options);
+    const cached = this.#getCached(selector, options);
     if (cached) return cached;
 
     // Handle count (pluralization) and context. Keys become "key_context_pluralization".
@@ -90,7 +67,7 @@ export class Translation {
       if (options.ordinal) {
         // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
         const exact = `${selector}_ordinal_(=${options.count})`;
-        if (this.hasTemplate(exact)) {
+        if (this.templates.has(exact)) {
           selector = exact;
         } else {
           selector += "_ordinal_" + new Intl.PluralRules(this.locale, { type: "ordinal" }).select(options.count);
@@ -98,7 +75,7 @@ export class Translation {
       } else {
         // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
         const exact = `${selector}_(=${options.count})`;
-        if (this.hasTemplate(exact)) {
+        if (this.templates.has(exact)) {
           selector = exact;
         } else {
           selector += "_" + new Intl.PluralRules(this.locale).select(options.count);
@@ -106,14 +83,16 @@ export class Translation {
       }
     }
 
-    const template = this.getTemplate(selector);
+    const template = this.templates.get(selector) ?? {
+      segments: [{ type: SegmentType.Static, text: `[MISSING: ${selector}]` }],
+    };
     let output = "";
 
     for (const segment of template.segments) {
       if (segment.type === SegmentType.Static) {
         output += segment.text;
       } else if (segment.type === SegmentType.Variable) {
-        let value = this.resolve(options, segment.name);
+        let value = this.#resolve(options, segment.name);
 
         const formats = options.formatOverrides?.[segment.name] ?? [...segment.formats];
 
@@ -138,7 +117,18 @@ export class Translation {
     return output;
   }
 
-  resolve(object: any, key: string) {
+  #getCached(key: string, values?: Record<string, any>): string | undefined {
+    const entries = this.cache.get(key);
+    if (entries) {
+      for (const entry of entries) {
+        if (deepEqual(entry.values, values)) {
+          return entry.output;
+        }
+      }
+    }
+  }
+
+  #resolve(object: any, key: string) {
     const parsed = String(key)
       .split(/[\.\[\]]/)
       .filter((part) => part.trim() !== "");

@@ -1,5 +1,5 @@
 import { $$context, $setup, Reactive, state } from "../core";
-import { VIEW, ViewNode } from "../core/nodes/view";
+import { VIEW, ViewNode } from "../core/markup/nodes/view";
 
 export interface Dimensions {
   width: number;

@@ -1,3 +1,69 @@
+import type { IntrinsicElements, Renderable, View } from "../../types.js";
+import type { Reactive } from "../reactive.js";
+import { KeyFn, RenderFn } from "./nodes/repeat.js";
+
+export enum NodeType {
+  DOM,
+  Dynamic,
+  Element,
+  Portal,
+  Repeat,
+  View,
+}
+
+// TODO: Better typing for these props?
+
+export interface MarkupNodeProps {
+  [NodeType.DOM]: {
+    node: Node;
+  };
+  [NodeType.Dynamic]: {
+    slot: Reactive<any>;
+  };
+  [NodeType.Element]: {
+    tag: string;
+    props: Record<string, any>;
+  };
+  [NodeType.Portal]: {
+    parent: Element;
+    content: Renderable;
+  };
+  [NodeType.Repeat]: {
+    items: Reactive<any[]>;
+    key: KeyFn<any>;
+    render: RenderFn<Renderable>;
+  };
+  [NodeType.View]: {
+    view: View<any>;
+    props: any;
+  };
+}
+
+/**
+ * Determines the type of the `props` object for any kind of Markup type.
+ */
+type PropsOf<T extends string | NodeType | View<any>> =
+  T extends View<infer P>
+    ? P
+    : T extends NodeType
+      ? MarkupNodeProps[T]
+      : T extends keyof IntrinsicElements
+        ? IntrinsicElements[T]
+        : any;
+
+/**
+ * A is a set of basic metadata that can be constructed into a `MarkupNode`.
+ */
+export class Markup<Type extends string | NodeType | View<any> = string | NodeType | View<any>> {
+  type;
+  props;
+
+  constructor(type: Type, props: PropsOf<Type>) {
+    this.type = type;
+    this.props = props;
+  }
+}
+
 /**
  * A node that can be mounted by the Markup layout engine. Can be extended to create new custom node types.
  *

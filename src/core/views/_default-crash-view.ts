@@ -1,5 +1,5 @@
-import { ErrorInfo } from "../context.js";
-import { createMarkup as m } from "../markup.js";
+import { ErrorInfo } from "../context/context.js";
+import { Markup } from "../markup/index.js";
 
 /**
  * Props passed to the crash view when a crash occurs.
@@ -13,7 +13,7 @@ export interface CrashViewProps {
  * The crash view displayed unless you specify your own.
  */
 export function DefaultCrashView(props: CrashViewProps) {
-  return m("div", {
+  return new Markup("div", {
     style: {
       backgroundColor: "#880000",
       color: "#fff",
@@ -23,15 +23,15 @@ export function DefaultCrashView(props: CrashViewProps) {
       fontSize: "20px",
     },
     children: [
-      m("h1", { style: { marginBottom: "0.5rem" }, children: "The app has crashed" }),
-      m("p", {
+      new Markup("h1", { style: { marginBottom: "0.5rem" }, children: "The app has crashed" }),
+      new Markup("p", {
         style: { marginBottom: "0.25rem" },
         children: [
-          m("span", {
+          new Markup("span", {
             style: { fontFamily: "monospace" },
             children: props.info.source.name,
           }),
-          m("span", {
+          new Markup("span", {
             style: { fontFamily: "monospace", opacity: 0.5 },
             children: ` [id: ${props.info.source.id}]`,
           }),
@@ -39,7 +39,7 @@ export function DefaultCrashView(props: CrashViewProps) {
         ],
       }),
 
-      m("blockquote", {
+      new Markup("blockquote", {
         style: {
           backgroundColor: "#991111",
           padding: "0.25em",
@@ -48,7 +48,7 @@ export function DefaultCrashView(props: CrashViewProps) {
           marginBottom: "1rem",
         },
         children: [
-          m("span", {
+          new Markup("span", {
             style: {
               display: "inline-block",
               backgroundColor: "red",
@@ -63,12 +63,12 @@ export function DefaultCrashView(props: CrashViewProps) {
           getErrorMessage(props.error),
         ],
       }),
-      m("p", { children: "Please see the browser console for details." }),
+      new Markup("p", { children: "Please see the browser console for details." }),
 
-      m("p", {
+      new Markup("p", {
         children: [
-          m("pre", {
-            children: m("code", {
+          new Markup("pre", {
+            children: new Markup("code", {
               children: props.info.contextStack,
             }),
           }),

@@ -1,7 +1,7 @@
 import { isString } from "../../typeChecking";
 import type { Renderable } from "../../types";
-import { $$context, $debug } from "../hooks";
-import { PortalNode } from "../nodes/portal";
+import { $$context } from "../hooks";
+import { PortalNode } from "../markup/nodes/portal";
 
 export interface PortalProps {
   /**

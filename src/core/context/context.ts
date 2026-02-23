@@ -1,7 +1,6 @@
-import { assertFunction } from "../typeChecking";
-import type { Store } from "../types";
-import { IdGenerator } from "../utils";
-import { createLogger, type Logger, type LoggerOptions } from "./logger";
+import { assertFunction } from "../../typeChecking";
+import type { Store } from "../../types";
+import { IdGenerator } from "../../utils";
 import {
   get,
   type Gettable,
@@ -11,190 +10,10 @@ import {
   type UnsubscribeFn,
   watch,
   type WatchCallback,
-} from "./reactive";
-
-let currentContext: Context | undefined;
-
-export function getCurrentContext(): Context | undefined {
-  return currentContext;
-}
-
-export function setCurrentContext(context: Context | undefined) {
-  const prevContext = currentContext;
-  currentContext = context;
-  return prevContext;
-}
-
-export function performInContext(context: Context | undefined, callback: () => void) {
-  const prevContext = currentContext;
-  currentContext = context;
-  try {
-    callback();
-  } finally {
-    currentContext = prevContext;
-  }
-}
-
-export type LifecycleEvent = "willMount" | "didMount" | "willUnmount" | "didUnmount" | "dispose";
-
-type LifecycleListener = () => any;
-
-enum LifecycleState {
-  Unmounted = 0,
-  WillMount = 1,
-  DidMount = 2,
-  WillUnmount = 3,
-  DidUnmount = 4,
-  Disposed = 5,
-}
-
-const lifecycleStateNames = {
-  [LifecycleState.Unmounted]: "Unmounted",
-  [LifecycleState.WillMount]: "WillMount",
-  [LifecycleState.DidMount]: "DidMount",
-  [LifecycleState.WillUnmount]: "WillUnmount",
-  [LifecycleState.DidUnmount]: "DidUnmount",
-  [LifecycleState.Disposed]: "Disposed",
-};
-
-/**
- * Manages lifecycle events for a Context.
- */
-class ContextLifecycle {
-  private context;
-
-  state = LifecycleState.Unmounted;
-  listeners = new Map<LifecycleEvent, Set<LifecycleListener>>();
-  bound?: Set<Context>;
-
-  constructor(context: Context) {
-    this.context = context;
-  }
-
-  /**
-   * Listen for a certain event to be emitted. Listeners are called when the event results in a state change.
-   */
-  on<E extends LifecycleEvent>(event: E, listener: LifecycleListener) {
-    const listeners = this.listeners.get(event);
-    if (!listeners) {
-      this.listeners.set(event, new Set([listener]));
-    } else {
-      listeners.add(listener);
-    }
-    return () => this.off(event, listener);
-  }
-
-  /**
-   * Stop a particular listener from being called when an event is emitted.
-   */
-  off<E extends LifecycleEvent>(event: E, listener: LifecycleListener) {
-    const listeners = this.listeners.get(event);
-    if (listeners) {
-      listeners.delete(listener);
-      if (listeners.size === 0) {
-        this.listeners.delete(event);
-      }
-    }
-  }
-
-  /**
-   * Advance the lifecycle state machine.
-   */
-  emit<E extends LifecycleEvent>(event: E) {
-    let invalid = false;
-
-    switch (event) {
-      case "willMount": {
-        if (this.state < LifecycleState.WillMount) {
-          this.state = LifecycleState.WillMount;
-          this.notify(event);
-        } else {
-          invalid = true;
-        }
-        break;
-      }
-      case "didMount": {
-        if (this.state >= LifecycleState.WillMount && this.state < LifecycleState.DidMount) {
-          this.state = LifecycleState.DidMount;
-          this.notify(event);
-        } else {
-          invalid = true;
-        }
-        break;
-      }
-      case "willUnmount": {
-        if (this.state >= LifecycleState.DidMount && this.state < LifecycleState.WillUnmount) {
-          this.notify(event);
-          this.state = LifecycleState.WillUnmount;
-        } else {
-          invalid = true;
-        }
-        break;
-      }
-      case "didUnmount": {
-        if (this.state >= LifecycleState.WillUnmount && this.state < LifecycleState.DidUnmount) {
-          // Loop back to .Unmounted
-          this.state = LifecycleState.DidUnmount % LifecycleState.DidUnmount;
-          this.notify(event);
-        } else {
-          invalid = true;
-        }
-        break;
-      }
-      case "dispose": {
-        if (this.state === LifecycleState.Unmounted) {
-          this.notify(event);
-          this.listeners.clear();
-          this.bound = undefined;
-          this.context.state = undefined;
-          this.context.stores = undefined;
-          this.state = LifecycleState.Disposed;
-        } else {
-          invalid = true;
-        }
-        break;
-      }
-    }
-
-    if (invalid) {
-      this.context.logger.crash(
-        new Error(
-          `[${this.context.getName()}] Tried to '${event}' context at state ${this.state} (${lifecycleStateNames[this.state]})`,
-        ),
-      );
-    }
-  }
-
-  /**
-   * Bind `context` to this lifecycle; when any event is emitted here it will be emitted for `context` as well.
-   */
-  bind(context: Context) {
-    if (!this.bound) {
-      this.bound = new Set([context]);
-    } else {
-      this.bound.add(context);
-    }
-  }
-
-  /**
-   * Call all the event's listeners and re-emit to bound contexts.
-   */
-  private notify<E extends LifecycleEvent>(event: E) {
-    // Call listener functions.
-    const listeners = this.listeners.get(event);
-    if (listeners) {
-      for (const listener of listeners) {
-        listener();
-      }
-    }
-    // Emit to bound contexts.
-    if (this.bound) {
-      for (const context of this.bound) {
-        context.lifecycle.emit(event);
-      }
-    }
-  }
-}
+} from "../reactive";
+import { performInContext } from "./current.js";
+import { ContextLifecycle, LifecycleEvent, LifecycleListener, LifecycleState } from "./lifecycle.js";
+import { createLogger, type Logger, type LoggerOptions } from "./logger.js";
 
 export interface ContextOptions {
   logger?: LoggerOptions;
@@ -246,11 +65,6 @@ export class Context {
     });
   }
 
-  isMounted() {
-    const { state } = this.lifecycle;
-    return state >= LifecycleState.DidMount && state < LifecycleState.DidUnmount;
-  }
-
   /**
    * Returns a new Context with this one as its parent.
    */
@@ -261,12 +75,43 @@ export class Context {
     return context;
   }
 
+  // -------------------------- \\
+  //      Lifecycle Events      \\
+  // ---------------------------\\
+
+  isMounted() {
+    const { state } = this.lifecycle;
+    return state >= LifecycleState.DidMount && state < LifecycleState.DidUnmount;
+  }
+
   /**
    * Emits a lifecycle event to this context.
    */
   emit(event: LifecycleEvent) {
     this.lifecycle.emit(event);
   }
+
+  /**
+   * Registers a `listener` to be called at a specific transition point during this context's lifecycle.
+   *
+   * Prefer `useMount` and `useUnmount` hooks for general usage.
+   */
+  onLifecycleTransition(event: LifecycleEvent, listener: LifecycleListener) {
+    return this.lifecycle.on(event, () => {
+      try {
+        const result = listener();
+        if (result instanceof Promise) {
+          result.catch(this.throwError);
+        }
+      } catch (error) {
+        this.throwError(error);
+      }
+    });
+  }
+
+  // -------------------------- \\
+  //        Context Info        \\
+  // ---------------------------\\
 
   /**
    * Returns the current name of this context.
@@ -281,6 +126,10 @@ export class Context {
   setName(name: Reactive<string> | Getter<string> | string) {
     this.#name = name;
   }
+
+  // -------------------------- \\
+  //     Stores (provide/use)   \\
+  // ---------------------------\\
 
   /**
    * Creates an instance of a store and attaches it to this context.
@@ -328,24 +177,6 @@ export class Context {
     return result as T;
   }
 
-  /**
-   * Registers a `listener` to be called at a specific transition point during this context's lifecycle.
-   *
-   * Prefer `useMount` and `useUnmount` hooks for general usage.
-   */
-  onLifecycleTransition(event: LifecycleEvent, listener: LifecycleListener) {
-    return this.lifecycle.on(event, () => {
-      try {
-        const result = listener();
-        if (result instanceof Promise) {
-          result.catch(this.throwError);
-        }
-      } catch (error) {
-        this.throwError(error);
-      }
-    });
-  }
-
   watch(callback: WatchCallback) {
     const fn = () => {
       try {
@@ -379,6 +210,10 @@ export class Context {
     }
   }
 
+  // -------------------------- \\
+  //        Context State       \\
+  // ---------------------------\\
+
   /**
    * Gets the value stored at `key`. Searches up the context chain if this context doesn't have it.
    */
@@ -410,6 +245,10 @@ export class Context {
     if (!this.state) this.state = new Map();
     this.state.set(key, value);
   }
+
+  // -------------------------- \\
+  //      Error Propagation     \\
+  // ---------------------------\\
 
   /**
    * Propagates an error up the context tree.

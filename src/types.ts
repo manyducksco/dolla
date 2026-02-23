@@ -1,8 +1,8 @@
 import type * as CSS from "csstype";
-import type { Markup, MarkupNode } from "./core/markup.js";
+import type { Markup, MarkupNode } from "./core/markup/index.js";
 import type { Gettable, Getter, Reactive, Mutable } from "./core/reactive.js";
-import type { Binding } from "./core/nodes/element.js";
-import { LogLevel } from "./core/logger.js";
+import type { Binding } from "./core/markup/nodes/element.js";
+import { LogLevel } from "./core/context/logger.js";
 
 export type Env = "production" | "development";
 

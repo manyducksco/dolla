@@ -1,7 +1,7 @@
-import type { Renderable } from "../../types.js";
-import { Context } from "../context.js";
-import { render } from "../markup.js";
-import { MarkupNode } from "./_markup.js";
+import type { Renderable } from "../../../types.js";
+import { Context } from "../../context/context.js";
+import { render } from "../index.js";
+import { MarkupNode } from "../markup.js";
 
 /**
  * Renders content into a specified parent node.

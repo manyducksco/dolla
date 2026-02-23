@@ -1,5 +1,6 @@
-import { createLogger } from "./core";
+// import { createLogger } from "./core";
 import { Markup } from "./core/markup";
+
 export { Fragment } from "./core/views/fragment";
 
 export function jsxDEV(element, props, key, isStaticChildren, source, self) {

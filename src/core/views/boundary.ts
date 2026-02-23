@@ -1,11 +1,11 @@
 import { isFunction } from "../../typeChecking.js";
 import { Renderable, View } from "../../types.js";
-import { ErrorInfo } from "../context.js";
+import { ErrorInfo } from "../context/context.js";
 import { $$context } from "../hooks.js";
-import { createMarkup } from "../markup.js";
-import { DynamicNode } from "../nodes/dynamic.js";
+import { Markup, NodeType } from "../markup/markup.js";
+import { DynamicNode } from "../markup/nodes/dynamic.js";
 import { computed, state } from "../reactive.js";
-import { CrashViewProps } from "./default-crash-view.js";
+import { CrashViewProps } from "./_default-crash-view.js";
 
 export interface BoundaryProps {
   /**
@@ -41,7 +41,7 @@ export function Boundary(props: BoundaryProps) {
     computed(() => {
       if (errorInfo.track()) {
         if (isFunction(props.fallback)) {
-          return createMarkup(props.fallback, errorInfo.get());
+          return new Markup(props.fallback, errorInfo.get());
         } else {
           return props.fallback;
         }

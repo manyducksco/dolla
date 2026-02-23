@@ -1,5 +1,5 @@
 import type { MarkupNode, Mutable, Reactive, View } from "../core";
-import type { Context } from "../core/context";
+import type { Context } from "../core/context/context";
 import type { QueryParams } from "./query";
 
 export type Stringable = { toString(): string };

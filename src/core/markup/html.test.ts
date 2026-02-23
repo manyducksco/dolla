@@ -1,21 +1,21 @@
 import { describe, test, expect } from "vitest";
-import { html } from "./html";
-import { Markup } from "./markup";
-import { Renderable } from "../types";
+import { html } from "./html.js";
+import { Markup } from "./markup.js";
+import { Renderable } from "../../types";
 
 describe("html", () => {
   test("parses into Markup", () => {
     const parsed = html`<div><p>Hello</p></div>`;
 
-    expect(parsed).toEqual(
-      new Markup("div", {
-        children: [
-          new Markup("p", {
-            children: ["Hello"],
-          }),
-        ],
-      }),
-    );
+    const expected = new Markup("div", {
+      children: [
+        new Markup("p", {
+          children: ["Hello"],
+        }),
+      ],
+    });
+
+    expect(parsed).toEqual(expected);
   });
 
   test("supports multiple roots", () => {
@@ -24,14 +24,16 @@ describe("html", () => {
       <li>Two</li>
     `;
 
-    expect(parsed).toEqual([
+    const expected = [
       new Markup("li", {
         children: ["One"],
       }),
       new Markup("li", {
         children: ["Two"],
       }),
-    ]);
+    ];
+
+    expect(parsed).toEqual(expected);
   });
 
   test("supports views", () => {
@@ -52,19 +54,19 @@ describe("html", () => {
       </div>
     `;
 
-    expect(parsed).toEqual(
-      new Markup("div", {
-        children: [
-          new Markup(TestView, {
-            test: 1,
-            children: [
-              new Markup("p", {
-                children: ["hello"],
-              }),
-            ],
-          }),
-        ],
-      }),
-    );
+    const expected = new Markup("div", {
+      children: [
+        new Markup(TestView, {
+          test: 1,
+          children: [
+            new Markup("p", {
+              children: ["hello"],
+            }),
+          ],
+        }),
+      ],
+    });
+
+    expect(parsed).toEqual(expected);
   });
 });

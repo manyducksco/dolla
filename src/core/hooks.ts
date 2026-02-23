@@ -1,6 +1,8 @@
 import { type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
-import { type Context, type ErrorInfo, getCurrentContext, type LifecycleEvent } from "./context";
+import type { Context, ErrorInfo } from "./context/context.js";
+import { getCurrentContext } from "./context/current.js";
+import type { LifecycleEvent } from "./context/lifecycle.js";
 import { type Getter, type Reactive, type WatchCallback } from "./reactive";
 
 /**

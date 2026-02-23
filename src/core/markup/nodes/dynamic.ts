@@ -1,8 +1,8 @@
-import { moveBefore, toArray } from "../../utils.js";
-import type { Context } from "../context.js";
-import { toMarkupNodes } from "../markup.js";
-import { subscribe, type Reactive, type UnsubscribeFn } from "../reactive.js";
-import { MarkupNode } from "./_markup.js";
+import { moveBefore, toArray } from "../../../utils.js";
+import type { Context } from "../../context/context.js";
+import { toMarkupNodes } from "../index.js";
+import { subscribe, type Reactive, type UnsubscribeFn } from "../../reactive.js";
+import { MarkupNode } from "../markup.js";
 
 /**
  * Renders any kind of content; markup, signals, DOM nodes, etc.
@@ -64,10 +64,10 @@ export class DynamicNode extends MarkupNode {
         }
         (parent as any).moveBefore(this.root, this.children.at(-1)?.getRoot()?.nextSibling ?? null);
       } catch {
-        this.mount(parent, after);
+        parent.insertBefore(this.root, after?.nextSibling ?? null);
       }
     } else {
-      this.mount(parent, after);
+      parent.insertBefore(this.root, after?.nextSibling ?? null);
     }
   }
 

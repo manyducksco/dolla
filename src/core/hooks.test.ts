@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Context, getCurrentContext, setCurrentContext } from "../core/context";
+import { Context } from "./context/context.js";
+import { getCurrentContext, setCurrentContext } from "./context/current.js";
 import { $setup, $teardown, $watch } from "./hooks";
 import { state } from "./reactive";
 

@@ -1,5 +1,5 @@
 import { $$context, $setup, state, View } from "../core";
-import { VIEW, ViewNode } from "../core/nodes/view";
+import { VIEW, ViewNode } from "../core/markup/nodes/view";
 
 interface IntersectOptions extends IntersectionObserverInit {}
 

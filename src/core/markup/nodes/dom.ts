@@ -1,4 +1,5 @@
-import { MarkupNode } from "./_markup";
+import { moveBefore } from "../../../utils";
+import { MarkupNode } from "../markup";
 
 /**
  * A lightweight MarkupNode wrapper for a plain DOM node.
@@ -24,20 +25,12 @@ export class DOMNode extends MarkupNode {
   }
 
   override unmount(skipDOM = false) {
-    if (!skipDOM && this.root.parentNode) {
+    if (!skipDOM && this.root.parentNode != null) {
       this.root.parentNode.removeChild(this.root);
     }
   }
 
   override move(parent: Element, after?: Node) {
-    if ("moveBefore" in parent && this.root instanceof Element) {
-      try {
-        (parent as any).moveBefore(this.root, after?.nextSibling ?? null);
-      } catch {
-        this.mount(parent, after);
-      }
-    } else {
-      this.mount(parent, after);
-    }
+    moveBefore(parent, this.root, after?.nextSibling ?? null);
   }
 }

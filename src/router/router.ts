@@ -1,7 +1,7 @@
 import { $$context, $debug, $provide, $setup } from "../core/hooks.js";
-import { DollaNode, Markup, type MarkupNode } from "../core/markup.js";
-import { DynamicNode } from "../core/nodes/dynamic.js";
-import { ViewNode } from "../core/nodes/view.js";
+import { NodeType, Markup, type MarkupNode } from "../core/markup/index.js";
+import { DynamicNode } from "../core/markup/nodes/dynamic.js";
+import { ViewNode } from "../core/markup/nodes/view.js";
 import { batch, state } from "../core/reactive.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
 import { isFunction, isObject, isString } from "../typeChecking.js";
@@ -147,7 +147,7 @@ export function createRouter(options: RouterOptions): View {
             // Create a slot and element for this layer.
             const slot = state<MarkupNode>();
             const node = new ViewNode(parentLayer.context, currentLayer.view, {
-              children: new Markup(DollaNode.Dynamic, { source: slot }),
+              children: new Markup(NodeType.Dynamic, { slot: slot }),
             });
 
             // Discard all previously active layers starting at this depth.
