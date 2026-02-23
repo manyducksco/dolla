@@ -1,17 +1,17 @@
 import { assertFunction } from "../typeChecking";
 import type { Store } from "../types";
-import { getUniqueId } from "../utils";
+import { IdGenerator } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
 import {
   type Gettable,
   type Getter,
   type MaybeReadable,
-  read,
-  type Readable,
+  get,
+  type Reactive,
   type UnsubscribeFn,
   watch,
   type WatchCallback,
-} from "./signal";
+} from "./reactive";
 
 let currentContext: Context | undefined;
 
@@ -47,6 +47,15 @@ enum LifecycleState {
   DidUnmount = 4,
   Disposed = 5,
 }
+
+const lifecycleStateNames = {
+  [LifecycleState.Unmounted]: "Unmounted",
+  [LifecycleState.WillMount]: "WillMount",
+  [LifecycleState.DidMount]: "DidMount",
+  [LifecycleState.WillUnmount]: "WillUnmount",
+  [LifecycleState.DidUnmount]: "DidUnmount",
+  [LifecycleState.Disposed]: "Disposed",
+};
 
 /**
  * Manages lifecycle events for a Context.
@@ -92,13 +101,15 @@ class ContextLifecycle {
    * Advance the lifecycle state machine.
    */
   emit<E extends LifecycleEvent>(event: E) {
+    let invalid = false;
+
     switch (event) {
       case "willMount": {
         if (this.state < LifecycleState.WillMount) {
           this.state = LifecycleState.WillMount;
           this.notify(event);
         } else {
-          this.context.logger.crash(new Error(`Tried to WILL_MOUNT context at state ${this.state}`));
+          invalid = true;
         }
         break;
       }
@@ -107,7 +118,7 @@ class ContextLifecycle {
           this.state = LifecycleState.DidMount;
           this.notify(event);
         } else {
-          this.context.logger.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
+          invalid = true;
         }
         break;
       }
@@ -116,7 +127,7 @@ class ContextLifecycle {
           this.notify(event);
           this.state = LifecycleState.WillUnmount;
         } else {
-          this.context.logger.crash(new Error(`Tried to WILL_UNMOUNT context at state ${this.state}`));
+          invalid = true;
         }
         break;
       }
@@ -126,7 +137,7 @@ class ContextLifecycle {
           this.state = LifecycleState.DidUnmount % LifecycleState.DidUnmount;
           this.notify(event);
         } else {
-          this.context.logger.crash(new Error(`Tried to DID_UNMOUNT context at state ${this.state}`));
+          invalid = true;
         }
         break;
       }
@@ -139,10 +150,18 @@ class ContextLifecycle {
           this.context.stores = undefined;
           this.state = LifecycleState.Disposed;
         } else {
-          this.context.logger.crash(new Error(`Tried to DISPOSE context at state ${this.state}`));
+          invalid = true;
         }
         break;
       }
+    }
+
+    if (invalid) {
+      this.context.logger.crash(
+        new Error(
+          `[${this.context.getName()}] Tried to '${event}' context at state ${this.state} (${lifecycleStateNames[this.state]})`,
+        ),
+      );
     }
   }
 
@@ -200,8 +219,10 @@ export interface ErrorInfo {
   contextStack: string;
 }
 
+const contextIds = new IdGenerator();
+
 export class Context {
-  readonly id = getUniqueId();
+  readonly id = contextIds.next();
   #name: Gettable<string>;
 
   lifecycle = new ContextLifecycle(this);
@@ -212,11 +233,11 @@ export class Context {
 
   #errorHandler?: (error: unknown, info: ErrorInfo) => void;
 
-  constructor(name: Readable<string> | Getter<string> | string, options?: ContextOptions) {
+  constructor(name: Reactive<string> | Getter<string> | string, options?: ContextOptions) {
     this.#name = name;
 
     // Wrapping the get in another getter in case this.#name changes to a different object between calls.
-    this.logger = createLogger(() => read(this.#name), {
+    this.logger = createLogger(() => get(this.#name), {
       tag: this.id,
       tagName: "id",
       onCrash: (error) => {
@@ -251,13 +272,13 @@ export class Context {
    * Returns the current name of this context.
    */
   getName(): string {
-    return read(this.#name);
+    return get(this.#name);
   }
 
   /**
    * Sets a new name for this context.
    */
-  setName(name: Readable<string> | Getter<string> | string) {
+  setName(name: Reactive<string> | Getter<string> | string) {
     this.#name = name;
   }
 

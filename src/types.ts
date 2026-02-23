@@ -1,7 +1,8 @@
 import type * as CSS from "csstype";
 import type { Markup, MarkupNode } from "./core/markup.js";
-import type { Gettable, Getter, Readable, Writable } from "./core/signal.js";
+import type { Gettable, Getter, Reactive, Mutable } from "./core/reactive.js";
 import type { Binding } from "./core/nodes/element.js";
+import { LogLevel } from "./core/logger.js";
 
 export type Env = "production" | "development";
 
@@ -40,12 +41,26 @@ export type Store<Options, Value> = (options: Options) => Value;
  */
 export type Mixin<E extends Element = Element> = (element: E) => void;
 
+declare global {
+  interface Window {
+    /**
+     * Sets the minimum log level ('info', 'log', 'warn', 'error', etc.) a message must have to show in the console.
+     */
+    DOLLA_LOG_LEVEL: LogLevel;
+
+    /**
+     * Filters context names to determine which messages should show in the console. Contexts whose names match the pattern or return true will be shown.
+     */
+    DOLLA_LOG_FILTER: string | RegExp | ((name: string) => any);
+  }
+}
+
 /*==================================*\
 ||            JSX Types             ||
 \*==================================*/
 
-type RequiredProperty<T> = Readable<T> | Getter<T> | T;
-type OptionalProperty<T> = Readable<T> | Readable<T | undefined> | Getter<T> | Getter<T | undefined> | T;
+type RequiredProperty<T> = Reactive<T> | Getter<T> | T;
+type OptionalProperty<T> = Reactive<T> | Reactive<T | undefined> | Getter<T> | Getter<T | undefined> | T;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";

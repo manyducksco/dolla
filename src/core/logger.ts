@@ -1,6 +1,5 @@
 import { createMatcher, noOp, okhash, type MatcherFunction } from "../utils.js";
-import { getEnv } from "./env.js";
-import { MaybeGetter, read } from "./signal.js";
+import { MaybeGetter, get } from "./reactive.js";
 
 export interface Logger {
   info(...args: any[]): void;
@@ -35,7 +34,7 @@ enum LogLevelValue {
    */
   info = 1,
   /**
-   * Print 'log' (standard) level messages and above.
+   * Print 'log' level messages and above.
    */
   log = 2,
   /**
@@ -54,20 +53,17 @@ enum LogLevelValue {
 
 export type LogLevel = "info" | "log" | "warn" | "error" | "silent";
 
-/**
- * Log level defaults to Error in production mode and Info in development mode.
- */
-const DEFAULT_LOG_LEVEL = Symbol();
+const DEFAULT_LOG_LEVEL = "info";
 
-let logLevel: LogLevel | Symbol = DEFAULT_LOG_LEVEL;
-let logFilter: string | RegExp | MatcherFunction = "*,-dolla.*";
+let logLevel: LogLevel = DEFAULT_LOG_LEVEL;
+let logFilter: string | RegExp | MatcherFunction = "*,-dolla:*";
 let match: MatcherFunction = createMatcher(logFilter);
 
 export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions): Logger {
   const _console = options?.console ?? _getDefaultConsole();
 
   const bind = (method: LogLevel) => {
-    let _name = read(name);
+    let _name = get(name);
     if (!_canPrint(method) || !match(_name)) {
       return noOp;
     } else {
@@ -115,6 +111,21 @@ export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions)
   };
 }
 
+// Log level and filter can be set globally on the window.
+// This is helpful when you need to gather info about a bug in the production environment which doesn't usually log anything, for example.
+if (typeof window !== "undefined") {
+  Object.defineProperties(window, {
+    DOLLA_LOG_LEVEL: {
+      get: getLogLevel,
+      set: setLogLevel,
+    },
+    DOLLA_LOG_FILTER: {
+      get: getLogFilter,
+      set: setLogFilter,
+    },
+  });
+}
+
 export function getLogFilter() {
   return logFilter;
 }
@@ -125,30 +136,17 @@ export function setLogFilter(filter: string | RegExp | ((value: string) => boole
 }
 
 export function getLogLevel(): LogLevel {
-  if (logLevel === DEFAULT_LOG_LEVEL) {
-    if (getEnv() === "production") {
-      return "error";
-    } else {
-      return "info";
-    }
-  } else {
-    return logLevel as LogLevel;
-  }
+  return logLevel;
 }
 
-export function setLogLevel(level: LogLevel | null) {
-  if (level === null) {
-    logLevel = DEFAULT_LOG_LEVEL;
-  } else {
-    logLevel = level;
-  }
+export function setLogLevel(level: LogLevel) {
+  logLevel = level;
 }
 
 function _canPrint(method: LogLevel): boolean {
   const methodValue = LogLevelValue[method];
   const currentValue = LogLevelValue[getLogLevel()];
-
-  return methodValue > currentValue;
+  return methodValue >= currentValue;
 }
 
 function _getDefaultConsole() {

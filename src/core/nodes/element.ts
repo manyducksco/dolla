@@ -1,10 +1,10 @@
-import { isFunction, isNumber, isObject, isString, typeOf } from "../../typeChecking.js";
-import { getIntegerId, moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
+import { isFunction, isNumber, isObject, isString } from "../../typeChecking.js";
+import { moveBefore, omit, toArray, toCamelCase } from "../../utils.js";
 import { Context, performInContext } from "../context.js";
-import { getEnv } from "../env.js";
 import { toMarkupNodes } from "../markup.js";
 import { EMPTY_REF, Ref } from "../ref.js";
-import { watch, type Gettable, isGettable, track, type UnsubscribeFn, isWritable, Writable } from "../signal.js";
+import { isGettable, track, watch, Mutable, type Gettable, type UnsubscribeFn } from "../reactive.js";
+import { DEBUG } from "../symbols.js";
 
 import { MarkupNode } from "./_markup.js";
 import { VIEW, ViewNode } from "./view.js";
@@ -21,8 +21,6 @@ const ignoredProps = ["class", "className", "ref", "mixin", "children"];
  */
 export class ElementNode extends MarkupNode {
   private root: HTMLElement | SVGElement;
-
-  private id = getIntegerId();
 
   readonly tag;
   readonly props: Record<string, any>;
@@ -53,11 +51,12 @@ export class ElementNode extends MarkupNode {
       this.root = document.createElement(tag);
     }
 
-    // Add view name as a data attribute in development mode for better debugging.
-    if (getEnv() === "development") {
+    // Add view name as a data attribute debug mode.
+    if (this.context.getState(DEBUG)) {
       const view = this.context.getState<ViewNode<any>>(VIEW);
       if (view) {
-        this.root.dataset.view = view.context.getName();
+        this.root.dataset.parentView = view.context.getName() + "#" + view.context.id;
+        this.root.dataset.contextId = this.context.id;
       }
     }
 
@@ -182,7 +181,7 @@ export class ElementNode extends MarkupNode {
   }
 
   private getKey(name: string) {
-    return this.id + ":" + name;
+    return this.context.id + ":" + name;
   }
 
   private applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
@@ -254,9 +253,9 @@ export class ElementNode extends MarkupNode {
         );
         const listener = () => {
           if (value.get) {
-            value.value.write(value.get(el));
+            value.value.set(value.get(el));
           } else {
-            value.value.write(el.value);
+            value.value.set(el.value);
           }
         };
         el.addEventListener(value.event, listener);
@@ -645,20 +644,20 @@ export type BindingEvent = "input" | "change" | "keydown" | "keyup";
 
 export interface Binding<T> {
   type: "binding";
-  value: Writable<T>;
+  value: Mutable<T>;
   event: BindingEvent;
   get?: (element: HTMLInputElement) => T;
 }
 
 export interface BindFn {
-  <T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  change<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  input<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  keyup<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  keydown<T>(value: Writable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  <T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  change<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  input<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  keyup<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
+  keydown<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
 }
 
-function _bind<T>(this: BindingEvent, value: Writable<T>, get?: (element: HTMLInputElement) => T) {
+function _bind<T>(this: BindingEvent, value: Mutable<T>, get?: (element: HTMLInputElement) => T) {
   return {
     type: "binding",
     event: this ?? "input",

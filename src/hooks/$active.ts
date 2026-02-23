@@ -7,7 +7,7 @@ export function $active() {
   const isVisible = state(document.visibilityState === "visible");
 
   $setup(() => {
-    const handler = () => isVisible.write(document.visibilityState === "visible");
+    const handler = () => isVisible.set(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
   });

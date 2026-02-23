@@ -1,4 +1,4 @@
-import { $setup, $watch, state, type Writable } from "../core";
+import { $setup, $watch, state, type Mutable } from "../core";
 
 const bus = new EventTarget();
 
@@ -6,10 +6,10 @@ export interface StorageHookOptions {
   type: "local" | "session";
 }
 
-export function $storage<T>(key: string, defaultValue: T, options?: StorageHookOptions): Writable<T>;
-export function $storage<T>(key: string, defaultValue?: T, options?: StorageHookOptions): Writable<T | undefined>;
+export function $storage<T>(key: string, defaultValue: T, options?: StorageHookOptions): Mutable<T>;
+export function $storage<T>(key: string, defaultValue?: T, options?: StorageHookOptions): Mutable<T | undefined>;
 
-export function $storage<T>(key: string, defaultValue?: T, options?: StorageHookOptions): Writable<T> {
+export function $storage<T>(key: string, defaultValue?: T, options?: StorageHookOptions): Mutable<T> {
   const storage: Storage = options?.type === "session" ? sessionStorage : localStorage;
 
   const saved = storage.getItem(key);
@@ -32,7 +32,7 @@ export function $storage<T>(key: string, defaultValue?: T, options?: StorageHook
     // Handles 'storage' events fired from other tabs.
     const handleStorage = (event: StorageEvent) => {
       if (event.key === key && event.newValue !== null) {
-        value.write(JSON.parse(event.newValue));
+        value.set(JSON.parse(event.newValue));
       }
     };
 
@@ -45,7 +45,7 @@ export function $storage<T>(key: string, defaultValue?: T, options?: StorageHook
 
       // Otherwise update our local signal.
       if (event.detail !== null) {
-        value.write(event.detail);
+        value.set(event.detail);
       }
     };
 

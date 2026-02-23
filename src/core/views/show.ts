@@ -1,7 +1,7 @@
 import type { Renderable } from "../../types";
 import { $$context } from "../hooks";
 import { DynamicNode } from "../nodes/dynamic";
-import { computed, toReadable, type Trackable } from "../signal";
+import { computed, reader, type Trackable } from "../reactive";
 
 export interface ShowProps {
   /**
@@ -33,8 +33,8 @@ export function Show(props: ShowProps) {
   context.setName("dolla:Show");
 
   // Memoize conditions to avoid unnecessarily triggering DynamicNode updates.
-  const when = props.when ? toReadable(props.when) : null;
-  const unless = props.unless ? toReadable(props.unless) : null;
+  const when = props.when ? reader(props.when) : null;
+  const unless = props.unless ? reader(props.unless) : null;
 
   return new DynamicNode(
     context,

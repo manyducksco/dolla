@@ -2,25 +2,12 @@ import { isFunction, isObject, typeOf } from "./typeChecking.js";
 
 export const noOp = () => {};
 
-// Guarantee unique ID by incrementing a global counter.
-let idCounter = 1;
-export function getUniqueId(): string {
-  idCounter = (idCounter % Number.MAX_SAFE_INTEGER) + 1;
-  return idCounter.toString(36) + Date.now().toString(36);
-}
-
-let intCounter = 0;
-export function getIntegerId(): number {
-  intCounter = (intCounter % Number.MAX_SAFE_INTEGER) + 1;
-  return intCounter;
-}
-
 export class IdGenerator {
-  #counter = 1;
+  #counter = BigInt(1);
 
   next() {
-    this.#counter = (this.#counter % Number.MAX_SAFE_INTEGER) + 1;
-    return this.#counter.toString(36) + Date.now().toString(36);
+    this.#counter += 1n;
+    return this.#counter.toString();
   }
 }
 
@@ -219,6 +206,23 @@ export function moveBefore(parent: Node, node: Node, child: Node | null) {
     (parent as any).moveBefore(node, child);
   } else {
     parent.insertBefore(node, child);
+  }
+}
+
+/**
+ * Gets an element from a selector string, or returns the element if passed an Element.
+ */
+export function getElement(element: string | Element): Element {
+  if (typeof element === "string") {
+    const match = document.querySelector(element);
+    if (!match) {
+      throw new Error(`Selector '${element}' did not many any element.`);
+    }
+    return match;
+  } else if (element instanceof Element) {
+    return element;
+  } else {
+    throw new Error("Expected a selector string or DOM element.");
   }
 }
 

@@ -1,12 +1,22 @@
+import { $$context, $debug, $provide, $setup } from "../core/hooks.js";
+import { DollaNode, Markup, type MarkupNode } from "../core/markup.js";
+import { DynamicNode } from "../core/nodes/dynamic.js";
+import { ViewNode } from "../core/nodes/view.js";
+import { batch, state } from "../core/reactive.js";
+import { PARENT_ELEMENT } from "../core/symbols.js";
 import { isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
-import { IdGenerator, shallowEqual } from "../utils.js";
-import { PARENT_ELEMENT } from "./app.js";
-import { Context } from "./context.js";
-import { $$context, $debug, $provide, $setup } from "./hooks.js";
-import { Markup, MarkupType, type MarkupNode } from "./markup.js";
-import { DynamicNode } from "./nodes/dynamic.js";
-import { ViewNode } from "./nodes/view.js";
+import { IdGenerator } from "../utils.js";
+import { RouterStore } from "./store.js";
+import type {
+  ActiveLayer,
+  JourneyStep,
+  Route,
+  RouteLayer,
+  RouteMeta,
+  RouteRedirectContext,
+  RouterOptions,
+} from "./types.js";
 import {
   catchLinks,
   joinPath,
@@ -18,319 +28,7 @@ import {
   splitPath,
   type ParsedRoute,
   type RouteMatch,
-} from "./router.utils.js";
-import { batch, computed, Readable, state, type Writable } from "./signal.js";
-
-// ----- Types ----- //
-
-export type Stringable = { toString(): string };
-
-export interface Match {
-  /**
-   * The path as it appears in the URL bar.
-   */
-  path: string;
-
-  /**
-   * The pattern that this path was matched with.
-   */
-  pattern: string;
-
-  /**
-   * Named route params parsed from `path`.
-   */
-  params: Record<string, string>;
-
-  /**
-   * Query params parsed from `path`.
-   */
-  query: Record<string, string>;
-
-  /**
-   * Freeform data you wish to store with this route.
-   * Merged `data` from all matched layers are available on the router's `match.meta`.
-   */
-  meta: Record<string, any>;
-}
-
-export interface RouteMatchContext extends Match {
-  /**
-   * Redirects the user to a different route instead of matching the current one.
-   */
-  redirect(path: string): void;
-}
-
-export interface GuardState extends Match {
-  /**
-   * Redirects the user to a different route instead of matching the current one.
-   */
-  redirect(path: string): void;
-}
-
-export interface Route {
-  /**
-   * The path or path fragment to match.
-   */
-  path: string;
-
-  /**
-   * Path to redirect to when this route is matched, or a callback function that returns such path.
-   */
-  redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
-
-  /**
-   * View to display when this route is matched.
-   */
-  view?: View<any>;
-
-  /**
-   * Subroutes.
-   */
-  routes?: Route[];
-
-  /**
-   * Arbitrary data you'd like to store on this route.
-   * This object is accessible via `match.meta` on the `$router` API while the route is active.
-   *
-   * In the case of nested routes, data from all layers will be merged into a single data object.
-   */
-  meta?: Record<string, any>;
-}
-
-export interface RouteMeta {
-  redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
-  pattern?: string;
-  layers?: RouteLayer[];
-  guard?: { fn: (ctx: RouteMatchContext) => void | Promise<void>; layerId: string }[];
-  data?: Record<string, any>;
-}
-
-export interface RouteLayer {
-  id: string;
-  view: View<{}>;
-}
-
-export interface RoutePreloadState {
-  // Info passed to preload functions
-}
-
-export type RoutePreloadFn = (state: RoutePreloadState) => Promise<void>;
-
-export interface RouteTransitionState {
-  // Info passed to transition functions
-}
-
-export interface RouteTransitions {
-  in?: (state: RouteTransitionState) => Promise<void>;
-  out?: (state: RouteTransitionState) => Promise<void>;
-}
-
-/**
- * An active route layer whose markup has been initialized into a view.
- */
-interface ActiveLayer {
-  id: string;
-  node: MarkupNode;
-  context: Context;
-  slot: Writable<MarkupNode | undefined>;
-}
-
-/**
- * Object passed to redirect callbacks. Contains information useful for determining how to redirect.
- */
-export interface RouteRedirectContext extends Match {}
-
-/**
- * A log for a single step in the route resolution process.
- */
-interface JourneyStep {
-  kind: "match" | "redirect" | "miss";
-  message: string;
-}
-
-export interface NavigateOptions {
-  /**
-   * Preserve existing query params (if any) when navigating. Defaults to false.
-   * If true, all existing query params are preserved and merged with new ones.
-   * If an array of strings is passed only those keys will be preserved, then merged with any new ones.
-   */
-  preserveQuery?: boolean | string[];
-}
-
-export interface RouterOptions {
-  routes: Route[];
-
-  /**
-   * When true, the router will construct routes like "https://www.example.com/#/sub/route" which work without any backend intervention.
-   */
-  hash?: boolean;
-}
-
-export interface RouterAPI {
-  /**
-   * Info about the currently matched route.
-   */
-  match: {
-    /**
-     * The current path as it is displayed in the URL bar (e.g. `/users/123/edit`).
-     */
-    path: Readable<string>;
-    /**
-     * The route pattern that was matched (e.g. `/users/{#id}/edit`), or undefined if no route is currently matched.
-     */
-    pattern: Readable<string | undefined>;
-    /**
-     * The extracted route parameters from the path. (e.g. `{ id: "123" }`)
-     */
-    params: Readable<Record<string, string>>;
-    /**
-     * The current query params. This is a Writable object that lets you modify query params as well as read them.
-     */
-    query: QueryParams;
-    /**
-     * The contents of the `meta` fields of all matched route layers.
-     */
-    meta: Readable<Record<string, string>>;
-  };
-
-  /**
-   * Go back in the page history. Equivalent to hitting the back button.
-   * Steps is the number of times to hit the back button. The default is 1.
-   */
-  back(steps?: number): void;
-
-  /**
-   * Go forward in the page history. Equivalent to hitting the forward button.
-   * Steps is the number of times to hit the forward button. The default is 1.
-   */
-  forward(steps?: number): void;
-
-  /**
-   * Push a new route into the page history and navigate to it.
-   */
-  push(path: string): void;
-
-  /**
-   * Replace the current route in the page history and navigate to it.
-   */
-  replace(path: string): void;
-}
-
-// ----- Code ----- //
-
-class QueryParams implements Writable<Record<string, string>> {
-  #match: Writable<RouteMatch | undefined>;
-  #options: RouterOptions;
-  #params: Readable<Record<string, string>>;
-
-  constructor(match: Writable<RouteMatch | undefined>, options: RouterOptions) {
-    this.#match = match;
-    this.#options = options;
-    this.#params = computed(() => this.#match.track()?.query ?? {}, { equals: shallowEqual });
-  }
-
-  read() {
-    return this.#params.read();
-  }
-
-  track() {
-    return this.#params.track();
-  }
-
-  write(values: Record<string, string>) {
-    const path = this.#match.read() ?? window.location.pathname;
-
-    const params = new URLSearchParams();
-    for (const key in values) {
-      params.append(key, values[key]);
-    }
-    let queryString = params.toString();
-
-    if (queryString.length > 0) {
-      queryString = "?" + queryString;
-    }
-
-    this.#match.update((current) => ({ ...current!, query: values }));
-
-    window.history.replaceState(null, "", this.#options.hash ? "/#" + path + queryString : path + queryString);
-
-    return values;
-  }
-
-  update(callback: (current: Record<string, string>) => Record<string, string>) {
-    const values = callback(this.read());
-    return this.write(values);
-  }
-
-  /**
-   * Applies `values` to the existing query params. `null` values will be removed.
-   */
-  patch(values: Record<string, string>): Record<string, string>;
-
-  /**
-   * Calls `callback` with existing query params. Applies the returned values to the existing query params. `null` values will be removed.
-   */
-  patch(callback: (current: Record<string, string>) => Record<string, string>): Record<string, string>;
-
-  patch(valuesOrCallback: Record<string, string> | ((current: Record<string, string>) => Record<string, string>)) {
-    const current = this.read();
-    let values: Record<string, string>;
-
-    if (isFunction<(current: Record<string, string>) => Record<string, string>>(valuesOrCallback)) {
-      values = valuesOrCallback(current);
-    } else {
-      values = valuesOrCallback;
-    }
-
-    const merged = { ...current };
-    for (const key in values) {
-      if (values[key] === null) {
-        delete merged[key];
-      } else {
-        merged[key] = values[key];
-      }
-    }
-    return this.write(merged);
-  }
-}
-
-export interface RouterStoreProps {
-  match: Writable<RouteMatch | undefined>;
-  options: RouterOptions;
-  updateRoute: () => void;
-}
-
-export function RouterStore({ match, options, updateRoute }: RouterStoreProps): RouterAPI {
-  return {
-    match: {
-      path: computed(() => match.track()?.path ?? window.location.pathname),
-      pattern: computed(() => match.track()?.pattern),
-      params: computed(() => match.track()?.params ?? {}, { equals: shallowEqual }),
-      query: new QueryParams(match, options),
-      meta: computed(() => match.track()?.meta.data ?? {}, { equals: shallowEqual }),
-    },
-
-    back(steps = 1) {
-      window.history.go(-steps);
-    },
-
-    forward(steps = 1) {
-      window.history.go(steps);
-    },
-
-    push(path: string) {
-      path = resolvePath(window.location.pathname, path);
-      window.history.pushState(null, "", options.hash ? "/#" + path : path);
-      updateRoute();
-    },
-
-    replace(path: string) {
-      path = resolvePath(window.location.pathname, path);
-      window.history.replaceState(null, "", options.hash ? "/#" + path : path);
-      updateRoute();
-    },
-  };
-}
+} from "./utils.js";
 
 export function createRouter(options: RouterOptions): View {
   const match = state<RouteMatch>();
@@ -349,9 +47,7 @@ export function createRouter(options: RouterOptions): View {
   );
   assertValidRedirects(routes);
 
-  // This is a view.
-  // Mount it in your app like any other view. Probably at the root.
-  return function router() {
+  return function RouterView() {
     const context = $$context();
     context.setName("dolla:router");
 
@@ -435,7 +131,7 @@ export function createRouter(options: RouterOptions): View {
       // Run in batch so all new layers are mounted simultaneously with match signal change.
       // This avoids the old route effects receiving new signal values just before they unmount.
       batch(() => {
-        match.write({ ...routeMatch, query });
+        match.set({ ...routeMatch, query });
 
         const layers = routeMatch.meta.layers!;
         debug.info("mounting", match);
@@ -451,7 +147,7 @@ export function createRouter(options: RouterOptions): View {
             // Create a slot and element for this layer.
             const slot = state<MarkupNode>();
             const node = new ViewNode(parentLayer.context, currentLayer.view, {
-              children: new Markup(MarkupType.Dynamic, { source: slot }),
+              children: new Markup(DollaNode.Dynamic, { source: slot }),
             });
 
             // Discard all previously active layers starting at this depth.
@@ -467,7 +163,7 @@ export function createRouter(options: RouterOptions): View {
 
             previousLayer?.node.unmount();
 
-            parentLayer.slot.write(node);
+            parentLayer.slot.set(node);
 
             // TODO: Handle $preload()
 

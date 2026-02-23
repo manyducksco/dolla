@@ -25,7 +25,7 @@ It's also a good way to learn Dolla without getting bogged down in build tools i
     </main>
 
     <script type="module">
-      import { mount, state, html } from "https://esm.sh/@manyducks.co/dolla";
+      import { createRoot, state, html } from "https://esm.sh/@manyducks.co/dolla";
 
       function Layout({ children }) {
         return html`<div class="flex flex-col gap-2 p-8 rounded-xl bg-stone-300">${children}</div>`;
@@ -42,7 +42,7 @@ It's also a good way to learn Dolla without getting bogged down in build tools i
         `;
       }
 
-      mount("#reactive-widget", Counter);
+      createRoot("#reactive-widget").mount(Counter);
     </script>
   </body>
 </html>

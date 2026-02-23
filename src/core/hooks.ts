@@ -1,11 +1,8 @@
 import { type Logger, type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
-import { getCurrentContext, type Context, ErrorInfo, type LifecycleEvent } from "./context";
-import { I18N, type I18n } from "./i18n";
+import { type Context, type ErrorInfo, getCurrentContext, type LifecycleEvent } from "./context";
 import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
-import { VIEW_PRELOAD_CALLBACK, VIEW_TRANSITIONS_CONFIG } from "./nodes/view";
-import { type RoutePreloadFn, RouterStore, type RouteTransitions } from "./router";
-import { type Getter, type Readable, type WatchCallback } from "./signal";
+import { type Getter, type Reactive, type WatchCallback } from "./reactive";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -19,44 +16,18 @@ export function $$context(): Context {
 }
 
 /**
- * Sets the component name for logging purposes.
+ * Sets the context name for logging purposes.
  */
-export function $name(name: Readable<string> | Getter<string> | string): void {
+export function $name(name: Reactive<string> | Getter<string> | string): void {
   $$context().setName(name);
 }
 
-export interface DebugHook {
-  (name?: Readable<string> | Getter<string> | string): Logger;
-
-  level: LogLevel;
-  filter: string | RegExp | ((value: string) => boolean);
-}
-
-function createDebugHook(): DebugHook {
-  function $debug(name?: Readable<string> | Getter<string> | string) {
-    const context = $$context();
-    if (name) context.setName(name);
-    return context.logger;
-  }
-
-  Object.defineProperties($debug, {
-    level: {
-      get: getLogLevel,
-      set: setLogLevel,
-    },
-    filter: {
-      get: getLogFilter,
-      set: setLogFilter,
-    },
-  });
-
-  return $debug as DebugHook;
-}
-
 /**
- * Returns the component's logger. Updates `name` if passed.
+ * Returns the component's logger.
  */
-export const $debug = createDebugHook();
+export function $debug() {
+  return $$context().logger;
+}
 
 /**
  * Adds a store to this context and returns the store instance.
@@ -139,32 +110,4 @@ export function $watch(callback: WatchCallback): void {
  */
 export function $catch(callback: (error: unknown, info: ErrorInfo) => void) {
   $$context().catchError(callback);
-}
-
-/*=============================*\
-||           Router            ||
-\*=============================*/
-
-export function $router() {
-  return $$context().useStore(RouterStore);
-}
-
-export function $preload(loader: RoutePreloadFn) {
-  $$context().setState(VIEW_PRELOAD_CALLBACK, loader);
-}
-
-export function $transition(config: RouteTransitions) {
-  $$context().setState(VIEW_TRANSITIONS_CONFIG, config);
-
-  // Starts after preload ends.
-  // TODO: On transition in; mount this route, but suspend previous route's unmount until controller.next() is called.
-  // TODO: On transition out; mount next route, but suspend this route's unmount until controller.next() is called.
-}
-
-/*=============================*\
-||            i18n             ||
-\*=============================*/
-
-export function $i18n() {
-  return $$context().getState<I18n>(I18N);
 }

@@ -38,6 +38,14 @@
       "import": "./dist/http.js",
       "types": "./dist/http/index.d.ts"
     },
+    "./router": {
+      "import": "./dist/router.js",
+      "types": "./dist/router/index.d.ts"
+    },
+    "./translate": {
+      "import": "./dist/translate.js",
+      "types": "./dist/translate/index.d.ts"
+    },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",
       "types": "./jsx-runtime.d.ts"

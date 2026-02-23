@@ -13,9 +13,9 @@ export function $online(pingUrl: string) {
   const check = async () => {
     try {
       const resp = await fetch(pingUrl, { method: "HEAD", cache: "no-store" });
-      isOnline.write(resp.ok);
+      isOnline.set(resp.ok);
     } catch {
-      isOnline.write(false);
+      isOnline.set(false);
     }
   };
 
@@ -23,7 +23,7 @@ export function $online(pingUrl: string) {
     if (timer) clearInterval(timer);
 
     // Determine interval: 5s if active/focused, 60s if backgrounded
-    const interval = isActive.read() ? 5000 : 60000;
+    const interval = isActive.get() ? 5000 : 60000;
 
     // Slightly randomize timer to avoid many users hitting the server at the same time.
     const jitter = Math.random() * 1000;
@@ -43,7 +43,7 @@ export function $online(pingUrl: string) {
 
     // 3. Browser hints
     const handleHint = () => {
-      if (!navigator.onLine) isOnline.write(false);
+      if (!navigator.onLine) isOnline.set(false);
       else check();
     };
 

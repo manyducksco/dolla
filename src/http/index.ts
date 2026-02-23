@@ -23,39 +23,39 @@ export class HTTP {
     };
   }
 
-  async get<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
+  async get<ResBody = unknown>(uri: string, options?: RequestOptions<never, ResBody>) {
     return this.#request<ResBody, never>("get", uri, options);
   }
 
-  async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+  async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
     return this.#request<ResBody, ReqBody>("put", uri, options);
   }
 
-  async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+  async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
     return this.#request<ResBody, ReqBody>("patch", uri, options);
   }
 
-  async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+  async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
     return this.#request<ResBody, ReqBody>("post", uri, options);
   }
 
-  async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never>) {
+  async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never, ResBody>) {
     return this.#request<ResBody, never>("delete", uri, options);
   }
 
-  async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+  async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
     return this.#request<ResBody, ReqBody>("head", uri, options);
   }
 
-  async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+  async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
     return this.#request<ResBody, ReqBody>("options", uri, options);
   }
 
-  async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody>) {
+  async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
     return this.#request<ResBody, ReqBody>("trace", uri, options);
   }
 
-  async #request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any>) {
+  async #request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any, ResBody>) {
     const runner = new Runner<ResBody, ReqBody>({
       ...options,
       method,
@@ -88,7 +88,7 @@ export type HTTPMiddleware = (
   next: () => Promise<HTTPResponse<unknown>>,
 ) => void | Promise<void>;
 
-export interface RequestOptions<ReqBody> {
+export interface RequestOptions<ReqBody, ResBody> {
   /**
    * Body to send with the request.
    */
@@ -103,6 +103,11 @@ export interface RequestOptions<ReqBody> {
    * Query params to interpolate into the URL.
    */
   query?: Record<string, any> | URLSearchParams;
+
+  /**
+   * Parse the response manually.
+   */
+  parse?: (response: Response) => Promise<ResBody>;
 }
 
 export interface HTTPRequest<Body> {
@@ -121,7 +126,7 @@ export interface HTTPResponse<Body> {
   body: Body;
 }
 
-interface MakeRequestConfig<ReqBody> extends RequestOptions<ReqBody> {
+interface MakeRequestConfig<ReqBody> extends RequestOptions<ReqBody, unknown> {
   method: string;
   uri: string;
   middleware: HTTPMiddleware[];
@@ -213,10 +218,12 @@ class Runner<ResBody, ReqBody> {
 
   private _request: Request<ReqBody>;
   private _response?: HTTPResponse<ResBody>;
+  private _parse?: (response: Response) => Promise<ResBody>;
 
   constructor(config: MakeRequestConfig<ReqBody>) {
     this._middleware = config.middleware;
     this._fetch = config.fetch;
+    this._parse = config.parse as (response: Response) => Promise<ResBody>;
 
     this._request = new Request(config);
   }
@@ -266,17 +273,21 @@ class Runner<ResBody, ReqBody> {
       body: reqBody,
     });
 
-    // Auto-parse response body based on content-type header
-    const contentType = fetched.headers.get("content-type");
-
     let body: ResBody;
 
-    if (contentType?.includes("application/json")) {
-      body = await fetched.json();
-    } else if (contentType?.includes("application/x-www-form-urlencoded")) {
-      body = (await fetched.formData()) as ResBody;
+    if (this._parse) {
+      body = await this._parse(fetched);
     } else {
-      body = (await fetched.text()) as ResBody;
+      // Auto-parse response body based on content-type header
+      const contentType = fetched.headers.get("content-type");
+
+      if (contentType?.includes("application/json")) {
+        body = await fetched.json();
+      } else if (contentType?.includes("application/x-www-form-urlencoded")) {
+        body = (await fetched.formData()) as ResBody;
+      } else {
+        body = (await fetched.text()) as ResBody;
+      }
     }
 
     this._response = {

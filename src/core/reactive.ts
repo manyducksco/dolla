@@ -2,8 +2,6 @@ import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
 import { isFunction, isObject, typeOf } from "../typeChecking";
 import { strictEqual } from "../utils";
-import { Context } from "./context";
-import { getEnv } from "./env";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -183,7 +181,7 @@ function _effect(this: Effect | EffectScope): void {
 \*===================================*/
 
 export function isGettable<T>(value: any): value is Gettable<T> {
-  return isFunction(value) || isReadable(value);
+  return isFunction(value) || isReactive(value);
 }
 
 /* -------------- TYPES --------------- */
@@ -205,11 +203,11 @@ export type MaybeGetter<T> = Getter<T> | T;
 /**
  * Any type of value that can be unwrapped by the `get` function.
  */
-export type Gettable<T> = Readable<T> | Getter<T> | T;
+export type Gettable<T> = Reactive<T> | Getter<T> | T;
 
-export type Trackable<T> = Readable<T> | Getter<T>;
+export type Trackable<T> = Reactive<T> | Getter<T>;
 
-export type MaybeReadable<T> = Readable<T> | T;
+export type MaybeReadable<T> = Reactive<T> | T;
 
 export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
@@ -222,11 +220,14 @@ export interface SignalOptions<T> {
 
 /* -------------- PUBLIC API --------------- */
 
-export interface Readable<T> {
+/**
+ * A value that can cause changes at runtime.
+ */
+export interface Reactive<T> {
   /**
    * Returns the stored value.
    */
-  read(): T;
+  get(): T;
 
   /**
    * Returns the stored value. Tracks this value as a dependency of the function it's called in (like a `computed` or `$watch` callback).
@@ -235,11 +236,14 @@ export interface Readable<T> {
   track(): T;
 }
 
-export interface Writable<T> extends Readable<T> {
+/**
+ * A Reactive object whose value can be modified.
+ */
+export interface Mutable<T> extends Reactive<T> {
   /**
    * Stores the new value and returns the updated value.
    */
-  write(value: T): T;
+  set(value: T): T;
 
   /**
    * Stores the return value of `callback` as the new value, and returns the updated value.
@@ -247,7 +251,7 @@ export interface Writable<T> extends Readable<T> {
   update(callback: (current: T) => T): T;
 }
 
-class State<T> implements Writable<T> {
+class State<T> implements Mutable<T> {
   #node: ValueNode<T>;
 
   constructor(initialValue: T, options?: SignalOptions<T>) {
@@ -261,7 +265,7 @@ class State<T> implements Writable<T> {
     };
   }
 
-  read(): T {
+  get(): T {
     const node = this.#node;
     const value = node.value;
     if (node.flags & (16 satisfies ReactiveFlags.Dirty)) {
@@ -276,16 +280,15 @@ class State<T> implements Writable<T> {
   }
 
   track(): T {
-    assertInsideTrackingScope();
     trackedCount++;
-    const value = this.read();
+    const value = this.get();
     if (activeSub !== undefined) {
       link(this.#node, activeSub);
     }
     return value;
   }
 
-  write(value: T): T {
+  set(value: T): T {
     const node = this.#node;
     if (!node.equals(node.value, value)) {
       node.value = value;
@@ -302,11 +305,11 @@ class State<T> implements Writable<T> {
   }
 
   update(fn: (current: T) => T): T {
-    return this.write(fn(this.#node.value));
+    return this.set(fn(this.#node.value));
   }
 }
 
-export class Computed<T> implements Readable<T> {
+export class Computed<T> implements Reactive<T> {
   #node: ComputedNode<T>;
 
   constructor(callback: (previous?: T) => T, options?: SignalOptions<T>) {
@@ -325,7 +328,7 @@ export class Computed<T> implements Readable<T> {
     };
   }
 
-  read(): T {
+  get(): T {
     const node = this.#node;
     const flags = node.flags;
     if (
@@ -345,9 +348,8 @@ export class Computed<T> implements Readable<T> {
   }
 
   track(): T {
-    assertInsideTrackingScope();
     trackedCount++;
-    const value = this.read();
+    const value = this.get();
     if (activeSub !== undefined) {
       link(this.#node, activeSub);
     }
@@ -355,18 +357,16 @@ export class Computed<T> implements Readable<T> {
   }
 }
 
-/**
- * Exposes a read-only interface to a Writable.
- */
-class WritableReader<T> implements Readable<T> {
-  #source: Writable<T>;
+// Read-only interface for a possibly-mutable value.
+class ReactiveReader<T> implements Reactive<T> {
+  #source: Reactive<T>;
 
-  constructor(source: Writable<T>) {
+  constructor(source: Reactive<T>) {
     this.#source = source;
   }
 
-  read(): T {
-    return this.#source.read();
+  get(): T {
+    return this.#source.get();
   }
 
   track(): T {
@@ -374,79 +374,72 @@ class WritableReader<T> implements Readable<T> {
   }
 }
 
-class GetterReader<T> implements Readable<T> {
+class GetterReader<T> implements Reactive<T> {
   #getter: Getter<T>;
 
   constructor(getter: Getter<T>) {
     this.#getter = getter;
   }
 
-  read(): T {
-    return read(this.#getter);
+  get(): T {
+    return get(this.#getter);
   }
 
   track(): T {
-    assertInsideTrackingScope();
     // Getter may contain trackable signals.
     return this.#getter();
   }
 }
 
-class StaticReader<T> implements Readable<T> {
+class StaticReader<T> implements Reactive<T> {
   #value: T;
 
   constructor(value: T) {
     this.#value = value;
   }
 
-  read(): T {
+  get(): T {
     return this.#value;
   }
 
   track(): T {
-    assertInsideTrackingScope();
     // Static values don't change, so no tracking actually happens.
     return this.#value;
   }
 }
 
-function assertInsideTrackingScope(message = "track() called outside of a tracking scope. Use read() instead.") {
-  if (getEnv() === "development" && activeSub == undefined) {
-    throw new Error(message);
-  }
-}
-
-export function state<T>(value: T, options?: SignalOptions<T>): Writable<T>;
-export function state<T>(value: undefined, options: SignalOptions<T>): Writable<T>;
-export function state<T>(): Writable<T | undefined>;
-export function state<T>(value?: T, options?: SignalOptions<T>): Writable<T> {
+export function state<T>(value: T, options?: SignalOptions<T>): Mutable<T>;
+export function state<T>(value: undefined, options: SignalOptions<T>): Mutable<T>;
+export function state<T>(): Mutable<T | undefined>;
+export function state<T>(value?: T, options?: SignalOptions<T>): Mutable<T> {
   return new State(value as T, options);
 }
 
-export function computed<T>(callback: () => T, options?: SignalOptions<T>): Readable<T> {
-  // TODO: Warn if getter doesn't track anything.
-  // If so you probably used .read() instead of .track()
+export function computed<T>(callback: () => T, options?: SignalOptions<T>): Reactive<T> {
   return new Computed(callback, options);
 }
 
-export function isReadable<T>(value: any): value is Readable<T> {
-  return isObject<Readable<T>>(value) && isFunction(value.read) && isFunction(value.track);
+export function isReactive<T>(value: any): value is Reactive<T> {
+  return isObject<Reactive<T>>(value) && isFunction(value.get) && isFunction(value.track);
 }
 
-export function isWritable<T>(value: any): value is Writable<T> {
+export function isMutable<T>(value: any): value is Mutable<T> {
   return (
-    isObject<Writable<T>>(value) &&
-    isFunction(value.read) &&
+    isObject<Mutable<T>>(value) &&
+    isFunction(value.get) &&
     isFunction(value.track) &&
-    isFunction(value.write) &&
+    isFunction(value.set) &&
     isFunction(value.update)
   );
 }
 
-export function toReadable<T>(value: Readable<T> | Getter<T> | T): Readable<T> {
-  if (isWritable<T>(value)) {
-    return new WritableReader(value);
-  } else if (isReadable<T>(value)) {
+/**
+ * Converts any kind of reactive (including mutable), a getter function or a plain value into a read-only Reactive.
+ */
+export function reader<T>(value: Reactive<T> | Getter<T> | T): Reactive<T> {
+  if (isMutable<T>(value)) {
+    return new ReactiveReader(value);
+  } else if (isReactive<T>(value)) {
     return value;
   } else if (isFunction<Getter<T>>(value)) {
     return new GetterReader(value);
@@ -464,9 +457,9 @@ export function batch(fn: () => void): void {
   if (!--batchDepth) flush();
 }
 
-export function read<T>(value: Readable<T> | Getter<T> | T): T {
-  if (isReadable(value)) {
-    return value.read();
+export function get<T>(value: Reactive<T> | Getter<T> | T): T {
+  if (isReactive(value)) {
+    return value.get();
   } else if (isFunction(value)) {
     return untracked(() => value());
   } else {
@@ -474,8 +467,8 @@ export function read<T>(value: Readable<T> | Getter<T> | T): T {
   }
 }
 
-export function track<T>(value: Readable<T> | Getter<T> | T): T {
-  if (isReadable(value)) {
+export function track<T>(value: Reactive<T> | Getter<T> | T): T {
+  if (isReactive(value)) {
     return value.track();
   } else if (isFunction(value)) {
     return value();
@@ -492,6 +485,22 @@ export function untracked<T>(callback: () => T): T {
     setCurrentSub(pausedSub);
   }
 }
+
+// export function subscribe<T>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => void) {
+//   let first = true;
+//   queueMicrotask(() => {
+//     first = false;
+//     callback(get(target));
+//   });
+//   return watch(() => {
+//     const current = track(target);
+//     if (first) {
+//       first = false;
+//       return;
+//     }
+//     callback(current);
+//   });
+// }
 
 export interface NextValueOptions<T> {
   /**
@@ -538,7 +547,7 @@ export function nextValue<T>(target: Trackable<T>, options?: NextValueOptions<T>
     if (options?.signal) {
       const onAbort = () => {
         unsubscribe();
-        reject(new AbortError());
+        reject(new AbortError(options.signal?.reason));
         options.signal?.removeEventListener("abort", onAbort);
       };
       options.signal.addEventListener("abort", onAbort);
@@ -547,8 +556,11 @@ export function nextValue<T>(target: Trackable<T>, options?: NextValueOptions<T>
 }
 
 export class AbortError extends Error {
-  constructor() {
-    super("Aborted by AbortController");
+  reason: any;
+
+  constructor(reason?: any) {
+    super("Aborted by AbortSignal");
+    this.reason = reason;
   }
 }
 

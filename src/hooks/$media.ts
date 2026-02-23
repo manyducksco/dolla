@@ -1,11 +1,11 @@
-import { $setup, Readable, state } from "../core";
+import { $setup, Reactive, state } from "../core";
 
-export function $media(query: string): Readable<boolean> {
+export function $media(query: string): Reactive<boolean> {
   const list = window.matchMedia(query);
   const match = state(list.matches);
 
   const onChange = () => {
-    match.write(list.matches);
+    match.set(list.matches);
   };
 
   $setup(() => {

@@ -1,11 +1,10 @@
-// App
-// export { createApp } from "./app.js";
+// Root
+export { createRoot } from "./root.js";
+export type { DollaPlugin } from "./root.js";
 
-export { mount } from "./mount.js";
-
-// Signals
-export { batch, computed, isReadable, isWritable, nextValue, read, state, toReadable, track, watch } from "./signal.js";
-export type { Gettable, Getter, MaybeGetter, MaybeReadable, Readable, Writable } from "./signal.js";
+// Reactive
+export { batch, computed, get, isMutable, isReactive, nextValue, reader, state, track, watch } from "./reactive.js";
+export type { Gettable, Getter, MaybeGetter, MaybeReadable, Mutable, Reactive } from "./reactive.js";
 
 // Hooks
 export * from "./hooks.js";
@@ -27,16 +26,9 @@ export { Show, type ShowProps } from "./views/show.js";
 // Equality checks
 export { deepEqual, shallowEqual, strictEqual } from "../utils.js";
 
-// Env
-export { getEnv, setEnv } from "./env.js";
-
 // Logger
 export { createLogger } from "./logger.js";
 export type { Logger, LoggerOptions, LogLevel } from "./logger.js";
-
-// Router
-export { createRouter } from "./router.js";
-export type {} from "./router.js";
 
 // Other types
 export type { CSSProperties, Env, InputType, Mixin, Renderable, Store, View } from "../types.js";

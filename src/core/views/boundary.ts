@@ -4,7 +4,7 @@ import { ErrorInfo } from "../context.js";
 import { $$context } from "../hooks.js";
 import { createMarkup } from "../markup.js";
 import { DynamicNode } from "../nodes/dynamic.js";
-import { computed, state } from "../signal.js";
+import { computed, state } from "../reactive.js";
 import { CrashViewProps } from "./default-crash-view.js";
 
 export interface BoundaryProps {
@@ -32,7 +32,7 @@ export function Boundary(props: BoundaryProps) {
   const errorInfo = state<CrashViewProps>();
 
   context.catchError((error, info) => {
-    errorInfo.write({ error, info });
+    errorInfo.set({ error, info });
     props.onError?.(error, info);
   });
 
@@ -41,7 +41,7 @@ export function Boundary(props: BoundaryProps) {
     computed(() => {
       if (errorInfo.track()) {
         if (isFunction(props.fallback)) {
-          return createMarkup(props.fallback, errorInfo.read());
+          return createMarkup(props.fallback, errorInfo.get());
         } else {
           return props.fallback;
         }

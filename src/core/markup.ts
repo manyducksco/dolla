@@ -1,4 +1,4 @@
-import { isFunction, isString } from "../typeChecking.js";
+import { isFunction, isNumber, isString } from "../typeChecking.js";
 import type { IntrinsicElements, Renderable, View } from "../types.js";
 import { Context } from "./context.js";
 import { MarkupNode } from "./nodes/_markup.js";
@@ -6,7 +6,7 @@ import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
 import { ViewNode } from "./nodes/view.js";
-import { type Readable, computed, isReadable, toReadable } from "./signal.js";
+import { type Reactive, computed, isReactive, reader } from "./reactive.js";
 
 export { MarkupNode };
 
@@ -14,12 +14,12 @@ export { MarkupNode };
 ||           Markup          ||
 \*===========================*/
 
-type PropsOf<V extends string | View<any>> = V extends View<infer U> ? U : any;
+type PropsOf<V extends string | number | View<any>> = V extends View<infer U> ? U : any;
 
 /**
  * `Markup` is a set of metadata that will be constructed into a `MarkupNode`.
  */
-export class Markup<Type extends string | View<any> = string | View<any>> {
+export class Markup<Type extends string | number | View<any> = string | number | View<any>> {
   /**
    * In the case of a view, type will be the View function itself. It can also hold an identifier for special nodes like "$cond", "$repeat", etc.
    * DOM nodes can be created by name, such as HTML elements like "div", "ul" or "span", SVG elements like ""
@@ -38,13 +38,15 @@ export class Markup<Type extends string | View<any> = string | View<any>> {
   }
 }
 
-export enum MarkupType {
-  Dynamic = "$dynamic",
+export enum DollaNode {
+  Dynamic,
 }
 
+export const MARKUP_DYNAMIC = Symbol("DynamicNode");
+
 export interface MarkupNodeProps {
-  [MarkupType.Dynamic]: {
-    source: Readable<any>;
+  [DollaNode.Dynamic]: {
+    source: Reactive<any>;
   };
 }
 
@@ -98,15 +100,19 @@ export function createMarkup(type: string | View<any>, props?: any) {
  * Takes any `Renderable` value and returns a `MarkupNode` that will display it.
  */
 export function render(content: Renderable, context = new Context("$")): MarkupNode {
+  if (isFunction(content)) {
+    return new ViewNode(context, content, {});
+  }
   const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
-    return nodes[0];
+    return nodes[0]; // if it's just one item return it
   }
-  return new DynamicNode(context, toReadable(nodes));
+  // otherwise wrap it in a DynamicNode
+  return new DynamicNode(context, reader(nodes));
 }
 
 /**
- * Convert basically anything into a set of `MarkupNode`s.
+ * Convert basically anything into an array of `MarkupNode`
  */
 export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[] {
   const items = content.flat(Infinity);
@@ -122,48 +128,33 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       continue;
     }
 
-    if (item instanceof Markup) {
-      if (isFunction(item.type)) {
-        nodes.push(new ViewNode(context, item.type as View<any>, item.props));
-        continue;
-      } else if (isString(item.type)) {
-        switch (item.type) {
-          // case MarkupType.DOM: {
-          //   const attrs = item.props! as MarkupNodeProps[MarkupType.DOM];
-          //   nodes.push(new DOMNode(attrs.value));
-          //   continue;
-          // }
-          case MarkupType.Dynamic: {
-            const attrs = item.props! as MarkupNodeProps[MarkupType.Dynamic];
-            nodes.push(new DynamicNode(context, attrs.source));
-            continue;
-          }
-          // case MarkupType.Portal: {
-          //   const attrs = item.props! as MarkupNodeProps[MarkupType.Portal];
-          //   nodes.push(new PortalNode(context, attrs.content, attrs.parent));
-          //   continue;
-          // }
-          // case MarkupType.Repeat: {
-          //   const attrs = item.props! as MarkupNodeProps[MarkupType.Repeat];
-          //   nodes.push(new RepeatNode(context, attrs.items, attrs.key, attrs.render));
-          //   continue;
-          // }
-          default:
-            // Assume `type` is an HTML/SVG tag.
-            nodes.push(new ElementNode(context, item.type, item.props));
-            continue;
-        }
-      } else {
-        throw new TypeError(`Expected a string or view function. Got: ${item.type}`);
-      }
-    }
-
     if (item instanceof MarkupNode) {
       nodes.push(item);
       continue;
     }
 
-    if (isReadable(item)) {
+    if (item instanceof Markup) {
+      if (item.type === DollaNode.Dynamic) {
+        const attrs = item.props! as MarkupNodeProps[DollaNode.Dynamic];
+        nodes.push(new DynamicNode(context, attrs.source));
+        continue;
+      }
+
+      if (isFunction(item.type)) {
+        nodes.push(new ViewNode(context, item.type as View<any>, item.props));
+        continue;
+      }
+
+      if (isString(item.type)) {
+        // Assume `type` is an HTML/SVG tag.
+        nodes.push(new ElementNode(context, item.type, item.props));
+        continue;
+      }
+
+      throw new Error(`Unknown markup node type: ${item.type}`);
+    }
+
+    if (isReactive(item)) {
       nodes.push(new DynamicNode(context, item));
       continue;
     }

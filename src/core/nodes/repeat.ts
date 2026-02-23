@@ -5,13 +5,13 @@ import { $name } from "../hooks.js";
 import {
   batch,
   state,
-  toReadable,
+  reader,
   untracked,
   watch,
-  type Readable,
+  type Reactive,
   type UnsubscribeFn,
-  type Writable,
-} from "../signal.js";
+  type Mutable,
+} from "../reactive.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
 
@@ -20,12 +20,12 @@ import { ViewNode } from "./view.js";
 export type Key = any;
 
 export type KeyFn<T> = (item: T, index: number) => Key;
-export type RenderFn<T> = (item: Readable<T>, index: Readable<number>) => Renderable;
+export type RenderFn<T> = (item: Reactive<T>, index: Reactive<number>) => Renderable;
 
 type ConnectedItem<T> = {
   key: Key;
-  item: Writable<T>;
-  index: Writable<number>;
+  item: Mutable<T>;
+  index: Mutable<number>;
   node: MarkupNode;
 };
 
@@ -39,14 +39,14 @@ export class RepeatNode<T> extends MarkupNode {
 
   private context;
 
-  private items: Readable<T[]>;
+  private items: Reactive<T[]>;
   private key: KeyFn<T>;
   private render: RenderFn<T>;
 
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
-  constructor(context: Context, items: Readable<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
+  constructor(context: Context, items: Reactive<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
     this.context = context;
 
@@ -142,8 +142,8 @@ export class RepeatNode<T> extends MarkupNode {
         const connected = this.connectedItems.get(potential.key);
 
         if (connected && connected.node.isMounted()) {
-          connected.item.write(potential.value);
-          connected.index.write(potential.index);
+          connected.item.set(potential.value);
+          connected.index.set(potential.index);
 
           newItems[potential.index] = connected;
         } else {
@@ -156,8 +156,8 @@ export class RepeatNode<T> extends MarkupNode {
             item,
             index,
             node: new ViewNode(this.context, RepeatItemView, {
-              item: toReadable(item),
-              index: toReadable(index),
+              item: reader(item),
+              index: reader(index),
               render: this.render,
             }),
           };
@@ -195,9 +195,9 @@ export class RepeatNode<T> extends MarkupNode {
 }
 
 interface ListItemProps<T> {
-  item: Readable<T>;
-  index: Readable<number>;
-  render: (item: Readable<T>, index: Readable<number>) => Renderable;
+  item: Reactive<T>;
+  index: Reactive<number>;
+  render: (item: Reactive<T>, index: Reactive<number>) => Renderable;
 }
 const contextName = "dolla.RepeatItemView";
 function RepeatItemView<T>(props: ListItemProps<T>) {

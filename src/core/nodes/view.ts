@@ -1,7 +1,7 @@
 import type { Renderable, View } from "../../types.js";
 import { Context, LifecycleEvent, performInContext } from "../context.js";
 import { render } from "../markup.js";
-import { RoutePreloadFn, RouteTransitions } from "../router.js";
+// import { RoutePreloadFn, RouteTransitions } from "../../router/router.js";
 import { MarkupNode } from "./_markup.js";
 
 export const VIEW = Symbol("ViewNode");
@@ -57,37 +57,37 @@ export class ViewNode<P> extends MarkupNode {
     }
   }
 
-  async _routePreload() {
-    this.#init();
+  // async _routePreload() {
+  //   this.#init();
 
-    // Callback should have been set via $preload hook.
-    const callback = this.context.getOwnState<RoutePreloadFn>(VIEW_PRELOAD_CALLBACK);
-    if (!callback) return Promise.resolve();
+  //   // Callback should have been set via $preload hook.
+  //   const callback = this.context.getOwnState<RoutePreloadFn>(VIEW_PRELOAD_CALLBACK);
+  //   if (!callback) return Promise.resolve();
 
-    console.log("PRELOAD CALLBACK FOUND");
+  //   console.log("PRELOAD CALLBACK FOUND");
 
-    await callback({});
-  }
+  //   await callback({});
+  // }
 
-  _routeTransitionIn(): Promise<void> {
-    const config = this.context.getOwnState<RouteTransitions>(VIEW_TRANSITIONS_CONFIG);
-    if (!config?.in) return Promise.resolve();
+  // _routeTransitionIn(): Promise<void> {
+  //   const config = this.context.getOwnState<RouteTransitions>(VIEW_TRANSITIONS_CONFIG);
+  //   if (!config?.in) return Promise.resolve();
 
-    return new Promise((resolve, reject) => {
-      console.log("TRANSITION IN FOUND");
-      resolve();
-    });
-  }
+  //   return new Promise((resolve, reject) => {
+  //     console.log("TRANSITION IN FOUND");
+  //     resolve();
+  //   });
+  // }
 
-  _routeTransitionOut(): Promise<void> {
-    const config = this.context.getOwnState<any>(VIEW_TRANSITIONS_CONFIG);
-    if (!config?.out) return Promise.resolve();
+  // _routeTransitionOut(): Promise<void> {
+  //   const config = this.context.getOwnState<any>(VIEW_TRANSITIONS_CONFIG);
+  //   if (!config?.out) return Promise.resolve();
 
-    return new Promise((resolve, reject) => {
-      console.log("TRANSITION OUT FOUND");
-      resolve();
-    });
-  }
+  //   return new Promise((resolve, reject) => {
+  //     console.log("TRANSITION OUT FOUND");
+  //     resolve();
+  //   });
+  // }
 
   mount(parent: Element, after?: Node) {
     // Don't run lifecycle hooks or initialize if already connected.

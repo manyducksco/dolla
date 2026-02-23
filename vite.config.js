@@ -10,6 +10,8 @@ export default defineConfig({
         index: resolve(__dirname, "src/core/index.ts"),
         hooks: resolve(__dirname, "src/hooks/index.ts"),
         http: resolve(__dirname, "src/http/index.ts"),
+        router: resolve(__dirname, "src/router/index.ts"),
+        translate: resolve(__dirname, "src/translate/index.ts"),
         "jsx-runtime": resolve(__dirname, "src/jsx-runtime.js"),
         "jsx-dev-runtime": resolve(__dirname, "src/jsx-dev-runtime.js"),
       },

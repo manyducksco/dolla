@@ -1,45 +1,56 @@
-# 🖥 @manyducks.co/dolla
+# 💲 @manyducks.co/dolla
 
 ![bundle size](https://img.shields.io/bundlephobia/min/@manyducks.co/dolla)
 ![bundle size](https://img.shields.io/bundlephobia/minzip/@manyducks.co/dolla)
 
-Dolla is a JavaScript framework built around signals for reactive updates,
+Dolla is a research framework for trying out ideas. The goal is to create a full-featured framework that, first and foremost, provides the best developer experience possible out of the box. Low resource usage and small code size are secondary objectives. It's more than a toy and less than a production-ready workhorse. It's a labor of love. Use at your own joy and peril.
 
 - ⚡️ [**Signals**](./docs/signals.md) for pinpoint DOM updates.
 - 📦 Three types of [components](./docs/components.md):
   - 🖥️ [**Views**](./docs/views.md) for reusable UI elements.
   - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
   - ✨ [**Mixins**](./docs/mixins.md) for augmenting DOM nodes without writing a whole new view.
-- 🪝 [**Hooks**](./docs/hooks.md) let your components actually cook. They're your familiar, React-style toolkit for state (`useSignal`), lifecycle (`useMount`), and more.
+- 🪝 [**Hooks**](./docs/hooks.md) for reaching into the component context and hooking into stores, lifecycle and more.
 - 🔀 A client-side [**router**](./docs/router.md) with nested routes and middleware for auth guards, preloading data or analytics.
-- 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translations into a JSON file and access them with the `t` function in your views.
-- 🍳 The build system is optional. You can [write JSX](./docs/setup.md), or just [use tagged template literals](./docs/buildless.md) straight in the browser with [HTM](https://github.com/developit/htm).
+- 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translated strings into a JSON file and access them with the `t` function in your views.
+- 🍳 The build system is optional. You can [write JSX](./docs/setup.md) with a bundler, or just [use tagged template literals](./docs/buildless.md) directly in the browser.
 
 ## ...
 
 Static Execution (Setup Once): Unlike React, a Dolla component is a constructor that runs exactly once. It builds the UI and "wires up" the reactivity, then steps out of the way. This eliminates the overhead of constant re-renders and the "stale closure" bugs common in other frameworks.
 
-Explicit Dependency Tracking: Dolla solves the "function coloring" problem by making reactivity opt-in. You must explicitly call .track() to subscribe the UI to a signal. If you just want a snapshot of the data without triggering an update, you use .read(). This makes the data flow predictable and easy to debug.
+- State primitives that work inside and outside of components
+- Context chain behind component tree
+- Direct DOM updates with signals, but with opt-in tracking (reduces accidental subscriptions w/ signals)
 
-Boxed, Universal Reactivity: State (state) and derived logic (computed) are "boxed" in Writable and Readable signals. These exist independently of the UI, meaning you can share, test, and manipulate your entire application’s logic in pure JavaScript without ever mounting a component.
+### Topics to introduce
 
-Hooks ($): Functions prefixed with $ are "Dolla Hooks" that strictly manage the component's relationship with the DOM and time. From $setup and $teardown for connection logic to $debug for contextual logging and $catch for local error handling, they provide a standardized way to tap into the framework's internal engine.
-
-Fine-Grained DOM Reconciliation: Dolla bypasses the Virtual DOM entirely. By using specialized control flow like <For> and <Show>, the framework maps signals directly to specific DOM nodes. When a value changes, the framework pushes that update directly to the affected node, ensuring performance is proportional only to what changed.
+- Reactivity
+  - Reactive, Mutable API
+  - tracking contexts (computed, `$watch`, getters -- goes into views)
+- Components
+  - basic types overview
+  - context
+  - ($hooks) lifecycle and `$setup`, `$teardown`
+  - Views
+    - reactive element props/attrs
+    - control flow with `<Show>`, `<For>`
+    - `<Portal>`
+    - Error handling with `<Boundary>` and `$catch`
+  - Stores (and `$provide` and `$use`)
+  - Mixins
+- createRoot
+  - mount + unmount
+  - plugins
+- Extras
+  - Router
+  - Translate
+  - Building with Vite & using JSX
 
 ## Example: Counter
 
-The best way to get it is to see it. If you've ever touched React, you'll know what's up, but peep the little things that make your life way easier.
-
 ```jsx
-import { state, computed, html, mount, $watch, $debug } from "@manyducks.co/dolla";
-
-// Print only 'warn' messages and above (applies globally)
-$debug.level = "warn";
-// Print all but those with prefix "dolla."
-$debug.filter = "*,-dolla.*";
-
-// Example
+import { state, html, createRoot } from "@manyducks.co/dolla";
 
 function Counter() {
   const count = state(0);
@@ -50,19 +61,42 @@ function Counter() {
       <button onclick=${() => count.update((c) => c + 1)}>Increment</button>
     </div>
   `;
-
-  // return (
-  //   <div>
-  //     <p>Count: {count}</p>
-
-  //     <button onclick={() => count.update((c) => c + 1)}>Increment</button>
-  //   </div>
-  // );
 }
 
-mount(document.body, Counter);
+createRoot(document.body).mount(Counter);
+```
 
-function TemperatureConverter() {
+That will give you a basic counter mounted to the body of your document with a button you can click to increase the number. Reactivity is fully wired up.
+
+Components never re-render in Dolla. They are one-shot constructor functions that get called when the component is created. The `state` function creates a container called a `Mutable`. A `Mutable` is a type of reactive container that holds a value which can be updated at runtime. Follows are the type signatures for reactive values in Dolla.
+
+```ts
+interface Reactive<T> {
+  // Returns the currently held value.
+  get(): T;
+
+  // Tracks this container when called inside certain functions, then returns the current value.
+  // A tracked reactive will cause the scope it was called in to run again each time the value changes.
+  track(): T;
+}
+
+interface Mutable<T> extends Reactive<T> {
+  // Replaces the currently held value, notifying all observers. Returns the new value.
+  set(value: T): T;
+
+  // Sets the value through a callback. The callback takes the current value and returns a new one.
+  update(callback: (current: T) => T): T;
+}
+```
+
+In the Counter view, we were just passing the container itself into the `<p>` tag. The view knows to `.track()` that value automatically when it sees one. We can also create our own non-mutable `Reactive`s and track values ourselves.
+
+## Example: Temperature Converter
+
+```tsx
+import { state, html } from "@manyducks.co/dolla";
+
+function Converter() {
   const celsius = state(0);
 
   const fahrenheit = computed(() => {
@@ -76,22 +110,76 @@ function TemperatureConverter() {
     return "Moderate 🌤️";
   });
 
-  return (
+  return html`
     <div>
-      <input type="number" value={bind(celsius, (el) => el.valueAsNumber)} />
+      <input
+        type="number"
+        value=${celsius}
+        onchange=${(e) => {
+          celsius.set(e.target.valueAsNumber);
+        }}
+      />
 
-      <p>Celsius: {celsius}°C</p>
-      <p>Fahrenheit: {fahrenheit}°F</p>
-      <p>Condition: {description}</p>
+      <p>Celsius: ${celsius}°C</p>
+      <p>Fahrenheit: ${fahrenheit}°F</p>
+      <p>Condition: ${description}</p>
     </div>
-  );
+  `;
 }
+```
+
+The `computed` function creates a read-only `Reactive`. That `Reactive` holds the latest return value of the callback function. That function is called once right away, then again each time its tracked values change. Tracking in Dolla is explicit. Calling `.track()` is our _signal_ that we want the `computed` to update when our value changes.
+
+If we called `.get()` we would have the current value at first, but `computed` wouldn't track it.
+
+```ts
+const count = state(2);
+const doubled = computed(() => {
+  return count.get() * 2;
+});
+
+doubled.get(); // is 4
+count.get(); // is 2
+```
+
+That seems to be working as expected, but if we update `count` things don't update:
+
+```ts
+count.set(15);
+
+doubled.get(); // still 4
+count.get(); // now 15
+```
+
+We can fix this by opting in to tracking with `.track()` instead of simply getting the value with `.get()`:
+
+```ts
+const count = state(2);
+const doubled = computed(() => {
+  return count.track() * 2; // we're tracking now
+});
+
+doubled.get(); // is 4
+count.get(); // is 2
+
+count.set(15);
+
+doubled.get(); // now 30
+count.get(); // now 15
+```
+
+This makes the relationship between `count` and `doubled` very apparent. We need `doubled` to update when the value of `count` is changed.
+
+## Example: To Do List
+
+```tsx
+// bind, <For> and getter functions
 
 function ToDoList() {
   const items = ["React", "Vue", "Angular", "Svelte", "Solid", "Dolla"];
   const query = state("");
 
-  const filteredItems = computed(() => {
+  const filtered = computed(() => {
     const term = query.track();
     return items.toLowerCase().includes(term.toLowerCase());
   });
@@ -101,15 +189,17 @@ function ToDoList() {
       <input type="text" placeholder="Search..." value={bind(query)} />
 
       <ul>
-        <For each={filteredItems} key={(item) => item}>
+        <For each={filtered} key={(item) => item}>
           {(item, index) => <li>{item}</li>}
         </For>
       </ul>
 
-      <p>Showing {() => filteredItems.track().length} result(s)</p>
+      <p>Showing {() => filtered.track().length} result(s)</p>
     </div>
   );
 }
+
+// Hooks and <Show>
 
 function $fetch(url) {
   const data = state();
@@ -117,7 +207,7 @@ function $fetch(url) {
   $watch(() => {
     fetch(url)
       .then((res) => res.json())
-      .then((json) => data.write(json));
+      .then((json) => data.set(json));
   });
 
   return { data };
@@ -132,65 +222,7 @@ function Fetcher() {
     </Show>
   );
 }
-
-function Counter(props) {
-  const count = state(0);
-
-  const debug = $debug();
-
-  $watch(() => {
-    debug.log("Count is: " + count.track());
-  });
-
-  return (
-    <div>
-      {/*  */}
-      <p>Counter: {count}</p>
-
-      {/*  */}
-      <Show when={() => count.track() > 100}>
-        <p>Whoa, that's a lotta clicks!</p>
-      </Show>
-
-      {/*  */}
-      <button onClick={() => count.update((value) => value + 1)}>Increment</button>
-      <button onClick={() => count.update((value) => value - 1)}>Decrement</button>
-      <button onClick={() => count.write(0)}>Reset</button>
-    </div>
-  );
-}
 ```
-
-### 3\. No VDOM, no problem
-
-Behind the scenes, Dolla isn't re-running your whole component all the time. Nah. It makes a direct connection from your signal to the exact spot in the HTML that uses it.
-
-When you `setCount(1)`, Dolla knows only the `<p>` tag and the `<Show>` component care. So it just updates those two things. No VDOM rebuild, no diffing.
-
-## The Dolla Building Blocks
-
-Dolla gives you a few types of components to keep your code from becoming a mess: **Views**, **Stores**, and **Mixins**. They're all connected by this thing called **context**, which you can grab with `useContext()`.
-
-### 1\. Views: Your UI stuff
-
-**Views** are your normal, everyday components for putting stuff on the screen. If you know React components, you're already a pro. They get `props`, use hooks, and return JSX.
-
-```jsx
-function ExampleView(props) {
-  const context = $context();
-  const count = signal(0);
-
-  // The logger automatically knows the component's name!
-  context.log("sup from ExampleView");
-
-  useMount(() => context.log("we're live!"));
-  useUnmount(() => context.log("aight, i'm out"));
-
-  return <div>{$count}</div>;
-}
-```
-
-[More on views.](./docs/views.md)
 
 ### 2\. Stores: For your shared state
 

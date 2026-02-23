@@ -1,4 +1,4 @@
-import { $$context, $setup, Readable, state } from "../core";
+import { $$context, $setup, Reactive, state } from "../core";
 import { VIEW, ViewNode } from "../core/nodes/view";
 
 export interface Dimensions {
@@ -11,7 +11,7 @@ export interface Dimensions {
   aspectRatio: number;
 }
 
-export function $measure(): Readable<Dimensions> {
+export function $measure(): Reactive<Dimensions> {
   const rect = state<Dimensions>({
     width: 0,
     height: 0,
@@ -34,7 +34,7 @@ export function $measure(): Readable<Dimensions> {
 
       const { width, height, top, left, bottom, right } = entry.contentRect;
 
-      rect.write({
+      rect.set({
         width,
         height,
         top,

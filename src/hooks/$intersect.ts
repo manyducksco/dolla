@@ -19,7 +19,7 @@ export function $intersect(options?: IntersectOptions) {
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry) return;
 
-      intersecting.write(entry.isIntersecting);
+      intersecting.set(entry.isIntersecting);
     }, options);
 
     const root = view.getRoot();

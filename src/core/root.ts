@@ -1,0 +1,95 @@
+import { isFunction } from "../typeChecking";
+import { Renderable, View } from "../types";
+import { getElement } from "../utils";
+import { Context } from "./context";
+import { LogLevel } from "./logger";
+import { MarkupNode, render } from "./markup";
+import { DEBUG, PARENT_ELEMENT } from "./symbols";
+
+export type CleanupCallback = () => void | Promise<void>;
+
+/**
+ * Plugins run before the app is mounted. If they return a promise, mounting will be delayed until the promise resolves.
+ * If a cleanup function is returned, it will be called before the app is unmounted. The cleanup function's promise will delay unmounting.
+ */
+export type DollaPlugin = (context: Context) => Promise<CleanupCallback | void> | CleanupCallback | void;
+
+export interface DollaDebugOptions {
+  /**
+   * Filters debug messages by context name. Messages will only be printed if this check returns truthy.
+   *
+   * @example
+   * filter: "*,-dolla:*" // (everything, minus those starting with 'dolla:')
+   *
+   * filter: new RegExp("^(?!dolla:).*") // same thing but in RegExp form
+   *
+   * filter: (name) => !name.startsWith("dolla:")
+   */
+  filter?: string | RegExp | ((name: string) => any);
+
+  level?: LogLevel;
+}
+
+export interface DollaRootOptions {
+  /**
+   * Adds additional view info to the DOM to help with debugging.
+   */
+  debug?: boolean;
+}
+
+export interface DollaRoot {
+  plugin(plugin: DollaPlugin): DollaRoot;
+  mount(view: View<{}>): Promise<void>;
+  mount(content: Renderable): Promise<void>;
+  unmount(): void;
+}
+
+export function createRoot(selector: string, options?: DollaRootOptions): DollaRoot;
+export function createRoot(element: Element, options?: DollaRootOptions): DollaRoot;
+export function createRoot(target: string | Element, options?: DollaRootOptions) {
+  const element = getElement(target);
+  const context = new Context("dolla:root");
+  const plugins = new Set<DollaPlugin>();
+  const cleanup = new Set<CleanupCallback>();
+
+  context.setState(PARENT_ELEMENT, element);
+  context.setState(DEBUG, Boolean(options?.debug));
+
+  let rootNode: MarkupNode | null = null;
+
+  const self: DollaRoot = { plugin, mount, unmount };
+
+  function plugin(plugin: DollaPlugin) {
+    plugins.add(plugin);
+    return self;
+  }
+
+  async function mount(content: Renderable) {
+    if (context.isMounted()) return;
+
+    const results = await Promise.all([...plugins].map((fn) => fn(context)));
+    for (const result of results) {
+      if (isFunction<CleanupCallback>(result)) {
+        cleanup.add(result);
+      }
+    }
+
+    context.emit("willMount");
+    rootNode = render(content, context);
+    rootNode.mount(element);
+    context.emit("didMount");
+  }
+
+  async function unmount() {
+    if (!context.isMounted()) return;
+
+    context.emit("willUnmount");
+    rootNode?.unmount(false);
+    context.emit("didUnmount");
+
+    await Promise.all([...cleanup].map((callback) => callback()));
+    cleanup.clear();
+  }
+
+  return self;
+}

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Context, getCurrentContext, setCurrentContext } from "../core/context";
 import { $setup, $teardown, $watch } from "./hooks";
-import { state } from "./signal";
+import { state } from "./reactive";
 
 const _emitWillMount = () => getCurrentContext()!.emit("willMount");
 const _emitDidMount = () => getCurrentContext()!.emit("didMount");
@@ -29,20 +29,20 @@ describe("$watch", () => {
     expect(fn).toBeCalledTimes(1);
 
     _emitDidMount();
-    name.write("Tux");
+    name.set("Tux");
     expect(fn).toBeCalledTimes(2);
 
     _emitWillUnmount();
-    name.write("Abby");
+    name.set("Abby");
     expect(fn).toBeCalledTimes(3);
 
     // Effects are stopped at DID_UNMOUNT
     _emitDidUnmount();
-    name.write("Lacey");
+    name.set("Lacey");
     expect(fn).toBeCalledTimes(3); // still 3
 
     _emitDispose();
-    name.write("Jack");
+    name.set("Jack");
     expect(fn).toBeCalledTimes(3); // still 3
   });
 
@@ -61,7 +61,7 @@ describe("$watch", () => {
 
     expect(fn).toBeCalledTimes(1);
 
-    left.write(15);
+    left.set(15);
     expect(fn).toBeCalledTimes(2);
 
     left.update((n) => n + 2);
