@@ -3,7 +3,20 @@ export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
 // Reactive
-export { batch, computed, get, isMutable, isReactive, nextValue, reader, state, track, watch } from "./reactive.js";
+export {
+  batch,
+  computed,
+  get,
+  isMutable,
+  isReactive,
+  nextValue,
+  reader,
+  state,
+  subscribe,
+  track,
+  transform,
+  watch,
+} from "./reactive.js";
 export type { Gettable, Getter, MaybeGetter, MaybeReadable, Mutable, Reactive } from "./reactive.js";
 
 // Hooks

@@ -2,16 +2,7 @@ import type { Renderable } from "../../types.js";
 import { deepEqual, moveBefore } from "../../utils.js";
 import type { Context } from "../context.js";
 import { $name } from "../hooks.js";
-import {
-  batch,
-  state,
-  reader,
-  untracked,
-  watch,
-  type Reactive,
-  type UnsubscribeFn,
-  type Mutable,
-} from "../reactive.js";
+import { batch, reader, state, subscribe, type Mutable, type Reactive, type UnsubscribeFn } from "../reactive.js";
 import { MarkupNode } from "./_markup.js";
 import { ViewNode } from "./view.js";
 
@@ -67,7 +58,7 @@ export class RepeatNode<T> extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = watch(() => {
+      this.unsubscribe = subscribe(this.items, (items) => {
         let value = this.items.track();
 
         if (value == null) {
@@ -75,9 +66,7 @@ export class RepeatNode<T> extends MarkupNode {
           this.context.logger.warn("repeat() received empty value for items", value);
         }
 
-        untracked(() => {
-          this._update(Array.from(value));
-        });
+        this._update(Array.from(value));
       });
     }
   }

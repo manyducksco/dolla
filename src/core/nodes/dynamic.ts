@@ -1,7 +1,7 @@
 import { moveBefore, toArray } from "../../utils.js";
 import type { Context } from "../context.js";
 import { toMarkupNodes } from "../markup.js";
-import { untracked, watch, type Reactive, type UnsubscribeFn } from "../reactive.js";
+import { subscribe, type Reactive, type UnsubscribeFn } from "../reactive.js";
 import { MarkupNode } from "./_markup.js";
 
 /**
@@ -35,14 +35,11 @@ export class DynamicNode extends MarkupNode {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
-      this.unsubscribe = watch(() => {
+      this.unsubscribe = subscribe(this.slot, (content) => {
         try {
-          const content = this.slot.track();
-          untracked(() => {
-            this.update(toArray(content));
-          });
+          this.update(toArray(content));
         } catch (error) {
-          this.context.logger.crash(error as Error);
+          this.context.throwError(error);
         }
       });
     }

@@ -8,12 +8,12 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - ⚡️ [**Signals**](./docs/signals.md) for pinpoint DOM updates.
 - 📦 Three types of [components](./docs/components.md):
   - 🖥️ [**Views**](./docs/views.md) for reusable UI elements.
-  - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
   - ✨ [**Mixins**](./docs/mixins.md) for augmenting DOM nodes without writing a whole new view.
+  - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
 - 🪝 [**Hooks**](./docs/hooks.md) for reaching into the component context and hooking into stores, lifecycle and more.
-- 🔀 A client-side [**router**](./docs/router.md) with nested routes and middleware for auth guards, preloading data or analytics.
+- 🔀 A client-side [**router**](./docs/router.md) with nested routes, auth guards, async data loading and more.
 - 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translated strings into a JSON file and access them with the `t` function in your views.
-- 🍳 The build system is optional. You can [write JSX](./docs/setup.md) with a bundler, or just [use tagged template literals](./docs/buildless.md) directly in the browser.
+- 🍳 The build system is optional. You can [write JSX](./docs/setup.md) with a bundler, or [use tagged template literals](./docs/buildless.md) directly in the browser.
 
 ## ...
 
@@ -27,18 +27,18 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 
 - Reactivity
   - Reactive, Mutable API
-  - tracking contexts (computed, `$watch`, getters -- goes into views)
+  - tracking contexts (computed, `$watch`, `<For>` render, getters -- goes into views)
 - Components
   - basic types overview
-  - context
   - ($hooks) lifecycle and `$setup`, `$teardown`
+  - context (and `$$context` special hook)
   - Views
     - reactive element props/attrs
     - control flow with `<Show>`, `<For>`
     - `<Portal>`
     - Error handling with `<Boundary>` and `$catch`
-  - Stores (and `$provide` and `$use`)
   - Mixins
+  - Stores (and `$provide` and `$use`)
 - createRoot
   - mount + unmount
   - plugins

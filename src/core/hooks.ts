@@ -1,7 +1,6 @@
-import { type Logger, type Store } from "../core";
+import { type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
 import { type Context, type ErrorInfo, getCurrentContext, type LifecycleEvent } from "./context";
-import { getLogFilter, getLogLevel, LogLevel, setLogFilter, setLogLevel } from "./logger";
 import { type Getter, type Reactive, type WatchCallback } from "./reactive";
 
 /**

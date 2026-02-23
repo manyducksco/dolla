@@ -3,10 +3,10 @@ import type { Store } from "../types";
 import { IdGenerator } from "../utils";
 import { createLogger, type Logger, type LoggerOptions } from "./logger";
 import {
+  get,
   type Gettable,
   type Getter,
   type MaybeReadable,
-  get,
   type Reactive,
   type UnsubscribeFn,
   watch,
@@ -288,7 +288,7 @@ export class Context {
   provideStore<T>(store: Store<any, T>, options?: any): this {
     if (this.stores?.get(store)) {
       let name = store.name ? `'${store.name}'` : "this store";
-      throw this.logger.crash(new Error(`An instance of ${name} was already added on this context.`));
+      throw new Error(`An instance of ${name} was already added on this context.`);
     }
 
     // Context is bound and therefore will be disposed when this context is disposed.
@@ -323,7 +323,7 @@ export class Context {
       }
     }
     if (result == null) {
-      throw this.throwError(new Error(`Store '${store.name}' is not provided by this context.`));
+      throw new Error(`Store '${store.name}' is not provided by this context.`);
     }
     return result as T;
   }

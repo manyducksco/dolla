@@ -1,4 +1,4 @@
-import { isFunction, isNumber, isString } from "../typeChecking.js";
+import { isFunction, isString } from "../typeChecking.js";
 import type { IntrinsicElements, Renderable, View } from "../types.js";
 import { Context } from "./context.js";
 import { MarkupNode } from "./nodes/_markup.js";

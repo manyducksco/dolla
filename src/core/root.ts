@@ -38,9 +38,24 @@ export interface DollaRootOptions {
 }
 
 export interface DollaRoot {
+  /**
+   * Registers a plugin to be added before `mount`.
+   */
   plugin(plugin: DollaPlugin): DollaRoot;
+
+  /**
+   * Mounts a `view` to this root.
+   */
   mount(view: View<{}>): Promise<void>;
+
+  /**
+   * Mounts any renderable content to this root.
+   */
   mount(content: Renderable): Promise<void>;
+
+  /**
+   * Unmounts the currently mounted content.
+   */
   unmount(): void;
 }
 
@@ -50,7 +65,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   const element = getElement(target);
   const context = new Context("dolla:root");
   const plugins = new Set<DollaPlugin>();
-  const cleanup = new Set<CleanupCallback>();
+  const cleanup: CleanupCallback[] = [];
 
   context.setState(PARENT_ELEMENT, element);
   context.setState(DEBUG, Boolean(options?.debug));
@@ -70,7 +85,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     const results = await Promise.all([...plugins].map((fn) => fn(context)));
     for (const result of results) {
       if (isFunction<CleanupCallback>(result)) {
-        cleanup.add(result);
+        cleanup.push(result);
       }
     }
 
@@ -85,10 +100,11 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
     context.emit("willUnmount");
     rootNode?.unmount(false);
+    rootNode = null;
     context.emit("didUnmount");
 
-    await Promise.all([...cleanup].map((callback) => callback()));
-    cleanup.clear();
+    await Promise.all(cleanup.map((callback) => callback()));
+    cleanup.length = 0;
   }
 
   return self;

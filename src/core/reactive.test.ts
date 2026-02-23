@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { batch, computed, watch, get, Reactive, state, reader, nextValue, AbortError } from "./reactive";
+import { batch, computed, watch, get, Reactive, state, reader, nextValue, AbortError, transform } from "./reactive";
 
 test("basic composition & tracking", () => {
   const count = state(5);
@@ -219,3 +219,51 @@ describe("nextValue", () => {
 //     expect(fn).toHaveBeenCalledTimes(1);
 //   });
 // });
+
+describe("transform", () => {
+  test("transforms any kind of value", () => {
+    const count = state(5);
+    const doubled = transform(count, (value) => value * 2);
+    const tripled = transform(
+      () => count.track(),
+      (value) => value * 3,
+    );
+    const frozen = transform(count.get(), (value) => value * 100);
+
+    expect(doubled.get()).toBe(10);
+    expect(tripled.get()).toBe(15);
+    expect(frozen.get()).toBe(500);
+
+    count.set(count.get() + 1);
+
+    expect(doubled.get()).toBe(12);
+    expect(tripled.get()).toBe(18);
+    expect(frozen.get()).toBe(500);
+  });
+
+  test("ignores tracked values in callback", () => {
+    const count = state(5);
+    const other = state("hi");
+
+    const fn = vi.fn();
+
+    const doubled = transform(count, (value) => {
+      other.track();
+      fn();
+      return value * 2;
+    });
+
+    expect(doubled.get()).toBe(10);
+    expect(fn).toBeCalledTimes(1);
+
+    count.set(12);
+
+    expect(doubled.get()).toBe(24);
+    expect(fn).toBeCalledTimes(2);
+
+    other.set("hello");
+
+    expect(doubled.get()).toBe(24);
+    expect(fn).toBeCalledTimes(2);
+  });
+});

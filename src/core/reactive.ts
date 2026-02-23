@@ -477,7 +477,7 @@ export function track<T>(value: Reactive<T> | Getter<T> | T): T {
   }
 }
 
-export function untracked<T>(callback: () => T): T {
+function untracked<T>(callback: () => T): T {
   const pausedSub = setCurrentSub(undefined);
   try {
     return callback();
@@ -486,21 +486,19 @@ export function untracked<T>(callback: () => T): T {
   }
 }
 
-// export function subscribe<T>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => void) {
-//   let first = true;
-//   queueMicrotask(() => {
-//     first = false;
-//     callback(get(target));
-//   });
-//   return watch(() => {
-//     const current = track(target);
-//     if (first) {
-//       first = false;
-//       return;
-//     }
-//     callback(current);
-//   });
-// }
+export function transform<T, O>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => O): Reactive<O> {
+  return computed(() => {
+    const value = track(target);
+    return untracked(() => callback(value));
+  });
+}
+
+export function subscribe<T>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => void) {
+  return watch(() => {
+    const value = track(target);
+    untracked(() => callback(value));
+  });
+}
 
 export interface NextValueOptions<T> {
   /**
