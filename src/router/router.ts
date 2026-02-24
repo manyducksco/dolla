@@ -4,7 +4,7 @@ import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { batch, state } from "../core/reactive.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
-import { isFunction, isObject, isString } from "../typeChecking.js";
+import { isArray, isFunction, isObject, isString } from "../typeChecking.js";
 import type { View } from "../types.js";
 import { IdGenerator } from "../utils.js";
 import { RouterStore } from "./store.js";
@@ -31,7 +31,22 @@ import {
 } from "./utils.js";
 
 export function createRouter(options: RouterOptions): View {
-  const match = state<RouteMatch>();
+  // TODO: Cleanup. Making sure we capture the query params immediately before any routing takes place.
+  // Query params are part of the hash if using hash routing.
+
+  const initialQuery: Record<string, string> = {};
+  const _initialQ = new URLSearchParams(options.hash ? window.location.hash.split("?")[1] : window.location.search);
+  for (const [key, value] of _initialQ.entries()) {
+    initialQuery[key] = value;
+  }
+
+  const match = state<RouteMatch>({
+    path: options.hash ? window.location.hash.split("?")[0] : window.location.pathname,
+    pattern: "",
+    params: {},
+    query: initialQuery,
+    meta: {},
+  });
 
   const routeIds = new IdGenerator();
 
@@ -51,6 +66,8 @@ export function createRouter(options: RouterOptions): View {
     const context = $$context();
     context.setName("dolla:router");
 
+    const debug = $debug();
+
     const layerIds = new IdGenerator();
 
     const rootSlot = state<MarkupNode>();
@@ -61,8 +78,6 @@ export function createRouter(options: RouterOptions): View {
       slot: rootSlot,
     };
     const activeLayers: ActiveLayer[] = [];
-
-    const debug = $debug();
 
     /**
      * Run when the location changes. Diffs and mounts new routes and updates
@@ -101,18 +116,22 @@ export function createRouter(options: RouterOptions): View {
       let query = route.match.query;
       const queryParams = new URLSearchParams();
 
-      // if (options.preserveQuery === true) {
-      //   query = Object.assign({}, this.query.read(), route.match.query);
-      // } else if (isArray(options.preserveQuery)) {
-      //   const preserved: Record<string, any> = {};
-      //   const current = this.query.read();
-      //   for (const key in current) {
-      //     if (options.preserveQuery.includes(key)) {
-      //       preserved[key] = current[key];
-      //     }
-      //   }
-      //   query = Object.assign({}, preserved, route.match.query);
-      // }
+      if (options.preserveQuery === true) {
+        query = Object.assign({}, match.get()?.query ?? {}, route.match.query);
+      } else if (isArray(options.preserveQuery)) {
+        const preserved: Record<string, any> = {};
+        const current = match.get()?.query ?? {};
+        for (const key in current) {
+          if (options.preserveQuery.includes(key)) {
+            preserved[key] = current[key];
+          }
+        }
+        query = Object.assign({}, preserved, route.match.query);
+      }
+
+      for (const key in query) {
+        queryParams.set(key, query[key]);
+      }
 
       const queryString = queryParams.size > 0 ? "?" + queryParams.toString() : "";
 
@@ -134,7 +153,6 @@ export function createRouter(options: RouterOptions): View {
         match.set({ ...routeMatch, query });
 
         const layers = routeMatch.meta.layers!;
-        debug.info("mounting", match);
 
         // Diff and update route layers.
         for (let i = 0; i < layers.length; i++) {
@@ -196,6 +214,10 @@ export function createRouter(options: RouterOptions): View {
       return catchLinks(parentElement, (path) => {
         api.push(path);
       });
+    });
+
+    $setup(() => {
+      updateRoute();
     });
 
     return rootLayer.node;

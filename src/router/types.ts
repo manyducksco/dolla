@@ -1,6 +1,6 @@
 import type { MarkupNode, Mutable, Reactive, View } from "../core";
 import type { Context } from "../core/context/context";
-import type { QueryParams } from "./query";
+import type { QueryParams, QueryParamsMap } from "./query";
 
 export type Stringable = { toString(): string };
 
@@ -143,34 +143,35 @@ export interface RouterOptions {
    * When true, the router will construct routes like "https://www.example.com/#/sub/route" which work without any backend intervention.
    */
   hash?: boolean;
+
+  /**
+   * Persist query params between pages when navigating. Pass an array to specify a list of params that will be preserved.
+   * By default all query params are cleared when navigating to a new URL (equivalent to `false`).
+   */
+  preserveQuery?: true | false | string[];
 }
 
 export interface RouterAPI {
   /**
-   * Info about the currently matched route.
+   * The current path as it is displayed in the URL bar (e.g. `/users/123/edit`).
    */
-  match: {
-    /**
-     * The current path as it is displayed in the URL bar (e.g. `/users/123/edit`).
-     */
-    path: Reactive<string>;
-    /**
-     * The route pattern that was matched (e.g. `/users/{#id}/edit`), or undefined if no route is currently matched.
-     */
-    pattern: Reactive<string | undefined>;
-    /**
-     * The extracted route parameters from the path. (e.g. `{ id: "123" }`)
-     */
-    params: Reactive<Record<string, string>>;
-    /**
-     * The current query params. This is a Writable object that lets you modify query params as well as read them.
-     */
-    query: QueryParams;
-    /**
-     * The contents of the `meta` fields of all matched route layers.
-     */
-    meta: Reactive<Record<string, string>>;
-  };
+  path: Reactive<string>;
+  /**
+   * The route pattern that was matched (e.g. `/users/{#id}/edit`), or undefined if no route is currently matched.
+   */
+  pattern: Reactive<string | undefined>;
+  /**
+   * The extracted route parameters from the path. (e.g. `{ id: "123" }`)
+   */
+  params: Reactive<Record<string, string>>;
+  /**
+   * The current query params. This is a Writable object that lets you modify query params as well as read them.
+   */
+  query: QueryParamsMap;
+  /**
+   * The contents of the `meta` fields of all matched route layers.
+   */
+  meta: Reactive<Record<string, string>>;
 
   /**
    * Go back in the page history. Equivalent to hitting the back button.

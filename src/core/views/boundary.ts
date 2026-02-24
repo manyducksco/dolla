@@ -2,7 +2,7 @@ import { isFunction } from "../../typeChecking.js";
 import { Renderable, View } from "../../types.js";
 import { ErrorInfo } from "../context/context.js";
 import { $$context } from "../hooks.js";
-import { Markup, NodeType } from "../markup/markup.js";
+import { Markup } from "../markup/markup.js";
 import { DynamicNode } from "../markup/nodes/dynamic.js";
 import { computed, state } from "../reactive.js";
 import { CrashViewProps } from "./_default-crash-view.js";

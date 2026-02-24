@@ -1,5 +1,5 @@
 import { computed, shallowEqual, type Mutable } from "../core";
-import { QueryParams } from "./query";
+import { QueryParams, QueryParamsMap } from "./query";
 import type { RouterAPI, RouterOptions } from "./types";
 import { resolvePath, type RouteMatch } from "./utils";
 
@@ -11,13 +11,11 @@ export interface RouterStoreProps {
 
 export function RouterStore({ match, options, updateRoute }: RouterStoreProps): RouterAPI {
   return {
-    match: {
-      path: computed(() => match.track()?.path ?? window.location.pathname),
-      pattern: computed(() => match.track()?.pattern),
-      params: computed(() => match.track()?.params ?? {}, { equals: shallowEqual }),
-      query: new QueryParams(match, options),
-      meta: computed(() => match.track()?.meta.data ?? {}, { equals: shallowEqual }),
-    },
+    path: computed(() => match.track()?.path ?? window.location.pathname),
+    pattern: computed(() => match.track()?.pattern),
+    params: computed(() => match.track()?.params ?? {}, { equals: shallowEqual }),
+    query: new QueryParamsMap(match, options),
+    meta: computed(() => match.track()?.meta.data ?? {}, { equals: shallowEqual }),
 
     back(steps = 1) {
       window.history.go(-steps);

@@ -48,6 +48,37 @@ It's also a good way to learn Dolla without getting bogged down in build tools i
 </html>
 ```
 
+## Direct `Markup`.
+
+Alternatively you could build your markup tree manually.
+
+```js
+import { createRoot, state, Markup } from "https://esm.sh/@manyducks.co/dolla";
+
+function Layout({ children }) {
+  return new Markup("div", {
+    class: "flex flex-col gap-2 p-8 rounded-xl bg-stone-300",
+    children: children
+  })
+}
+
+function Counter() {
+  const count = state(0);
+
+  return new Markup(Layout, {
+    children: [
+      new Markup("span", {
+        children: ["Count is: ", count]
+      }),
+      new Markup("button", {
+        onclick: () => count.update((c) => c + 1,
+        children: ["Increment"]
+      })
+    ]
+  });
+}
+```
+
 ---
 
 End.
