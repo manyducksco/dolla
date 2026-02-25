@@ -55,6 +55,10 @@
       "types": "./jsx-dev-runtime.d.ts"
     }
   },
+  "files": [
+    "dist",
+    "*.d.ts"
+  ],
   "dependencies": {
     "alien-signals": "^2.0.5"
   },

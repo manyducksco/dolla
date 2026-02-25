@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Dolla Demo</title>
+  </head>
+  <body>
+    <div id="counter"></div>
+    <script type="module">
+      import { createRoot, state, html } from "../dist/index.js";
+
+      function Counter() {
+        const count = state(0);
+
+        return html`
+          <p>Clicks: ${count}</p>
+          <button onclick=${() => count.set(count.get() + 1)}>CLICK ME</button>
+        `;
+      }
+
+      createRoot("#counter").mount(Counter);
+    </script>
+
+    <div id="sibling-lists"></div>
+    <script type="module">
+      import { createRoot, state, html, For, $setup } from "../dist/index.js";
+
+      function shuffled(source) {
+        const array = [...source];
+        let currentIndex = array.length;
+
+        // While there remain elements to shuffle...
+        while (currentIndex != 0) {
+          // Pick a remaining element...
+          let randomIndex = Math.floor(Math.random() * currentIndex);
+          currentIndex--;
+
+          // And swap it with the current element.
+          [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+        }
+
+        return array;
+      }
+
+      function List({ color, items }) {
+        const sorted = state([...items]);
+
+        function randomize() {
+          sorted.update(shuffled);
+        }
+
+        $setup(() => {
+          const interval = setInterval(randomize, 1000 + (Math.random() * 600 - 300));
+          return () => clearInterval(interval);
+        });
+
+        // Views with a For as the root getting reordered is causing duplication of DOM nodes.
+        return html`
+          <${For} each=${sorted} key=${(item) => item}>
+            ${(item, index) => {
+              return html`<div style=${{ color: color }}>${item}</div>`;
+            }}
+          <//>
+        `;
+      }
+
+      function SiblingLists() {
+        const lists = state([
+          html`<${List} color="red" items=${["broccoli", "zucchini", "radish"]} />`,
+          html`<${List} color="blue" items=${["salami", "bacon", "turkey"]} />`,
+          html`<${List} color="green" items=${["water", "tea", "coffee"]} />`,
+        ]);
+
+        function randomize() {
+          lists.update(shuffled);
+        }
+
+        $setup(() => {
+          const interval = setInterval(randomize, 2000 + (Math.random() * 600 - 300));
+          return () => clearInterval(interval);
+        });
+
+        // return html``;
+
+        return html`
+          <div>
+            ${lists}
+            <${For} each=${lists} key=${(item) => item.props.color}>${(item) => item}<//>
+          </div>
+        `;
+
+        // return html`
+        //   <${List} color="red" items=${["broccoli", "zucchini", "radish"]} />
+        //   <${List} color="blue" items=${["salami", "bacon", "turkey"]} />
+        //   <${List} color="green" items=${["water", "tea", "coffee"]} />
+        // `;
+      }
+
+      createRoot("#sibling-lists", { debug: true }).mount(SiblingLists);
+    </script>
+  </body>
+</html>

@@ -57,7 +57,7 @@ export function $setup(callback: SetupCallback): void;
 /**
  * Schedules `callback` to run just after the component is mounted.
  * The callback receives an `AbortSignal` that will abort if the component unmounts before the promise resolves.
- * If the promies resolves to a function, that function will run when the component is unmounted.
+ * Can return a cleanup function. Cleanup function will not be run if using an async callback and the signal aborts before the promise resolves.
  */
 export function $setup(callback: AsyncSetupCallback): void;
 

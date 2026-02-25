@@ -81,7 +81,7 @@ export class RepeatNode<T> extends MarkupNode {
       this.root.parentNode?.removeChild(this.root);
     }
 
-    this._cleanup(true);
+    this._cleanup(skipDOM);
   }
 
   override move(parent: Element, after?: Node) {

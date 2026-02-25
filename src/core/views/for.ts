@@ -28,5 +28,10 @@ const defaultKeyFn = (x: any) => x;
 export function For<T>(props: ForProps<T>) {
   const context = $$context();
   context.setName("dolla:For");
-  return new RepeatNode(context, reader(props.each), props.key ?? defaultKeyFn, props.children);
+  return new RepeatNode(
+    context,
+    reader(props.each),
+    props.key ?? defaultKeyFn,
+    Array.isArray(props.children) ? props.children[0] : props.children,
+  );
 }
