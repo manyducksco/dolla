@@ -1,5 +1,5 @@
 import { $debug, $name, $setup } from "../core/hooks.js";
-import { computed, state, track, type MaybeReadable, type Reactive } from "../core/reactive.js";
+import { computed, state, track, type MaybeReactive, type Reactive } from "../core/reactive.js";
 import { isFunction } from "../typeChecking.js";
 import { Format } from "./template.js";
 import { LocalizedStrings, Translation, TranslationFetchFn } from "./translation.js";
@@ -10,12 +10,12 @@ export type TOptions = {
   /**
    *
    */
-  count?: MaybeReadable<number>;
+  count?: MaybeReactive<number>;
 
   /**
    *
    */
-  context?: MaybeReadable<string>;
+  context?: MaybeReactive<string>;
 
   /**
    * Override formats specified in the template with the ones in the array for each named variable.
@@ -28,9 +28,9 @@ export type TOptions = {
    *   }
    * });
    */
-  formatOverrides?: MaybeReadable<Record<string, Record<string, Format[]>>>;
+  formatOverrides?: MaybeReactive<Record<string, Record<string, Format[]>>>;
 
-  [value: string]: MaybeReadable<any>;
+  [value: string]: MaybeReactive<any>;
 };
 
 export type Formatter = (locale: string, value: any, options: Record<string, any>) => string;
@@ -73,11 +73,11 @@ export interface TranslateAPI {
 
   format<K extends keyof BuiltInFormatters, V extends BuiltInFormatters[K][0], O extends BuiltInFormatters[K][1]>(
     name: K,
-    value: MaybeReadable<V>,
+    value: MaybeReactive<V>,
     options?: O,
   ): Reactive<string>;
 
-  format<V, O>(name: string, value: MaybeReadable<V>, options?: O): Reactive<string>;
+  format<V, O>(name: string, value: MaybeReactive<V>, options?: O): Reactive<string>;
 }
 
 export interface TranslateOptions {
@@ -207,11 +207,11 @@ export function TranslateStore(options: TranslateOptions): TranslateAPI {
     K extends keyof BuiltInFormatters,
     V extends BuiltInFormatters[K][0],
     O extends BuiltInFormatters[K][1],
-  >(name: K, value: MaybeReadable<V>, options?: O): Reactive<string>;
+  >(name: K, value: MaybeReactive<V>, options?: O): Reactive<string>;
 
-  function format<V, O>(name: string, value: MaybeReadable<V>, options?: O): Reactive<string>;
+  function format<V, O>(name: string, value: MaybeReactive<V>, options?: O): Reactive<string>;
 
-  function format(name: string, value: MaybeReadable<any>, options?: Record<string, any>): Reactive<string> {
+  function format(name: string, value: MaybeReactive<any>, options?: Record<string, any>): Reactive<string> {
     const callback = formatters.get(name);
     if (!callback) {
       throw new Error(`Unknown format: ${name}`);

@@ -22,7 +22,19 @@
 
     <div id="sibling-lists"></div>
     <script type="module">
-      import { createRoot, state, html, For, $setup } from "../dist/index.js";
+      import {
+        createRoot,
+        state,
+        computed,
+        track,
+        html,
+        For,
+        each,
+        when,
+        $setup,
+        Markup,
+        NodeType,
+      } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -48,19 +60,39 @@
           sorted.update(shuffled);
         }
 
+        const visible = state(false);
+
         $setup(() => {
-          const interval = setInterval(randomize, 1000 + (Math.random() * 600 - 300));
+          const interval = setInterval(
+            () => {
+              randomize();
+              if (Math.random() > 0.75) {
+                visible.set(!visible.get());
+              }
+            },
+            1000 + (Math.random() * 600 - 300),
+          );
           return () => clearInterval(interval);
         });
 
+        return each(
+          items,
+          (item) => item,
+          (item) => {
+            return html`
+              <div style=${{ color: color }}>${item} ${when(visible, html`<input type="text"></input>`)}</div>
+            `;
+          },
+        );
+
         // Views with a For as the root getting reordered is causing duplication of DOM nodes.
-        return html`
-          <${For} each=${sorted} key=${(item) => item}>
-            ${(item, index) => {
-              return html`<div style=${{ color: color }}>${item}</div>`;
-            }}
-          <//>
-        `;
+        // return html`
+        //   <${For} each=${sorted} key=${(item) => item}>
+        //     ${(item, index) => {
+        //       return html`<div style=${{ color: color }}>${item} <input type="text"></input></div>`;
+        //     }}
+        //   <//>
+        // `;
       }
 
       function SiblingLists() {
@@ -84,7 +116,11 @@
         return html`
           <div>
             ${lists}
-            <${For} each=${lists} key=${(item) => item.props.color}>${(item) => item}<//>
+            ${each(
+              lists,
+              (item) => item.props.color,
+              (item) => item,
+            )}
           </div>
         `;
 

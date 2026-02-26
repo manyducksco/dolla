@@ -17,7 +17,7 @@ export {
   transform,
   watch,
 } from "./reactive.js";
-export type { Gettable, Getter, MaybeGetter, MaybeReadable, Mutable, Reactive } from "./reactive.js";
+export type { Gettable, Getter, MaybeGetter, MaybeReactive as MaybeReadable, Mutable, Reactive } from "./reactive.js";
 
 // Context
 export type { Context } from "./context/context.js";
@@ -30,6 +30,7 @@ export * from "./hooks.js";
 
 // Markup
 export { Markup, MarkupNode, render, toMarkupNodes, NodeType } from "./markup/index.js";
+export { each, when } from "./markup/helpers.js";
 
 // html
 export { html } from "./markup/html.js";

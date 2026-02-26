@@ -1,4 +1,5 @@
 import type { IntrinsicElements, Renderable, View } from "../../types.js";
+import { IdGenerator } from "../../utils.js";
 import type { Reactive } from "../reactive.js";
 import { KeyFn, RenderFn } from "./nodes/repeat.js";
 
@@ -29,7 +30,7 @@ export interface MarkupNodeProps {
     content: Renderable;
   };
   [NodeType.Repeat]: {
-    items: Reactive<any[]>;
+    items: Reactive<Iterable<any>>;
     key: KeyFn<any>;
     render: RenderFn<Renderable>;
   };

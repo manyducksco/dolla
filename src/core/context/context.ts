@@ -5,7 +5,7 @@ import {
   get,
   type Gettable,
   type Getter,
-  type MaybeReadable,
+  type MaybeReactive,
   type Reactive,
   type UnsubscribeFn,
   watch,
@@ -68,7 +68,7 @@ export class Context {
   /**
    * Returns a new Context with this one as its parent.
    */
-  createChild(name: MaybeReadable<string> | Getter<string>, options?: LinkedContextOptions): Context {
+  createChild(name: MaybeReactive<string> | Getter<string>, options?: LinkedContextOptions): Context {
     const context = new Context(name, options);
     context.parent = this;
     if (options?.bindLifecycleToParent) this.lifecycle.bind(context);

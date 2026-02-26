@@ -30,14 +30,14 @@ export class RepeatNode<T> extends MarkupNode {
 
   private context;
 
-  private items: Reactive<T[]>;
+  private items: Reactive<Iterable<T>>;
   private key: KeyFn<T>;
   private render: RenderFn<T>;
 
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
-  constructor(context: Context, items: Reactive<T[]>, key: KeyFn<T>, render: RenderFn<T>) {
+  constructor(context: Context, items: Reactive<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
     this.context = context;
 
@@ -59,14 +59,7 @@ export class RepeatNode<T> extends MarkupNode {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = subscribe(this.items, (items) => {
-        let value = this.items.track();
-
-        if (value == null) {
-          value = [];
-          this.context.logger.warn("repeat() received empty value for items", value);
-        }
-
-        this._update(Array.from(value));
+        this._update(Array.from(items));
       });
     }
   }

@@ -207,7 +207,7 @@ export type Gettable<T> = Reactive<T> | Getter<T> | T;
 
 export type Trackable<T> = Reactive<T> | Getter<T>;
 
-export type MaybeReadable<T> = Reactive<T> | T;
+export type MaybeReactive<T> = Reactive<T> | T;
 
 export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
@@ -431,6 +431,10 @@ export function isMutable<T>(value: any): value is Mutable<T> {
     isFunction(value.set) &&
     isFunction(value.update)
   );
+}
+
+export function isTrackable<T>(value: any): value is Trackable<T> {
+  return isFunction<Getter<T>>(value) || isReactive<T>(value);
 }
 
 /**

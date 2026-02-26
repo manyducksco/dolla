@@ -2,12 +2,48 @@ import { isFunction, isObject, typeOf } from "./typeChecking.js";
 
 export const noOp = () => {};
 
+/**
+ * Generates effectively infinite incrementing IDs.
+ */
 export class IdGenerator {
-  #counter = BigInt(1);
+  static #ALPHABET = new TextEncoder().encode("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_");
+
+  #indices = new Uint8Array(12); // Sufficient for 2^72 IDs
+  #asciiBuffer = new Uint8Array(12);
+  #currentLength = 1;
+  #decoder = new TextDecoder();
 
   next() {
-    this.#counter += 1n;
-    return this.#counter.toString();
+    let carry = true;
+
+    // Increment the indices (Right-to-Left)
+    for (let i = this.#currentLength - 1; i >= 0; i--) {
+      if (this.#indices[i] < 63) {
+        this.#indices[i]++;
+        carry = false;
+        break;
+      } else {
+        this.#indices[i] = 0;
+      }
+    }
+
+    // Handle overflow (Increase ID length)
+    if (carry) {
+      if (this.#currentLength >= this.#indices.length) {
+        throw new Error("ID Buffer Overflow: Maximum length reached.");
+      }
+      this.#currentLength++;
+      this.#indices.fill(0, 0, this.#currentLength);
+      this.#indices[0] = 1; // Start new length at 'B'
+    }
+
+    // Map indices to ASCII values
+    for (let i = 0; i < this.#currentLength; i++) {
+      this.#asciiBuffer[i] = IdGenerator.#ALPHABET[this.#indices[i]];
+    }
+
+    // Decode the used portion of the buffer into a single string
+    return this.#decoder.decode(this.#asciiBuffer.subarray(0, this.#currentLength));
   }
 }
 

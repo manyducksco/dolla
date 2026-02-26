@@ -4,9 +4,8 @@ import { Context } from "../../context/context.js";
 import { performInContext } from "../../context/current.js";
 import { toMarkupNodes } from "../index.js";
 import { Ref } from "../../ref.js";
-import { isGettable, track, watch, Mutable, type Gettable, type UnsubscribeFn } from "../../reactive.js";
+import { isGettable, track, watch, subscribe, Mutable, type Gettable, type UnsubscribeFn } from "../../reactive.js";
 import { DEBUG } from "../../symbols.js";
-
 import { MarkupNode } from "../markup.js";
 import { VIEW, ViewNode } from "./view.js";
 
@@ -167,12 +166,11 @@ export class ElementNode extends MarkupNode {
   private attachProp<T>(value: Gettable<T>, callback: (value: T) => void, key?: string) {
     if (isGettable<T>(value)) {
       this.unsubscribers.push(
-        watch(() => {
+        subscribe(value, (current) => {
           try {
-            callback(track(value));
+            callback(current);
           } catch (error) {
-            this.context.logger.error(error);
-            this.context.logger.crash(error as Error);
+            this.context.throwError(error);
           }
         }),
       );
@@ -451,13 +449,13 @@ export class ElementNode extends MarkupNode {
     if (isFunction(styles)) {
       let unapply: () => void;
 
-      const unsubscribe = watch(() => {
+      const unsubscribe = subscribe(styles, (current) => {
         if (isFunction(unapply)) {
           unapply();
         }
         element.style.cssText = "";
 
-        unapply = this.applyStyles(element, track(styles), unsubscribers);
+        unapply = this.applyStyles(element, current, unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
@@ -469,9 +467,9 @@ export class ElementNode extends MarkupNode {
         const { value, priority } = mapped[name];
 
         if (isGettable(value)) {
-          const unsubscribe = watch(() => {
-            if (track(value)) {
-              element.style.setProperty(name, String(asPixelsIfNumber(track(value))), priority);
+          const unsubscribe = subscribe(value, (current) => {
+            if (current) {
+              element.style.setProperty(name, String(asPixelsIfNumber(current)), priority);
             } else {
               element.style.removeProperty(name);
             }
@@ -488,8 +486,9 @@ export class ElementNode extends MarkupNode {
     return function unapply() {
       for (const unsubscribe of propUnsubscribers) {
         unsubscribe();
-        unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
+        // unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
       }
+      propUnsubscribers.length = 0;
     };
   }
 
@@ -499,12 +498,12 @@ export class ElementNode extends MarkupNode {
     if (isGettable(classes)) {
       let unapply: () => void;
 
-      const unsubscribe = watch(() => {
+      const unsubscribe = subscribe(classes, (current) => {
         if (isFunction(unapply)) {
           unapply();
         }
         element.removeAttribute("class");
-        unapply = this.applyClasses(element, track(classes), unsubscribers);
+        unapply = this.applyClasses(element, current, unsubscribers);
       });
 
       unsubscribers.push(unsubscribe);
@@ -516,8 +515,8 @@ export class ElementNode extends MarkupNode {
         const value = mapped[name];
 
         if (isGettable(value)) {
-          const unsubscribe = watch(() => {
-            if (track(value)) {
+          const unsubscribe = subscribe(value, (current) => {
+            if (current) {
               element.classList.add(name);
             } else {
               element.classList.remove(name);
@@ -535,8 +534,9 @@ export class ElementNode extends MarkupNode {
     return function unapply() {
       for (const unsubscribe of classUnsubscribers) {
         unsubscribe();
-        unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
+        // unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
       }
+      classUnsubscribers.length = 0;
     };
   }
 }
