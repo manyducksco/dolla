@@ -1,5 +1,5 @@
 import { $$context, $debug, $provide, $setup } from "../core/hooks.js";
-import { NodeType, Markup, type MarkupNode } from "../core/markup/index.js";
+import { Markup, NodeType, type MarkupNode } from "../core/markup/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { batch, state } from "../core/reactive.js";

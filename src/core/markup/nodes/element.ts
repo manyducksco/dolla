@@ -1,15 +1,13 @@
 import { isFunction, isNumber, isObject, isString } from "../../../typeChecking.js";
-import { moveBefore, omit, toArray, toCamelCase } from "../../../utils.js";
+import { omit, toArray } from "../../../utils.js";
 import { Context } from "../../context/context.js";
 import { performInContext } from "../../context/current.js";
-import { toMarkupNodes } from "../index.js";
+import { isTrackable, subscribe, type Gettable, type UnsubscribeFn } from "../../reactive.js";
 import { Ref } from "../../ref.js";
-import { isGettable, track, watch, subscribe, Mutable, type Gettable, type UnsubscribeFn } from "../../reactive.js";
 import { DEBUG } from "../../symbols.js";
+import { toMarkupNodes } from "../index.js";
 import { MarkupNode } from "../markup.js";
 import { VIEW, ViewNode } from "./view.js";
-
-const isCamelCaseEventName = (key: string) => /^on[A-Z]/.test(key);
 
 const IS_SVG = Symbol("HTML.isSVG");
 
@@ -27,7 +25,7 @@ export class ElementNode extends MarkupNode {
 
   private context: Context;
   private childNodes: MarkupNode[] = [];
-  private unsubscribers: UnsubscribeFn[] = [];
+  private unsubscribers = new Set<UnsubscribeFn>();
 
   // Track the ref so we can nullify it on unmount.
   private ref?: Ref<any>;
@@ -90,35 +88,28 @@ export class ElementNode extends MarkupNode {
             bindLifecycleToParent: true,
             logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
           });
-          performInContext(context, () => {
-            mixin(this.root);
-          });
+          performInContext(context, () => mixin(this.root));
         }
       }
 
       this.context.emit("willMount");
 
       const classes = props.className ?? props.class;
-
       this.applyProps(this.root, props);
-      if (props.style) this.applyStyles(this.root, props.style, this.unsubscribers);
-      if (classes) this.applyClasses(this.root, classes, this.unsubscribers);
+      if (props.style) this.applyStyles(this.root, props.style);
+      if (classes) this.applyClasses(this.root, classes);
 
       if (props.children) {
         this.childNodes = toMarkupNodes(this.context, props.children);
-      }
-
-      for (let i = 0; i < this.childNodes.length; i++) {
-        const child = this.childNodes[i];
-        const previous = i > 0 ? this.childNodes[i - 1].getRoot() : undefined;
-        child.mount(this.root!, previous);
+        for (const child of this.childNodes) {
+          child.mount(this.root);
+        }
       }
     }
 
-    if (this.root.parentNode === parent) {
-      moveBefore(parent, this.root!, after?.nextSibling ?? null);
-    } else {
-      parent.insertBefore(this.root!, after?.nextSibling ?? null);
+    const targetSibling = after?.nextSibling ?? null;
+    if (this.root.parentNode !== parent || this.root.nextSibling !== targetSibling) {
+      parent.insertBefore(this.root, targetSibling);
     }
 
     if (!wasMounted) this.context.emit("didMount");
@@ -127,28 +118,30 @@ export class ElementNode extends MarkupNode {
   override unmount(skipDOM = false) {
     this.context.emit("willUnmount");
 
-    if (!skipDOM) {
-      this.root!.parentNode?.removeChild(this.root!);
+    if (!skipDOM && this.root.parentNode) {
+      this.root.parentNode.removeChild(this.root);
     }
 
     for (const child of this.childNodes) {
-      child.unmount(true);
+      child.unmount(true); // Skip DOM removal for children
     }
 
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers.length = 0;
+    // Clear reactivity
+    this.unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.unsubscribers.clear();
 
     this.context.emit("didUnmount");
     this.context.emit("dispose");
 
-    // Free ref after all lifecycle hooks have completed.
-    queueMicrotask(() => {
-      if (this.ref) {
-        this.ref(undefined);
-      }
-    });
+    // Clear ref
+    if (this.ref) {
+      this.ref(undefined);
+      this.ref = undefined;
+    }
+
+    // Release memory
+    this.childNodes.length = 0;
+    (this as any).root = undefined;
   }
 
   override move(parent: Element, after?: Node) {
@@ -163,9 +156,9 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attachProp<T>(value: Gettable<T>, callback: (value: T) => void, key?: string) {
-    if (isGettable<T>(value)) {
-      this.unsubscribers.push(
+  private attach<T>(value: Gettable<T>, callback: (value: T) => void) {
+    if (isTrackable<T>(value)) {
+      this.unsubscribers.add(
         subscribe(value, (current) => {
           try {
             callback(current);
@@ -179,436 +172,185 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private getKey(name: string) {
-    return this.context.id + ":" + name;
-  }
-
-  private applyProps(element: HTMLElement | SVGElement, props: Record<string, unknown>) {
+  private applyProps(element: any, props: Record<string, unknown>) {
     for (const key in omit(ignoredProps, props)) {
       const value = props[key];
 
-      if (key.startsWith("prop:")) {
-        // Keys starting with `prop:` are set as props.
+      if (key === "for") {
+        this.attach(value, (current) => {
+          element.htmlFor = current;
+        });
+      } else if (key[0] === "." || key.startsWith("prop:")) {
+        // Keys starting with `.` or `prop:` are set as props.
 
         const _key = key.substring(5);
-        this.attachProp(
-          value,
-          (current) => {
-            (element as any)[_key] = current;
-          },
-          this.getKey(_key),
-        );
-      } else if (key.startsWith("on:")) {
-        // Keys starting with `on:` are treated as event listeners.
-
-        const _key = key.substring(3);
-        let _prev: EventListener | undefined;
-        if (isFunction(value)) {
-          element.addEventListener(_key, value as EventListener);
-          this.unsubscribers.push(() => {
-            element.removeEventListener(_key, value as EventListener);
-          });
-        } else {
-          this.attachProp(
-            value as Gettable<EventListener>,
-            (current) => {
-              if (!current && _prev) {
-                element.removeEventListener(_key, _prev);
-              } else if (current != null) {
-                if (_prev && _prev !== current) {
-                  element.removeEventListener(_key, _prev);
-                }
-                element.addEventListener(_key, current);
-              }
-              _prev = current;
-            },
-            this.getKey(_key),
-          );
-        }
-      } else if (key.startsWith("attr:")) {
-        // Keys starting with `attr:` are set as attributes.
+        this.attach(value, (current) => {
+          element[_key] = current;
+        });
+      } else if (key[0] === ":" || key.startsWith("attr:")) {
+        // Keys starting with `:` or `attr:` are set as attributes.
 
         const _key = key.substring(5).toLowerCase();
-        this.attachProp(
-          value,
-          (current) => {
-            if (current != null) {
-              element.setAttribute(_key, String(current));
-            } else {
-              element.removeAttribute(_key);
-            }
-          },
-          this.getKey(_key),
-        );
-      } else if (key === "value" && isBinding(value)) {
-        // Two-way value binding.
-        const el = element as HTMLInputElement;
-        this.attachProp(
-          value.value,
-          (current) => {
-            el.value = String(current);
-          },
-          this.getKey(key),
-        );
-        const listener = () => {
-          if (value.get) {
-            value.value.set(value.get(el));
+        this.attach(value, (current) => {
+          if (current != null) {
+            element.setAttribute(_key, String(current));
           } else {
-            value.value.set(el.value);
+            element.removeAttribute(_key);
           }
-        };
-        el.addEventListener(value.event, listener);
-        this.unsubscribers.push(() => {
-          el.removeEventListener(value.event, listener);
         });
-      } else if (isFunction(value) && isCamelCaseEventName(key)) {
-        // camelCase event names are applied with addEventListener.
+      } else if (key[0] === "@" && isFunction(value)) {
+        // Anything that's a function starting with `@` is an event listener.
 
-        const eventName = key.slice(2).toLowerCase();
-
-        const listener: (e: Event) => void = value as (e: Event) => void;
-
-        element.addEventListener(eventName, listener);
-        this.unsubscribers.push(() => {
-          element.removeEventListener(eventName, listener);
+        const eventName = key.substring(1);
+        element.addEventListener(eventName, value);
+        this.unsubscribers.add(() => {
+          element.removeEventListener(eventName, value);
         });
-      } else if (key.startsWith("on") && isFunction(value) && knownEventNames.includes(key.substring(2))) {
-        // Event handler properties (element.onsomething = function () {})
+      } else if (key.startsWith("on") && isFunction(value)) {
+        // Anything that's a function starting with `on` is an event listener.
 
-        (element as any)[key] = value;
-        this.unsubscribers.push(() => {
-          (element as any)[key] = undefined;
+        const eventName = key.toLowerCase().slice(2);
+        element.addEventListener(eventName, value);
+        this.unsubscribers.add(() => {
+          element.removeEventListener(eventName, value);
         });
-      } else if (key.includes("-")) {
-        // Names with dashes in them are not valid prop names, so they are treated as attributes.
+      } else if (key in element && !this.context.getState(IS_SVG)) {
+        // Set as property if the element has one.
 
-        this.attachProp(
-          value,
-          (current) => {
-            if (current == null) {
-              element.removeAttribute(key);
-            } else {
-              element.setAttribute(key, String(current));
-            }
-          },
-          this.getKey(key),
-        );
-      } else if (this.context.getState(IS_SVG)) {
-        // SVG gets everything set as an attribute.
-
-        // TODO: This isn't exactly right. SVGElement supports props as well.
-        this.attachProp(
-          value,
-          (current) => {
-            if (current != null) {
-              element.setAttribute(key, String(props[key]));
+        if (typeof element[key] === "boolean") {
+          this.attach(value, (current) => {
+            const isTrue = Boolean(current);
+            element[key] = isTrue;
+            if (isTrue) {
+              element.setAttribute(key, "");
             } else {
               element.removeAttribute(key);
             }
-          },
-          this.getKey(key),
-        );
+          });
+        } else {
+          this.attach(value, (current) => {
+            element[key] = current;
+          });
+        }
       } else {
-        // Special handling for other props on a case by case basis.
+        // Fall back to attributes.
 
-        switch (key) {
-          case "contentEditable":
-          case "value":
-            this.attachProp(
-              value,
-              (current) => {
-                (element as any)[key] = String(current);
-              },
-              this.getKey(key),
-            );
-            break;
-
-          case "for":
-            this.attachProp(
-              value,
-              (current) => {
-                (element as any).htmlFor = current;
-              },
-              this.getKey(key),
-            );
-            break;
-
-          case "innerHTML":
-            this.attachProp(
-              value,
-              (current) => {
-                (element as any).innerHTML = current;
-              },
-              this.getKey(key),
-            );
-            break;
-
-          case "title":
-            this.attachProp(
-              value,
-              (current) => {
-                if (current == null) {
-                  (element as any).removeAttribute(key);
-                } else {
-                  (element as any).setAttribute(key, String(current));
-                }
-              },
-              this.getKey(key),
-            );
-
-          case "checked":
-            this.attachProp(
-              value,
-              (current) => {
-                (element as any).checked = current;
-
-                // Set attribute also or styles don't take effect.
-                if (current) {
-                  element.setAttribute("checked", "");
-                } else {
-                  element.removeAttribute("checked");
-                }
-              },
-              this.getKey(key),
-            );
-            break;
-
-          case "dataset":
-            let applied: Record<string, string> = {};
-            this.attachProp(
-              value,
-              (_next) => {
-                if (isObject(_next)) {
-                  // Convert keys to camelCase and make sure values are strings.
-                  const next: Record<string, string> = {};
-                  for (const _key in _next) {
-                    next[toCamelCase(_key)] = String(_next[_key]);
-                  }
-
-                  for (const key in applied) {
-                    // Key removed.
-                    if (!Object.hasOwn(next, key)) {
-                      delete element.dataset[key];
-                      delete applied[key];
-                    }
-                  }
-
-                  for (const key in next) {
-                    // Value changed (or not set).
-                    if (applied[key] !== next[key]) {
-                      element.dataset[key] = next[key];
-                      applied[key] = next[key];
-                    }
-                  }
-                } else {
-                  for (const key in applied) {
-                    delete element.dataset[key];
-                  }
-                }
-              },
-              this.getKey(key),
-            );
-            break;
-
-          case "autocomplete":
-          case "autocapitalize":
-            this.attachProp(
-              value,
-              (current) => {
-                if (typeof current === "string") {
-                  (element as any)[key] = current;
-                } else if (current) {
-                  (element as any)[key] = "on";
-                } else {
-                  (element as any)[key] = "off";
-                }
-              },
-              this.getKey(key),
-            );
-            break;
-
-          default: {
-            // Fall back to setting as a property.
-            this.attachProp(
-              value,
-              (current) => {
-                (element as any)[key] = current;
-              },
-              this.getKey(key),
-            );
-            break;
+        this.attach(value, (current) => {
+          if (current == null) {
+            element.removeAttribute(key);
+          } else {
+            element.setAttribute(key, String(current));
           }
-        }
+        });
       }
     }
   }
 
-  private applyStyles(element: HTMLElement | SVGElement, styles: unknown, unsubscribers: UnsubscribeFn[]) {
-    const propUnsubscribers: UnsubscribeFn[] = [];
+  private applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
+    const localUnsubs = new Set<UnsubscribeFn>();
 
-    if (isFunction(styles)) {
-      let unapply: () => void;
-
-      const unsubscribe = subscribe(styles, (current) => {
-        if (isFunction(unapply)) {
-          unapply();
-        }
-        element.style.cssText = "";
-
-        unapply = this.applyStyles(element, current, unsubscribers);
+    const apply = (current: unknown) => {
+      localUnsubs.forEach((unsub) => {
+        unsub();
+        this.unsubscribers.delete(unsub);
       });
+      localUnsubs.clear();
+      element.style.cssText = "";
 
-      unsubscribers.push(unsubscribe);
-      propUnsubscribers.push(unsubscribe);
-    } else {
-      const mapped = getStyleMap(styles);
-
-      for (const name in mapped) {
-        const { value, priority } = mapped[name];
-
-        if (isGettable(value)) {
-          const unsubscribe = subscribe(value, (current) => {
-            if (current) {
-              element.style.setProperty(name, String(asPixelsIfNumber(current)), priority);
-            } else {
-              element.style.removeProperty(name);
-            }
+      const mapped = getStyleMap(current);
+      for (const [name, { value, priority }] of Object.entries(mapped)) {
+        if (isTrackable(value)) {
+          const unsub = subscribe(value, (v) => {
+            if (v) element.style.setProperty(name, asPixelsIfNumber(v), priority);
+            else element.style.removeProperty(name);
           });
-
-          unsubscribers.push(unsubscribe);
-          propUnsubscribers.push(unsubscribe);
-        } else if (value != undefined) {
-          element.style.setProperty(name, String(asPixelsIfNumber(value)));
+          this.unsubscribers.add(unsub);
+          localUnsubs.add(unsub);
+        } else if (value != null) {
+          element.style.setProperty(name, asPixelsIfNumber(value), priority);
         }
       }
-    }
-
-    return function unapply() {
-      for (const unsubscribe of propUnsubscribers) {
-        unsubscribe();
-        // unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
-      }
-      propUnsubscribers.length = 0;
     };
+
+    if (isTrackable(styles)) {
+      this.unsubscribers.add(subscribe(styles, apply));
+    } else {
+      apply(styles);
+    }
   }
 
-  private applyClasses(element: HTMLElement | SVGElement, classes: unknown, unsubscribers: UnsubscribeFn[]) {
-    const classUnsubscribers: UnsubscribeFn[] = [];
+  private applyClasses(element: HTMLElement | SVGElement, classes: unknown) {
+    const localUnsubs = new Set<UnsubscribeFn>();
 
-    if (isGettable(classes)) {
-      let unapply: () => void;
-
-      const unsubscribe = subscribe(classes, (current) => {
-        if (isFunction(unapply)) {
-          unapply();
-        }
-        element.removeAttribute("class");
-        unapply = this.applyClasses(element, current, unsubscribers);
+    const apply = (current: unknown) => {
+      // Clean up nested subscriptions if the top-level signal emits a new object
+      localUnsubs.forEach((unsub) => {
+        unsub();
+        this.unsubscribers.delete(unsub);
       });
+      localUnsubs.clear();
+      element.removeAttribute("class");
 
-      unsubscribers.push(unsubscribe);
-      classUnsubscribers.push(unsubscribe);
-    } else {
-      const mapped = getClassMap(classes);
+      const mapped = getClassMap(current);
+      for (const [name, value] of Object.entries(mapped)) {
+        if (name === "undefined") continue;
 
-      for (const name in mapped) {
-        const value = mapped[name];
-
-        if (isGettable(value)) {
-          const unsubscribe = subscribe(value, (current) => {
-            if (current) {
-              element.classList.add(name);
-            } else {
-              element.classList.remove(name);
-            }
-          });
-
-          unsubscribers.push(unsubscribe);
-          classUnsubscribers.push(unsubscribe);
+        if (isTrackable(value)) {
+          const unsub = subscribe(value, (isActive) => element.classList.toggle(name, !!isActive));
+          this.unsubscribers.add(unsub);
+          localUnsubs.add(unsub);
         } else if (value) {
           element.classList.add(name);
         }
       }
-    }
-
-    return function unapply() {
-      for (const unsubscribe of classUnsubscribers) {
-        unsubscribe();
-        // unsubscribers.splice(unsubscribers.indexOf(unsubscribe), 1);
-      }
-      classUnsubscribers.length = 0;
     };
+
+    if (isTrackable(classes)) {
+      this.unsubscribers.add(subscribe(classes, apply));
+    } else {
+      apply(classes);
+    }
   }
 }
 
 /**
  * Parse classes into a single object. Classes can be passed as a string, an object with class keys can boolean values, or an array with a mix of both.
  */
-function getClassMap(classes: unknown) {
-  let mapped: Record<string, boolean> = {};
-
-  if (isString(classes)) {
-    // Support multiple classes in one string like HTML.
-    const names = classes.split(" ");
-    for (const name of names) {
-      mapped[name] = true;
-    }
-  } else if (isObject(classes)) {
-    Object.assign(mapped, classes);
-  } else if (Array.isArray(classes)) {
-    Array.from(classes)
-      .filter(Boolean)
-      .forEach((item) => {
-        Object.assign(mapped, getClassMap(item));
-      });
-  }
-
-  // Delete undefined keys. These are usually the result of a class that is not specified in the stylesheet and would have no effect on appearance.
-  delete mapped["undefined"];
-
-  return mapped;
+function getClassMap(classes: unknown): Record<string, unknown> {
+  if (isString(classes)) return Object.fromEntries(classes.split(" ").map((c) => [c, true]));
+  if (Array.isArray(classes)) return Object.assign({}, ...classes.filter(Boolean).map(getClassMap));
+  if (isObject(classes)) return classes as Record<string, unknown>;
+  return {};
 }
 
 /**
  * Parse styles into a single object.
  */
-function getStyleMap(styles: unknown) {
-  let mapped: Record<string, { value: unknown; priority?: string }> = {};
-
+function getStyleMap(styles: unknown): Record<string, { value: unknown; priority?: string }> {
   if (isString(styles)) {
-    const lines = styles.split(";").filter((line) => line.trim() !== "");
-    for (const line of lines) {
-      const [key, _value] = line.split(":");
-      const entry: { value: unknown; priority?: string } = {
-        value: _value,
-      };
-      if (_value.includes("!important")) {
-        entry.priority = "important";
-        entry.value = _value.replace("!important", "").trim();
-      } else {
-        entry.value = _value.trim();
-      }
-      mapped[camelToKebab(key.trim())] = entry;
-    }
+    return Object.fromEntries(
+      styles
+        .split(";")
+        .filter((s) => s.trim())
+        .map((line) => {
+          const [key, val] = line.split(":");
+          return [
+            camelToKebab(key.trim()),
+            {
+              value: val.replace("!important", "").trim(),
+              priority: val.includes("!important") ? "important" : "",
+            },
+          ];
+        }),
+    );
   }
+  if (Array.isArray(styles)) return Object.assign({}, ...styles.filter(Boolean).map(getStyleMap));
   if (isObject(styles)) {
-    for (const key in styles) {
-      if (key.startsWith("--")) {
-        // Pass through variable names without processing.
-        mapped[key] = { value: styles[key] };
-      } else {
-        mapped[camelToKebab(key)] = { value: styles[key] };
-      }
-    }
-  } else if (Array.isArray(styles)) {
-    Array.from(styles)
-      .filter((item) => item != null)
-      .forEach((item) => {
-        Object.assign(mapped, getStyleMap(item));
-      });
+    return Object.fromEntries(
+      Object.entries(styles).map(([k, v]) => [k.startsWith("--") ? k : camelToKebab(k), { value: v }]),
+    );
   }
-
-  return mapped;
+  return {};
 }
 
 function getLoggerName(this: ElementNode) {
@@ -640,142 +382,3 @@ function asPixelsIfNumber(value: any): string {
     return value;
   }
 }
-
-export type BindingEvent = "input" | "change" | "keydown" | "keyup";
-
-export interface Binding<T> {
-  type: "binding";
-  value: Mutable<T>;
-  event: BindingEvent;
-  get?: (element: HTMLInputElement) => T;
-}
-
-export interface BindFn {
-  <T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  change<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  input<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  keyup<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-  keydown<T>(value: Mutable<T>, get?: (element: HTMLInputElement) => T): Binding<T>;
-}
-
-function _bind<T>(this: BindingEvent, value: Mutable<T>, get?: (element: HTMLInputElement) => T) {
-  return {
-    type: "binding",
-    event: this ?? "input",
-    value,
-    get,
-  };
-}
-
-/**
- * Creates a two-way binding between a Writable and an element's `value` field.
- * Changes to the value will by propagated back to the Writable.
- *
- * If a `get` function is passed, the writable will receive the result of
- * calling that function with the input element. Otherwise the writable receives
- * the `.value` of the element.
- */
-export const bind = new Proxy(_bind, {
-  get(target, prop, receiver) {
-    return target.bind(prop as BindingEvent);
-  },
-}) as BindFn;
-
-function isBinding<T>(value: unknown): value is Binding<T> {
-  return isObject(value) && value.type === "binding";
-}
-
-// A list of all known event names. These will be handled as event listeners.
-const knownEventNames = [
-  // Element
-  "animationcancel",
-  "animationend",
-  "animationiteration",
-  "animationstart",
-  "auxclick",
-  "beforeinput",
-  "beforematch",
-  "beforexrselect",
-  "blur",
-  "click",
-  "compositionend",
-  "compositionstart",
-  "compositionupdate",
-  "contentvisibilityautostatechange",
-  "contextmenu",
-  "copy",
-  "cut",
-  "dblclick",
-  "focus",
-  "focusin",
-  "focusout",
-  "fullscreenchange",
-  "fullscreenerror",
-  "gotpointercapture",
-  "input",
-  "keydown",
-  "keyup",
-  "lostpointercapture",
-  "mousedown",
-  "mouseenter",
-  "mouseleave",
-  "mousemove",
-  "mouseout",
-  "mouseover",
-  "mouseup",
-  "paste",
-  "pointercancel",
-  "pointerdown",
-  "pointerenter",
-  "pointerleave",
-  "pointermove",
-  "pointerout",
-  "pointerover",
-  "pointerrawupdate",
-  "pointerup",
-  "scroll",
-  "scrollend",
-  "scrollsnapchange",
-  "scrollsnapchanging",
-  "securitypolicyviolation",
-  "touchcancel",
-  "touchend",
-  "touchmove",
-  "touchstart",
-  "transitioncancel",
-  "transitionend",
-  "transitionrun",
-  "transitionstart",
-  "webkitmouseforcechanged",
-  "webkitmouseforcedown",
-  "webkitmouseforceup",
-  "webkimouseforcewillbegin",
-  "wheel",
-
-  // HTMLElement
-  "beforetoggle",
-  "change",
-  "command",
-  "drag",
-  "dragend",
-  "dragenter",
-  "dragleave",
-  "dragover",
-  "dragstart",
-  "drop",
-  "error",
-  "load",
-  "toggle",
-
-  // HTMLInputElement
-  "cancel",
-  "invalid",
-  "search",
-  "select",
-  "selectionchange",
-
-  // HTMLFormElement
-  "formdata",
-  "reset",
-  "submit",
-];

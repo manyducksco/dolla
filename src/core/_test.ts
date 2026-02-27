@@ -114,32 +114,3 @@ export function element<Attrs extends Record<string, ElementAttribute<unknown>>>
 
 //   $adopted(() => {});
 // }
-
-element("my-counter", {
-  attributes: {
-    count: {
-      // TODO: Actually parse attrs when they change with this function before setting them.
-      type: Number,
-      default: 0,
-    },
-  },
-  view({ count }) {
-    // Do view things
-    // and access web component instance at `this`
-
-    // Attributes are read-only?
-    count.get();
-
-    //   $connected(() => {});
-
-    //   $connectedMove(() => {});
-
-    //   $disconnected(() => {});
-
-    //   $adopted(() => {});
-
-    // This function runs in the constructor, and the hooks run in their corresponding lifecycle callbacks.
-
-    return html`<div>Whatever</div>`;
-  },
-});

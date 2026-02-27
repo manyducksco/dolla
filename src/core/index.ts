@@ -36,9 +36,9 @@ export { each, when } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 
 // Built-in Views
-export { For, type ForProps } from "./views/for.js";
+// export { For, type ForProps } from "./views/for.js";
 export { Portal, type PortalProps } from "./views/portal.js";
-export { Show, type ShowProps } from "./views/show.js";
+// export { Show, type ShowProps } from "./views/show.js";
 export { Boundary, type BoundaryProps } from "./views/boundary.js";
 export { Fragment, type FragmentProps } from "./views/fragment.js";
 
