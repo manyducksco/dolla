@@ -1,15 +1,14 @@
 import { isFunction, isNumber, isObject, isString } from "../../../typeChecking.js";
-import { omit, toArray } from "../../../utils.js";
-import { Context } from "../../context/context.js";
-import { performInContext } from "../../context/current.js";
-import { isTrackable, subscribe, type Gettable, type UnsubscribeFn } from "../../reactive.js";
-import { Ref } from "../../ref.js";
+import { omit } from "../../../utils.js";
+import { Context } from "../../context.js";
+import { isTrackable, subscribe, type MaybeTrackable, type UnsubscribeFn } from "../../reactive.js";
 import { DEBUG } from "../../symbols.js";
-import { toMarkupNodes } from "../index.js";
-import { MarkupNode } from "../markup.js";
+import { scheduleUpdate } from "../scheduler.js";
+import { MarkupNode } from "../types.js";
+import { toMarkupNodes } from "../utils.js";
 import { VIEW, ViewNode } from "./view.js";
 
-const IS_SVG = Symbol("HTML.isSVG");
+const IS_SVG = Symbol("isSVG");
 
 // Properties in this list will not be processed by applyProps because they are already handled elsewhere.
 const ignoredProps = ["class", "className", "ref", "mixin", "children"];
@@ -24,46 +23,42 @@ export class ElementNode extends MarkupNode {
   readonly props: Record<string, any>;
 
   private context: Context;
+  private ownContext = false;
   private childNodes: MarkupNode[] = [];
   private unsubscribers = new Set<UnsubscribeFn>();
-
-  // Track the ref so we can nullify it on unmount.
-  private ref?: Ref<any>;
 
   constructor(context: Context, tag: string, props: Record<string, any>) {
     super();
 
     this.tag = tag;
     this.props = props;
-    this.context = context.createChild(getLoggerName.bind(this));
+    this.context = context;
 
-    // This and all nested views will be created as SVG elements.
-    if (tag.toLowerCase() === "svg") {
-      this.context.setState(IS_SVG, true);
+    if (tag === "svg") {
+      // This and all nested views will be created as SVG elements.
+      this.context = context.createChild(getContextName.bind(this));
+      this.context.state[IS_SVG] = true;
+      this.ownContext = true;
+    } else if (this.context.state[IS_SVG] && tag === "foreignObject") {
+      // No longer in SVG.
+      this.context = context.createChild(getContextName.bind(this));
+      this.context.state[IS_SVG] = false;
+      this.ownContext = false;
     }
 
     // Create node with the appropriate constructor.
-    if (this.context.getState(IS_SVG)) {
+    if (this.context.state[IS_SVG]) {
       this.root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
       this.root = document.createElement(tag);
     }
 
     // Add view name as a data attribute debug mode.
-    if (this.context.getState(DEBUG)) {
-      const view = this.context.getState<ViewNode<any>>(VIEW);
+    if (this.context.state[DEBUG]) {
+      const view = this.context.state[VIEW] as ViewNode<any>;
       if (view) {
         this.root.dataset.parentView = view.context.getName() + "#" + view.context.id;
         this.root.dataset.contextId = this.context.id;
-      }
-    }
-
-    if (props.ref) {
-      if (isFunction(props.ref)) {
-        this.ref = props.ref;
-        this.ref(this.root);
-      } else {
-        throw new Error("Expected ref to be a function. Got: " + props.ref);
       }
     }
   }
@@ -73,7 +68,7 @@ export class ElementNode extends MarkupNode {
   }
 
   override isMounted() {
-    return this.context.isMounted();
+    return this.root.parentNode != null;
   }
 
   override mount(parent: Node, after?: Node) {
@@ -82,17 +77,17 @@ export class ElementNode extends MarkupNode {
     if (!wasMounted) {
       const { props } = this;
 
-      if (props.mixin) {
-        for (const mixin of toArray(props.mixin)) {
-          const context = this.context.createChild(getLoggerName.bind(this), {
-            bindLifecycleToParent: true,
-            logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name },
-          });
-          performInContext(context, () => mixin(this.root));
-        }
-      }
+      // if (props.mixin) {
+      //   for (const mixin of toArray(props.mixin)) {
+      //     const context = this.context.createChild(getContextName.bind(this), {
+      //       bindLifecycle: true,
+      //     });
+      //     // TODO: Set something on context so the mixin knows it's a mixin:
 
-      this.context.emit("willMount");
+      //     // logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name }
+      //     runWithContext(context, () => mixin(this.root));
+      //   }
+      // }
 
       const classes = props.className ?? props.class;
       this.applyProps(this.root, props);
@@ -112,12 +107,16 @@ export class ElementNode extends MarkupNode {
       parent.insertBefore(this.root, targetSibling);
     }
 
-    if (!wasMounted) this.context.emit("didMount");
+    if (!wasMounted) {
+      if (this.props.ref && typeof this.props.ref === "function") {
+        this.props.ref(this.root);
+      }
+
+      if (this.ownContext) this.context.mount();
+    }
   }
 
   override unmount(skipDOM = false) {
-    this.context.emit("willUnmount");
-
     if (!skipDOM && this.root.parentNode) {
       this.root.parentNode.removeChild(this.root);
     }
@@ -130,13 +129,11 @@ export class ElementNode extends MarkupNode {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.unsubscribers.clear();
 
-    this.context.emit("didUnmount");
-    this.context.emit("dispose");
+    if (this.ownContext) this.context.unmount();
 
     // Clear ref
-    if (this.ref) {
-      this.ref(undefined);
-      this.ref = undefined;
+    if (this.props.ref) {
+      this.props.ref(null);
     }
 
     // Release memory
@@ -156,15 +153,11 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attach<T>(value: Gettable<T>, callback: (value: T) => void) {
+  private attach<T>(value: MaybeTrackable<T>, callback: (value: T) => void) {
     if (isTrackable<T>(value)) {
       this.unsubscribers.add(
         subscribe(value, (current) => {
-          try {
-            callback(current);
-          } catch (error) {
-            this.context.throwError(error);
-          }
+          scheduleUpdate(() => callback(current));
         }),
       );
     } else {
@@ -214,7 +207,7 @@ export class ElementNode extends MarkupNode {
         this.unsubscribers.add(() => {
           element.removeEventListener(eventName, value);
         });
-      } else if (key in element && !this.context.getState(IS_SVG)) {
+      } else if (key in element && !this.context.state[IS_SVG]) {
         // Set as property if the element has one.
 
         if (typeof element[key] === "boolean") {
@@ -353,7 +346,7 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
   return {};
 }
 
-function getLoggerName(this: ElementNode) {
+function getContextName(this: ElementNode) {
   const root = this.getRoot();
   if (root == null) return this.tag;
   let name = this.getRoot().tagName.toLowerCase();

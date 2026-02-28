@@ -1,17 +1,17 @@
-import { Markup } from "./core/markup";
+import { createMarkup } from "./core/markup/utils.js";
 
-export { Fragment } from "./core/views/fragment";
+export { Fragment } from "./core/views/fragment.js";
 
 /**
  * JSX function for elements with dynamic children.
  */
 export function jsx(element, props, key) {
-  return new Markup(element, key != null ? { ...props, key } : props);
+  return createMarkup(element, key != null ? { ...props, key } : props);
 }
 
 /**
  * JSX function for elements with static children.
  */
 export function jsxs(element, props, key) {
-  return new Markup(element, key != null ? { ...props, key } : props);
+  return createMarkup(element, key != null ? { ...props, key } : props);
 }

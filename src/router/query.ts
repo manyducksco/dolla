@@ -1,4 +1,5 @@
-import { computed, shallowEqual, type Mutable, type Reactive } from "../core";
+import { computed, type Mutable, type Reactive } from "../core";
+import { shallowEqual } from "../utils";
 import { RouterOptions } from "./types";
 import { RouteMatch } from "./utils";
 

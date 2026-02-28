@@ -1,7 +1,8 @@
 import { $$context, $debug, $provide, $setup } from "../core/hooks.js";
-import { Markup, NodeType, type MarkupNode } from "../core/markup/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
+import type { MarkupNode } from "../core/markup/types.js";
+import { createMarkup } from "../core/markup/utils.js";
 import { batch, state } from "../core/reactive.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
 import { isArray, isFunction, isObject, isString } from "../typeChecking.js";
@@ -108,8 +109,7 @@ export function createRouter(options: RouterOptions): View {
       }
 
       if (!route.match) {
-        context.throwError(new NoRouteError(`Failed to match route '${url.pathname}'`));
-        return;
+        throw new NoRouteError(`Failed to match route '${url.pathname}'`);
       }
 
       // Merge query params.
@@ -165,7 +165,7 @@ export function createRouter(options: RouterOptions): View {
             // Create a slot and element for this layer.
             const slot = state<MarkupNode>();
             const node = new ViewNode(parentLayer.context, currentLayer.view, {
-              children: new Markup(NodeType.Dynamic, { slot: slot }),
+              children: createMarkup("$dynamic", { slot: slot }),
             });
 
             // Discard all previously active layers starting at this depth.
@@ -210,7 +210,7 @@ export function createRouter(options: RouterOptions): View {
 
     // Intercept clicks on `<a>` tags within the app.
     $setup(() => {
-      const parentElement = context.getState<Element>(PARENT_ELEMENT)!;
+      const parentElement = context.state[PARENT_ELEMENT] as Element;
       return catchLinks(parentElement, (path) => {
         api.push(path);
       });

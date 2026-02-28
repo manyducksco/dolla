@@ -1,10 +1,9 @@
 import type { Renderable } from "../../../types.js";
-import { deepEqual, moveBefore } from "../../../utils.js";
-import type { Context } from "../../context/context.js";
-import { $name } from "../../hooks.js";
+import type { Context } from "../../context.js";
 import { batch, reader, state, subscribe, type Mutable, type Reactive, type UnsubscribeFn } from "../../reactive.js";
-import { MarkupNode } from "../markup.js";
-import { ViewNode } from "./view.js";
+import { MarkupNode } from "../types.js";
+import { toMarkupNodes } from "../utils.js";
+import { DynamicNode } from "./dynamic.js";
 
 // ----- Types ----- //
 
@@ -90,99 +89,69 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   private _update(value: T[]) {
-    if (value.length === 0 || !this.isMounted()) {
+    if (!this.isMounted()) return;
+
+    if (value.length === 0) {
       return this._cleanup(false);
     }
 
-    type UpdateItem = { key: Key; value: T; index: number };
+    const nextItems = new Map<Key, ConnectedItem<T>>();
 
-    const potentialItems = new Map<Key, UpdateItem>();
-    let index = 0;
-
-    for (const item of value) {
-      const key = this.key(item, index);
-      potentialItems.set(key, {
-        key,
-        value: item,
-        index: index++,
-      });
-    }
-
-    const newItems: ConnectedItem<T>[] = [];
-
-    // Remove views for items that no longer exist in the new list.
-    for (const connected of this.connectedItems.values()) {
-      if (!potentialItems.has(connected.key) && connected.node.isMounted()) {
-        connected.node.unmount(false);
-      }
-    }
-
-    // Do all connected item changes in a single batch.
     batch(() => {
-      // Add new views and update state for existing ones.
-      for (const potential of potentialItems.values()) {
-        const connected = this.connectedItems.get(potential.key);
+      // Track keys for the incoming list
+      const nextKeys = new Set(value.map((item, index) => this.key(item, index)));
 
-        if (connected && connected.node.isMounted()) {
-          connected.item.set(potential.value);
-          connected.index.set(potential.index);
-
-          newItems[potential.index] = connected;
-        } else {
-          // deepEqual avoids running update code again if the data is equivalent. In list updates this happens a lot.
-          const item = state(potential.value, { equals: deepEqual });
-          const index = state(potential.index);
-
-          newItems[potential.index] = {
-            key: potential.key,
-            item,
-            index,
-            node: new ViewNode(this.context, RepeatItemView, {
-              item: reader(item),
-              index: reader(index),
-              render: this.render,
-            }),
-          };
+      // Unmount deleted items immediately.
+      // This collapses the DOM tree so surviving items sit adjacent to each other.
+      for (const [key, connected] of this.connectedItems.entries()) {
+        if (!nextKeys.has(key)) {
+          connected.node.unmount(false);
         }
+      }
+
+      // Prepare state and allocate new nodes.
+      for (let i = 0; i < value.length; i++) {
+        const itemVal = value[i];
+        const key = this.key(itemVal, i);
+        let connected = this.connectedItems.get(key);
+
+        if (connected && nextKeys.has(key)) {
+          connected.item.set(itemVal);
+          connected.index.set(i);
+        } else {
+          const item = state(itemVal);
+          const index = state(i);
+
+          const rendered = this.render(reader(item), reader(index));
+
+          const nodes = toMarkupNodes(this.context, [rendered]);
+          const node = nodes.length === 1 ? nodes[0] : new DynamicNode(this.context, reader(nodes));
+
+          connected = { key, item, index, node };
+        }
+        nextItems.set(key, connected);
       }
     });
 
-    // Reconnect to ensure order. Lifecycle hooks won't be run again if the view is already connected.
-    // TODO: Use a smarter inline reordering method. This causes scrollbars to jump.
-    for (let i = 0; i < newItems.length; i++) {
-      const item = newItems[i];
-      const previous = newItems[i - 1]?.node.getRoot() ?? this.root;
+    this.connectedItems = nextItems;
 
-      const connected = this.connectedItems.get(item.key);
-      if (connected && connected.node.isMounted()) {
-        item.node.move(this.root.parentElement!, previous);
-      } else {
-        item.node.mount(this.root.parentElement!, previous);
+    // Forward pass to insert or move nodes.
+    const parent = this.root.parentElement!;
+    let referenceNode: Node = this.root;
+
+    for (const connected of this.connectedItems.values()) {
+      const expectedNext = referenceNode.nextSibling;
+
+      if (!connected.node.isMounted()) {
+        // Node is new. Mount it exactly at the current cursor.
+        connected.node.mount(parent, referenceNode);
+      } else if (connected.node.getRoot() !== expectedNext) {
+        // Node is out of order. Move it.
+        connected.node.move(parent, referenceNode);
       }
-    }
 
-    // Update connectedItems map.
-    this.connectedItems.clear();
-    for (const item of newItems) {
-      this.connectedItems.set(item.key, item);
-    }
-
-    // Move marker node to end.
-    const lastItem = newItems.at(-1)?.node.getRoot() ?? this.root;
-
-    if (this.root.parentNode) {
-      moveBefore(this.root.parentNode, this.root!, lastItem.nextSibling);
+      // Advance the cursor.
+      referenceNode = connected.node.getRoot()!;
     }
   }
-}
-
-interface ListItemProps<T> {
-  item: Reactive<T>;
-  index: Reactive<number>;
-  render: (item: Reactive<T>, index: Reactive<number>) => Renderable;
-}
-const contextName = "dolla.RepeatItemView";
-function RepeatItemView<T>(props: ListItemProps<T>) {
-  $name(contextName);
-  return props.render(props.item, props.index);
 }

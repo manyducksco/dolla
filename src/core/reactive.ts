@@ -1,6 +1,6 @@
 import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
-import { isFunction, isObject, typeOf } from "../typeChecking";
+import { isFunction } from "../typeChecking";
 import { strictEqual } from "../utils";
 
 const enum EffectFlags {
@@ -14,15 +14,11 @@ interface Effect extends ReactiveNode {
   cleanup?: () => void;
 }
 
-interface ComputedGetterState<T> {
-  value?: T;
-}
-
 interface ComputedNode<T = any> extends ReactiveNode {
   value: T | undefined;
   equals: EqualityFn<T>;
 
-  getter: (this: ComputedGetterState<T>) => T;
+  getter: (previous?: T) => T;
 
   // Temp value set when a computed signal has a value passed to it.
   // This value is held until the real value recomputes.
@@ -66,7 +62,6 @@ let batchDepth = 0;
 let notifyIndex = 0;
 let queuedEffectsLength = 0;
 let activeSub: ReactiveNode | undefined;
-let trackedCount = 0;
 
 function setCurrentSub(sub: ReactiveNode | undefined) {
   const prevSub = activeSub;
@@ -76,20 +71,13 @@ function setCurrentSub(sub: ReactiveNode | undefined) {
 
 function updateComputed(c: ComputedNode): boolean {
   const prevSub = setCurrentSub(c);
-  trackedCount = 0;
   startTracking(c);
   try {
     const oldValue = c.value;
-    const state: ComputedGetterState<any> = { value: c.value };
-    // return oldValue !== (c.value = c.getter.call(state));
-    return !c.equals(oldValue, (c.value = c.getter.call(state)));
+    return !c.equals(oldValue, (c.value = c.getter(oldValue)));
   } finally {
     setCurrentSub(prevSub);
     endTracking(c);
-
-    if (trackedCount === 0) {
-      // TODO: Warn that computed is not tracking anything.
-    }
   }
 }
 
@@ -117,7 +105,6 @@ function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
     (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(e.deps!, e))
   ) {
     const prev = setCurrentSub(e);
-    trackedCount = 0;
     startTracking(e);
     try {
       if ("cleanup" in e && e.cleanup !== undefined) {
@@ -130,10 +117,6 @@ function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
     } finally {
       setCurrentSub(prev);
       endTracking(e);
-
-      if (trackedCount === 0) {
-        // TODO: Warn that effect is not tracking anything.
-      }
     }
     return;
   } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
@@ -180,12 +163,6 @@ function _effect(this: Effect | EffectScope): void {
 ||                API                ||
 \*===================================*/
 
-export function isGettable<T>(value: any): value is Gettable<T> {
-  return isFunction(value) || isReactive(value);
-}
-
-/* -------------- TYPES --------------- */
-
 /**
  * A function that returns the current value of a signal.
  * Automatically tracked as a dependency when called within a tracking scope (such as `memo` or `effect` functions).
@@ -203,7 +180,7 @@ export type MaybeGetter<T> = Getter<T> | T;
 /**
  * Any type of value that can be unwrapped by the `get` function.
  */
-export type Gettable<T> = Reactive<T> | Getter<T> | T;
+export type MaybeTrackable<T> = Trackable<T> | T;
 
 export type Trackable<T> = Reactive<T> | Getter<T>;
 
@@ -251,51 +228,55 @@ export interface Mutable<T> extends Reactive<T> {
   update(callback: (current: T) => T): T;
 }
 
-class State<T> implements Mutable<T> {
-  #node: ValueNode<T>;
+const IS_REACTIVE = Symbol.for("Dolla.Reactive");
+const IS_MUTABLE = Symbol.for("Dolla.Mutable");
+
+class State<T> implements Mutable<T>, ValueNode<T> {
+  get [IS_REACTIVE]() {
+    return true;
+  }
+  get [IS_MUTABLE]() {
+    return true;
+  }
+
+  previousValue: T;
+  value: T;
+  equals: EqualityFn<T>;
+  subs: any = undefined;
+  subsTail: any = undefined;
+  flags: ReactiveFlags = 1 satisfies ReactiveFlags.Mutable;
 
   constructor(initialValue: T, options?: SignalOptions<T>) {
-    this.#node = {
-      previousValue: initialValue as T,
-      value: initialValue as T,
-      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-      subs: undefined,
-      subsTail: undefined,
-      flags: 1 satisfies ReactiveFlags.Mutable,
-    };
+    this.previousValue = initialValue;
+    this.value = initialValue;
+    this.equals = (options?.equals as EqualityFn<unknown>) ?? strictEqual;
   }
 
   get(): T {
-    const node = this.#node;
-    const value = node.value;
-    if (node.flags & (16 satisfies ReactiveFlags.Dirty)) {
-      if (updateSignal(node, value)) {
-        const subs = node.subs;
-        if (subs !== undefined) {
-          shallowPropagate(subs);
+    if (this.flags & (16 satisfies ReactiveFlags.Dirty)) {
+      if (updateSignal(this, this.value)) {
+        if (this.subs !== undefined) {
+          shallowPropagate(this.subs);
         }
       }
     }
-    return value;
+    return this.value;
   }
 
   track(): T {
-    trackedCount++;
     const value = this.get();
     if (activeSub !== undefined) {
-      link(this.#node, activeSub);
+      link(this, activeSub);
     }
     return value;
   }
 
   set(value: T): T {
-    const node = this.#node;
-    if (!node.equals(node.value, value)) {
-      node.value = value;
-      node.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-      const subs = node.subs;
-      if (subs !== undefined) {
-        propagate(subs);
+    if (!this.equals(this.value, value)) {
+      this.value = value;
+      this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+      if (this.subs !== undefined) {
+        propagate(this.subs);
         if (!batchDepth) {
           flush();
         }
@@ -305,93 +286,62 @@ class State<T> implements Mutable<T> {
   }
 
   update(fn: (current: T) => T): T {
-    return this.set(fn(this.#node.value));
+    return this.set(fn(this.value));
   }
 }
 
-export class Computed<T> implements Reactive<T> {
-  #node: ComputedNode<T>;
+export class Computed<T> implements Reactive<T>, ComputedNode<T> {
+  get [IS_REACTIVE]() {
+    return true;
+  }
+
+  value: T | undefined = undefined;
+  holdValue: T | undefined = undefined;
+  subs: any = undefined;
+  subsTail: any = undefined;
+  deps: any = undefined;
+  depsTail: any = undefined;
+  flags: ReactiveFlags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+  equals: EqualityFn<T>;
+
+  getter: (previous?: T) => T;
 
   constructor(callback: (previous?: T) => T, options?: SignalOptions<T>) {
-    this.#node = {
-      value: undefined,
-      holdValue: undefined,
-      subs: undefined,
-      subsTail: undefined,
-      deps: undefined,
-      depsTail: undefined,
-      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
-      getter: function (this: ComputedGetterState<any>) {
-        return track(callback(this.value));
-      },
-      equals: (options?.equals as EqualityFn<unknown>) ?? strictEqual,
-    };
+    this.equals = (options?.equals as EqualityFn<unknown>) ?? strictEqual;
+    this.getter = (previous?: T) => track(callback(previous));
   }
 
   get(): T {
-    const node = this.#node;
-    const flags = node.flags;
+    const flags = this.flags;
     if (
       flags & (16 satisfies ReactiveFlags.Dirty) ||
-      (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(node.deps!, node))
+      (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(this.deps, this))
     ) {
-      if (updateComputed(node)) {
-        const subs = node.subs;
-        if (subs !== undefined) {
-          shallowPropagate(subs);
+      if (updateComputed(this)) {
+        if (this.subs !== undefined) {
+          shallowPropagate(this.subs);
         }
       }
     } else if (flags & (32 satisfies ReactiveFlags.Pending)) {
-      node.flags = flags & ~(32 satisfies ReactiveFlags.Pending);
+      this.flags = flags & ~(32 satisfies ReactiveFlags.Pending);
     }
-    return node.value!;
+    return this.value!;
   }
 
   track(): T {
-    trackedCount++;
     const value = this.get();
     if (activeSub !== undefined) {
-      link(this.#node, activeSub);
+      link(this, activeSub);
     }
     return value;
   }
 }
 
-// Read-only interface for a possibly-mutable value.
-class ReactiveReader<T> implements Reactive<T> {
-  #source: Reactive<T>;
-
-  constructor(source: Reactive<T>) {
-    this.#source = source;
-  }
-
-  get(): T {
-    return this.#source.get();
-  }
-
-  track(): T {
-    return this.#source.track();
-  }
-}
-
-class GetterReader<T> implements Reactive<T> {
-  #getter: Getter<T>;
-
-  constructor(getter: Getter<T>) {
-    this.#getter = getter;
-  }
-
-  get(): T {
-    return get(this.#getter);
-  }
-
-  track(): T {
-    // Getter may contain trackable signals.
-    return this.#getter();
-  }
-}
-
 class StaticReader<T> implements Reactive<T> {
+  get [IS_REACTIVE]() {
+    return true;
+  }
+
   #value: T;
 
   constructor(value: T) {
@@ -408,6 +358,18 @@ class StaticReader<T> implements Reactive<T> {
   }
 }
 
+export function isReactive<T>(value: any): value is Reactive<T> {
+  return value != null && value[IS_REACTIVE] === true;
+}
+
+export function isMutable<T>(value: any): value is Mutable<T> {
+  return value != null && value[IS_MUTABLE] === true;
+}
+
+export function isTrackable<T>(value: any): value is Trackable<T> {
+  return value != null && (value[IS_REACTIVE] === true || typeof value === "function");
+}
+
 export function state<T>(value: T, options?: SignalOptions<T>): Mutable<T>;
 export function state<T>(value: undefined, options: SignalOptions<T>): Mutable<T>;
 export function state<T>(): Mutable<T | undefined>;
@@ -419,34 +381,14 @@ export function computed<T>(callback: () => T, options?: SignalOptions<T>): Reac
   return new Computed(callback, options);
 }
 
-export function isReactive<T>(value: any): value is Reactive<T> {
-  return isObject<Reactive<T>>(value) && isFunction(value.get) && isFunction(value.track);
-}
-
-export function isMutable<T>(value: any): value is Mutable<T> {
-  return (
-    isObject<Mutable<T>>(value) &&
-    isFunction(value.get) &&
-    isFunction(value.track) &&
-    isFunction(value.set) &&
-    isFunction(value.update)
-  );
-}
-
-export function isTrackable<T>(value: any): value is Trackable<T> {
-  return isFunction<Getter<T>>(value) || isReactive<T>(value);
-}
-
 /**
- * Converts any kind of reactive (including mutable), a getter function or a plain value into a read-only Reactive.
+ * Converts any kind of reactive (including mutable), a getter function or a plain value into a readable Reactive.
  */
 export function reader<T>(value: Reactive<T> | Getter<T> | T): Reactive<T> {
-  if (isMutable<T>(value)) {
-    return new ReactiveReader(value);
-  } else if (isReactive<T>(value)) {
+  if (isReactive<T>(value)) {
     return value;
   } else if (isFunction<Getter<T>>(value)) {
-    return new GetterReader(value);
+    return new Computed(() => value());
   } else {
     return new StaticReader(value);
   }
@@ -465,7 +407,7 @@ export function get<T>(value: Reactive<T> | Getter<T> | T): T {
   if (isReactive(value)) {
     return value.get();
   } else if (isFunction(value)) {
-    return untracked(() => value());
+    return _untracked(() => value());
   } else {
     return value;
   }
@@ -481,7 +423,7 @@ export function track<T>(value: Reactive<T> | Getter<T> | T): T {
   }
 }
 
-function untracked<T>(callback: () => T): T {
+function _untracked<T>(callback: () => T): T {
   const pausedSub = setCurrentSub(undefined);
   try {
     return callback();
@@ -493,77 +435,15 @@ function untracked<T>(callback: () => T): T {
 export function transform<T, O>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => O): Reactive<O> {
   return computed(() => {
     const value = track(target);
-    return untracked(() => callback(value));
+    return _untracked(() => callback(value));
   });
 }
 
 export function subscribe<T>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => void) {
   return watch(() => {
     const value = track(target);
-    untracked(() => callback(value));
+    _untracked(() => callback(value));
   });
-}
-
-export interface NextValueOptions<T> {
-  /**
-   * Called each time a new value is received.
-   * If `filter` returns false, we keep waiting. If `filter` returns true, that value is resolved.
-   */
-  filter?: (value: T) => boolean;
-
-  /**
-   * An optional AbortSignal that can be used to cancel waiting.
-   * When aborted, the promise will reject with an AbortError which you can catch and handle.
-   */
-  signal?: AbortSignal; // AbortSignal to cancel waiting
-}
-
-/**
- * Waits for the next value of `target`. Returns a promise that resolves to the new value.
- */
-export function nextValue<T>(target: Trackable<T>, options?: NextValueOptions<T>): Promise<T> {
-  if (!isGettable<T>(target)) {
-    throw new Error(`Target must be a Getter function or Readable. Got: ${typeOf(target)}`);
-  }
-
-  return new Promise((resolve, reject) => {
-    let initial = true;
-    const unsubscribe = watch(() => {
-      const value = track(target);
-
-      // Skip the immediate invocation; waiting for next.
-      if (initial) {
-        initial = false;
-        return;
-      }
-
-      // If filter exists and returns false, we continue waiting.
-      if (options?.filter && !options.filter(value)) {
-        return;
-      }
-
-      unsubscribe();
-      resolve(value);
-    });
-
-    if (options?.signal) {
-      const onAbort = () => {
-        unsubscribe();
-        reject(new AbortError(options.signal?.reason));
-        options.signal?.removeEventListener("abort", onAbort);
-      };
-      options.signal.addEventListener("abort", onAbort);
-    }
-  });
-}
-
-export class AbortError extends Error {
-  reason: any;
-
-  constructor(reason?: any) {
-    super("Aborted by AbortSignal");
-    this.reason = reason;
-  }
 }
 
 /**

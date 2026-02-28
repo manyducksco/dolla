@@ -23,7 +23,7 @@ export function $measure(): Reactive<Dimensions> {
   });
 
   const context = $$context();
-  const view = context.getState<ViewNode<unknown>>(VIEW);
+  const view = context.state[VIEW] as ViewNode<unknown>;
   if (view == null) {
     throw new Error("$measure must be called inside a view.");
   }

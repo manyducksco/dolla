@@ -1,9 +1,10 @@
 import { isFunction } from "../typeChecking.js";
 import { Renderable, View } from "../types.js";
 import { getElement } from "../utils.js";
-import { Context } from "./context/context.js";
-import { LogLevel } from "./context/logger.js";
-import { MarkupNode, render } from "./markup/index.js";
+import { Context } from "./context.js";
+import { LogLevel } from "./logger.js";
+import { MarkupNode } from "./markup/types.js";
+import { render } from "./markup/utils.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
 export type CleanupCallback = () => void | Promise<void>;
@@ -67,8 +68,8 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   const plugins = new Set<DollaPlugin>();
   const cleanup: CleanupCallback[] = [];
 
-  context.setState(PARENT_ELEMENT, element);
-  context.setState(DEBUG, Boolean(options?.debug));
+  context.state[PARENT_ELEMENT] = element;
+  context.state[DEBUG] = Boolean(options?.debug);
 
   let rootNode: MarkupNode | null = null;
 
@@ -80,7 +81,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   }
 
   async function mount(content: Renderable) {
-    if (context.isMounted()) return;
+    if (context.isMounted) return;
 
     const results = await Promise.all([...plugins].map((fn) => fn(context)));
     for (const result of results) {
@@ -89,19 +90,19 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
       }
     }
 
-    context.emit("willMount");
     rootNode = render(content, context);
     rootNode.mount(element);
-    context.emit("didMount");
+
+    context.mount();
   }
 
   async function unmount() {
-    if (!context.isMounted()) return;
+    if (!context.isMounted) return;
 
-    context.emit("willUnmount");
     rootNode?.unmount(false);
     rootNode = null;
-    context.emit("didUnmount");
+
+    context.unmount();
 
     await Promise.all(cleanup.map((callback) => callback()));
     cleanup.length = 0;

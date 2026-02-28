@@ -1,19 +1,18 @@
-import { moveBefore, toArray } from "../../../utils.js";
-import type { Context } from "../../context/context.js";
-import { toMarkupNodes } from "../index.js";
+import type { Context } from "../../context.js";
 import { subscribe, type Reactive, type UnsubscribeFn } from "../../reactive.js";
-import { MarkupNode } from "../markup.js";
+import { MarkupNode } from "../types.js";
+import { toMarkupNodes } from "../utils.js";
+import { DOMNode } from "./dom.js";
 
 /**
  * Renders any kind of content; markup, signals, DOM nodes, etc.
  * If it can be rendered by Dolla then Dynamic will do it.
  */
+
 export class DynamicNode extends MarkupNode {
   private root = document.createTextNode("");
-
   private children: MarkupNode[] = [];
   private context: Context;
-
   private slot: Reactive<any>;
   private unsubscribe?: UnsubscribeFn;
 
@@ -36,11 +35,8 @@ export class DynamicNode extends MarkupNode {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = subscribe(this.slot, (content) => {
-        try {
-          this.update(toArray(content));
-        } catch (error) {
-          this.context.throwError(error);
-        }
+        // Assuming global batcher catches errors now
+        this.update(content);
       });
     }
   }
@@ -49,51 +45,81 @@ export class DynamicNode extends MarkupNode {
     this.unsubscribe?.();
 
     if (this.isMounted()) {
-      moveBefore(this.root.parentElement!, this.root, this.children[0]?.getRoot() ?? null);
-      this.root.parentNode?.removeChild(this.root);
+      if (!skipDOM) {
+        this.root.parentNode?.removeChild(this.root);
+      }
       this.cleanup(skipDOM);
     }
   }
 
   override move(parent: Element, after?: Node) {
+    let referenceNode: Node | null = after?.nextSibling ?? null;
+
     if ("moveBefore" in parent) {
       try {
-        (parent as any).moveBefore(this.root, after?.nextSibling ?? null);
+        (parent as any).moveBefore(this.root, referenceNode);
+        referenceNode = this.root.nextSibling;
+
         for (let i = 0; i < this.children.length; i++) {
-          this.children[i].move(parent, this.children[i - 1]?.getRoot() ?? this.root);
+          const childRoot = this.children[i].getRoot();
+          if (childRoot) {
+            (parent as any).moveBefore(childRoot, referenceNode);
+          }
         }
-        (parent as any).moveBefore(this.root, this.children.at(-1)?.getRoot()?.nextSibling ?? null);
+        return;
       } catch {
-        parent.insertBefore(this.root, after?.nextSibling ?? null);
+        // Fallthrough to standard insertBefore
       }
-    } else {
-      parent.insertBefore(this.root, after?.nextSibling ?? null);
+    }
+
+    // Standard DOM fallback (moves root AND children)
+    parent.insertBefore(this.root, referenceNode);
+    referenceNode = this.root.nextSibling;
+
+    for (let i = 0; i < this.children.length; i++) {
+      this.children[i].move(parent, this.children[i - 1]?.getRoot() ?? this.root);
     }
   }
 
   private cleanup(skipDOM: boolean) {
-    for (const element of this.children) {
-      if (element.isMounted()) element.unmount(skipDOM);
+    for (let i = 0; i < this.children.length; i++) {
+      this.children[i].unmount(skipDOM);
     }
     this.children.length = 0;
   }
 
-  private update(content: any[]) {
+  private update(content: any) {
+    if (!this.isMounted()) return;
+
+    // Fast-path for primitive text updates
+    const isPrimitive = typeof content === "string" || typeof content === "number";
+    if (isPrimitive && this.children.length === 1) {
+      const child = this.children[0];
+      if (child instanceof DOMNode) {
+        const domNode = child.getRoot();
+        if (domNode && domNode.nodeType === Node.TEXT_NODE) {
+          domNode.nodeValue = String(content);
+          return;
+        }
+      }
+    }
+
     this.cleanup(false);
 
-    if (content.length === 0 || !this.isMounted()) return;
+    if (content == null || content === false) return;
 
     const nodes = toMarkupNodes(this.context, content);
 
-    for (const node of nodes) {
-      const previous = this.children.at(-1)?.getRoot() || this.root;
-      node.mount(this.root.parentElement!, previous);
-      this.children.push(node);
-    }
-
-    // Move marker after children
     const parent = this.root.parentElement!;
-    const lastChildNextSibling = this.children.at(-1)?.getRoot()?.nextSibling ?? null;
-    moveBefore(parent, this.root, lastChildNextSibling);
+    let referenceNode: Node = this.root;
+
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      node.mount(parent, referenceNode);
+      this.children.push(node);
+
+      const nextRoot = node.getRoot();
+      if (nextRoot) referenceNode = nextRoot;
+    }
   }
 }

@@ -1,5 +1,5 @@
-import { Markup, NodeType, Renderable } from "..";
-import { computed, isReactive, isTrackable, MaybeReactive, reader, subscribe, track } from "../reactive";
+import { createMarkup, Renderable } from "..";
+import { computed, isReactive, isTrackable, MaybeReactive, reader, track } from "../reactive";
 import { KeyFn, RenderFn } from "./nodes/repeat";
 
 /**
@@ -11,7 +11,7 @@ import { KeyFn, RenderFn } from "./nodes/repeat";
  */
 export function each<T>(items: MaybeReactive<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>): Renderable {
   if (isReactive(items)) {
-    return new Markup(NodeType.Repeat, { items, key, render });
+    return createMarkup("$repeat", { items, key, render });
   } else {
     return Array.from(items).map((item, index) => render(reader(item), reader(index)));
   }
@@ -26,7 +26,7 @@ export function each<T>(items: MaybeReactive<Iterable<T>>, key: KeyFn<T>, render
  */
 export function when(condition: any, content?: Renderable, fallback?: Renderable): Renderable {
   if (isTrackable(condition)) {
-    return new Markup(NodeType.Dynamic, {
+    return createMarkup("$dynamic", {
       slot: computed(() => (track(condition) ? content : fallback)),
     });
   } else if (condition) {

@@ -1,8 +1,8 @@
 import type * as CSS from "csstype";
-import type { Markup, MarkupNode } from "./core/markup/index.js";
-import type { Gettable, Getter, Reactive, Mutable } from "./core/reactive.js";
-import type { Binding } from "./core/markup/nodes/element.js";
-import { LogLevel } from "./core/context/logger.js";
+import { LogLevel } from "./core/logger.js";
+import type { Markup, MarkupNode } from "./core/markup/types.js";
+import type { MaybeTrackable, Getter, Reactive } from "./core/reactive.js";
+import { Context } from "./core/context.js";
 
 export type Env = "production" | "development";
 
@@ -19,8 +19,8 @@ export type Renderable =
   | false
   | null
   | undefined
-  | Gettable<any>
-  | (string | number | Node | Markup | MarkupNode | false | null | undefined | Gettable<any>)[];
+  | MaybeTrackable<any>
+  | (string | number | Node | Markup | MarkupNode | false | null | undefined | MaybeTrackable<any>)[];
 
 export interface BaseProps {
   children?: Renderable;
@@ -52,6 +52,8 @@ declare global {
      * Filters context names to determine which messages should show in the console. Contexts whose names match the pattern or return true will be shown.
      */
     DOLLA_LOG_FILTER: string | RegExp | ((name: string) => any);
+
+    DOLLA_CURRENT_CONTEXT: Context | undefined;
   }
 }
 
@@ -1583,10 +1585,10 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
    * Receives a reference to the DOM node when rendered.
    */
   ref?:
-    | ((value: E | undefined) => void)
-    | ((value: HTMLElement | undefined) => void)
-    | ((value: Element | undefined) => void)
-    | ((value: Node | undefined) => void);
+    | ((value: E | null) => void)
+    | ((value: HTMLElement | null) => void)
+    | ((value: Element | null) => void)
+    | ((value: Node | null) => void);
 
   /**
    * A mixin function or an array of mixin functions to be applied to this element.
@@ -3864,7 +3866,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   accept?: OptionalProperty<string>;
   alt?: OptionalProperty<string>;
   autocomplete?: OptionalProperty<AutocompleteValues>;
-  checked?: OptionalProperty<boolean> | Binding<boolean>;
+  checked?: OptionalProperty<boolean>;
   dirName?: OptionalProperty<string>;
   disabled?: OptionalProperty<boolean>;
   form?: OptionalProperty<string>;
@@ -3891,7 +3893,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   src?: OptionalProperty<string>;
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
-  value?: OptionalProperty<string> | Binding<string>;
+  value?: OptionalProperty<string>;
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 

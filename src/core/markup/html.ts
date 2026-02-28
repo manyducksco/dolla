@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Markup } from "./markup.js";
+import type { Markup } from "./types.js";
+import { createMarkup } from "./utils.js";
 
 export type Template = Markup | Markup[];
 
@@ -110,7 +111,7 @@ export function html(statics: TemplateStringsArray, ...args: any[]): Template {
         const props = node[2] || {};
         const children = node.slice(3);
 
-        current.push(new Markup(type, { ...props, children }));
+        current.push(createMarkup(type, { ...props, children }));
 
         mode = MODE_SLASH;
       } else if (char === " " || char === "\t" || char === "\n" || char === "\r") {

@@ -12,29 +12,50 @@
         const count = state(0);
 
         return html`
-          <p>Clicks: ${count}</p>
-          <button onclick=${() => count.set(count.get() + 1)}>CLICK ME</button>
+          <p>Count: ${count}</p>
+          <button onclick=${() => count.set(count.get() + 1)}>+1</button>
+          <button onclick=${() => count.update((value) => value - 1)}>-1</button>
+          <button onclick=${() => count.set(0)}>Reset</button>
         `;
       }
 
       createRoot("#counter").mount(Counter);
     </script>
 
+    <div id="providers"></div>
+    <script type="module">
+      import { createRoot, state, html, $provide, $use, when } from "../dist/index.js";
+
+      function Store() {
+        return {
+          value: state(0),
+        };
+      }
+
+      function Parent() {
+        const { value } = $provide(Store);
+
+        value.set(10);
+
+        return html`
+          <div>
+            <${Child} />
+          </div>
+        `;
+      }
+
+      function Child() {
+        const { value } = $use(Store);
+
+        return html` <p>${when(() => value.track() === 10, "We're good", "Something is off")}</p> `;
+      }
+
+      createRoot("#providers").mount(Parent);
+    </script>
+
     <div id="sibling-lists"></div>
     <script type="module">
-      import {
-        createRoot,
-        state,
-        computed,
-        track,
-        html,
-        For,
-        each,
-        when,
-        $setup,
-        Markup,
-        NodeType,
-      } from "../dist/index.js";
+      import { createRoot, state, computed, track, html, each, when, $setup, $debug } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -55,9 +76,10 @@
 
       function List({ color, items }) {
         const sorted = state([...items]);
+        const debug = $debug();
 
         function randomize() {
-          sorted.update(shuffled);
+          debug.info("sorted", sorted.update(shuffled));
         }
 
         const visible = state(false);
@@ -66,9 +88,9 @@
           const interval = setInterval(
             () => {
               randomize();
-              if (Math.random() > 0.75) {
-                visible.set(!visible.get());
-              }
+              // if (Math.random() > 0.75) {
+              //   visible.set(!visible.get());
+              // }
             },
             1000 + (Math.random() * 600 - 300),
           );
@@ -76,7 +98,7 @@
         });
 
         return each(
-          items,
+          sorted,
           (item) => item,
           (item) => {
             return html`
@@ -84,15 +106,6 @@
             `;
           },
         );
-
-        // Views with a For as the root getting reordered is causing duplication of DOM nodes.
-        // return html`
-        //   <${For} each=${sorted} key=${(item) => item}>
-        //     ${(item, index) => {
-        //       return html`<div style=${{ color: color }}>${item} <input type="text"></input></div>`;
-        //     }}
-        //   <//>
-        // `;
       }
 
       function SiblingLists() {

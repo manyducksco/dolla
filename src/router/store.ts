@@ -1,5 +1,6 @@
-import { computed, shallowEqual, type Mutable } from "../core";
-import { QueryParams, QueryParamsMap } from "./query";
+import { computed, type Mutable } from "../core";
+import { shallowEqual } from "../utils";
+import { QueryParamsMap } from "./query";
 import type { RouterAPI, RouterOptions } from "./types";
 import { resolvePath, type RouteMatch } from "./utils";
 

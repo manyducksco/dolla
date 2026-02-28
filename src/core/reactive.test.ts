@@ -1,5 +1,43 @@
 import { describe, expect, test, vi } from "vitest";
-import { batch, computed, watch, get, Reactive, state, reader, nextValue, AbortError, transform } from "./reactive";
+import {
+  batch,
+  computed,
+  watch,
+  get,
+  Reactive,
+  state,
+  reader,
+  transform,
+  isMutable,
+  isReactive,
+  isTrackable,
+} from "./reactive";
+
+describe("type checking", () => {
+  test("isMutable", () => {
+    const count = state(5);
+    expect(isMutable(count)).toBe(true);
+    expect(isMutable(computed(() => count.track() * 2))).toBe(false);
+    expect(isMutable(5)).toBe(false);
+    expect(isMutable(() => 5)).toBe(false);
+  });
+
+  test("isReactive", () => {
+    const count = state(5);
+    expect(isReactive(count)).toBe(true);
+    expect(isReactive(computed(() => count.track() * 2))).toBe(true);
+    expect(isReactive(5)).toBe(false);
+    expect(isReactive(() => 5)).toBe(false);
+  });
+
+  test("isTrackable", () => {
+    const count = state(5);
+    expect(isTrackable(count)).toBe(true);
+    expect(isTrackable(computed(() => count.track() * 2))).toBe(true);
+    expect(isTrackable(5)).toBe(false);
+    expect(isTrackable(() => 5)).toBe(true);
+  });
+});
 
 test("basic composition & tracking", () => {
   const count = state(5);
@@ -136,68 +174,6 @@ test("effect runs cleanup function", () => {
   expect(fn).toBeCalledTimes(2);
 
   stop();
-});
-
-describe("nextValue", () => {
-  test("receives the next value and then stops listening", () => {
-    const fn = vi.fn();
-    const count = state(120);
-
-    nextValue(count).then(fn);
-
-    count.set(121);
-    count.set(122);
-    count.set(123);
-
-    Promise.resolve().then(() => {
-      expect(fn).toBeCalledWith(121);
-    });
-  });
-
-  test("receives next value that passes the filter", () => {
-    const fn = vi.fn();
-    const count = state(120);
-
-    nextValue(count, {
-      filter: (value) => value % 2 === 0,
-    }).then(fn);
-
-    count.set(121);
-    count.set(122);
-    count.set(123);
-
-    Promise.resolve().then(() => {
-      expect(fn).toBeCalledWith(122);
-    });
-  });
-
-  test.skip("abort signal aborts listener", async () => {
-    const onThen = vi.fn();
-    const onCatch = vi.fn();
-    const count = state(120);
-
-    const controller = new AbortController();
-
-    nextValue(count, {
-      signal: controller.signal,
-    })
-      .then(onThen)
-      .catch(onCatch);
-
-    controller.abort();
-
-    count.set(121);
-    count.set(122);
-    count.set(123);
-
-    Promise.resolve().then(() => {
-      expect(onThen).not.toBeCalled();
-      expect(onCatch).toBeCalledTimes(1);
-      expect(onCatch).toBeCalledWith(AbortError);
-    });
-  });
-
-  // TODO: Test abort signal
 });
 
 // describe("subscribe", () => {

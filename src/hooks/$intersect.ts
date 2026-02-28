@@ -1,4 +1,4 @@
-import { $$context, $setup, state, View } from "../core";
+import { $$context, $setup, state } from "../core";
 import { VIEW, ViewNode } from "../core/markup/nodes/view";
 
 interface IntersectOptions extends IntersectionObserverInit {}
@@ -10,7 +10,7 @@ export function $intersect(options?: IntersectOptions) {
   const context = $$context();
   const intersecting = state(false);
 
-  const view = context.getState<ViewNode<unknown>>(VIEW);
+  const view = context.state[VIEW] as ViewNode<unknown>;
   if (view == null) {
     throw new Error("$intersect must be called inside a view.");
   }

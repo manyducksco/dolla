@@ -1,9 +1,8 @@
-import { type Store } from "../core";
+import { createLogger, type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
-import type { Context, ErrorInfo } from "./context/context.js";
-import { getCurrentContext } from "./context/current.js";
-import type { LifecycleEvent } from "./context/lifecycle.js";
-import { type Getter, type Reactive, type WatchCallback } from "./reactive";
+import type { Context } from "./context.js";
+import { getCurrentContext } from "./context.js";
+import { watch, type Getter, type Reactive, type WatchCallback } from "./reactive";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -27,21 +26,48 @@ export function $name(name: Reactive<string> | Getter<string> | string): void {
  * Returns the component's logger.
  */
 export function $debug() {
-  return $$context().logger;
+  const context = $$context();
+  return createLogger(() => context.getName(), { tag: context.id, tagName: "id" });
 }
 
 /**
  * Adds a store to this context and returns the store instance.
  */
-export function $provide<Value, Options>(store: Store<Options, Value>, options?: Options): Value {
-  return $$context().provideStore(store, options).useStore(store);
+export function $provide<Value, Options>(store: Store<Options, Value>, options?: Options): Value;
+
+/**
+ * Sets a value on this context, making it available to child components.
+ */
+export function $provide<Value>(key: string | symbol, value: Value): Value;
+
+export function $provide<Value, Options>(...args: any[]): Value {
+  const context = $$context();
+  if (typeof args[0] === "function") {
+    const [store, options] = args as [Store<Options, Value>, options?: Options];
+    return context.provideStore(store, options);
+  } else {
+    const [key, value] = args as [string | symbol, Value];
+    context.state[key] = value;
+    return value;
+  }
 }
 
 /**
  * Returns the nearest instance of a Store.
  */
-export function $use<T>(store: Store<any, T>): T {
-  return $$context().useStore(store);
+export function $use<T>(store: Store<any, T>): T;
+
+export function $use<T>(key: string | symbol, fallback: T): T | undefined;
+
+export function $use<T>(key: string | symbol, fallback?: T): T | undefined;
+
+export function $use<T>(arg: Store<any, T> | string | symbol, fallback?: T) {
+  const context = $$context();
+  if (typeof arg === "function") {
+    return context.getStore(arg);
+  } else {
+    return context.state[arg] ?? fallback;
+  }
 }
 
 type CleanupFnOrVoid = void | (() => void);
@@ -64,21 +90,20 @@ export function $setup(callback: AsyncSetupCallback): void;
 export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
   const context = $$context();
 
-  const controller = new AbortController();
-  context.onLifecycleTransition("didUnmount", () => {
-    controller.abort();
-  });
-
-  context.onLifecycleTransition("didMount", () => {
+  context.onMount(() => {
+    const controller = new AbortController();
     const result = callback(controller.signal);
     if (isPromise(result)) {
+      context.onUnmount(() => {
+        controller.abort();
+      });
       result.then((callback) => {
         if (!controller.signal.aborted && typeof callback === "function") {
-          context.onLifecycleTransition("didUnmount", callback);
+          context.onUnmount(callback);
         }
       });
     } else if (isFunction(result)) {
-      context.onLifecycleTransition("didUnmount", result);
+      context.onUnmount(result);
     }
   });
 }
@@ -87,28 +112,27 @@ export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
  * Schedules `callback` to run when the component is unmounted.
  */
 export function $teardown(callback: () => void | Promise<void>): void {
-  $$context().onLifecycleTransition("didUnmount", callback);
-}
-
-/**
- * Schedules `callback` to be run on a lifecycle `event`.
- * Prefer using `$setup` and `$teardown` unless you have an advanced use case.
- */
-export function $on(event: LifecycleEvent, callback: () => void): void {
-  $$context().onLifecycleTransition(event, callback);
+  $$context().onUnmount(callback);
 }
 
 /**
  * Runs `callback` when component mounts, then again each time one of its tracked values changes.
  * The watcher will be cleaned up automatically when the component unmounts.
  */
-export function $watch(callback: WatchCallback): void {
-  $$context().watch(callback);
-}
+export function $watch(callback: WatchCallback) {
+  const context = $$context();
 
-/**
- * Catches errors thrown in child components, including in event handlers and lifecycle hooks.
- */
-export function $catch(callback: (error: unknown, info: ErrorInfo) => void) {
-  $$context().catchError(callback);
+  const setupEffect = () => {
+    const unsubscribe = watch(callback);
+
+    context.onUnmount(() => {
+      if (unsubscribe) unsubscribe();
+    });
+  };
+
+  if (context.isMounted) {
+    setupEffect();
+  } else {
+    context.onMount(setupEffect);
+  }
 }

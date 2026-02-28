@@ -64,47 +64,34 @@ export function strictEqual(a: any, b: any): boolean {
  */
 export function shallowEqual(a: any, b: any): boolean {
   if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
 
-  // Must be same type
-  const t = typeOf(a);
-  if (t !== typeOf(b)) {
-    return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
   }
 
-  switch (t) {
-    case "object":
-      // Objects must have same number of keys with strict equal values
-      let size = 0;
-      for (const key in a) {
-        if (a[key] !== b[key]) return false;
-        size++;
-      }
-      return Object.keys(b).length === size;
-    case "array":
-      // Arrays must be the same length with strict equal values
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) return false;
-      }
-      return true;
-    case "map":
-      if (a.size !== b.size) return false;
-      for (const key of a.keys()) {
-        if (a[key] !== b[key]) return false;
-      }
-      return true;
-    case "set":
-      if (isFunction(a.symmetricDifference)) {
-        return a.symmetricDifference(b).size === 0;
-      } else {
-        for (const key of a.keys()) {
-          if (a[key] !== b.get(key)) return false;
-        }
-        return true;
-      }
+  if (a instanceof Map && b instanceof Map) {
+    if (a.size !== b.size) return false;
+    for (const [key, val] of a) if (val !== b.get(key)) return false;
+    return true;
   }
 
-  return false;
+  if (a instanceof Set && b instanceof Set) {
+    if (a.size !== b.size) return false;
+    for (const val of a) if (!b.has(val)) return false;
+    return true;
+  }
+
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (a[key] !== b[key]) return false;
+  }
+
+  return true;
 }
 
 /**
@@ -271,70 +258,4 @@ export function okhash(value: string) {
     hue = (hue + value.charCodeAt(i) * 10) % 360;
   }
   return `oklch(0.68 0.15 ${hue}deg)`;
-}
-
-export type MatcherFunction = (value: string) => boolean;
-
-/**
- * Parses a filter string into a matcher function.
- *
- * @param pattern - A string or regular expression that specifies a pattern for names of loggers whose messages you want to display.
- */
-export function createMatcher(pattern: string | RegExp | MatcherFunction): MatcherFunction {
-  if (pattern instanceof RegExp) {
-    return (value: string) => pattern.test(value);
-  }
-
-  if (isFunction<MatcherFunction>(pattern)) {
-    return pattern;
-  }
-
-  const matchers: Record<"positive" | "negative", MatcherFunction[]> = {
-    positive: [],
-    negative: [],
-  };
-
-  const parts = pattern
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p !== "");
-
-  for (let part of parts) {
-    let section: "positive" | "negative" = "positive";
-
-    if (part.startsWith("-")) {
-      section = "negative";
-      part = part.slice(1);
-    }
-
-    if (part === "*") {
-      matchers[section].push(function () {
-        return true;
-      });
-    } else if (part.endsWith("*")) {
-      matchers[section].push(function (value) {
-        return value.startsWith(part.slice(0, part.length - 1));
-      });
-    } else {
-      matchers[section].push(function (value) {
-        return value === part;
-      });
-    }
-  }
-
-  return function (name: string) {
-    const { positive, negative } = matchers;
-
-    // Matching any negative matcher disqualifies.
-    if (negative.some((fn) => fn(name))) {
-      return false;
-    }
-
-    // Matching at least one positive matcher is required if any are specified.
-    if (positive.length > 0 && !positive.some((fn) => fn(name))) {
-      return false;
-    }
-
-    return true;
-  };
 }

@@ -1,5 +1,5 @@
-import { moveBefore } from "../../../utils";
-import { MarkupNode } from "../markup";
+import { moveBefore } from "../../../utils.js";
+import { MarkupNode } from "../types.js";
 
 /**
  * A lightweight MarkupNode wrapper for a plain DOM node.

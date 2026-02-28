@@ -1,6 +1,6 @@
 import { Renderable } from ".";
-import { performInContext } from "./context";
-import { Context } from "./context/context";
+import { runWithContext } from "./context";
+import { Context } from "./context";
 import { Mutable, Reactive, reader, state } from "./reactive";
 
 interface ElementAttribute<T> {
@@ -81,7 +81,7 @@ export function element<Attrs extends Record<string, ElementAttribute<unknown>>>
         }
 
         // Run the view function
-        performInContext(this.#context, () => {
+        runWithContext(this.#context, () => {
           this.#viewContent = options.view.call(this, attrs as ReactiveAttributes<Attrs>);
         });
 

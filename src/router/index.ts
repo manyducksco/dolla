@@ -5,7 +5,7 @@ import { $$context } from "../core";
 import { RouterStore } from "./store";
 
 export function $router() {
-  return $$context().useStore(RouterStore);
+  return $$context().getStore(RouterStore);
 }
 
 // export function $preload(loader: RoutePreloadFn) {

@@ -1,14 +1,11 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Context } from "./context/context.js";
-import { getCurrentContext, setCurrentContext } from "./context/current.js";
+import { Context } from "./context.js";
+import { getCurrentContext, setCurrentContext } from "./context.js";
 import { $setup, $teardown, $watch } from "./hooks";
 import { state } from "./reactive";
 
-const _emitWillMount = () => getCurrentContext()!.emit("willMount");
-const _emitDidMount = () => getCurrentContext()!.emit("didMount");
-const _emitWillUnmount = () => getCurrentContext()!.emit("willUnmount");
-const _emitDidUnmount = () => getCurrentContext()!.emit("didUnmount");
-const _emitDispose = () => getCurrentContext()!.emit("dispose");
+const _mount = () => getCurrentContext()!.mount();
+const _unmount = () => getCurrentContext()!.unmount();
 
 beforeEach(() => {
   setCurrentContext(new Context("test"));
@@ -25,26 +22,19 @@ describe("$watch", () => {
 
     expect(fn).toBeCalledTimes(0);
 
-    // Effects are started at WILL_MOUNT
-    _emitWillMount();
+    _mount();
+    name.set("Tux");
     expect(fn).toBeCalledTimes(1);
 
-    _emitDidMount();
-    name.set("Tux");
+    name.set("Abby");
     expect(fn).toBeCalledTimes(2);
 
-    _emitWillUnmount();
-    name.set("Abby");
-    expect(fn).toBeCalledTimes(3);
-
-    // Effects are stopped at DID_UNMOUNT
-    _emitDidUnmount();
+    // Effects are stopped at unmount
+    _unmount();
     name.set("Lacey");
-    expect(fn).toBeCalledTimes(3); // still 3
-
-    _emitDispose();
+    expect(fn).toBeCalledTimes(2); // still 2
     name.set("Jack");
-    expect(fn).toBeCalledTimes(3); // still 3
+    expect(fn).toBeCalledTimes(2); // still 2
   });
 
   test("with auto tracking", () => {
@@ -57,8 +47,7 @@ describe("$watch", () => {
     });
     $watch(fn);
 
-    _emitWillMount();
-    _emitDidMount();
+    _mount();
 
     expect(fn).toBeCalledTimes(1);
 
@@ -79,8 +68,7 @@ describe("$watch", () => {
     });
     $watch(fn);
 
-    _emitWillMount();
-    _emitDidMount();
+    _mount();
 
     expect(fn).toBeCalledTimes(1);
     expect(cleanup).toBeCalledTimes(0);
@@ -95,8 +83,7 @@ describe("$watch", () => {
     expect(fn).toBeCalledTimes(3);
     expect(cleanup).toBeCalledTimes(2);
 
-    _emitWillUnmount();
-    _emitDidUnmount();
+    _unmount();
 
     expect(fn).toBeCalledTimes(3);
     expect(cleanup).toBeCalledTimes(3); // cleanup called again but effect function is not
@@ -111,19 +98,10 @@ describe("$setup", () => {
 
     expect(onMount).toBeCalledTimes(0);
     expect(onUnmount).toBeCalledTimes(0);
-    _emitWillMount();
-    expect(onMount).toBeCalledTimes(0);
-    expect(onUnmount).toBeCalledTimes(0);
-    _emitDidMount();
+    _mount();
     expect(onMount).toBeCalledTimes(1);
     expect(onUnmount).toBeCalledTimes(0);
-    _emitWillUnmount();
-    expect(onMount).toBeCalledTimes(1);
-    expect(onUnmount).toBeCalledTimes(0);
-    _emitDidUnmount();
-    expect(onMount).toBeCalledTimes(1);
-    expect(onUnmount).toBeCalledTimes(1);
-    _emitDispose();
+    _unmount();
     expect(onMount).toBeCalledTimes(1);
     expect(onUnmount).toBeCalledTimes(1);
   });
@@ -135,15 +113,9 @@ describe("$teardown", () => {
     $teardown(onUnmount);
 
     expect(onUnmount).toBeCalledTimes(0);
-    _emitWillMount();
+    _mount();
     expect(onUnmount).toBeCalledTimes(0);
-    _emitDidMount();
-    expect(onUnmount).toBeCalledTimes(0);
-    _emitWillUnmount();
-    expect(onUnmount).toBeCalledTimes(0);
-    _emitDidUnmount();
-    expect(onUnmount).toBeCalledTimes(1);
-    _emitDispose();
+    _unmount();
     expect(onUnmount).toBeCalledTimes(1);
   });
 });

@@ -3,7 +3,7 @@ import { type TranslateOptions, TranslateStore } from "./store";
 
 export function createTranslate(options: TranslateOptions): DollaPlugin {
   return async function setup(context) {
-    const store = context.provideStore(TranslateStore, options).useStore(TranslateStore);
+    const store = context.provideStore(TranslateStore, options);
     await store.setLocale(options.locale);
   };
 }
