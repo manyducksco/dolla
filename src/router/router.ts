@@ -75,9 +75,8 @@ export function createRouter(options: RouterOptions): View {
       // Record the outgoing page's scroll position.
       scrollCache.set(currentKey, window.scrollY);
 
-      const url = new URL(href ?? history.getPath(), window.location.origin);
-
-      const { match, journey } = await resolveRoute(routeTree, url);
+      const path = href ?? history.getPath();
+      const { match, journey } = await resolveRoute(routeTree, path);
 
       if (context.state[DEBUG]) {
         for (let i = 0; i < journey.length; i++) {
@@ -101,7 +100,7 @@ export function createRouter(options: RouterOptions): View {
       }
 
       if (!match) {
-        throw new NoRouteError(`Failed to match route '${url.pathname}'`);
+        throw new NoRouteError(`Failed to match route '${path}'`);
       }
 
       const { layers, params } = match;

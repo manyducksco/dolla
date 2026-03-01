@@ -1,21 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Context } from "../core/context.js";
-import { createRoot } from "../core/root.js";
 import { View } from "../types.js";
 import { createRouter, lazy, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
+import { ViewNode } from "../core/markup/nodes/view.js";
+import { PARENT_ELEMENT } from "../core/symbols.js";
 
 async function withMountedView<Props>(view: View<Props>, props: Props, callback: (context: Context) => any) {
-  let context!: Context;
-  const root = createRoot(document.body).plugin((_context) => {
-    context = _context;
-  });
+  const context = new Context("test");
+  context.state[PARENT_ELEMENT] = document.body;
 
-  await root.mount(view);
+  const node = new ViewNode(context, view, props);
 
-  await callback(context);
+  node.mount(document.body);
 
-  root.unmount();
+  await callback(node.context);
+
+  node.unmount();
 }
 
 describe("Router Engine", () => {

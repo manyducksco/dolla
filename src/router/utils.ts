@@ -389,12 +389,16 @@ export interface ResolvedRoute {
 /**
  * Takes a URL and finds a match, following redirects.
  */
-export async function resolveRoute(rootNode: RouteNode, url: URL, journey: JourneyStep[] = []): Promise<ResolvedRoute> {
-  const match = matchRoute(rootNode, url.pathname);
+export async function resolveRoute(
+  rootNode: RouteNode,
+  path: string,
+  journey: JourneyStep[] = [],
+): Promise<ResolvedRoute> {
+  const match = matchRoute(rootNode, path);
 
   if (!match) {
     return {
-      journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
+      journey: [...journey, { kind: "miss", message: `no match for '${path}'` }],
     };
   }
 
@@ -418,7 +422,7 @@ export async function resolveRoute(rootNode: RouteNode, url: URL, journey: Journ
       throw new TypeError(`Redirect must either be a path string or a function.`);
     }
 
-    return resolveRoute(rootNode, new URL(path, window.location.origin), [
+    return resolveRoute(rootNode, path, [
       ...journey,
       { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
     ]);
