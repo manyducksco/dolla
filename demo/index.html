@@ -58,7 +58,7 @@
       createRoot("#providers").mount(Parent);
     </script>
 
-    <div id="sibling-lists"></div>
+    <!-- <div id="sibling-lists"></div>
     <script type="module">
       import { createRoot, state, computed, track, html, each, when, $setup, $debug } from "../dist/index.js";
 
@@ -150,6 +150,39 @@
       }
 
       createRoot("#sibling-lists", { debug: true }).mount(SiblingLists);
+    </script> -->
+
+    <div id="virtual" style="border: 1px solid red; width: 300px; height: 500px"></div>
+    <script type="module">
+      import { createRoot, VirtualList, state, html } from "../dist/index.js";
+
+      function List() {
+        const _items = [];
+
+        for (let i = 0; i < 10000; i++) {
+          _items.push(20 + Math.random() * 100);
+        }
+
+        const items = state(_items);
+
+        return html`
+          <${VirtualList}
+            items=${items}
+            render=${(item, index) =>
+              html`<div
+                style=${{
+                  height: item,
+                  border: "1px dotted black",
+                  width: "100%",
+                }}
+              >
+                ${index}
+              </div>`}
+          />
+        `;
+      }
+
+      createRoot("#virtual").mount(List);
     </script>
   </body>
 </html>

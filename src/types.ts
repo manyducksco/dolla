@@ -92,16 +92,6 @@ export interface ElementProps {
   [key: `on:${string}`]: OptionalProperty<EventHandler<Event>>;
 
   /**
-   * HTML attributes to assign to the element.
-   */
-  // attributes?: OptionalProperty<Record<string, any>>;
-
-  /**
-   * Object of event listeners.
-   */
-  // eventListeners?: OptionalProperty<Record<string, EventHandler<Event>>>; // TODO: Define full types for events in this object.
-
-  /**
    * CSS classes to be applied to this element. In addition to the standard space-separated list of class names,
    * this property also supports a class map object with class names as keys and booleans as values.
    * Class names in a class map will be applied to the element while their values are true. Also supports an
@@ -901,6 +891,11 @@ export interface ElementProps {
 }
 
 export interface HTMLElementProps extends ElementProps {
+  /**
+   * Data attribute.
+   */
+  [key: `data-${string}`]: OptionalProperty<any>;
+
   /**
    * Sets the key a user can press to jump to this element.
    *

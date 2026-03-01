@@ -43,7 +43,7 @@ test("basic composition & tracking", () => {
   const count = state(5);
   const doubled = computed(() => count.track() * 2);
 
-  const same = reader(count); // just so happens to follow the signature of a memo; creates a Signal with the same value
+  const same = reader(count);
   expect(same.get()).toBe(5);
 
   expect(count.get()).toBe(5);
