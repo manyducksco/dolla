@@ -222,14 +222,16 @@
     </style>
 
     <script type="module">
-      import { createRoot, VirtualList, state, html, when, watch } from "../dist/index.js";
+      import { createRoot, createVirtualList, state, html, when, watch } from "../dist/index.js";
 
       function ChatWireDemo() {
+        let nextId = 0;
+
         // 1. Upgrade data to objects
         const items = state([
-          { type: "header", text: "Today" },
-          { type: "message", text: "Welcome to Chat/Wire!" },
-          { type: "message", text: "Virtual list initialization complete." },
+          { id: nextId++, type: "header", text: "Today" },
+          { id: nextId++, type: "message", text: "Welcome to Chat/Wire!" },
+          { id: nextId++, type: "message", text: "Virtual list initialization complete." },
         ]);
 
         let counter = 1;
@@ -240,10 +242,11 @@
 
             // Auto-insert a new header every 5 messages to test the push effect
             if (counter % 5 === 0) {
-              newArr.push({ type: "header", text: `Update Batch ${counter / 5}` });
+              newArr.push({ id: nextId++, type: "header", text: `Update Batch ${counter / 5}` });
             }
 
             newArr.push({
+              id: nextId++,
               type: "message",
               text: `Incoming message ${counter++} at ${new Date().toLocaleTimeString()}`,
             });
@@ -262,70 +265,66 @@
           addMessage();
         }, 5000);
 
-        const isAtBottom = state(true);
+        const [MessageList, listApi] = createVirtualList({
+          items,
+          keyFn: (item) => item.id,
+          bottomUp: true,
+          enterAnimationMs: 400,
+          onEndReached: () => {
+            console.log("WE ARE AT THE BOTTOM");
+          },
+          isSticky: (item) => item.type === "header",
+          renderSticky: (itemSignal) => html`
+            <div
+              style="padding: 12px 0; width: 100%; display: flex; justify-content: center; cursor: pointer;"
+              onclick=${() => listApi.scrollToItem(itemSignal.track(), { smooth: true })}
+            >
+              <div class="sticky-header">${() => itemSignal.track()?.text}</div>
+            </div>
+          `,
+          render: (itemSignal, indexSignal, context) => html`
+            <div style="padding: 2px 0;">
+              ${() => {
+                const item = itemSignal.track();
+                if (!item) return null;
 
-        // Create a local variable to hold the API
-        let listApi;
+                if (item.type === "header") {
+                  return html`
+                    <div
+                      style="padding: 12px 0; display: flex; justify-content: center; cursor: pointer;"
+                      onclick=${() => listApi.scrollToItem(item, { smooth: true })}
+                    >
+                      <div class="sticky-header">${item.text}</div>
+                    </div>
+                  `;
+                }
+
+                return html`
+                  <div class=${() => (context.isEntering.track() ? "chat-bubble animate-enter" : "chat-bubble")}>
+                    ${item.text}
+                  </div>
+                `;
+              }}
+            </div>
+          `,
+        });
 
         return html`
           <div style="flex: 1; position: relative; display: flex; flex-direction: column; overflow-y: auto;">
             ${when(
-              () => !isAtBottom.track(),
-              html`<button
-                onclick=${() => listApi?.scrollToBottom(true)}
-                style="position: absolute; bottom: 16px; right: 16px; z-index: 20; padding: 8px 16px; border-radius: 20px; background: rgba(255,255,255,0.9); border: 1px solid #a3b8cb; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; color: #2c3e50;"
-              >
-                ↓ Jump to Bottom
-              </button>`,
+              listApi.isAtBottom,
+              null,
+              html`
+                <button
+                  onclick=${() => listApi.scrollToBottom(true)}
+                  style="position: absolute; bottom: 16px; right: 16px; z-index: 20; padding: 8px 16px; border-radius: 20px; background: rgba(255,255,255,0.9); border: 1px solid #a3b8cb; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; color: #2c3e50;"
+                >
+                  ↓ Jump to Bottom
+                </button>
+              `,
             )}
 
-            <${VirtualList}
-              items=${items}
-              bottomUp=${true}
-              enterAnimationMs=${400}
-              isSticky=${(item) => item.type === "header"}
-              apiRef=${(api) => {
-                listApi = api;
-
-                // TODO: This is not good. Need a better way to get a reference to the controller and bind it to the view.
-                watch(() => {
-                  isAtBottom.set(api.isAtBottom.track());
-                });
-              }}
-              renderSticky=${(itemSignal) => html`
-                <div
-                  style="padding: 12px 0; width: 100%; display: flex; justify-content: center; cursor: pointer;"
-                  onclick=${() => listApi?.scrollToItem(itemSignal.track(), { smooth: true })}
-                >
-                  <div class="sticky-header">${() => itemSignal.track()?.text}</div>
-                </div>
-              `}
-              render=${(itemSignal, indexSignal, context) => html`
-                <div style="padding: 2px 0;">
-                  ${() => {
-                    const item = itemSignal.track();
-                    if (!item) return null;
-
-                    if (item.type === "header") {
-                      return html`
-                        <div
-                          style="padding: 12px 0; display: flex; justify-content: center; cursor: pointer;"
-                          onclick=${() => listApi?.scrollToItem(item, { smooth: true })}
-                        >
-                          <div class="sticky-header">${item.text}</div>
-                        </div>
-                      `;
-                    }
-
-                    return html`
-                      <div class=${() => (context.isEntering.track() ? "chat-bubble animate-enter" : "chat-bubble")}>
-                        ${item.text}
-                      </div>
-                    `;
-                  }}
-                </div>
-              `}
-            />
+            <${MessageList} />
           </div>
         `;
       }

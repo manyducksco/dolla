@@ -37,7 +37,7 @@ export { html } from "./markup/html.js";
 export { Portal, type PortalProps } from "./views/portal.js";
 // export { Show, type ShowProps } from "./views/show.js";
 export { Fragment, type FragmentProps } from "./views/fragment.js";
-export { VirtualList, type VirtualListProps } from "./views/virtual.js";
+export { createVirtualList, type VirtualListProps } from "./views/virtual.js";
 
 // Logger
 export { createLogger } from "./logger.js";

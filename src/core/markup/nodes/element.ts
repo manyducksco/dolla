@@ -135,7 +135,7 @@ export class ElementNode extends MarkupNode {
 
     // Release memory
     this.childNodes.length = 0;
-    (this as any).root = undefined;
+    // (this as any).root = undefined;
   }
 
   override move(parent: Element, after?: Node) {

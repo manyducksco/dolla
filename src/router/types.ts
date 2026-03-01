@@ -1,4 +1,4 @@
-import type { MarkupNode, Mutable, Reactive, View } from "../core";
+import type { MarkupNode, Mutable, Reactive, Renderable, View } from "../core";
 import type { Context } from "../core/context";
 import type { Match } from "./utils";
 
@@ -27,7 +27,7 @@ export interface Route<Data = any> {
   /**
    * View to display when this route is matched.
    */
-  view?: View<{ data?: Data }> | LazyView<{ data?: Data }>;
+  view?: View<{ data?: Data; children: Renderable }> | LazyView<{ data?: Data; children: Renderable }>;
 
   errorView?: View<{ error: Error }>;
 
