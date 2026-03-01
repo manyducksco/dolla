@@ -154,7 +154,7 @@
 
     <div id="virtual" style="border: 1px solid red; width: 300px; height: 500px"></div>
     <script type="module">
-      import { createRoot, VirtualList, state, html } from "../dist/index.js";
+      import { createRoot, VirtualList, state, html, $setup } from "../dist/index.js";
 
       function List() {
         const _items = [];
@@ -165,9 +165,18 @@
 
         const items = state(_items);
 
+        $setup(() => {
+          const interval = setInterval(() => {
+            items.update((current) => [...current, 20 + Math.random() * 100]);
+          }, 5000);
+
+          return () => clearInterval(interval);
+        });
+
         return html`
           <${VirtualList}
             items=${items}
+            bottomUp=${true}
             render=${(item, index) =>
               html`<div
                 style=${{
