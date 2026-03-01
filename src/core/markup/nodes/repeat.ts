@@ -1,6 +1,7 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { batch, reader, state, subscribe, type Mutable, type Reactive, type UnsubscribeFn } from "../../reactive.js";
+import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
 import { DynamicNode } from "./dynamic.js";
@@ -58,7 +59,9 @@ export class RepeatNode<T> extends MarkupNode {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = subscribe(this.items, (items) => {
-        this._update(Array.from(items));
+        scheduleUpdate(() => {
+          this._update(Array.from(items));
+        });
       });
     }
   }

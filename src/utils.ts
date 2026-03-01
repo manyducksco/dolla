@@ -1,4 +1,4 @@
-import { isFunction, isObject, typeOf } from "./typeChecking.js";
+import { isObject } from "./typeChecking.js";
 
 export const noOp = () => {};
 
@@ -45,6 +45,13 @@ export class IdGenerator {
     // Decode the used portion of the buffer into a single string
     return this.#decoder.decode(this.#asciiBuffer.subarray(0, this.#currentLength));
   }
+}
+
+let ids: IdGenerator | undefined;
+
+export function uniqueId() {
+  if (!ids) ids = new IdGenerator();
+  return ids.next();
 }
 
 /*=============================*\

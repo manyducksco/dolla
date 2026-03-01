@@ -37,7 +37,7 @@ export class PortalNode extends MarkupNode {
       // Mount the anchor in the standard document flow
       logicalParent.insertBefore(this.anchor, after?.nextSibling ?? null);
 
-      // Render the content once and mount it to the portal target
+      // Render the content and mount it to the portal target
       if (!this.childNode) {
         this.childNode = render(this.value, this.context);
       }

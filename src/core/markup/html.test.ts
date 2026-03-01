@@ -1,15 +1,15 @@
 import { describe, test, expect } from "vitest";
 import { html } from "./html.js";
-import { createMarkup } from "./utils.js";
+import { createMarkup as m } from "./utils.js";
 import { Renderable } from "../../types";
 
 describe("html", () => {
   test("parses into Markup", () => {
     const parsed = html`<div><p>Hello</p></div>`;
 
-    const expected = createMarkup("div", {
+    const expected = m("div", {
       children: [
-        createMarkup("p", {
+        m("p", {
           children: ["Hello"],
         }),
       ],
@@ -25,10 +25,10 @@ describe("html", () => {
     `;
 
     const expected = [
-      createMarkup("li", {
+      m("li", {
         children: ["One"],
       }),
-      createMarkup("li", {
+      m("li", {
         children: ["Two"],
       }),
     ];
@@ -54,12 +54,12 @@ describe("html", () => {
       </div>
     `;
 
-    const expected = createMarkup("div", {
+    const expected = m("div", {
       children: [
-        createMarkup(TestView, {
+        m(TestView, {
           test: 1,
           children: [
-            createMarkup("p", {
+            m("p", {
               children: ["hello"],
             }),
           ],

@@ -1,12 +1,10 @@
 import type { Renderable, View } from "../../../types.js";
-import { runWithContext, type Context } from "../../context.js";
+import { contextualize, getCurrentContext, type Context } from "../../context.js";
 import { MarkupNode } from "../types.js";
 import { render } from "../utils.js";
 import { DOMNode } from "./dom.js";
 
-export const VIEW = Symbol("ViewNode");
-export const VIEW_PRELOAD_CALLBACK = Symbol();
-export const VIEW_TRANSITIONS_CONFIG = Symbol();
+export const VIEW = Symbol.for("Dolla.ViewNode");
 
 /**
  * Renders a View.
@@ -16,16 +14,8 @@ export class ViewNode<P> extends MarkupNode {
   readonly context: Context;
   readonly view: View<P>;
 
-  viewContent?: Renderable;
   node?: MarkupNode;
 
-  initialized = false;
-
-  /**
-   * @param context - Parent contenxt to link to.
-   * @param view - View function to mount.
-   * @param props - Props to pass to view function.
-   */
   constructor(context: Context, view: View<P>, props: P) {
     super();
     this.context = context.createChild(view.name);
@@ -43,14 +33,12 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   mount(parent: Element, after?: Node) {
-    // Don't run lifecycle hooks or initialize if already connected.
-    // Calling connect again can be used to re-order elements that are already connected to the DOM.
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
       let viewContent: Renderable;
 
-      runWithContext(this.context, () => {
+      contextualize(this.context, () => {
         viewContent = this.view(this.props);
       });
 

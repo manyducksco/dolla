@@ -1,6 +1,9 @@
-import { assertString, assertArrayOf, isFunction } from "../typeChecking.js";
+import { assertArrayOf, assertString, isFunction, isObject, isString } from "../typeChecking.js";
+import { View } from "../types.js";
+import { uniqueId } from "../utils.js";
+import type { JourneyStep, LazyView, Route, RouteLayer, Stringable } from "./types.js";
 
-export type RouteMatch<T = Record<string, any>> = {
+export interface Match {
   /**
    * The path string that triggered this match.
    */
@@ -22,32 +25,26 @@ export type RouteMatch<T = Record<string, any>> = {
   query: Record<string, string>;
 
   /**
-   * Metadata registered to this route.
+   * Freeform data you wish to store with this route.
+   * Merged `data` from all matched layers are available on the router's `match.meta`.
    */
-  meta: T;
-};
-
-export enum FragTypes {
-  Literal = 1,
-  Param = 2,
-  Wildcard = 3,
-  NumericParam = 4,
+  meta: Record<any, any>;
 }
 
-export type RouteFragment = {
-  name: string;
-  type: FragTypes;
-  value: string | number | null;
-};
+export interface RouteMatch extends Match {
+  layers: RouteLayer[];
+  redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
+}
 
-export type ParsedRoute<T> = {
+export type RoutePayload = {
   pattern: string;
-  fragments: RouteFragment[];
-  meta: T;
+  meta: Record<any, any>;
+  layers?: RouteLayer[];
+  redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
 };
 
-export type RouteMatchOptions<T> = {
-  willMatch?: (route: ParsedRoute<T>) => boolean;
+export type RouteMatchOptions = {
+  willMatch?: (route: RoutePayload) => boolean;
 };
 
 /**
@@ -145,206 +142,291 @@ export function resolvePath(base: string, part: string | null) {
 }
 
 export function parseQueryParams(query: string): Record<string, string> {
-  if (!query) return {};
-
-  if (query.startsWith("?")) {
-    query = query.slice(1);
-  }
-
-  const entries = query
-    .split("&")
-    .filter((x) => x.trim() !== "")
-    .map((entry) =>
-      entry
-        .split("=")
-        .map((x) => x.trim())
-        .slice(0, 2),
-    );
-
-  return Object.fromEntries(entries);
+  return Object.fromEntries(new URLSearchParams(query));
 }
 
-/**
- * Returns the nearest match, or undefined if the path matches no route.
- *
- * @param url - Path to match against routes.
- * @param options - Options to customize how matching operates.
- */
-export function matchRoutes<T>(
-  routes: ParsedRoute<T>[],
-  url: string,
-  options: RouteMatchOptions<T> = {},
-): RouteMatch<T> | undefined {
+export function mergeQueryParams(
+  previous: Record<string, string>,
+  current: Record<string, Stringable>,
+  preserve?: boolean | string[],
+) {
+  const merged: Record<string, string> = {};
+  const params = new URLSearchParams();
+
+  if (preserve === true) {
+    Object.assign(merged, previous, current);
+  } else if (Array.isArray(preserve)) {
+    const preserved: Record<string, any> = {};
+    for (const key in previous) {
+      if (preserve.includes(key)) {
+        preserved[key] = current[key];
+      }
+    }
+    Object.assign(merged, preserved, current);
+  }
+
+  for (const key in merged) {
+    params.set(key, String(merged[key]));
+  }
+
+  return params;
+}
+
+export class RouteNode {
+  staticChildren = new Map<string, RouteNode>();
+  numericChild: RouteNode | null = null;
+  paramChild: RouteNode | null = null;
+  wildcardChild: RouteNode | null = null;
+
+  // Set if this node represents the end of a valid path
+  route?: RoutePayload;
+  paramName?: string;
+  numericName?: string;
+}
+
+export function buildRouteTree(routes: Route[]): RouteNode {
+  const root = new RouteNode();
+
+  const redirectsToValidate: RoutePayload[] = [];
+
+  function insertIntoTree(pattern: string, payload: RoutePayload) {
+    const parts = splitPath(pattern);
+    let current = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+
+      if (part === "*") {
+        if (!current.wildcardChild) current.wildcardChild = new RouteNode();
+        current = current.wildcardChild;
+      } else if (part.charCodeAt(0) === 123) {
+        // {
+        if (part.charCodeAt(1) === 35) {
+          // #
+          if (!current.numericChild) current.numericChild = new RouteNode();
+          current.numericChild.numericName = part.slice(2, -1);
+          current = current.numericChild;
+        } else {
+          if (!current.paramChild) current.paramChild = new RouteNode();
+          current.paramChild.paramName = part.slice(1, -1);
+          current = current.paramChild;
+        }
+      } else {
+        const key = part.toLowerCase();
+        let next = current.staticChildren.get(key);
+        if (!next) {
+          next = new RouteNode();
+          current.staticChildren.set(key, next);
+        }
+        current = next;
+      }
+    }
+
+    current.route = payload;
+  }
+
+  function parse(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
+    if (!isObject<Route>(route) || !isString(route.path)) {
+      throw new TypeError(`Routes must be objects with a 'path' string property. Got: ${route}`);
+    }
+
+    if (route.redirect && route.routes) {
+      throw new Error(`Route cannot have both a 'redirect' and nested 'routes'.`);
+    } else if (route.redirect && route.view) {
+      throw new Error(`Route cannot have both a 'redirect' and a 'view'.`);
+    } else if (!route.view && !route.routes && !route.redirect) {
+      throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
+    }
+
+    const parentPaths = parents.map((p) => p.path);
+    const pattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
+
+    // Merge meta
+    let meta: Record<any, any> = {};
+    if (route.meta) {
+      const parent = parents.at(-1);
+      meta = parent ? { ...parent.meta, ...route.meta } : route.meta;
+    }
+
+    // Handle Redirects
+    if (route.redirect) {
+      let redirect = route.redirect;
+
+      if (isString(redirect)) {
+        redirect = resolvePath(joinPath(parentPaths), redirect);
+        if (!redirect.startsWith("/")) redirect = "/" + redirect;
+      }
+
+      const payload: RoutePayload = { pattern, meta, redirect };
+      insertIntoTree(pattern, payload);
+
+      if (isString(redirect)) redirectsToValidate.push(payload);
+      return;
+    }
+
+    // Handle Views/Layers
+    let view: View<any> = (props: any) => props.children;
+    if (isFunction(route.view)) {
+      view = route.view;
+    } else if (route.view && !(route.view as LazyView)._lazy) {
+      throw new TypeError(`Route '${route.path}' expected a view function. Got: ${route.view}`);
+    }
+
+    const layer: RouteLayer = {
+      id: uniqueId(),
+      pattern,
+      view,
+      preload: route.preload,
+      errorView: route.errorView,
+    };
+
+    if (route.routes) {
+      for (const subroute of route.routes) {
+        parse(subroute, [...parents, route], [...layers, layer]);
+      }
+    } else {
+      insertIntoTree(pattern, { pattern, meta, layers: [...layers, layer] });
+    }
+  }
+
+  for (const route of routes) {
+    parse(route);
+  }
+
+  // Validate string redirects against the tree
+  for (const payload of redirectsToValidate) {
+    const match = matchRoute(root, payload.redirect as string, {
+      willMatch(r) {
+        return r !== payload;
+      },
+    });
+    if (!match) {
+      throw new Error(`Found a redirect to an undefined URL. From '${payload.pattern}' to '${payload.redirect}'`);
+    }
+  }
+
+  return root;
+}
+
+export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatchOptions = {}): RouteMatch | undefined {
   const [path, query] = url.split("?");
   const parts = splitPath(path);
 
-  routes: for (const route of routes) {
-    const { fragments } = route;
-    const hasWildcard = fragments[fragments.length - 1]?.type === FragTypes.Wildcard;
-
-    if (!hasWildcard && fragments.length !== parts.length) {
-      continue routes;
+  function search(node: RouteNode, index: number, currentParams: Record<string, string>): RouteMatch | undefined {
+    // if we've consumed all URL parts
+    if (index === parts.length) {
+      if (node.route && (!options.willMatch || options.willMatch(node.route))) {
+        return {
+          path: path || "/",
+          pattern: node.route.pattern,
+          params: currentParams,
+          query: Object.fromEntries(new URLSearchParams(query || "")),
+          meta: node.route.meta,
+          layers: node.route.layers ?? [],
+          redirect: node.route.redirect,
+        };
+      }
+      return undefined;
     }
 
-    if (options.willMatch && !options.willMatch(route)) {
-      continue routes;
+    const part = parts[index];
+    const lowerPart = part.toLowerCase();
+
+    // #1 check literal match
+    const staticNode = node.staticChildren.get(lowerPart);
+    if (staticNode) {
+      const result = search(staticNode, index + 1, currentParams);
+      if (result) return result;
     }
 
-    const matched: RouteFragment[] = [];
-
-    fragments: for (let i = 0; i < fragments.length; i++) {
-      const part = parts[i];
-      const frag = fragments[i];
-
-      if (part == null && frag.type !== FragTypes.Wildcard) {
-        continue routes;
-      }
-
-      switch (frag.type) {
-        case FragTypes.Literal:
-          if (frag.name.toLowerCase() === part.toLowerCase()) {
-            matched.push(frag);
-            break;
-          } else {
-            continue routes;
-          }
-        case FragTypes.Param:
-          matched.push({ ...frag, value: part });
-          break;
-        case FragTypes.Wildcard:
-          matched.push({ ...frag, value: parts.slice(i).join("/") });
-          break fragments;
-        case FragTypes.NumericParam:
-          if (!isNaN(Number(part))) {
-            matched.push({ ...frag, value: part });
-            break;
-          } else {
-            continue routes;
-          }
-        default:
-          throw new Error(`Unknown fragment type: ${frag.type}`);
-      }
+    // #2 check numeric match
+    if (node.numericChild && !isNaN(Number(part))) {
+      const result = search(node.numericChild, index + 1, {
+        ...currentParams,
+        [node.numericChild.numericName!]: part,
+      });
+      if (result) return result;
     }
 
-    const params: Record<string, string> = {};
+    // #3 check param match
+    if (node.paramChild) {
+      const result = search(node.paramChild, index + 1, {
+        ...currentParams,
+        [node.paramChild.paramName!]: decodeURIComponent(part),
+      });
+      if (result) return result;
+    }
 
-    for (const frag of matched) {
-      if (frag.type === FragTypes.Param) {
-        params[frag.name] = decodeURIComponent(frag.value as string);
-      }
-
-      if (frag.type === FragTypes.NumericParam) {
-        params[frag.name] = String(frag.value);
-      }
-
-      if (frag.type === FragTypes.Wildcard) {
-        params.wildcard = "/" + decodeURIComponent(frag.value as string);
+    // #4 check wildcard match
+    if (node.wildcardChild && node.wildcardChild.route) {
+      if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
+        return {
+          path: path || "/",
+          pattern: node.wildcardChild.route.pattern,
+          params: {
+            ...currentParams,
+            wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/"),
+          },
+          query: Object.fromEntries(new URLSearchParams(query || "")),
+          meta: node.wildcardChild.route.meta,
+          layers: node.wildcardChild.route.layers ?? [],
+          redirect: node.wildcardChild.route.redirect,
+        };
       }
     }
 
+    return undefined;
+  }
+
+  return search(rootNode, 0, {});
+}
+
+export interface ResolvedRoute {
+  match?: RouteMatch;
+  journey: JourneyStep[];
+}
+
+/**
+ * Takes a URL and finds a match, following redirects.
+ */
+export async function resolveRoute(rootNode: RouteNode, url: URL, journey: JourneyStep[] = []): Promise<ResolvedRoute> {
+  const match = matchRoute(rootNode, url.pathname);
+
+  if (!match) {
     return {
-      path: "/" + matched.map((f) => f.value).join("/"),
-      pattern:
-        "/" +
-        fragments
-          .map((f) => {
-            if (f.type === FragTypes.Param) {
-              return `{${f.name}}`;
-            }
-
-            if (f.type === FragTypes.NumericParam) {
-              return `{#${f.name}}`;
-            }
-
-            return f.name;
-          })
-          .join("/"),
-      params,
-      query: parseQueryParams(query),
-      meta: route.meta,
+      journey: [...journey, { kind: "miss", message: `no match for '${url.pathname}'` }],
     };
   }
-}
 
-/**
- * Sort routes descending by specificity. Guarantees that the most specific route matches first
- * no matter the order in which they were added.
- *
- * Routes without named params and routes with more fragments are weighted more heavily.
- */
-export function sortRoutes<T>(routes: ParsedRoute<T>[]): ParsedRoute<T>[] {
-  const withoutParams = [];
-  const withNumericParams = [];
-  const withParams = [];
-  const wildcard = [];
+  let redirect = match.redirect;
 
-  for (const route of routes) {
-    const { fragments } = route;
+  if (redirect != null) {
+    let path: string;
 
-    if (fragments.some((f) => f.type === FragTypes.Wildcard)) {
-      wildcard.push(route);
-    } else if (fragments.some((f) => f.type === FragTypes.NumericParam)) {
-      withNumericParams.push(route);
-    } else if (fragments.some((f) => f.type === FragTypes.Param)) {
-      withParams.push(route);
-    } else {
-      withoutParams.push(route);
-    }
-  }
+    if (isString(redirect)) {
+      path = replaceParams(redirect, match.params);
+    } else if (typeof redirect === "function") {
+      path = await redirect(match);
 
-  const bySizeDesc = (a: ParsedRoute<T>, b: ParsedRoute<T>) => {
-    if (a.fragments.length > b.fragments.length) {
-      return -1;
-    } else {
-      return 1;
-    }
-  };
-
-  withoutParams.sort(bySizeDesc);
-  withNumericParams.sort(bySizeDesc);
-  withParams.sort(bySizeDesc);
-  wildcard.sort(bySizeDesc);
-
-  return [...withoutParams, ...withNumericParams, ...withParams, ...wildcard];
-}
-
-/**
- * Converts a route pattern into a set of matchable fragments.
- *
- * @param route - A route string (e.g. "/api/users/{id}")
- */
-export function patternToFragments(pattern: string): RouteFragment[] {
-  const parts = splitPath(pattern);
-  const fragments = [];
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-
-    if (part === "*") {
-      if (i !== parts.length - 1) {
-        throw new Error(`Wildcard must be at the end of a pattern. Received: ${pattern}`);
+      if (!isString(path)) {
+        throw new Error(`Redirect function must return a path to redirect to.`);
       }
-      fragments.push({
-        type: FragTypes.Wildcard,
-        name: "*",
-        value: null,
-      });
-    } else if (part.at(0) === "{" && part.at(-1) === "}") {
-      fragments.push({
-        type: part[1] === "#" ? FragTypes.NumericParam : FragTypes.Param,
-        name: part[1] === "#" ? part.slice(2, -1) : part.slice(1, -1),
-        value: null,
-      });
+      if (!path.startsWith("/")) {
+        path = resolvePath(match.path, path);
+      }
     } else {
-      fragments.push({
-        type: FragTypes.Literal,
-        name: part,
-        value: part,
-      });
+      throw new TypeError(`Redirect must either be a path string or a function.`);
     }
+
+    return resolveRoute(rootNode, new URL(path, window.location.origin), [
+      ...journey,
+      { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
+    ]);
   }
 
-  return fragments;
+  // TODO: Data preload
+
+  return { match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] };
 }
 
 const safeExternalLink = /(noopener|noreferrer) (noopener|noreferrer)/;
@@ -364,25 +446,14 @@ export function catchLinks(
   callback: (href: string, anchor: HTMLAnchorElement) => void,
   _window = window,
 ) {
-  function traverse(node: HTMLElement | null): HTMLAnchorElement | null {
-    if (!node || node === root) {
-      return null;
-    }
-
-    if (node.localName !== "a" || (node as any).href === undefined) {
-      return traverse(node.parentNode as HTMLElement | null);
-    }
-
-    return node as HTMLAnchorElement;
-  }
-
   function handler(e: MouseEvent) {
     if ((e.button && e.button !== 0) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
 
-    const anchor = traverse(e.target as HTMLElement);
-    if (!anchor) return;
+    const anchor = (e.target as Element).closest("a");
+    if (!anchor || !root.contains(anchor)) return;
 
-    const href = anchor.getAttribute("href")!;
+    const href = anchor.getAttribute("href");
+    if (!href) return;
 
     if (
       _window.location.protocol !== anchor.protocol ||
@@ -417,4 +488,44 @@ export function replaceParams(path: string, params: Record<string, string | numb
   }
 
   return path;
+}
+
+// history.ts or utils.ts
+
+export interface HistoryAdapter {
+  getPath(): string;
+  getSearch(): string;
+  getKey(): string;
+  push(url: string): void;
+  replace(url: string): void;
+}
+
+export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
+  if (!window.history.state?.key) {
+    window.history.replaceState({ ...window.history.state, key: Date.now().toString() }, "");
+  }
+
+  const getKey = () => window.history.state?.key || "root";
+
+  if (useHash) {
+    return {
+      getPath: () => window.location.hash.slice(1).split("?")[0] || "/",
+      getSearch: () => {
+        const hash = window.location.hash;
+        const searchIndex = hash.indexOf("?");
+        return searchIndex !== -1 ? hash.slice(searchIndex) : "";
+      },
+      getKey,
+      push: (url) => window.history.pushState({ key: uniqueId() }, "", "/#" + url),
+      replace: (url) => window.history.replaceState({ key: getKey() }, "", "/#" + url),
+    };
+  }
+
+  return {
+    getPath: () => window.location.pathname,
+    getSearch: () => window.location.search,
+    getKey,
+    push: (url) => window.history.pushState({ key: uniqueId() }, "", url),
+    replace: (url) => window.history.replaceState({ key: getKey() }, "", url),
+  };
 }

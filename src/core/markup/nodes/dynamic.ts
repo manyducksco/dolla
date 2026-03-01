@@ -1,5 +1,6 @@
 import type { Context } from "../../context.js";
 import { subscribe, type Reactive, type UnsubscribeFn } from "../../reactive.js";
+import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -35,8 +36,9 @@ export class DynamicNode extends MarkupNode {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 
       this.unsubscribe = subscribe(this.slot, (content) => {
-        // Assuming global batcher catches errors now
-        this.update(content);
+        scheduleUpdate(() => {
+          this.update(content);
+        });
       });
     }
   }

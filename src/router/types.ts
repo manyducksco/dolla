@@ -1,52 +1,17 @@
 import type { MarkupNode, Mutable, Reactive, View } from "../core";
 import type { Context } from "../core/context";
-import type { QueryParamsMap } from "./query";
+import type { Match } from "./utils";
 
 export type Stringable = { toString(): string };
 
-export interface Match {
-  /**
-   * The path as it appears in the URL bar.
-   */
-  path: string;
+export type LazyLoader<Props = any> = () => Promise<{ default: View<Props> } | View<Props>>;
 
-  /**
-   * The pattern that this path was matched with.
-   */
-  pattern: string;
-
-  /**
-   * Named route params parsed from `path`.
-   */
-  params: Record<string, string>;
-
-  /**
-   * Query params parsed from `path`.
-   */
-  query: Record<string, string>;
-
-  /**
-   * Freeform data you wish to store with this route.
-   * Merged `data` from all matched layers are available on the router's `match.meta`.
-   */
-  meta: Record<string, any>;
+export interface LazyView<Props = any> {
+  _lazy: true;
+  load: LazyLoader<Props>;
 }
 
-export interface RouteMatchContext extends Match {
-  /**
-   * Redirects the user to a different route instead of matching the current one.
-   */
-  redirect(path: string): void;
-}
-
-export interface GuardState extends Match {
-  /**
-   * Redirects the user to a different route instead of matching the current one.
-   */
-  redirect(path: string): void;
-}
-
-export interface Route {
+export interface Route<Data = any> {
   /**
    * The path or path fragment to match.
    */
@@ -55,12 +20,16 @@ export interface Route {
   /**
    * Path to redirect to when this route is matched, or a callback function that returns such path.
    */
-  redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
+  redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
+
+  preload?: (match: Match) => Data | Promise<Data>;
 
   /**
    * View to display when this route is matched.
    */
-  view?: View<any>;
+  view?: View<{ data?: Data }> | LazyView<{ data?: Data }>;
+
+  errorView?: View<{ error: Error }>;
 
   /**
    * Subroutes.
@@ -73,35 +42,15 @@ export interface Route {
    *
    * In the case of nested routes, data from all layers will be merged into a single data object.
    */
-  meta?: Record<string, any>;
-}
-
-export interface RouteMeta {
-  redirect?: string | ((ctx: RouteRedirectContext) => string) | ((ctx: RouteRedirectContext) => Promise<string>);
-  pattern?: string;
-  layers?: RouteLayer[];
-  guard?: { fn: (ctx: RouteMatchContext) => void | Promise<void>; layerId: string }[];
-  data?: Record<string, any>;
+  meta?: Record<string | symbol, any>;
 }
 
 export interface RouteLayer {
   id: string;
-  view: View<{}>;
-}
-
-export interface RoutePreloadState {
-  // Info passed to preload functions
-}
-
-export type RoutePreloadFn = (state: RoutePreloadState) => Promise<void>;
-
-export interface RouteTransitionState {
-  // Info passed to transition functions
-}
-
-export interface RouteTransitions {
-  in?: (state: RouteTransitionState) => Promise<void>;
-  out?: (state: RouteTransitionState) => Promise<void>;
+  pattern: string; // The route pattern up to this specific layer
+  view: View<any> | LazyView<any>;
+  errorView?: View<{ error: Error }>;
+  preload?: (match: Match) => any | Promise<any>;
 }
 
 /**
@@ -109,15 +58,11 @@ export interface RouteTransitions {
  */
 export interface ActiveLayer {
   id: string;
+  key: string;
   node: MarkupNode;
   context: Context;
   slot: Mutable<MarkupNode | undefined>;
 }
-
-/**
- * Object passed to redirect callbacks. Contains information useful for determining how to redirect.
- */
-export interface RouteRedirectContext extends Match {}
 
 /**
  * A log for a single step in the route resolution process.
@@ -148,10 +93,10 @@ export interface RouterOptions {
    * Persist query params between pages when navigating. Pass an array to specify a list of params that will be preserved.
    * By default all query params are cleared when navigating to a new URL (equivalent to `false`).
    */
-  preserveQuery?: true | false | string[];
+  preserveQuery?: boolean | string[];
 }
 
-export interface RouterAPI {
+export interface Router {
   /**
    * The current path as it is displayed in the URL bar (e.g. `/users/123/edit`).
    */
@@ -165,13 +110,23 @@ export interface RouterAPI {
    */
   params: Reactive<Record<string, string>>;
   /**
-   * The current query params. This is a Writable object that lets you modify query params as well as read them.
+   * The current query params.
    */
-  query: QueryParamsMap;
+  query: Reactive<Record<string, string>>;
   /**
    * The contents of the `meta` fields of all matched route layers.
    */
   meta: Reactive<Record<string, string>>;
+  /**
+   * Represents the loading progress of the current navigation from 0 to 1.
+   * Returns 0 when no navigation is pending.
+   */
+  progress: Reactive<number>;
+
+  /**
+   * Update query params without changing the route.
+   */
+  updateQuery(params: Record<string, Stringable>): Record<string, string>;
 
   /**
    * Go back in the page history. Equivalent to hitting the back button.
@@ -194,4 +149,11 @@ export interface RouterAPI {
    * Replace the current route in the page history and navigate to it.
    */
   replace(path: string): void;
+
+  block(guard: () => boolean | Promise<boolean>): () => void;
+
+  /**
+   * Contains `true` when the current route matches `path`.
+   */
+  isActive(path: string, exact?: boolean): Reactive<boolean>;
 }

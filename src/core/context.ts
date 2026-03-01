@@ -1,6 +1,6 @@
 import { assertFunction } from "../typeChecking";
 import type { Store } from "../types";
-import { IdGenerator } from "../utils";
+import { uniqueId } from "../utils";
 import { get, type Getter, type MaybeReactive, type MaybeTrackable, type Reactive } from "./reactive";
 
 export type LifecycleListener = () => any;
@@ -13,12 +13,12 @@ export interface LinkedContextOptions {
 ||           Global Context          ||
 \*===================================*/
 
-let _get: () => Context | undefined;
-let _set: (context: Context | undefined) => Context | undefined;
+export let getCurrentContext: () => Context | undefined;
+export let setCurrentContext: (context: Context | undefined) => Context | undefined;
 
 if (typeof window !== "undefined") {
-  _get = () => window.DOLLA_CURRENT_CONTEXT;
-  _set = (context) => {
+  getCurrentContext = () => window.DOLLA_CURRENT_CONTEXT;
+  setCurrentContext = (context) => {
     const prev = window.DOLLA_CURRENT_CONTEXT;
     window.DOLLA_CURRENT_CONTEXT = context;
     return prev;
@@ -26,28 +26,23 @@ if (typeof window !== "undefined") {
 } else {
   let currentContext: Context | undefined;
 
-  _get = () => currentContext;
-  _set = (context) => {
+  getCurrentContext = () => currentContext;
+  setCurrentContext = (context) => {
     const prev = currentContext;
     currentContext = context;
     return prev;
   };
 }
 
-export function getCurrentContext(): Context | undefined {
-  return _get();
-}
-
-export function setCurrentContext(context: Context | undefined) {
-  return _set(context);
-}
-
-export function runWithContext(context: Context | undefined, callback: () => void) {
-  const prevContext = _set(context);
+/**
+ * Runs `callback` with `context` active so hooks will function.
+ */
+export function contextualize(context: Context | undefined, callback: () => void) {
+  const prevContext = setCurrentContext(context);
   try {
     callback();
   } finally {
-    _set(prevContext);
+    setCurrentContext(prevContext);
   }
 }
 
@@ -57,20 +52,18 @@ export function runWithContext(context: Context | undefined, callback: () => voi
 
 const STORE_ID = Symbol("Dolla.StoreId");
 
-const contextIds = new IdGenerator();
-
 export class Context {
-  readonly id = contextIds.next();
+  readonly id = uniqueId();
+
   #name: MaybeTrackable<string>;
 
   isMounted = false;
   mountListeners?: LifecycleListener[];
   unmountListeners?: LifecycleListener[];
 
+  parent?: Context;
   bound?: Context[];
 
-  // lifecycle = new ContextLifecycle(this);
-  parent?: Context;
   state: Record<string | symbol, any>;
 
   constructor(name: Reactive<string> | Getter<string> | string, parent?: Context) {
@@ -122,36 +115,26 @@ export class Context {
   onMount(listener: LifecycleListener) {
     if (!this.mountListeners) this.mountListeners = [];
     this.mountListeners.push(listener);
-
-    return () => {
-      const list = this.mountListeners;
-      if (list) {
-        const index = list.indexOf(listener);
-        if (index !== -1) list.splice(index, 1);
-      }
-    };
+    return this.unsubscribe.bind(this.mountListeners);
   }
 
   onUnmount(listener: LifecycleListener) {
     if (!this.unmountListeners) this.unmountListeners = [];
     this.unmountListeners.push(listener);
+    return this.unsubscribe.bind(this.unmountListeners);
+  }
 
-    return () => {
-      const list = this.unmountListeners;
-      if (list) {
-        const index = list.indexOf(listener);
-        if (index !== -1) list.splice(index, 1);
-      }
-    };
+  private unsubscribe(this: LifecycleListener[], listener: LifecycleListener) {
+    if (!this) return;
+    const index = this.indexOf(listener);
+    if (index !== -1) this.splice(index, 1);
   }
 
   mount() {
     if (this.isMounted) return;
 
     this.isMounted = true;
-    this.mountListeners?.forEach((callback) => {
-      callback();
-    });
+    this.mountListeners?.forEach((callback) => callback());
 
     // Update bound contexts.
     if (this.bound) {
@@ -165,9 +148,7 @@ export class Context {
     if (!this.isMounted) return;
 
     this.isMounted = false;
-    this.unmountListeners?.forEach((callback) => {
-      callback();
-    });
+    this.unmountListeners?.forEach((callback) => callback());
 
     // Update bound contexts.
     if (this.bound) {
@@ -198,7 +179,7 @@ export class Context {
       bindLifecycle: true,
     });
 
-    runWithContext(context, () => {
+    contextualize(context, () => {
       this.state[store[STORE_ID]!] = store(options);
     });
 

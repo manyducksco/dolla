@@ -1,5 +1,5 @@
 import { Renderable } from ".";
-import { runWithContext } from "./context";
+import { contextualize } from "./context";
 import { Context } from "./context";
 import { Mutable, Reactive, reader, state } from "./reactive";
 
@@ -81,7 +81,7 @@ export function element<Attrs extends Record<string, ElementAttribute<unknown>>>
         }
 
         // Run the view function
-        runWithContext(this.#context, () => {
+        contextualize(this.#context, () => {
           this.#viewContent = options.view.call(this, attrs as ReactiveAttributes<Attrs>);
         });
 

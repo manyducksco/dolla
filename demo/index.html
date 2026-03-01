@@ -6,10 +6,15 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { createRoot, state, html } from "../dist/index.js";
+      import { createRoot, state, html, $watch, $debug } from "../dist/index.js";
 
       function Counter() {
         const count = state(0);
+
+        const debug = $debug();
+        $watch(() => {
+          debug.info("count", count.track());
+        });
 
         return html`
           <p>Count: ${count}</p>

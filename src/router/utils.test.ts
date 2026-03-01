@@ -1,53 +1,54 @@
 import { test, expect } from "vitest";
-import { type ParsedRoute, joinPath, matchRoutes, patternToFragments, resolvePath, sortRoutes } from "./utils.js";
+import { buildRouteTree, joinPath, matchRoute, resolvePath } from "./utils.js";
+import type { Route } from "./types.js";
 
 test("add and match routes", () => {
-  let routes: ParsedRoute<{ testId: number }>[] = [];
+  let routes: Route[] = [];
 
   routes.push({
-    pattern: "/{named}",
+    path: "/{named}",
     meta: { testId: 1 },
-    fragments: patternToFragments("/{named}"),
+    view: () => "test",
   });
   routes.push({
-    pattern: "/users/{#id}",
+    path: "/users/{#id}",
     meta: { testId: 2 },
-    fragments: patternToFragments("/users/{#id}"),
+    view: () => "test",
   });
   routes.push({
-    pattern: "/users/me",
+    path: "/users/me",
     meta: { testId: 3 },
-    fragments: patternToFragments("/users/me"),
+    view: () => "test",
   });
   routes.push({
-    pattern: "/users/{#id}/{action}",
+    path: "/users/{#id}/{action}",
     meta: { testId: 4 },
-    fragments: patternToFragments("/users/{#id}/{action}"),
+    view: () => "test",
   });
   routes.push({
-    pattern: "/users/2/edit",
+    path: "/users/2/edit",
     meta: { testId: 5 },
-    fragments: patternToFragments("/users/2/edit"),
+    view: () => "test",
   });
   routes.push({
-    pattern: "/wild/*",
+    path: "/wild/*",
     meta: { testId: 6 },
-    fragments: patternToFragments("/wild/*"),
+    view: () => "test",
   });
 
-  routes = sortRoutes(routes);
+  const routeTree = buildRouteTree(routes);
 
-  const match1 = matchRoutes(routes, "/example");
-  const match2 = matchRoutes(routes, "/users/123");
-  const match3 = matchRoutes(routes, "/users/me");
-  const match4 = matchRoutes(
-    routes,
+  const match1 = matchRoute(routeTree, "/example");
+  const match2 = matchRoute(routeTree, "/users/123");
+  const match3 = matchRoute(routeTree, "/users/me");
+  const match4 = matchRoute(
+    routeTree,
     // Query params should be parsed but won't affect path matching.
     "/users/123/edit?example=5&other_thing=test&yes=true",
   );
-  const match5 = matchRoutes(routes, "/users/2/edit");
-  const match6 = matchRoutes(routes, "/wild/some/other/stuff");
-  const matchNone = matchRoutes(routes, "/no/matches/too/many/segments");
+  const match5 = matchRoute(routeTree, "/users/2/edit");
+  const match6 = matchRoute(routeTree, "/wild/some/other/stuff");
+  const matchNone = matchRoute(routeTree, "/no/matches/too/many/segments");
 
   expect(match1).toBeTruthy();
   expect(match1!.meta.testId).toBe(1);

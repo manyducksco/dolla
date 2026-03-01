@@ -1,6 +1,6 @@
-import { $$context } from "../hooks";
+import { $$context, $setup } from "../hooks";
 import { type Key, type RenderFn, RepeatNode } from "../markup/nodes/repeat";
-import { reader, type Trackable } from "../reactive";
+import { reader, subscribe, type Trackable } from "../reactive";
 
 export interface ForProps<T> {
   /**
@@ -28,6 +28,13 @@ const defaultKeyFn = (x: any) => x;
 export function For<T>(props: ForProps<T>) {
   const context = $$context();
   context.setName("dolla:For");
+
+  $setup(() =>
+    subscribe(props.each, (items) => {
+      // TODO: Update
+    }),
+  );
+
   return new RepeatNode(
     context,
     reader(props.each),

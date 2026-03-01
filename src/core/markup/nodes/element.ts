@@ -11,7 +11,7 @@ import { VIEW, ViewNode } from "./view.js";
 const IS_SVG = Symbol("isSVG");
 
 // Properties in this list will not be processed by applyProps because they are already handled elsewhere.
-const ignoredProps = ["class", "className", "ref", "mixin", "children"];
+const ignoredProps = ["ref", "mixin", "children"];
 
 /**
  * Renders an HTML or SVG element.
@@ -89,10 +89,7 @@ export class ElementNode extends MarkupNode {
       //   }
       // }
 
-      const classes = props.className ?? props.class;
-      this.applyProps(this.root, props);
-      if (props.style) this.applyStyles(this.root, props.style);
-      if (classes) this.applyClasses(this.root, classes);
+      this.applyProps(this.root, omit(ignoredProps, props));
 
       if (props.children) {
         this.childNodes = toMarkupNodes(this.context, props.children);
@@ -166,10 +163,14 @@ export class ElementNode extends MarkupNode {
   }
 
   private applyProps(element: any, props: Record<string, unknown>) {
-    for (const key in omit(ignoredProps, props)) {
+    for (const key in props) {
       const value = props[key];
 
-      if (key === "for") {
+      if (key === "style") {
+        this.applyStyles(element, value);
+      } else if (key === "class" || key === "className") {
+        this.applyClasses(element, value);
+      } else if (key === "for") {
         this.attach(value, (current) => {
           element.htmlFor = current;
         });

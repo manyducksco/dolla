@@ -3,8 +3,11 @@ import { Renderable, View } from "../types.js";
 import { getElement } from "../utils.js";
 import { Context } from "./context.js";
 import { LogLevel } from "./logger.js";
+import { DynamicNode } from "./markup/nodes/dynamic.js";
+import { ViewNode } from "./markup/nodes/view.js";
 import { MarkupNode } from "./markup/types.js";
-import { render } from "./markup/utils.js";
+import { toMarkupNodes } from "./markup/utils.js";
+import { reader } from "./reactive.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
 export type CleanupCallback = () => void | Promise<void>;
@@ -65,7 +68,7 @@ export function createRoot(element: Element, options?: DollaRootOptions): DollaR
 export function createRoot(target: string | Element, options?: DollaRootOptions) {
   const element = getElement(target);
   const context = new Context("dolla:root");
-  const plugins = new Set<DollaPlugin>();
+  const plugins: DollaPlugin[] = [];
   const cleanup: CleanupCallback[] = [];
 
   context.state[PARENT_ELEMENT] = element;
@@ -76,22 +79,32 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   const self: DollaRoot = { plugin, mount, unmount };
 
   function plugin(plugin: DollaPlugin) {
-    plugins.add(plugin);
+    plugins.push(plugin);
     return self;
   }
 
   async function mount(content: Renderable) {
     if (context.isMounted) return;
 
-    const results = await Promise.all([...plugins].map((fn) => fn(context)));
+    const results = await Promise.all(plugins.map((fn) => fn(context)));
     for (const result of results) {
       if (isFunction<CleanupCallback>(result)) {
         cleanup.push(result);
       }
     }
 
-    rootNode = render(content, context);
-    rootNode.mount(element);
+    if (isFunction<View<{}>>(content)) {
+      rootNode = new ViewNode(context, content, {});
+    } else {
+      const nodes = toMarkupNodes(context, content);
+      if (nodes.length === 1) {
+        rootNode = nodes[0];
+      } else {
+        rootNode = new DynamicNode(context, reader(nodes));
+      }
+    }
+
+    rootNode?.mount(element);
 
     context.mount();
   }

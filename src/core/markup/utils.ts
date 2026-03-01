@@ -33,9 +33,6 @@ export function isMarkupNode(value: any): value is MarkupNode {
  * Takes any `Renderable` value and returns a `MarkupNode` that will display it.
  */
 export function render(content: Renderable, context = new Context("$")): MarkupNode {
-  if (isFunction(content)) {
-    return new ViewNode(context, content, {});
-  }
   const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
     return nodes[0]; // if it's just one item return it
@@ -129,7 +126,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       return;
     }
 
-    if (typeof item === "function") {
+    if (isFunction(item)) {
       nodes.push(new DynamicNode(context, computed(item)));
       return;
     }
