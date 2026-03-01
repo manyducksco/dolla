@@ -222,7 +222,7 @@
     </style>
 
     <script type="module">
-      import { createRoot, VirtualList, state, html } from "../dist/index.js";
+      import { createRoot, VirtualList, state, html, when, watch } from "../dist/index.js";
 
       function ChatWireDemo() {
         // 1. Upgrade data to objects
@@ -262,24 +262,36 @@
           addMessage();
         }, 5000);
 
+        const isAtBottom = state(true);
+
         // Create a local variable to hold the API
         let listApi;
 
         return html`
           <div style="flex: 1; position: relative; display: flex; flex-direction: column; overflow-y: auto;">
-            <button
-              onclick=${() => listApi?.scrollToBottom(true)}
-              style="position: absolute; bottom: 16px; right: 16px; z-index: 20; padding: 8px 16px; border-radius: 20px; background: rgba(255,255,255,0.9); border: 1px solid #a3b8cb; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; color: #2c3e50;"
-            >
-              ↓ Jump to Bottom
-            </button>
+            ${when(
+              () => !isAtBottom.track(),
+              html`<button
+                onclick=${() => listApi?.scrollToBottom(true)}
+                style="position: absolute; bottom: 16px; right: 16px; z-index: 20; padding: 8px 16px; border-radius: 20px; background: rgba(255,255,255,0.9); border: 1px solid #a3b8cb; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-weight: bold; color: #2c3e50;"
+              >
+                ↓ Jump to Bottom
+              </button>`,
+            )}
 
             <${VirtualList}
               items=${items}
               bottomUp=${true}
               enterAnimationMs=${400}
               isSticky=${(item) => item.type === "header"}
-              apiRef=${(api) => (listApi = api)}
+              apiRef=${(api) => {
+                listApi = api;
+
+                // TODO: This is not good. Need a better way to get a reference to the controller and bind it to the view.
+                watch(() => {
+                  isAtBottom.set(api.isAtBottom.track());
+                });
+              }}
               renderSticky=${(itemSignal) => html`
                 <div
                   style="padding: 12px 0; width: 100%; display: flex; justify-content: center; cursor: pointer;"
