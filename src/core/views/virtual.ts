@@ -7,6 +7,7 @@ export interface VirtualListAPI<T> {
   scrollToTop: (smooth?: boolean) => void;
   scrollToIndex: (index: number, options?: { smooth?: boolean; align?: "start" | "center" | "end" }) => void;
   scrollToItem: (item: T, options?: { smooth?: boolean; align?: "start" | "center" | "end" }) => void;
+  isAtBottom: Reactive<boolean>;
 }
 
 export interface VirtualListContext {
@@ -29,8 +30,6 @@ export interface VirtualListProps<T> {
 
 export function VirtualList<T>(props: VirtualListProps<T>) {
   const scrollTop = state(0);
-
-  console.log(props);
 
   const defaultAssumption = 50;
   const measuredCount = state(0);
@@ -57,7 +56,8 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
   let lastCalculatedIndex = -1;
 
   const enteringItems = new Set<T>();
-  let isSmoothScrolling = false;
+  let isSmoothScrolling = false; // true when any scroll animation is active
+  let isAutoScrolling = false; // true when scrolling as the result of a new message appending while at the bottom
 
   const averageHeight = computed(() => {
     const count = measuredCount.track();
@@ -137,17 +137,17 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       const newAnchorOffset = getOffset(anchorIndex, newAvg);
       const shift = newAnchorOffset - oldAnchorOffset;
 
-      const effectivelyAtBottom = isAtBottom || isSmoothScrolling;
+      const effectivelyAtBottom = isAtBottom.get() || isAutoScrolling;
 
       if (props.bottomUp && effectivelyAtBottom && viewportElement) {
         requestAnimationFrame(() => {
           if (viewportElement) {
-            if (isSmoothScrolling) {
+            if (isAutoScrolling) {
               viewportElement.scrollTo({ top: viewportElement.scrollHeight, behavior: "smooth" });
             } else {
               viewportElement.scrollTop = viewportElement.scrollHeight;
               scrollTop.set(viewportElement.scrollTop);
-              isAtBottom = true;
+              isAtBottom.set(true);
             }
           }
         });
@@ -211,7 +211,7 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
 
     const endIndex = Math.min(total, startIndex + POOL_SIZE);
 
-    // --- THE STICKY COLLISION ENGINE ---
+    // --- STICKY COLLISION ---
     if (props.isSticky && props.renderSticky) {
       const indices = stickyIndices.get(); // Read the fast lookup array
       let activeIdx = -1;
@@ -251,7 +251,7 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
         stickyPushOffset.set(push);
       }
     }
-    // --- END STICKY COLLISION ENGINE ---
+    // --- END STICKY COLLISION ---
 
     batch(() => {
       for (let i = 0; i < POOL_SIZE; i++) pool[i].active.set(false);
@@ -270,7 +270,7 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
   }
 
   let isPrepending = false;
-  let isAtBottom = true;
+  const isAtBottom = state(true);
 
   let previousCount = props.items.get().length;
   let previousFirstItem: T | null = props.items.get()[0] ?? null;
@@ -313,10 +313,11 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
         }
       }
 
-      const effectivelyAtBottom = isAtBottom || isSmoothScrolling;
+      const effectivelyAtBottom = isAtBottom.get() || isAutoScrolling;
 
       if (props.bottomUp && effectivelyAtBottom && viewportElement) {
         isSmoothScrolling = true;
+        isAutoScrolling = true; // Mark this as a "follow" animation
 
         requestAnimationFrame(() => {
           if (viewportElement) {
@@ -338,23 +339,29 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     const api: VirtualListAPI<T> = {
       scrollToBottom: (smooth = false) => {
         if (!viewportElement) return;
-        if (smooth) isSmoothScrolling = true;
+        if (smooth) {
+          isSmoothScrolling = true;
+          isAutoScrolling = true; // Turn on auto-scroll mode
+        }
 
         // Lock intent to the bottom
-        isAtBottom = true;
+        isAtBottom.set(true);
 
         viewportElement.scrollTo({
           top: viewportElement.scrollHeight,
           behavior: smooth ? "smooth" : "auto",
         });
-        if (!smooth) scrollTop.set(viewportElement.scrollTop);
+        if (!smooth) {
+          scrollTop.set(viewportElement.scrollTop);
+          isAutoScrolling = false;
+        }
       },
       scrollToTop: (smooth = false) => {
         if (!viewportElement) return;
         if (smooth) isSmoothScrolling = true;
 
         // Instantly break the bottom-lock
-        isAtBottom = false;
+        isAtBottom.set(false);
 
         viewportElement.scrollTo({
           top: 0,
@@ -366,7 +373,9 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
         if (!viewportElement) return;
 
         // Instantly break the bottom-lock so appends don't hijack the animation
-        isAtBottom = false;
+        isAtBottom.set(false);
+
+        isAutoScrolling = false; // API jumps break auto-scroll
 
         const avg = averageHeight.get();
         let targetOffset = getOffset(index, avg);
@@ -400,6 +409,7 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
         const index = itemsArray.indexOf(item);
         if (index !== -1) api.scrollToIndex(index, options);
       },
+      isAtBottom,
     };
 
     props.apiRef(api);
@@ -417,11 +427,12 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       if (props.bottomUp) {
         el.scrollTop = el.scrollHeight;
         scrollTop.set(el.scrollTop);
-        isAtBottom = true;
+        isAtBottom.set(true);
       }
 
       el.addEventListener("scrollend", () => {
         isSmoothScrolling = false;
+        isAutoScrolling = false; // reset auto-scroll state when animation settles
       });
 
       let lastScrollTop = el.scrollTop;
@@ -440,10 +451,10 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
             if (isScrollingUp && distanceToBottom > 15) {
               // 1. User scrolled up. Detach from the bottom.
               // (The 15px buffer prevents accidental detachments from high-DPI trackpad bounce)
-              isAtBottom = false;
+              isAtBottom.set(false);
             } else if (!isScrollingUp && distanceToBottom <= 100) {
               // 2. User scrolled down. If they cross the 100px threshold, re-engage!
-              isAtBottom = true;
+              isAtBottom.set(true);
             }
           }
 
