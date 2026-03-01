@@ -2,10 +2,19 @@ import { state, computed, batch, Reactive, Mutable } from "../reactive.js";
 import { createMarkup } from "../markup/utils.js";
 import { $watch } from "../hooks.js";
 
+export interface VirtualListContext {
+  isEntering: Reactive<boolean>;
+}
+
 export interface VirtualListProps<T> {
   items: Reactive<T[]>;
   bottomUp?: boolean;
-  render: (item: Reactive<T>, index: Reactive<number>) => any;
+  /**
+   * How long (in ms) the isEntering signal stays true for newly appended items.
+   * Matches the duration of your CSS @keyframes animation.
+   */
+  enterAnimationMs?: number;
+  render: (item: Reactive<T>, index: Reactive<number>, context: VirtualListContext) => any;
 }
 
 export function VirtualList<T>(props: VirtualListProps<T>) {
@@ -19,7 +28,9 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
   const offsetCache: number[] = [];
   let lastCalculatedIndex = -1;
 
-  // THE DRIFT FIX: Enforce integer math to prevent floating point array drift
+  const enteringItems = new Set<T>();
+  let isSmoothScrolling = false;
+
   const averageHeight = computed(() => {
     const count = measuredCount.track();
     const total = totalMeasuredHeight.track();
@@ -52,7 +63,6 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
   const observer = new ResizeObserver((entries) => {
     let needsRecalculation = false;
 
-    // THE DESYNC FIX: Read from the DOM, not the reactive signal
     const currentScroll = viewportElement ? viewportElement.scrollTop : 0;
     const oldAvg = averageHeight.get();
 
@@ -72,7 +82,6 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
 
       if (isNaN(dataIndex)) continue;
 
-      // THE DRIFT FIX: Round physical pixels to integers
       const newHeight = Math.round(entry.borderBoxSize[0].blockSize);
       if (newHeight === 0) continue;
 
@@ -100,14 +109,25 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       const newAnchorOffset = getOffset(anchorIndex, newAvg);
       const shift = newAnchorOffset - oldAnchorOffset;
 
-      if (props.bottomUp && isAtBottom && viewportElement) {
-        // Calculate future height mathematically to bypass DOM lag
-        const futureTotal = currentTotal + (totalItems - currentCount) * newAvg;
-        viewportElement.scrollTop = futureTotal - viewportElement.clientHeight;
-        scrollTop.set(viewportElement.scrollTop);
+      const effectivelyAtBottom = isAtBottom || isSmoothScrolling;
+
+      if (props.bottomUp && effectivelyAtBottom && viewportElement) {
+        requestAnimationFrame(() => {
+          if (viewportElement) {
+            if (isSmoothScrolling) {
+              viewportElement.scrollTo({ top: viewportElement.scrollHeight, behavior: "smooth" });
+            } else {
+              viewportElement.scrollTop = viewportElement.scrollHeight;
+              scrollTop.set(viewportElement.scrollTop);
+              isAtBottom = true;
+            }
+          }
+        });
       } else if (shift !== 0 && viewportElement && currentScroll > 0) {
-        viewportElement.scrollTop += shift;
-        scrollTop.set(viewportElement.scrollTop);
+        if (!isSmoothScrolling) {
+          viewportElement.scrollTop += shift;
+          scrollTop.set(viewportElement.scrollTop);
+        }
       }
 
       updateScrollSlice();
@@ -121,6 +141,7 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     index: Mutable<number>;
     offset: Mutable<number>;
     active: Mutable<boolean>;
+    isEntering: Mutable<boolean>;
     node: any;
   }
 
@@ -129,8 +150,9 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     const index = state(-1);
     const offset = state(0);
     const active = state(false);
+    const isEntering = state(false);
 
-    const renderedNode = props.render(item as Reactive<T>, index);
+    const renderedNode = props.render(item as Reactive<T>, index, { isEntering });
 
     const node = createMarkup("div", {
       "data-index": index,
@@ -145,11 +167,10 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       children: renderedNode,
     });
 
-    return { item, index, offset, active, node };
+    return { item, index, offset, active, isEntering, node };
   });
 
   function updateScrollSlice() {
-    // THE DESYNC FIX: Force truth from the DOM
     const currentScroll = viewportElement ? viewportElement.scrollTop : 0;
     const currentAvg = averageHeight.get();
     const data = props.items.get();
@@ -167,18 +188,22 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
 
       for (let i = startIndex; i < endIndex; i++) {
         const slot = pool[i % POOL_SIZE];
-        slot.item.set(data[i]);
+        const currentData = data[i];
+
+        slot.item.set(currentData);
         slot.index.set(i);
         slot.offset.set(getOffset(i, currentAvg));
         slot.active.set(true);
+        slot.isEntering.set(enteringItems.has(currentData));
       }
     });
   }
 
   let isPrepending = false;
   let isAtBottom = true;
-  let previousCount = 0;
-  let previousFirstItem: T | null = null;
+
+  let previousCount = props.items.get().length;
+  let previousFirstItem: T | null = props.items.get()[0] ?? null;
 
   $watch(() => {
     const currentItems = props.items.track();
@@ -195,7 +220,7 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
 
       if (viewportElement) {
         viewportElement.scrollTop += addedHeight;
-        scrollTop.set(viewportElement.scrollTop); // Sync the jump
+        scrollTop.set(viewportElement.scrollTop);
       }
 
       offsetCache.length = 0;
@@ -203,13 +228,32 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       measuredHeights.clear();
     }
 
-    if (!isPrepending && props.bottomUp && isAtBottom && viewportElement) {
-      requestAnimationFrame(() => {
-        if (viewportElement) {
-          viewportElement.scrollTop = viewportElement.scrollHeight;
-          scrollTop.set(viewportElement.scrollTop);
+    const isAppending = !isPrepending && currentCount > previousCount && currentItems[0] === previousFirstItem;
+
+    if (isAppending) {
+      if (props.enterAnimationMs) {
+        for (let i = previousCount; i < currentCount; i++) {
+          const newItem = currentItems[i];
+          enteringItems.add(newItem);
+
+          setTimeout(() => {
+            enteringItems.delete(newItem);
+            updateScrollSlice();
+          }, props.enterAnimationMs);
         }
-      });
+      }
+
+      const effectivelyAtBottom = isAtBottom || isSmoothScrolling;
+
+      if (props.bottomUp && effectivelyAtBottom && viewportElement) {
+        isSmoothScrolling = true;
+
+        requestAnimationFrame(() => {
+          if (viewportElement) {
+            viewportElement.scrollTo({ top: viewportElement.scrollHeight, behavior: "smooth" });
+          }
+        });
+      }
     }
 
     previousCount = currentCount;
@@ -230,15 +274,19 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
 
       if (props.bottomUp) {
         el.scrollTop = el.scrollHeight;
-        scrollTop.set(el.scrollTop); // Sync the initial jump
+        scrollTop.set(el.scrollTop);
+        isAtBottom = true;
       }
+
+      el.addEventListener("scrollend", () => {
+        isSmoothScrolling = false;
+      });
 
       el.addEventListener(
         "scroll",
         () => {
           scrollTop.set(el.scrollTop);
-          // Increased threshold to 30px to handle high DPI floating point padding
-          isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+          isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
           updateScrollSlice();
         },
         { passive: true },
