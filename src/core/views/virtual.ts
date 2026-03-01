@@ -2,6 +2,13 @@ import { state, computed, batch, Reactive, Mutable } from "../reactive.js";
 import { createMarkup } from "../markup/utils.js";
 import { $watch } from "../hooks.js";
 
+export interface VirtualListAPI<T> {
+  scrollToBottom: (smooth?: boolean) => void;
+  scrollToTop: (smooth?: boolean) => void;
+  scrollToIndex: (index: number, options?: { smooth?: boolean; align?: "start" | "center" | "end" }) => void;
+  scrollToItem: (item: T, options?: { smooth?: boolean; align?: "start" | "center" | "end" }) => void;
+}
+
 export interface VirtualListContext {
   isEntering: Reactive<boolean>;
 }
@@ -15,14 +22,35 @@ export interface VirtualListProps<T> {
    */
   enterAnimationMs?: number;
   render: (item: Reactive<T>, index: Reactive<number>, context: VirtualListContext) => any;
+  apiRef?: (api: VirtualListAPI<T>) => void;
+  isSticky?: (item: T) => boolean;
+  renderSticky?: (item: Reactive<T>) => any;
 }
 
 export function VirtualList<T>(props: VirtualListProps<T>) {
   const scrollTop = state(0);
 
+  console.log(props);
+
   const defaultAssumption = 50;
   const measuredCount = state(0);
   const totalMeasuredHeight = state(0);
+
+  // The Phantom Header State
+  const activeStickyItem = state<T | null>(null);
+  const stickyPushOffset = state(0);
+  let phantomHeight = 0;
+
+  // Cache the indices of all sticky items so we don't scan the whole array on scroll
+  const stickyIndices = computed(() => {
+    if (!props.isSticky) return [];
+    const items = props.items.track();
+    const indices: number[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (props.isSticky(items[i])) indices.push(i);
+    }
+    return indices;
+  });
 
   const measuredHeights = new Map<number, number>();
   const offsetCache: number[] = [];
@@ -183,6 +211,48 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
 
     const endIndex = Math.min(total, startIndex + POOL_SIZE);
 
+    // --- THE STICKY COLLISION ENGINE ---
+    if (props.isSticky && props.renderSticky) {
+      const indices = stickyIndices.get(); // Read the fast lookup array
+      let activeIdx = -1;
+      let nextIdx = -1;
+
+      // 1. Find the active header, and the incoming next header
+      for (let i = 0; i < indices.length; i++) {
+        const offset = getOffset(indices[i], currentAvg);
+        if (offset <= currentScroll) {
+          activeIdx = indices[i];
+        } else {
+          nextIdx = indices[i];
+          break; // We found the next incoming header!
+        }
+      }
+
+      // 2. Set the active header content
+      const newActive = activeIdx !== -1 ? data[activeIdx] : null;
+      if (activeStickyItem.get() !== newActive) {
+        activeStickyItem.set(newActive);
+      }
+
+      // 3. Calculate the Push Effect
+      let push = 0;
+      if (nextIdx !== -1 && phantomHeight > 0) {
+        const nextOffset = getOffset(nextIdx, currentAvg);
+        const distanceToNext = nextOffset - currentScroll;
+
+        // If the incoming header is closer than the height of our Phantom node,
+        // we physically push the Phantom node upward by the difference!
+        if (distanceToNext < phantomHeight) {
+          push = distanceToNext - phantomHeight;
+        }
+      }
+
+      if (stickyPushOffset.get() !== push) {
+        stickyPushOffset.set(push);
+      }
+    }
+    // --- END STICKY COLLISION ENGINE ---
+
     batch(() => {
       for (let i = 0; i < POOL_SIZE; i++) pool[i].active.set(false);
 
@@ -263,6 +333,78 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
     updateScrollSlice();
   });
 
+  // Expose the API to the parent
+  if (props.apiRef) {
+    const api: VirtualListAPI<T> = {
+      scrollToBottom: (smooth = false) => {
+        if (!viewportElement) return;
+        if (smooth) isSmoothScrolling = true;
+
+        // Lock intent to the bottom
+        isAtBottom = true;
+
+        viewportElement.scrollTo({
+          top: viewportElement.scrollHeight,
+          behavior: smooth ? "smooth" : "auto",
+        });
+        if (!smooth) scrollTop.set(viewportElement.scrollTop);
+      },
+      scrollToTop: (smooth = false) => {
+        if (!viewportElement) return;
+        if (smooth) isSmoothScrolling = true;
+
+        // Instantly break the bottom-lock
+        isAtBottom = false;
+
+        viewportElement.scrollTo({
+          top: 0,
+          behavior: smooth ? "smooth" : "auto",
+        });
+        if (!smooth) scrollTop.set(0);
+      },
+      scrollToIndex: (index: number, options = {}) => {
+        if (!viewportElement) return;
+
+        // Instantly break the bottom-lock so appends don't hijack the animation
+        isAtBottom = false;
+
+        const avg = averageHeight.get();
+        let targetOffset = getOffset(index, avg);
+        const itemHeight = measuredHeights.get(index) ?? avg;
+
+        const itemsArray = props.items.get();
+        const isTargetSticky = props.isSticky && itemsArray[index] ? props.isSticky(itemsArray[index]) : false;
+
+        if (options.align === "center") {
+          targetOffset -= viewportElement.clientHeight / 2 - itemHeight / 2;
+        } else if (options.align === "end") {
+          targetOffset -= viewportElement.clientHeight - itemHeight;
+        } else {
+          if (props.isSticky && !isTargetSticky) {
+            targetOffset -= phantomHeight;
+          }
+        }
+
+        targetOffset = Math.max(0, Math.min(targetOffset, viewportElement.scrollHeight - viewportElement.clientHeight));
+
+        if (options.smooth) isSmoothScrolling = true;
+        viewportElement.scrollTo({
+          top: targetOffset,
+          behavior: options.smooth ? "smooth" : "auto",
+        });
+
+        if (!options.smooth) scrollTop.set(targetOffset);
+      },
+      scrollToItem: (item: T, options = {}) => {
+        const itemsArray = props.items.get();
+        const index = itemsArray.indexOf(item);
+        if (index !== -1) api.scrollToIndex(index, options);
+      },
+    };
+
+    props.apiRef(api);
+  }
+
   return createMarkup("div", {
     ref: (el: HTMLElement | null) => {
       viewportElement = el;
@@ -282,11 +424,30 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
         isSmoothScrolling = false;
       });
 
+      let lastScrollTop = el.scrollTop;
+
       el.addEventListener(
         "scroll",
         () => {
-          scrollTop.set(el.scrollTop);
-          isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+          const st = el.scrollTop;
+          scrollTop.set(st);
+
+          const distanceToBottom = el.scrollHeight - st - el.clientHeight;
+          const isScrollingUp = st < lastScrollTop;
+
+          // Only process manual scroll intent if the framework isn't actively gliding
+          if (!isSmoothScrolling) {
+            if (isScrollingUp && distanceToBottom > 15) {
+              // 1. User scrolled up. Detach from the bottom.
+              // (The 15px buffer prevents accidental detachments from high-DPI trackpad bounce)
+              isAtBottom = false;
+            } else if (!isScrollingUp && distanceToBottom <= 100) {
+              // 2. User scrolled down. If they cross the 100px threshold, re-engage!
+              isAtBottom = true;
+            }
+          }
+
+          lastScrollTop = st;
           updateScrollSlice();
         },
         { passive: true },
@@ -302,13 +463,43 @@ export function VirtualList<T>(props: VirtualListProps<T>) {
       width: "100%",
       contain: "content",
     },
-    children: createMarkup("div", {
-      style: {
-        height: () => `${totalHeight.track()}px`,
-        width: "100%",
-        position: "relative",
-      },
-      children: pool.map((p) => p.node),
-    }),
+    children: [
+      props.renderSticky &&
+        createMarkup("div", {
+          style: {
+            position: "sticky",
+            top: "0",
+            left: "0",
+            width: "100%",
+            height: "0px",
+            zIndex: "10",
+            overflow: "visible",
+          },
+          children: createMarkup("div", {
+            ref: (el: HTMLElement | null) => {
+              if (el == null) return;
+              const ro = new ResizeObserver((entries) => {
+                phantomHeight = entries[0].borderBoxSize[0].blockSize;
+                updateScrollSlice();
+              });
+              ro.observe(el);
+            },
+            style: {
+              transform: () => `translateY(${stickyPushOffset.track()}px)`,
+              display: () => (activeStickyItem.track() !== null ? "block" : "none"),
+            },
+            children: props.renderSticky(activeStickyItem as Reactive<T>),
+          }),
+        }),
+
+      createMarkup("div", {
+        style: {
+          height: () => `${totalHeight.track()}px`,
+          width: "100%",
+          position: "relative",
+        },
+        children: pool.map((p) => p.node),
+      }),
+    ],
   });
 }
