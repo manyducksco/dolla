@@ -6,9 +6,8 @@
 Dolla is a research framework for trying out ideas. The goal is to create a full-featured framework that, first and foremost, provides the best developer experience possible out of the box. Low resource usage and small code size are secondary objectives. It's more than a toy and less than a production-ready workhorse. It's a labor of love. Use at your own joy and peril.
 
 - ⚡️ [**Signals**](./docs/signals.md) for pinpoint DOM updates.
-- 📦 Three types of [components](./docs/components.md):
+- 📦 Two types of [components](./docs/components.md):
   - 🖥️ [**Views**](./docs/views.md) for reusable UI elements.
-  - ✨ [**Mixins**](./docs/mixins.md) for augmenting DOM nodes without writing a whole new view.
   - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
 - 🪝 [**Hooks**](./docs/hooks.md) for reaching into the component context and hooking into stores, lifecycle and more.
 - 🔀 A client-side [**router**](./docs/router.md) with nested routes, auth guards, async data loading and more.

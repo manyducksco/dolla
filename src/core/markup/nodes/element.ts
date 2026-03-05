@@ -27,6 +27,8 @@ export class ElementNode extends MarkupNode {
   private childNodes: MarkupNode[] = [];
   private unsubscribers = new Set<UnsubscribeFn>();
 
+  private refCleanup?: () => void;
+
   constructor(context: Context, tag: string, props: Record<string, any>) {
     super();
 
@@ -106,7 +108,10 @@ export class ElementNode extends MarkupNode {
 
     if (!wasMounted) {
       if (this.props.ref && typeof this.props.ref === "function") {
-        this.props.ref(this.root);
+        const result = this.props.ref(this.root);
+        if (typeof result === "function") {
+          this.refCleanup = result;
+        }
       }
 
       if (this.ownContext) this.context.mount();
@@ -129,13 +134,13 @@ export class ElementNode extends MarkupNode {
     if (this.ownContext) this.context.unmount();
 
     // Clear ref
-    if (this.props.ref) {
-      this.props.ref(null);
+    if (this.refCleanup) {
+      this.refCleanup();
+      this.refCleanup = undefined;
     }
 
     // Release memory
     this.childNodes.length = 0;
-    // (this as any).root = undefined;
   }
 
   override move(parent: Element, after?: Node) {

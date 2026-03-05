@@ -177,6 +177,10 @@ export interface Getter<T> {
  */
 export type MaybeGetter<T> = Getter<T> | T;
 
+export interface Setter<T> {
+  (value: T | ((current: T) => T)): T;
+}
+
 /**
  * Any type of value that can be unwrapped by the `get` function.
  */
@@ -204,7 +208,7 @@ export interface Reactive<T> {
   /**
    * Returns the stored value.
    */
-  get(): T;
+  peek(): T;
 
   /**
    * Returns the stored value. Tracks this value as a dependency of the function it's called in (like a `computed` or `$watch` callback).
@@ -219,13 +223,14 @@ export interface Reactive<T> {
 export interface Mutable<T> extends Reactive<T> {
   /**
    * Stores the new value and returns the updated value.
+   * If a function is passed, that function will be called with the current value and return the new value.
    */
-  set(value: T): T;
+  set(value: T | ((current: T) => T)): T;
 
   /**
    * Stores the return value of `callback` as the new value, and returns the updated value.
    */
-  update(callback: (current: T) => T): T;
+  // update(callback: (current: T) => T): T;
 }
 
 const IS_REACTIVE = Symbol.for("Dolla.Reactive");
@@ -252,7 +257,7 @@ class State<T> implements Mutable<T>, ValueNode<T> {
     this.equals = (options?.equals as EqualityFn<unknown>) ?? strictEqual;
   }
 
-  get(): T {
+  peek(): T {
     if (this.flags & (16 satisfies ReactiveFlags.Dirty)) {
       if (updateSignal(this, this.value)) {
         if (this.subs !== undefined) {
@@ -264,14 +269,17 @@ class State<T> implements Mutable<T>, ValueNode<T> {
   }
 
   track(): T {
-    const value = this.get();
+    const value = this.peek();
     if (activeSub !== undefined) {
       link(this, activeSub);
     }
     return value;
   }
 
-  set(value: T): T {
+  set(next: T | ((current: T) => T)): T {
+    let value: T;
+    if (isFunction<(current: T) => T>(next)) value = next(this.value);
+    else value = next;
     if (!this.equals(this.value, value)) {
       this.value = value;
       this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
@@ -283,10 +291,6 @@ class State<T> implements Mutable<T>, ValueNode<T> {
       }
     }
     return value;
-  }
-
-  update(fn: (current: T) => T): T {
-    return this.set(fn(this.value));
   }
 }
 
@@ -311,7 +315,7 @@ export class Computed<T> implements Reactive<T>, ComputedNode<T> {
     this.getter = (previous?: T) => track(callback(previous));
   }
 
-  get(): T {
+  peek(): T {
     const flags = this.flags;
     if (
       flags & (16 satisfies ReactiveFlags.Dirty) ||
@@ -329,7 +333,7 @@ export class Computed<T> implements Reactive<T>, ComputedNode<T> {
   }
 
   track(): T {
-    const value = this.get();
+    const value = this.peek();
     if (activeSub !== undefined) {
       link(this, activeSub);
     }
@@ -348,7 +352,7 @@ class StaticReader<T> implements Reactive<T> {
     this.#value = value;
   }
 
-  get(): T {
+  peek(): T {
     return this.#value;
   }
 
@@ -373,12 +377,28 @@ export function isTrackable<T>(value: any): value is Trackable<T> {
 export function state<T>(value: T, options?: SignalOptions<T>): Mutable<T>;
 export function state<T>(value: undefined, options: SignalOptions<T>): Mutable<T>;
 export function state<T>(): Mutable<T | undefined>;
-export function state<T>(value?: T, options?: SignalOptions<T>): Mutable<T> {
+export function state<T>(value?: T, options?: SignalOptions<T>) {
   return new State(value as T, options);
 }
 
 export function computed<T>(callback: () => T, options?: SignalOptions<T>): Reactive<T> {
   return new Computed(callback, options);
+}
+
+export function signal<T>(value: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
+export function signal<T>(value: undefined, options: SignalOptions<T>): [Getter<T>, Setter<T>];
+export function signal<T>(): [Getter<T | undefined>, Setter<T | undefined>];
+export function signal<T>(value?: T, options?: SignalOptions<T>) {
+  const state = new State(value as T, options);
+  return [state.track.bind(state), state.set.bind(state)];
+}
+
+/**
+ * Memoizes a getter, so it will only be called if its dependencies have changed since it was last called.
+ */
+export function memo<T>(getter: () => T, options?: SignalOptions<T>): Getter<T> {
+  const computed = new Computed(getter, options);
+  return computed.track.bind(computed);
 }
 
 /**
@@ -395,6 +415,17 @@ export function reader<T>(value: Reactive<T> | Getter<T> | T): Reactive<T> {
 }
 
 /**
+ * Creates a getter of the value passed in. If the value is already a function it is returned untouched.
+ */
+export function getter<T>(value: Getter<T> | T): Getter<T> {
+  if (isFunction<Getter<T>>(value)) {
+    return value;
+  } else {
+    return () => value;
+  }
+}
+
+/**
  * Suspends effects during `fn`. Effects for all updated Signal values are called at the end of the batch.
  */
 export function batch(fn: () => void): void {
@@ -403,9 +434,9 @@ export function batch(fn: () => void): void {
   if (!--batchDepth) flush();
 }
 
-export function get<T>(value: Reactive<T> | Getter<T> | T): T {
+export function peek<T>(value: Reactive<T> | Getter<T> | T): T {
   if (isReactive(value)) {
-    return value.get();
+    return value.peek();
   } else if (isFunction(value)) {
     return _untracked(() => value());
   } else {

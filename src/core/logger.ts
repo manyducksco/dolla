@@ -1,5 +1,5 @@
 import { noOp, okhash } from "../utils.js";
-import { MaybeGetter, get } from "./reactive.js";
+import { MaybeGetter, peek } from "./reactive.js";
 
 export interface Logger {
   info(...args: any[]): void;
@@ -73,7 +73,7 @@ export function createLogger(name: MaybeGetter<string>, options?: LoggerOptions)
   let _error: any = noOp;
 
   const updateBindings = () => {
-    const currentName = get(name);
+    const currentName = peek(name);
 
     if (cachedVersion === globalConfigVersion && cachedName === currentName) {
       return;

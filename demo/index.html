@@ -6,21 +6,59 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { createRoot, state, html, $watch, $debug } from "../dist/index.js";
+      import { createRoot, signal, html, $watch, $debug } from "../dist/index.js";
+
+      // function Counter() {
+      //   const count = state(0);
+
+      //   return html`
+      //     <p>Count: ${count}</p>
+      //     <button onclick=${() => count.set(count.get() + 1)}>+1</button>
+      //     <button onclick=${() => count.update((value) => value - 1)}>-1</button>
+      //     <button onclick=${() => count.set(0)}>Reset</button>
+      //   `;
+      // }
 
       function Counter() {
-        const count = state(0);
+        const [count, setCount] = atom(0);
 
-        const debug = $debug();
+        // What are all the tracking contexts?
+        // - $watch() callback
+        // - memo() callback
+        // - any markup element attribute or child
+
         $watch(() => {
-          debug.info("count", count.track());
+          // Calling a getter in a tracking context will track it.
+          console.log("count is", count());
+
+          // Peek to get the value without tracking.
+          console.log("count is", peek(count));
+        });
+
+        // Footgun #1
+        function doComplexLogic() {
+          // Define a function that calls a getter directly
+          const value = count();
+        }
+        // Calling that function most of the time will just run the function once.
+        doComplexLogic();
+        // However...
+        $watch(() => {
+          // Calling that function in this scope WILL track count.
+          doComplexLogic();
+
+          // You might have to defensively peek if you want to avoid this.
+          // This makes you always have to be cognizant of tracking contexts.
+          peek(() => {
+            doComplexLogic();
+          });
         });
 
         return html`
           <p>Count: ${count}</p>
-          <button onclick=${() => count.set(count.get() + 1)}>+1</button>
-          <button onclick=${() => count.update((value) => value - 1)}>-1</button>
-          <button onclick=${() => count.set(0)}>Reset</button>
+          <button onclick=${() => setCount(count() + 1)}>+1</button>
+          <button onclick=${() => setCount((value) => value - 1)}>-1</button>
+          <button onclick=${() => setCount(0)}>Reset</button>
         `;
       }
 
@@ -343,7 +381,16 @@
           _items.push(20 + Math.random() * 100);
         }
 
-        const items = state(_items);
+        // Takes a name for dev tools
+        const items = state(_items, { name: "items" });
+
+        // Take a `reason` when tracking to label this dependency or dependent in dev tools.
+        items.track("reason for tracking");
+        // When looking at tracked deps, you'll see the source name and the reason
+        // When looking at consumers of a signal, you'll see the consumer name and the reason
+
+        // Signals can also tag the context they were in when created.
+        // That context will register when it mounts and unmounts.
 
         $setup(() => {
           const interval = setInterval(() => {

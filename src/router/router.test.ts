@@ -54,8 +54,8 @@ describe("Router Engine", () => {
 
       const store = context.getStore(RouterStore);
 
-      expect(store.path.get()).toBe("/dashboard");
-      expect(store.meta.get()).toEqual({ requiresAuth: true, title: "Dashboard" });
+      expect(store.path.peek()).toBe("/dashboard");
+      expect(store.meta.peek()).toEqual({ requiresAuth: true, title: "Dashboard" });
     });
   });
 
@@ -108,7 +108,7 @@ describe("Router Engine", () => {
       await new Promise(process.nextTick);
 
       const store = context.getStore(RouterStore);
-      expect(store.path.get()).toBe("/login");
+      expect(store.path.peek()).toBe("/login");
     });
   });
 
@@ -134,14 +134,14 @@ describe("Router Engine", () => {
       await new Promise(process.nextTick);
 
       // Navigation should have failed
-      expect(store.path.get()).toBe("/form");
+      expect(store.path.peek()).toBe("/form");
 
       // Remove blocker and try again
       unblock();
       store.push("/");
       await new Promise(process.nextTick);
 
-      expect(store.path.get()).toBe("/");
+      expect(store.path.peek()).toBe("/");
     });
   });
 
@@ -159,7 +159,7 @@ describe("Router Engine", () => {
 
       store.updateQuery({ q: "potato", sort: "asc" });
 
-      expect(store.query.get()).toEqual({ q: "potato", sort: "asc" });
+      expect(store.query.peek()).toEqual({ q: "potato", sort: "asc" });
       expect(window.location.search).toBe("?q=potato&sort=asc");
     });
   });

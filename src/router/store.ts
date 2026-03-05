@@ -19,11 +19,11 @@ export function RouterStore({ match, progress, history, updateRoute }: RouterSto
     progress: computed(() => progress.track()),
 
     updateQuery(params) {
-      const path = match.get().path;
-      const merged = mergeQueryParams(match.get().query, params, true);
+      const path = match.peek().path;
+      const merged = mergeQueryParams(match.peek().query, params, true);
       const query = Object.fromEntries(merged);
 
-      match.update((current) => ({ ...current, query }));
+      match.set((current) => ({ ...current, query }));
 
       const queryString = merged.size > 0 ? "?" + merged.toString() : "";
       history.replace(path + queryString);

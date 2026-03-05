@@ -54,7 +54,7 @@ describe("$watch", () => {
     left.set(15);
     expect(fn).toBeCalledTimes(2);
 
-    left.update((n) => n + 2);
+    left.set((n) => n + 2);
     expect(fn).toBeCalledTimes(3);
   });
 
@@ -73,12 +73,12 @@ describe("$watch", () => {
     expect(fn).toBeCalledTimes(1);
     expect(cleanup).toBeCalledTimes(0);
 
-    count.update((n) => n + 1);
+    count.set((n) => n + 1);
 
     expect(fn).toBeCalledTimes(2);
     expect(cleanup).toBeCalledTimes(1);
 
-    count.update((n) => n + 1);
+    count.set((n) => n + 1);
 
     expect(fn).toBeCalledTimes(3);
     expect(cleanup).toBeCalledTimes(2);

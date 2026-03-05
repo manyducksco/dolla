@@ -1,7 +1,7 @@
 import { assertFunction } from "../typeChecking";
 import type { Store } from "../types";
 import { uniqueId } from "../utils";
-import { get, type Getter, type MaybeReactive, type MaybeTrackable, type Reactive } from "./reactive";
+import { peek, type Getter, type MaybeReactive, type MaybeTrackable, type Reactive } from "./reactive";
 
 export type LifecycleListener = () => any;
 
@@ -98,7 +98,7 @@ export class Context {
    * Returns the current name of this context.
    */
   getName(): string {
-    return get(this.#name);
+    return peek(this.#name);
   }
 
   /**

@@ -177,7 +177,7 @@ export function createRouter(options: RouterOptions): View {
       }
 
       // Merge query params.
-      const query = mergeQueryParams(currentMatch.get().query, match.query, options.preserveQuery);
+      const query = mergeQueryParams(currentMatch.peek().query, match.query, options.preserveQuery);
 
       const queryString = query.toString();
       const searchString = queryString.length > 0 ? "?" + queryString : "";

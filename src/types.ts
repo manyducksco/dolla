@@ -1578,12 +1578,13 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
 
   /**
    * Receives a reference to the DOM node when rendered.
+   * Returns a cleanup function that is called when the node is removed.
    */
   ref?:
-    | ((value: E | null) => void)
-    | ((value: HTMLElement | null) => void)
-    | ((value: Element | null) => void)
-    | ((value: Node | null) => void);
+    | ((value: E) => () => void)
+    | ((value: HTMLElement) => () => void)
+    | ((value: Element) => () => void)
+    | ((value: Node) => () => void);
 
   /**
    * A mixin function or an array of mixin functions to be applied to this element.

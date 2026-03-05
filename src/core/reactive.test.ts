@@ -2,8 +2,9 @@ import { describe, expect, test, vi } from "vitest";
 import {
   batch,
   computed,
+  memo,
   watch,
-  get,
+  peek,
   Reactive,
   state,
   reader,
@@ -11,6 +12,8 @@ import {
   isMutable,
   isReactive,
   isTrackable,
+  signal,
+  getter,
 } from "./reactive";
 
 describe("type checking", () => {
@@ -44,11 +47,11 @@ test("basic composition & tracking", () => {
   const doubled = computed(() => count.track() * 2);
 
   const same = reader(count);
-  expect(same.get()).toBe(5);
+  expect(same.peek()).toBe(5);
 
-  expect(count.get()).toBe(5);
-  expect(get(doubled)).toBe(10);
-  expect(doubled.get()).toBe(10);
+  expect(count.peek()).toBe(5);
+  expect(peek(doubled)).toBe(10);
+  expect(doubled.peek()).toBe(10);
 
   const fn = vi.fn(() => {
     doubled.track();
@@ -59,14 +62,46 @@ test("basic composition & tracking", () => {
 
   // Effects should not run until end of batch.
   batch(() => {
-    count.update((c) => c + 1);
-    count.update((c) => c + 1);
-    count.update((c) => c + 1);
-    count.update((c) => c + 1);
+    count.set((c) => c + 1);
+    count.set((c) => c + 1);
+    count.set((c) => c + 1);
+    count.set((c) => c + 1);
   });
 
   expect(fn).toBeCalledTimes(2);
-  expect(same.get()).toBe(9);
+  expect(same.peek()).toBe(9);
+
+  stop();
+});
+
+test("basic composition & tracking 2", () => {
+  const [count, setCount] = signal(0);
+  const doubled = memo(() => count() * 2);
+
+  const same = getter(count);
+  expect(same()).toBe(5);
+
+  expect(count()).toBe(5);
+  expect(peek(doubled)).toBe(10);
+  expect(doubled()).toBe(10);
+
+  const fn = vi.fn(() => {
+    doubled();
+  });
+  const stop = watch(fn);
+
+  expect(fn).toBeCalledTimes(1);
+
+  // Effects should not run until end of batch.
+  batch(() => {
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+  });
+
+  expect(fn).toBeCalledTimes(2);
+  expect(peek(same)).toBe(9);
 
   stop();
 });
@@ -75,28 +110,28 @@ test("readables returned from computed function are unwrapped", () => {
   const count = state(5);
   const doubled = computed(() => count);
 
-  expect(doubled.get()).toBe(5);
+  expect(doubled.peek()).toBe(5);
 
-  count.update((x) => x + 1);
+  count.set((x) => x + 1);
 
-  expect(doubled.get()).toBe(6);
+  expect(doubled.peek()).toBe(6);
 });
 
 test("values are only tracked when accessed with .track()", () => {
   const a = state(5);
   const b = state(10);
 
-  const multiplied = computed(() => a.track() * b.get());
+  const multiplied = computed(() => a.track() * b.peek());
 
-  expect(multiplied.get()).toBe(50);
+  expect(multiplied.peek()).toBe(50);
 
-  a.update((x) => x + 1);
+  a.set((x) => x + 1);
 
-  expect(multiplied.get()).toBe(60);
+  expect(multiplied.peek()).toBe(60);
 
-  b.update((x) => x + 1);
+  b.set((x) => x + 1);
 
-  expect(multiplied.get()).toBe(60);
+  expect(multiplied.peek()).toBe(60);
 });
 
 test("solves diamond problem", () => {
@@ -114,10 +149,10 @@ test("solves diamond problem", () => {
 
   expect(fn).toBeCalledTimes(1);
 
-  count.update((x) => x + 1);
+  count.set((x) => x + 1);
   batch(() => {
-    count.update((x) => x + 1);
-    count.update((x) => x + 1);
+    count.set((x) => x + 1);
+    count.set((x) => x + 1);
   });
 
   expect(fn).toBeCalledTimes(3);
@@ -142,17 +177,17 @@ test("nested memo", () => {
 
   expect(fn).toBeCalledTimes(1);
 
-  expect(one.get()).toBe(1);
-  expect(two.get()).toBe(2);
-  expect(three.get()).toBe(3);
+  expect(one.peek()).toBe(1);
+  expect(two.peek()).toBe(2);
+  expect(three.peek()).toBe(3);
 
-  count.update((x) => x + 1);
+  count.set((x) => x + 1);
 
   expect(fn).toBeCalledTimes(2);
 
-  expect(one.get()).toBe(2);
-  expect(two.get()).toBe(3);
-  expect(three.get()).toBe(4);
+  expect(one.peek()).toBe(2);
+  expect(two.peek()).toBe(3);
+  expect(three.peek()).toBe(4);
 
   stop();
 });
@@ -204,17 +239,17 @@ describe("transform", () => {
       () => count.track(),
       (value) => value * 3,
     );
-    const frozen = transform(count.get(), (value) => value * 100);
+    const frozen = transform(count.peek(), (value) => value * 100);
 
-    expect(doubled.get()).toBe(10);
-    expect(tripled.get()).toBe(15);
-    expect(frozen.get()).toBe(500);
+    expect(doubled.peek()).toBe(10);
+    expect(tripled.peek()).toBe(15);
+    expect(frozen.peek()).toBe(500);
 
-    count.set(count.get() + 1);
+    count.set(count.peek() + 1);
 
-    expect(doubled.get()).toBe(12);
-    expect(tripled.get()).toBe(18);
-    expect(frozen.get()).toBe(500);
+    expect(doubled.peek()).toBe(12);
+    expect(tripled.peek()).toBe(18);
+    expect(frozen.peek()).toBe(500);
   });
 
   test("ignores tracked values in callback", () => {
@@ -229,17 +264,17 @@ describe("transform", () => {
       return value * 2;
     });
 
-    expect(doubled.get()).toBe(10);
+    expect(doubled.peek()).toBe(10);
     expect(fn).toBeCalledTimes(1);
 
     count.set(12);
 
-    expect(doubled.get()).toBe(24);
+    expect(doubled.peek()).toBe(24);
     expect(fn).toBeCalledTimes(2);
 
     other.set("hello");
 
-    expect(doubled.get()).toBe(24);
+    expect(doubled.peek()).toBe(24);
     expect(fn).toBeCalledTimes(2);
   });
 });

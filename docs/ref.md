@@ -9,14 +9,14 @@ Think of it like a signal's uncool cousin—it holds stuff, but it's **not react
 The main character energy of refs is grabbing actual HTML elements. Just yeet a `ref={myRef}` prop onto any element, and bam, the real DOM node lands in `myRef.current`. Now you can mess with it directly using regular JS, no cap. It's your secret backdoor to the DOM.
 
 ```tsx
-import { useRef } from "@manyducks.co/dolla";
+import { ref, $setup } from "@manyducks.co/dolla";
 
 function ExampleView() {
-  const element = useRef<HTMLElement>();
+  const element = ref();
 
-  useMount(() => {
+  $setup(() => {
     // We're just changing the text directly on the element. Wild.
-    element.current.innerText = "GOODBYE WORLD";
+    element().innerText = "GOODBYE WORLD";
   });
 
   return <div ref={element}>HELLO WORLD</div>;

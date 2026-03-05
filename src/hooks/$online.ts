@@ -23,7 +23,7 @@ export function $online(pingUrl: string) {
     if (timer) clearInterval(timer);
 
     // Determine interval: 5s if active/focused, 60s if backgrounded
-    const interval = isActive.get() ? 5000 : 60000;
+    const interval = isActive.peek() ? 5000 : 60000;
 
     // Slightly randomize timer to avoid many users hitting the server at the same time.
     const jitter = Math.random() * 1000;

@@ -6,7 +6,7 @@ export type { DollaPlugin } from "./root.js";
 export {
   batch,
   computed,
-  get,
+  peek,
   isMutable,
   isReactive,
   reader,
@@ -15,6 +15,9 @@ export {
   track,
   transform,
   watch,
+  signal,
+  memo,
+  getter,
 } from "./reactive.js";
 export type { Getter, MaybeGetter, MaybeReactive, MaybeTrackable, Mutable, Reactive, Trackable } from "./reactive.js";
 
@@ -28,6 +31,10 @@ export * from "./hooks.js";
 export { each, when } from "./markup/helpers.js";
 export type { Markup, MarkupNode, NodeType } from "./markup/types.js";
 export { createMarkup, render, toMarkupNodes } from "./markup/utils.js";
+
+// ref
+export { EmptyRefError, ref } from "./ref.js";
+export type { Ref } from "./ref.js";
 
 // html
 export { html } from "./markup/html.js";

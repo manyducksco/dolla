@@ -25,9 +25,12 @@ export function $name(name: Reactive<string> | Getter<string> | string): void {
 /**
  * Returns the component's logger.
  */
-export function $debug() {
+export function $debug(name?: string | ((contextName: string) => string)) {
   const context = $$context();
-  return createLogger(() => context.getName(), { tag: context.id, tagName: "id" });
+  return createLogger(typeof name === "function" ? () => name(context.getName()) : () => context.getName(), {
+    tag: context.id,
+    tagName: "ctx",
+  });
 }
 
 /**
@@ -68,6 +71,10 @@ export function $use<T>(arg: Store<any, T> | string | symbol, fallback?: T) {
   } else {
     return context.state[arg] ?? fallback;
   }
+}
+
+export function $state() {
+  return $$context().state;
 }
 
 type CleanupFnOrVoid = void | (() => void);

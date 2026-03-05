@@ -4,7 +4,7 @@ import { $watch, batch, computed, state, reader, type Mutable } from "../core";
  * Augments an existing Writable by adding history controls.
  */
 export function $history<T>(target: Mutable<T>, capacity = 20) {
-  const timeline = state<T[]>([target.get()]);
+  const timeline = state<T[]>([target.peek()]);
   const cursor = state(0);
 
   // Internal flag to prevent the $watch from triggering when we move the cursor
@@ -18,8 +18,8 @@ export function $history<T>(target: Mutable<T>, capacity = 20) {
       return;
     }
 
-    const currentTimeline = timeline.get();
-    const currentIndex = cursor.get();
+    const currentTimeline = timeline.peek();
+    const currentIndex = cursor.peek();
 
     // If we are in the middle of the timeline and make a new change, we must "branch"
     const newTimeline = currentTimeline.slice(0, currentIndex + 1);
@@ -36,7 +36,7 @@ export function $history<T>(target: Mutable<T>, capacity = 20) {
   });
 
   const jump = (index: number) => {
-    const list = timeline.get();
+    const list = timeline.peek();
     if (index >= 0 && index < list.length) {
       isInternalUpdate = true;
       batch(() => {
@@ -47,8 +47,8 @@ export function $history<T>(target: Mutable<T>, capacity = 20) {
   };
 
   return {
-    undo: () => jump(cursor.get() - 1),
-    redo: () => jump(cursor.get() + 1),
+    undo: () => jump(cursor.peek() - 1),
+    redo: () => jump(cursor.peek() + 1),
     canUndo: computed(() => cursor.track() > 0),
     canRedo: computed(() => cursor.track() < timeline.track().length - 1),
 
