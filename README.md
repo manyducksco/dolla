@@ -52,33 +52,6 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 import { state, html, createRoot } from "@manyducks.co/dolla";
 
 function Counter() {
-  const count = state(0);
-
-  count.peek();
-  count.watch();
-
-  return html`
-    <div>
-      <p>Count: ${count}</p>
-      <button onclick=${() => count.set((c) => c + 1)}>Increment</button>
-    </div>
-  `;
-}
-
-const count = atom(0);
-const doubled = compose(() => count.watch() * 2);
-
-interface Reactive<T> {
-  peek(): T;
-  watch(): T;
-}
-
-interface Atom<T> extends Reactive<T> {
-  set(value: T): T;
-  set(fn: (current: T) => T): T;
-}
-
-function Counter() {
   const [count, setCount] = state(0);
 
   return html`
@@ -94,28 +67,16 @@ createRoot(document.body).mount(Counter);
 
 That will give you a basic counter mounted to the body of your document with a button you can click to increase the number. Reactivity is fully wired up.
 
-Components never re-render in Dolla. They are one-shot constructor functions that get called when the component is created. The `state` function creates a container called a `Mutable`. A `Mutable` is a type of reactive container that holds a value which can be updated at runtime. Follows are the type signatures for reactive values in Dolla.
+Components never re-render in Dolla. They are one-shot constructor functions that get called when the component is created. The `state` function creates a reactive value and returns a pair of functions, the first of which a getter and the second a setter.
 
-```ts
-interface Reactive<T> {
-  // Returns the currently held value.
-  peek(): T;
+In the Counter view, we were just passing the getter itself into the `<p>` tag. Getters have a special side-effect that calling them inside specific functions will track them, causing the parent function to re-run when the tracked values are updated. Dolla handles this tracking process automatically when you drop getters into your template as attributes or children.
 
-  // Tracks this container when called inside certain functions, then returns the current value.
-  // A tracked reactive will cause the scope it was called in to run again each time the value changes.
-  track(): T;
-}
+Tracking contexts
 
-interface Mutable<T> extends Reactive<T> {
-  // Replaces the currently held value, notifying all observers. Returns the new value.
-  set(value: T): T;
-
-  // Sets the value through a callback. The callback takes the current value and returns a new one.
-  set(callback: (current: T) => T): T;
-}
-```
-
-In the Counter view, we were just passing the container itself into the `<p>` tag. The view knows to `.track()` that value automatically when it sees one. We can also create our own non-mutable `Reactive`s and track values ourselves.
+- memo()
+- HTML element attributes
+- HTML element children
+- NOT event handlers
 
 ## Example: Temperature Converter
 
@@ -125,10 +86,12 @@ import { state, memo, html } from "@manyducks.co/dolla";
 function Converter() {
   const [celsius, setCelsius] = state(0);
 
+  // Depends on `celsius`; updates when `celsius` updates.
   const fahrenheit = memo(() => {
     return (celsius() * 9) / 5 + 32;
   });
 
+  // Depends on `fahrenheit`; updates when `fahrenheit` updates.
   const description = memo(() => {
     const f = fahrenheit();
     if (f <= 32) return "Freezing ❄️";
@@ -141,7 +104,7 @@ function Converter() {
       <input
         type="number"
         value=${celsius}
-        onchange=${(e) => {
+        oninput=${(e) => {
           setCelsius(e.target.valueAsNumber);
         }}
       />

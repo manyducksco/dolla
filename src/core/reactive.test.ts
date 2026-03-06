@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { batch, effect, getter, type Getter, memo, peek, state, subscribe } from "./reactive";
 
 test("basic composition & tracking", () => {
-  const [count, setCount] = state(0);
+  const [count, setCount] = state(5);
   const doubled = memo(() => count() * 2);
 
   const same = getter(count);
@@ -33,18 +33,7 @@ test("basic composition & tracking", () => {
   stop();
 });
 
-test("readables returned from computed function are unwrapped", () => {
-  const [count, setCount] = state(5);
-  const doubled = memo(() => count);
-
-  expect(doubled()).toBe(5);
-
-  setCount((x) => x + 1);
-
-  expect(doubled()).toBe(6);
-});
-
-test("values are only tracked when accessed with .track()", () => {
+test("values are not tracked when accessed with peek()", () => {
   const [a, setA] = state(5);
   const [b, setB] = state(10);
 
