@@ -1,4 +1,4 @@
-import { $setup, $watch, state, type Mutable } from "../core";
+import { $setup, $effect, state, type Mutable } from "../core";
 
 const bus = new EventTarget();
 
@@ -18,7 +18,7 @@ export function $storage<T>(key: string, defaultValue?: T, options?: StorageHook
 
   let isLocalUpdate = false;
 
-  $watch(() => {
+  $effect(() => {
     const next = value.track();
     storage.setItem(key, JSON.stringify(next));
 

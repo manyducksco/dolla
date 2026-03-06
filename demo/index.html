@@ -6,30 +6,17 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { createRoot, signal, html, $watch, $debug } from "../dist/index.js";
-
-      // function Counter() {
-      //   const count = state(0);
-
-      //   return html`
-      //     <p>Count: ${count}</p>
-      //     <button onclick=${() => count.set(count.get() + 1)}>+1</button>
-      //     <button onclick=${() => count.update((value) => value - 1)}>-1</button>
-      //     <button onclick=${() => count.set(0)}>Reset</button>
-      //   `;
-      // }
+      import { createRoot, state, html, $effect } from "../dist/index.js";
 
       function Counter() {
-        // const [count, setCount] = atom(0);
-
-        const count = atom(0);
+        const [count, setCount] = state(0);
 
         // What are all the tracking contexts?
-        // - $watch() callback
+        // - $effect() callback
         // - memo() callback
         // - any markup element attribute or child
 
-        $watch(() => {
+        $effect(() => {
           // Calling a getter in a tracking context will track it.
           console.log("count is", count());
 
@@ -37,48 +24,34 @@
           console.log("count is", peek(count));
         });
 
-        // Footgun #1
-        function doComplexLogic() {
-          // Define a function that calls a getter directly
-          const value = count();
-        }
-        // Calling that function most of the time will just run the function once.
-        doComplexLogic();
-        // However...
-        $watch(() => {
-          // Calling that function in this scope WILL track count.
-          doComplexLogic();
-
-          // You might have to defensively peek if you want to avoid this.
-          // This makes you always have to be cognizant of tracking contexts.
-          peek(() => {
-            doComplexLogic();
-          });
-        });
-
-        // Un-footgunned
-        function doComplexLogic() {
-          // Force the writer to say if they want the value once or to watch it.
-          const value = count.peek();
-          const other = count.watch();
-        }
-        // Calling that function most of the time will just run the function once.
-        doComplexLogic();
-        // However...
-        $effect(() => {
-          // Calling that function in this scope WILL track count.
-          doComplexLogic();
-        });
-
         return html`
           <p>Count: ${count}</p>
-          <button onclick=${() => count.set(count.peek() + 1)}>+1</button>
-          <button onclick=${() => count.set((value) => value - 1)}>-1</button>
-          <button onclick=${() => count.set(0)}>Reset</button>
+          <button onclick=${() => setCount((c) => c + 1)}>+1</button>
+          <button onclick=${() => setCount((c) => c - 1)}>-1</button>
+          <button onclick=${() => setCount(0)}>Reset</button>
         `;
       }
 
       createRoot("#counter").mount(Counter);
+
+      // Footgun #1
+      // function doComplexLogic() {
+      //   // Define a function that calls a getter directly
+      //   const value = count();
+      // }
+      // // Calling that function most of the time will just run the function once.
+      // doComplexLogic();
+      // // However...
+      // $effect(() => {
+      //   // Calling that function in this scope WILL track count.
+      //   doComplexLogic();
+
+      //   // You might have to defensively peek if you want to avoid this.
+      //   // This makes you always have to be cognizant of tracking contexts.
+      //   peek(() => {
+      //     doComplexLogic();
+      //   });
+      // });
     </script>
 
     <div id="providers"></div>
@@ -86,15 +59,14 @@
       import { createRoot, state, html, $provide, $use, when } from "../dist/index.js";
 
       function Store() {
-        return {
-          value: state(0),
-        };
+        const [value, setValue] = state();
+        return { value, setValue };
       }
 
       function Parent() {
-        const { value } = $provide(Store);
+        const { setValue } = $provide(Store);
 
-        value.set(10);
+        setValue(10);
 
         return html`
           <div>
@@ -106,7 +78,7 @@
       function Child() {
         const { value } = $use(Store);
 
-        return html` <p>${when(() => value.track() === 10, "We're good", "Something is off")}</p> `;
+        return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
       }
 
       createRoot("#providers").mount(Parent);

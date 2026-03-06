@@ -1,4 +1,4 @@
-import { $watch, batch, computed, state, reader, type Mutable } from "../core";
+import { $effect, batch, computed, state, reader, type Mutable } from "../core";
 
 /**
  * Augments an existing Writable by adding history controls.
@@ -10,7 +10,7 @@ export function $history<T>(target: Mutable<T>, capacity = 20) {
   // Internal flag to prevent the $watch from triggering when we move the cursor
   let isInternalUpdate = false;
 
-  $watch(() => {
+  $effect(() => {
     const value = target.track();
 
     if (isInternalUpdate) {

@@ -1,4 +1,4 @@
-import { $setup, $watch, state } from "../core";
+import { $setup, $effect, state } from "../core";
 import { $active } from "./$active";
 
 /**
@@ -36,7 +36,7 @@ export function $online(pingUrl: string) {
     startHeartbeat();
 
     // 2. Watch for "Active" changes to pivot the heartbeat speed
-    $watch(() => {
+    $effect(() => {
       isActive.track(); // Re-run this watch when tab focus changes
       startHeartbeat();
     });

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { Context } from "./context.js";
 import { getCurrentContext, setCurrentContext } from "./context.js";
-import { $setup, $teardown, $watch } from "./hooks";
+import { $setup, $teardown, $effect } from "./hooks";
 import { state } from "./reactive";
 
 const _mount = () => getCurrentContext()!.mount();
@@ -18,7 +18,7 @@ describe("$watch", () => {
     const fn = vi.fn(() => {
       name();
     });
-    $watch(fn);
+    $effect(fn);
 
     expect(fn).toBeCalledTimes(0);
 
@@ -45,7 +45,7 @@ describe("$watch", () => {
       left();
       right();
     });
-    $watch(fn);
+    $effect(fn);
 
     _mount();
 
@@ -66,7 +66,7 @@ describe("$watch", () => {
       count();
       return cleanup;
     });
-    $watch(fn);
+    $effect(fn);
 
     _mount();
 

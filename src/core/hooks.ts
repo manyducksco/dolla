@@ -73,10 +73,6 @@ export function $use<T>(arg: Store<any, T> | string | symbol, fallback?: T) {
   }
 }
 
-export function $state() {
-  return $$context().state;
-}
-
 type CleanupFnOrVoid = void | (() => void);
 type SetupCallback = (signal: AbortSignal) => CleanupFnOrVoid;
 type AsyncSetupCallback = (signal: AbortSignal) => Promise<CleanupFnOrVoid>;
@@ -126,15 +122,12 @@ export function $teardown(callback: () => void | Promise<void>): void {
  * Runs `callback` when component mounts, then again each time one of its tracked values changes.
  * The watcher will be cleaned up automatically when the component unmounts.
  */
-export function $watch(callback: EffectCallback) {
+export function $effect(callback: EffectCallback) {
   const context = $$context();
 
   const setupEffect = () => {
     const unsubscribe = effect(callback);
-
-    context.onUnmount(() => {
-      if (unsubscribe) unsubscribe();
-    });
+    context.onUnmount(unsubscribe);
   };
 
   if (context.isMounted) {
