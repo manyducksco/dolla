@@ -1,5 +1,5 @@
 import type { Context } from "../../context.js";
-import { subscribe, type Reactive, type UnsubscribeFn } from "../../reactive.js";
+import { subscribe, type Getter, type UnsubscribeFn } from "../../reactive.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
@@ -14,10 +14,10 @@ export class DynamicNode extends MarkupNode {
   private root = document.createTextNode("");
   private children: MarkupNode[] = [];
   private context: Context;
-  private slot: Reactive<any>;
+  private slot: Getter<any>;
   private unsubscribe?: UnsubscribeFn;
 
-  constructor(context: Context, slot: Reactive<any>) {
+  constructor(context: Context, slot: Getter<any>) {
     super();
     this.context = context;
     this.slot = slot;

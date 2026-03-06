@@ -1,18 +1,18 @@
 import type { Renderable } from "../../types";
 import { $$context } from "../hooks";
 import { DynamicNode } from "../markup/nodes/dynamic";
-import { computed, reader, type Trackable } from "../reactive";
+import { memo, type Getter } from "../reactive";
 
 export interface ShowProps {
   /**
    * If present, children will be rendered only when this signal holds a truthy value.
    */
-  when?: Trackable<any>;
+  when?: Getter<any>;
 
   /**
    * If present, children will be rendered only when this signal holds a falsy value.
    */
-  unless?: Trackable<any>;
+  unless?: Getter<any>;
 
   /**
    * Content to render if conditions permit.
@@ -33,20 +33,20 @@ export function Show(props: ShowProps) {
   context.setName("dolla:Show");
 
   // Memoize conditions to avoid unnecessarily triggering DynamicNode updates.
-  const when = props.when ? reader(props.when) : null;
-  const unless = props.unless ? reader(props.unless) : null;
+  const when = props.when ? memo(props.when) : null;
+  const unless = props.unless ? memo(props.unless) : null;
 
   return new DynamicNode(
     context,
-    computed(() => {
+    memo(() => {
       let shouldShow = true;
 
       if (when != null && unless != null) {
-        shouldShow = when.track() && !unless.track();
+        shouldShow = when() && !unless();
       } else if (when != null) {
-        shouldShow = when.track();
+        shouldShow = when();
       } else if (unless != null) {
-        shouldShow = !unless.track();
+        shouldShow = !unless();
       }
 
       if (shouldShow) {

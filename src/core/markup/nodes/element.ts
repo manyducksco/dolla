@@ -1,7 +1,7 @@
 import { isFunction, isNumber, isObject, isString } from "../../../typeChecking.js";
 import { omit } from "../../../utils.js";
 import { Context } from "../../context.js";
-import { isTrackable, subscribe, type MaybeTrackable, type UnsubscribeFn } from "../../reactive.js";
+import { MaybeGetter, subscribe, type UnsubscribeFn } from "../../reactive.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
@@ -155,8 +155,8 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attach<T>(value: MaybeTrackable<T>, callback: (value: T) => void) {
-    if (isTrackable<T>(value)) {
+  private attach<T>(value: MaybeGetter<T>, callback: (value: T) => void) {
+    if (isFunction<() => T>(value)) {
       this.unsubscribers.add(
         subscribe(value, (current) => {
           scheduleUpdate(() => callback(current));
@@ -258,7 +258,7 @@ export class ElementNode extends MarkupNode {
 
       const mapped = getStyleMap(current);
       for (const [name, { value, priority }] of Object.entries(mapped)) {
-        if (isTrackable(value)) {
+        if (isFunction(value)) {
           const unsub = subscribe(value, (v) => {
             if (v) element.style.setProperty(name, asPixelsIfNumber(v), priority);
             else element.style.removeProperty(name);
@@ -271,7 +271,7 @@ export class ElementNode extends MarkupNode {
       }
     };
 
-    if (isTrackable(styles)) {
+    if (isFunction(styles)) {
       this.unsubscribers.add(subscribe(styles, apply));
     } else {
       apply(styles);
@@ -294,7 +294,7 @@ export class ElementNode extends MarkupNode {
       for (const [name, value] of Object.entries(mapped)) {
         if (name === "undefined") continue;
 
-        if (isTrackable(value)) {
+        if (isFunction(value)) {
           const unsub = subscribe(value, (isActive) => element.classList.toggle(name, !!isActive));
           this.unsubscribers.add(unsub);
           localUnsubs.add(unsub);
@@ -304,7 +304,7 @@ export class ElementNode extends MarkupNode {
       }
     };
 
-    if (isTrackable(classes)) {
+    if (isFunction(classes)) {
       this.unsubscribers.add(subscribe(classes, apply));
     } else {
       apply(classes);

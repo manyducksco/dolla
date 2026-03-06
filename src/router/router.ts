@@ -3,12 +3,12 @@ import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
 import { createMarkup } from "../core/markup/utils.js";
-import { batch, state } from "../core/reactive.js";
+import { batch, peek, state } from "../core/reactive.js";
 import { DEBUG, PARENT_ELEMENT } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { uniqueId } from "../utils.js";
 import { RouterStore } from "./store.js";
-import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
+import type { ActiveLayer, LazyLoader, LazyView, RouteLayer, RouterOptions } from "./types.js";
 import {
   buildRouteTree,
   catchLinks,
@@ -41,14 +41,14 @@ export function createRouter(options: RouterOptions): View {
   const scrollCache = new Map<string, number>();
   let currentKey = history.getKey();
 
-  const currentMatch = state<Match>({
+  const [currentMatch, setCurrentMatch] = state<Match>({
     path: history.getPath(),
     pattern: "",
     params: {},
     query: Object.fromEntries(new URLSearchParams(history.getSearch())),
     meta: {},
   });
-  const progress = state<number>(0);
+  const [progress, setProgress] = state<number>(0);
 
   const routeTree = buildRouteTree(options.routes);
 
@@ -58,12 +58,12 @@ export function createRouter(options: RouterOptions): View {
 
     const debug = $debug();
 
-    const rootSlot = state<MarkupNode>();
+    const [rootSlot, setRootSlot] = state<MarkupNode>();
     const rootLayer = {
       id: uniqueId(),
       node: new DynamicNode(context, rootSlot),
       context,
-      slot: rootSlot,
+      setSlot: setRootSlot,
     };
     const activeLayers: ActiveLayer[] = [];
 
@@ -150,13 +150,13 @@ export function createRouter(options: RouterOptions): View {
       // Track loading progress.
       const totalTasks = tasks.length;
       if (totalTasks > 0) {
-        progress.set(0.1);
+        setProgress(0.1);
         let completed = 0;
 
         tasks.forEach((p) => {
           p.then(() => {
             completed++;
-            progress.set(0.1 + (completed / totalTasks) * 0.8);
+            setProgress(0.1 + (completed / totalTasks) * 0.8);
           }).catch(() => {}); // Errors handled by Promise.all below.
         });
       }
@@ -165,7 +165,7 @@ export function createRouter(options: RouterOptions): View {
       try {
         await Promise.all(tasks);
       } catch (error) {
-        progress.set(0);
+        setProgress(0);
 
         if (error instanceof RedirectError) {
           api.replace(error.redirectPath);
@@ -177,7 +177,7 @@ export function createRouter(options: RouterOptions): View {
       }
 
       // Merge query params.
-      const query = mergeQueryParams(currentMatch.peek().query, match.query, options.preserveQuery);
+      const query = mergeQueryParams(peek(currentMatch).query, match.query, options.preserveQuery);
 
       const queryString = query.toString();
       const searchString = queryString.length > 0 ? "?" + queryString : "";
@@ -191,7 +191,7 @@ export function createRouter(options: RouterOptions): View {
       // Run in batch so all new layers are mounted simultaneously with match signal change.
       // This avoids the old route effects receiving new signal values just before they unmount.
       batch(() => {
-        currentMatch.set({ ...match, query: Object.fromEntries(query) });
+        setCurrentMatch({ ...match, query: Object.fromEntries(query) });
 
         // If nothing actually diverged (e.g. just a query param change), we are done.
         if (divergenceIndex === layers.length && activeLayers.length === layers.length) {
@@ -209,12 +209,12 @@ export function createRouter(options: RouterOptions): View {
         for (let i = divergenceIndex; i < layers.length; i++) {
           const currentLayer = layers[i];
           const parentLayer = activeLayers[i - 1] ?? rootLayer;
-          const slot = state<MarkupNode>();
+          const [slot, setSlot] = state<MarkupNode>();
 
           let viewToMount = currentLayer.view as View<any>;
           let propsToPass: any = {
             data: preloadedData[i - divergenceIndex],
-            children: createMarkup("$dynamic", { slot: slot }),
+            children: createMarkup("$dynamic", { slot }),
           };
 
           // If we hit an error, mount the errorView instead of the standard view
@@ -229,14 +229,14 @@ export function createRouter(options: RouterOptions): View {
           }
 
           const node = new ViewNode(parentLayer.context, viewToMount, propsToPass);
-          parentLayer.slot.set(node);
+          parentLayer.setSlot(node);
 
           activeLayers.push({
             id: currentLayer.id,
             key: layerKeys[i],
             node,
             context: node.context,
-            slot,
+            setSlot,
           });
 
           // Stop mounting deeper layers if we hit an error boundary layer
@@ -244,7 +244,7 @@ export function createRouter(options: RouterOptions): View {
         }
       });
 
-      progress.set(0);
+      setProgress(0);
 
       // Restore the scroll position of the page we are entering.
       requestAnimationFrame(() => {
@@ -255,7 +255,13 @@ export function createRouter(options: RouterOptions): View {
       });
     }
 
-    const api = $provide(RouterStore, { match: currentMatch, progress, history, updateRoute });
+    const api = $provide(RouterStore, {
+      match: currentMatch,
+      setMatch: setCurrentMatch,
+      progress,
+      history,
+      updateRoute,
+    });
 
     // Listen for `popstate` events and update route accordingly.
     $setup(() => {
@@ -272,9 +278,7 @@ export function createRouter(options: RouterOptions): View {
       });
     });
 
-    // $setup(() => {
     updateRoute();
-    // });
 
     return rootLayer.node;
   };

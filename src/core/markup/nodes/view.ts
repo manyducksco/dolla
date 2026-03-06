@@ -1,5 +1,6 @@
 import type { Renderable, View } from "../../../types.js";
-import { contextualize, getCurrentContext, type Context } from "../../context.js";
+import { contextualize, type Context } from "../../context.js";
+import { peek } from "../../reactive.js";
 import { MarkupNode } from "../types.js";
 import { render } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -39,7 +40,7 @@ export class ViewNode<P> extends MarkupNode {
       let viewContent: Renderable;
 
       contextualize(this.context, () => {
-        viewContent = this.view(this.props);
+        viewContent = peek(() => this.view(this.props));
       });
 
       if (viewContent != null && viewContent !== false) {

@@ -1,4 +1,4 @@
-import type { MarkupNode, Mutable, Reactive, Renderable, View } from "../core";
+import type { MarkupNode, Getter, Setter, Renderable, View } from "../core";
 import type { Context } from "../core/context";
 import type { Match } from "./utils";
 
@@ -61,7 +61,7 @@ export interface ActiveLayer {
   key: string;
   node: MarkupNode;
   context: Context;
-  slot: Mutable<MarkupNode | undefined>;
+  setSlot: Setter<MarkupNode | undefined>;
 }
 
 /**
@@ -100,33 +100,33 @@ export interface Router {
   /**
    * The current path as it is displayed in the URL bar (e.g. `/users/123/edit`).
    */
-  path: Reactive<string>;
+  path: Getter<string>;
   /**
    * The route pattern that was matched (e.g. `/users/{#id}/edit`), or undefined if no route is currently matched.
    */
-  pattern: Reactive<string | undefined>;
+  pattern: Getter<string | undefined>;
   /**
    * The extracted route parameters from the path. (e.g. `{ id: "123" }`)
    */
-  params: Reactive<Record<string, string>>;
+  params: Getter<Record<string, string>>;
   /**
    * The current query params.
    */
-  query: Reactive<Record<string, string>>;
+  query: Getter<Record<string, string>>;
   /**
    * The contents of the `meta` fields of all matched route layers.
    */
-  meta: Reactive<Record<string, string>>;
+  meta: Getter<Record<string, string>>;
   /**
    * Represents the loading progress of the current navigation from 0 to 1.
    * Returns 0 when no navigation is pending.
    */
-  progress: Reactive<number>;
+  progress: Getter<number>;
 
   /**
    * Update query params without changing the route.
    */
-  updateQuery(params: Record<string, Stringable>): Record<string, string>;
+  setQuery(params: Record<string, Stringable>): Record<string, string>;
 
   /**
    * Go back in the page history. Equivalent to hitting the back button.
@@ -155,5 +155,5 @@ export interface Router {
   /**
    * Contains `true` when the current route matches `path`.
    */
-  isActive(path: string, exact?: boolean): Reactive<boolean>;
+  isActive(path: string, exact?: boolean): Getter<boolean>;
 }

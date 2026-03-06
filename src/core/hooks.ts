@@ -2,7 +2,7 @@ import { createLogger, type Store } from "../core";
 import { isFunction, isPromise } from "../typeChecking";
 import type { Context } from "./context.js";
 import { getCurrentContext } from "./context.js";
-import { watch, type Getter, type Reactive, type WatchCallback } from "./reactive";
+import { type MaybeGetter, effect, type EffectCallback } from "./reactive";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -18,7 +18,7 @@ export function $$context(): Context {
 /**
  * Sets the context name for logging purposes.
  */
-export function $name(name: Reactive<string> | Getter<string> | string): void {
+export function $name(name: MaybeGetter<string>): void {
   $$context().setName(name);
 }
 
@@ -126,11 +126,11 @@ export function $teardown(callback: () => void | Promise<void>): void {
  * Runs `callback` when component mounts, then again each time one of its tracked values changes.
  * The watcher will be cleaned up automatically when the component unmounts.
  */
-export function $watch(callback: WatchCallback) {
+export function $watch(callback: EffectCallback) {
   const context = $$context();
 
   const setupEffect = () => {
-    const unsubscribe = watch(callback);
+    const unsubscribe = effect(callback);
 
     context.onUnmount(() => {
       if (unsubscribe) unsubscribe();

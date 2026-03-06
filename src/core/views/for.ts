@@ -1,12 +1,12 @@
-import { $$context, $setup } from "../hooks";
+import { $$context } from "../hooks";
 import { type Key, type RenderFn, RepeatNode } from "../markup/nodes/repeat";
-import { reader, subscribe, type Trackable } from "../reactive";
+import { getter, type Getter } from "../reactive";
 
 export interface ForProps<T> {
   /**
    * An array of items to render.
    */
-  each: Trackable<T[]> | T[];
+  each: Getter<T[]> | T[];
 
   /**
    * A function to extract a unique key that identifies each item.
@@ -29,15 +29,9 @@ export function For<T>(props: ForProps<T>) {
   const context = $$context();
   context.setName("dolla:For");
 
-  $setup(() =>
-    subscribe(props.each, (items) => {
-      // TODO: Update
-    }),
-  );
-
   return new RepeatNode(
     context,
-    reader(props.each),
+    getter(props.each),
     props.key ?? defaultKeyFn,
     Array.isArray(props.children) ? props.children[0] : props.children,
   );

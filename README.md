@@ -26,7 +26,7 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 
 - Reactivity
   - Reactive, Mutable API
-  - tracking contexts (computed, `$watch`, `<For>` render, getters -- goes into views)
+  - tracking contexts (memo, `$watch`, `<For>` render, getters -- goes into views)
 - Components
   - basic types overview
   - ($hooks) lifecycle and `$setup`, `$teardown`
@@ -54,10 +54,37 @@ import { state, html, createRoot } from "@manyducks.co/dolla";
 function Counter() {
   const count = state(0);
 
+  count.peek();
+  count.watch();
+
   return html`
     <div>
       <p>Count: ${count}</p>
-      <button onclick=${() => count.update((c) => c + 1)}>Increment</button>
+      <button onclick=${() => count.set((c) => c + 1)}>Increment</button>
+    </div>
+  `;
+}
+
+const count = atom(0);
+const doubled = compose(() => count.watch() * 2);
+
+interface Reactive<T> {
+  peek(): T;
+  watch(): T;
+}
+
+interface Atom<T> extends Reactive<T> {
+  set(value: T): T;
+  set(fn: (current: T) => T): T;
+}
+
+function Counter() {
+  const [count, setCount] = state(0);
+
+  return html`
+    <div>
+      <p>Count: ${count}</p>
+      <button onclick=${() => setCount((c) => c + 1)}>Increment</button>
     </div>
   `;
 }
@@ -72,7 +99,7 @@ Components never re-render in Dolla. They are one-shot constructor functions tha
 ```ts
 interface Reactive<T> {
   // Returns the currently held value.
-  get(): T;
+  peek(): T;
 
   // Tracks this container when called inside certain functions, then returns the current value.
   // A tracked reactive will cause the scope it was called in to run again each time the value changes.
@@ -84,7 +111,7 @@ interface Mutable<T> extends Reactive<T> {
   set(value: T): T;
 
   // Sets the value through a callback. The callback takes the current value and returns a new one.
-  update(callback: (current: T) => T): T;
+  set(callback: (current: T) => T): T;
 }
 ```
 
@@ -93,17 +120,17 @@ In the Counter view, we were just passing the container itself into the `<p>` ta
 ## Example: Temperature Converter
 
 ```tsx
-import { state, html } from "@manyducks.co/dolla";
+import { state, memo, html } from "@manyducks.co/dolla";
 
 function Converter() {
-  const celsius = state(0);
+  const [celsius, setCelsius] = state(0);
 
-  const fahrenheit = computed(() => {
-    return (celsius.track() * 9) / 5 + 32;
+  const fahrenheit = memo(() => {
+    return (celsius() * 9) / 5 + 32;
   });
 
-  const description = computed(() => {
-    const f = fahrenheit.track();
+  const description = memo(() => {
+    const f = fahrenheit();
     if (f <= 32) return "Freezing ❄️";
     if (f >= 90) return "Hot! 🔥";
     return "Moderate 🌤️";
@@ -115,7 +142,7 @@ function Converter() {
         type="number"
         value=${celsius}
         onchange=${(e) => {
-          celsius.set(e.target.valueAsNumber);
+          setCelsius(e.target.valueAsNumber);
         }}
       />
 
@@ -132,9 +159,9 @@ The `computed` function creates a read-only `Reactive`. That `Reactive` holds th
 If we called `.get()` we would have the current value at first, but `computed` wouldn't track it.
 
 ```ts
-const count = state(2);
-const doubled = computed(() => {
-  return count.get() * 2;
+const [count, setCount] = state(2);
+const doubled = memo(() => {
+  return peek(count) * 2;
 });
 
 doubled.get(); // is 4
@@ -176,16 +203,22 @@ This makes the relationship between `count` and `doubled` very apparent. We need
 
 function ToDoList() {
   const items = ["React", "Vue", "Angular", "Svelte", "Solid", "Dolla"];
-  const query = state("");
+  const [query, setQuery] = state("");
 
-  const filtered = computed(() => {
-    const term = query.track();
-    return items.toLowerCase().includes(term.toLowerCase());
+  const filtered = memo(() => {
+    return items.toLowerCase().includes(query().toLowerCase());
   });
 
   return (
     <div>
-      <input type="text" placeholder="Search..." value={bind(query)} />
+      <input
+        type="text"
+        placeholder="Search..."
+        value={query}
+        onInput={(e) => {
+          setQuery(e.target.value);
+        }}
+      />
 
       <ul>
         <For each={filtered} key={(item) => item}>
@@ -193,7 +226,7 @@ function ToDoList() {
         </For>
       </ul>
 
-      <p>Showing {() => filtered.track().length} result(s)</p>
+      <p>Showing {() => filtered().length} result(s)</p>
     </div>
   );
 }
@@ -201,12 +234,12 @@ function ToDoList() {
 // Hooks and <Show>
 
 function $fetch(url) {
-  const data = state();
+  const [data, setData] = state();
 
   $watch(() => {
     fetch(url)
       .then((res) => res.json())
-      .then((json) => data.set(json));
+      .then((json) => setData(json));
   });
 
   return { data };
@@ -217,7 +250,7 @@ function Fetcher() {
 
   return (
     <Show when={data} fallback={<p>Loading...</p>}>
-      <pre>{() => JSON.stringify(data.track(), null, 2)}</pre>
+      <pre>{() => JSON.stringify(data(), null, 2)}</pre>
     </Show>
   );
 }

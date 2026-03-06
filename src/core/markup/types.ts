@@ -1,5 +1,5 @@
 import type { IntrinsicElements, Renderable, View } from "../../types.js";
-import type { Reactive } from "../reactive.js";
+import type { Getter } from "../reactive.js";
 import { KeyFn, RenderFn } from "./nodes/repeat.js";
 
 export type NodeType = "$dom" | "$dynamic" | "$element" | "$portal" | "$repeat" | "$view";
@@ -9,7 +9,7 @@ export interface MarkupNodeProps {
     node: Node;
   };
   $dynamic: {
-    slot: Reactive<any>;
+    slot: Getter<any>;
   };
   $element: {
     tag: string;
@@ -20,7 +20,7 @@ export interface MarkupNodeProps {
     content: Renderable;
   };
   $repeat: {
-    items: Reactive<Iterable<any>>;
+    items: Getter<Iterable<any>>;
     key: KeyFn<any>;
     render: RenderFn<Renderable>;
   };

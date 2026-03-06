@@ -1,6 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
-import { batch, reader, state, subscribe, type Mutable, type Reactive, type UnsubscribeFn } from "../../reactive.js";
+import { batch, Getter, Setter, state, subscribe, type UnsubscribeFn } from "../../reactive.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
@@ -11,12 +11,14 @@ import { DynamicNode } from "./dynamic.js";
 export type Key = any;
 
 export type KeyFn<T> = (item: T, index: number) => Key;
-export type RenderFn<T> = (item: Reactive<T>, index: Reactive<number>) => Renderable;
+export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable;
 
 type ConnectedItem<T> = {
   key: Key;
-  item: Mutable<T>;
-  index: Mutable<number>;
+  item: Getter<T>;
+  setItem: Setter<T>;
+  index: Getter<number>;
+  setIndex: Setter<number>;
   node: MarkupNode;
 };
 
@@ -30,14 +32,14 @@ export class RepeatNode<T> extends MarkupNode {
 
   private context;
 
-  private items: Reactive<Iterable<T>>;
+  private items: Getter<Iterable<T>>;
   private key: KeyFn<T>;
   private render: RenderFn<T>;
 
   private unsubscribe: UnsubscribeFn | null = null;
   private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
-  constructor(context: Context, items: Reactive<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>) {
+  constructor(context: Context, items: Getter<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
     this.context = context;
 
@@ -119,18 +121,18 @@ export class RepeatNode<T> extends MarkupNode {
         let connected = this.connectedItems.get(key);
 
         if (connected && nextKeys.has(key)) {
-          connected.item.set(itemVal);
-          connected.index.set(i);
+          connected.setItem(itemVal);
+          connected.setIndex(i);
         } else {
-          const item = state(itemVal);
-          const index = state(i);
+          const [item, setItem] = state(itemVal);
+          const [index, setIndex] = state(i);
 
-          const rendered = this.render(reader(item), reader(index));
+          const rendered = this.render(item, index);
 
           const nodes = toMarkupNodes(this.context, [rendered]);
-          const node = nodes.length === 1 ? nodes[0] : new DynamicNode(this.context, reader(nodes));
+          const node = nodes.length === 1 ? nodes[0] : new DynamicNode(this.context, () => nodes);
 
-          connected = { key, item, index, node };
+          connected = { key, item, setItem, index, setIndex, node };
         }
         nextItems.set(key, connected);
       }

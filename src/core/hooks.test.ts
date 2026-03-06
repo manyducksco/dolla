@@ -13,37 +13,37 @@ beforeEach(() => {
 
 describe("$watch", () => {
   test("effects are active while context is mounted", () => {
-    const name = state("Bon");
+    const [name, setName] = state("Bon");
 
     const fn = vi.fn(() => {
-      name.track();
+      name();
     });
     $watch(fn);
 
     expect(fn).toBeCalledTimes(0);
 
     _mount();
-    name.set("Tux");
+    setName("Tux");
     expect(fn).toBeCalledTimes(1);
 
-    name.set("Abby");
+    setName("Abby");
     expect(fn).toBeCalledTimes(2);
 
     // Effects are stopped at unmount
     _unmount();
-    name.set("Lacey");
+    setName("Lacey");
     expect(fn).toBeCalledTimes(2); // still 2
-    name.set("Jack");
+    setName("Jack");
     expect(fn).toBeCalledTimes(2); // still 2
   });
 
   test("with auto tracking", () => {
-    const left = state(5);
-    const right = state(8);
+    const [left, setLeft] = state(5);
+    const [right, setRight] = state(8);
 
     const fn = vi.fn(() => {
-      left.track();
-      right.track();
+      left();
+      right();
     });
     $watch(fn);
 
@@ -51,19 +51,19 @@ describe("$watch", () => {
 
     expect(fn).toBeCalledTimes(1);
 
-    left.set(15);
+    setLeft(15);
     expect(fn).toBeCalledTimes(2);
 
-    left.set((n) => n + 2);
+    setLeft((n) => n + 2);
     expect(fn).toBeCalledTimes(3);
   });
 
   test("cleanup function called between invocations and on unmount", () => {
-    const count = state(0);
+    const [count, setCount] = state(0);
 
     const cleanup = vi.fn();
     const fn = vi.fn(() => {
-      count.track();
+      count();
       return cleanup;
     });
     $watch(fn);
@@ -73,12 +73,12 @@ describe("$watch", () => {
     expect(fn).toBeCalledTimes(1);
     expect(cleanup).toBeCalledTimes(0);
 
-    count.set((n) => n + 1);
+    setCount((n) => n + 1);
 
     expect(fn).toBeCalledTimes(2);
     expect(cleanup).toBeCalledTimes(1);
 
-    count.set((n) => n + 1);
+    setCount((n) => n + 1);
 
     expect(fn).toBeCalledTimes(3);
     expect(cleanup).toBeCalledTimes(2);

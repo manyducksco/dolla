@@ -1,6 +1,6 @@
-import { $$context, $use, DollaPlugin } from "../core/index.js";
-import { computed, state, track, type MaybeReactive, type Reactive } from "../core/reactive.js";
-import { isFunction, typeOf } from "../typeChecking.js";
+import { $$context, DollaPlugin } from "../core/index.js";
+import { memo, state, track, type Getter, type MaybeGetter } from "../core/reactive.js";
+import { typeOf } from "../typeChecking.js";
 
 // ----- Types ----- //
 
@@ -18,14 +18,14 @@ export type TOptions = {
   /**
    *
    */
-  count?: MaybeReactive<number>;
+  count?: MaybeGetter<number>;
 
   /**
    *
    */
-  context?: MaybeReactive<string>;
+  context?: MaybeGetter<string>;
 
-  [value: string]: MaybeReactive<any>;
+  [value: string]: MaybeGetter<any>;
 };
 
 export type LookupFn = (selector: string, options?: TOptions) => string;
@@ -47,7 +47,7 @@ export interface Translator {
   /**
    * A Readable containing the currently loaded locale.
    */
-  currentLocale: Reactive<string>;
+  currentLocale: Getter<string>;
 
   /**
    * Updates the locale, fetching any translation files as required.
@@ -66,15 +66,15 @@ export interface Translator {
    * @example
    * const value = t("your.key.here", { count: 5 });
    */
-  t(selector: string, options?: TOptions): Reactive<string>;
+  t(selector: string, options?: TOptions): Getter<string>;
 
   format<K extends keyof BuiltInFormatters, V extends BuiltInFormatters[K][0], O extends BuiltInFormatters[K][1]>(
     name: K,
-    value: MaybeReactive<V>,
+    value: MaybeGetter<V>,
     options?: O,
-  ): Reactive<string>;
+  ): Getter<string>;
 
-  format<V, O>(name: string, value: MaybeReactive<V>, options?: O): Reactive<string>;
+  format<V, O>(name: string, value: MaybeGetter<V>, options?: O): Getter<string>;
 }
 
 export interface TranslateOptions {
@@ -129,7 +129,7 @@ export function createTranslator(options: TranslateOptions): Translator {
 
   let lookup: LookupFn | undefined;
 
-  const currentLocale = state("en");
+  const [currentLocale, setCurrentLocale] = state("en");
   const supportedLocales = [...Object.keys(options.translations)];
 
   /**
@@ -183,12 +183,12 @@ export function createTranslator(options: TranslateOptions): Translator {
     lookup = await createLookup(locale, formatters, options.translations[locale]);
 
     // Update locale string after init so t() signals will update.
-    currentLocale.set(locale);
+    setCurrentLocale(locale);
   }
 
-  function t(selector: string, options?: TOptions): Reactive<string> {
-    return computed(() => {
-      currentLocale.track();
+  function t(selector: string, options?: TOptions): Getter<string> {
+    return memo(() => {
+      currentLocale(); // track locale
       return lookup?.(selector, options) ?? selector;
     });
   }
@@ -197,17 +197,17 @@ export function createTranslator(options: TranslateOptions): Translator {
     K extends keyof BuiltInFormatters,
     V extends BuiltInFormatters[K][0],
     O extends BuiltInFormatters[K][1],
-  >(name: K, value: MaybeReactive<V>, options?: O): Reactive<string>;
+  >(name: K, value: MaybeGetter<V>, options?: O): Getter<string>;
 
-  function format<V, O>(name: string, value: MaybeReactive<V>, options?: O): Reactive<string>;
+  function format<V, O>(name: string, value: MaybeGetter<V>, options?: O): Getter<string>;
 
-  function format(name: string, value: MaybeReactive<any>, options?: Record<string, any>): Reactive<string> {
+  function format(name: string, value: MaybeGetter<any>, options?: Record<string, any>): Getter<string> {
     const callback = formatters.get(name);
     if (!callback) {
       throw new Error(`Unknown format: ${name}`);
     }
 
-    return computed(() => callback(currentLocale.track(), track(value), options ?? {}));
+    return memo(() => callback(currentLocale(), track(value), options ?? {}));
   }
 
   return {

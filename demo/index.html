@@ -20,7 +20,9 @@
       // }
 
       function Counter() {
-        const [count, setCount] = atom(0);
+        // const [count, setCount] = atom(0);
+
+        const count = atom(0);
 
         // What are all the tracking contexts?
         // - $watch() callback
@@ -54,11 +56,25 @@
           });
         });
 
+        // Un-footgunned
+        function doComplexLogic() {
+          // Force the writer to say if they want the value once or to watch it.
+          const value = count.peek();
+          const other = count.watch();
+        }
+        // Calling that function most of the time will just run the function once.
+        doComplexLogic();
+        // However...
+        $effect(() => {
+          // Calling that function in this scope WILL track count.
+          doComplexLogic();
+        });
+
         return html`
           <p>Count: ${count}</p>
-          <button onclick=${() => setCount(count() + 1)}>+1</button>
-          <button onclick=${() => setCount((value) => value - 1)}>-1</button>
-          <button onclick=${() => setCount(0)}>Reset</button>
+          <button onclick=${() => count.set(count.peek() + 1)}>+1</button>
+          <button onclick=${() => count.set((value) => value - 1)}>-1</button>
+          <button onclick=${() => count.set(0)}>Reset</button>
         `;
       }
 

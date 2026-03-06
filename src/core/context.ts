@@ -1,7 +1,7 @@
 import { assertFunction } from "../typeChecking";
 import type { Store } from "../types";
 import { uniqueId } from "../utils";
-import { peek, type Getter, type MaybeReactive, type MaybeTrackable, type Reactive } from "./reactive";
+import { peek, type Getter, type MaybeGetter } from "./reactive";
 
 export type LifecycleListener = () => any;
 
@@ -55,7 +55,7 @@ const STORE_ID = Symbol("Dolla.StoreId");
 export class Context {
   readonly id = uniqueId();
 
-  #name: MaybeTrackable<string>;
+  #name: MaybeGetter<string>;
 
   isMounted = false;
   mountListeners?: LifecycleListener[];
@@ -66,7 +66,7 @@ export class Context {
 
   state: Record<string | symbol, any>;
 
-  constructor(name: Reactive<string> | Getter<string> | string, parent?: Context) {
+  constructor(name: Getter<string> | string, parent?: Context) {
     this.parent = parent;
     this.#name = name;
 
@@ -77,7 +77,7 @@ export class Context {
   /**
    * Returns a new Context with this one as its parent.
    */
-  createChild(name: MaybeReactive<string> | Getter<string>, options?: LinkedContextOptions): Context {
+  createChild(name: MaybeGetter<string>, options?: LinkedContextOptions): Context {
     const context = new Context(name, this);
 
     if (options?.bindLifecycle) {
@@ -104,7 +104,7 @@ export class Context {
   /**
    * Sets a new name for this context.
    */
-  setName(name: Reactive<string> | Getter<string> | string) {
+  setName(name: MaybeGetter<string>) {
     this.#name = name;
   }
 

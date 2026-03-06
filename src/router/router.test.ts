@@ -157,7 +157,7 @@ describe("Router Engine", () => {
 
       const store = context.getStore(RouterStore);
 
-      store.updateQuery({ q: "potato", sort: "asc" });
+      store.setQuery({ q: "potato", sort: "asc" });
 
       expect(store.query.peek()).toEqual({ q: "potato", sort: "asc" });
       expect(window.location.search).toBe("?q=potato&sort=asc");

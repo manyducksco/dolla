@@ -1,81 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
-import {
-  batch,
-  computed,
-  memo,
-  watch,
-  peek,
-  Reactive,
-  state,
-  reader,
-  transform,
-  isMutable,
-  isReactive,
-  isTrackable,
-  signal,
-  getter,
-} from "./reactive";
-
-describe("type checking", () => {
-  test("isMutable", () => {
-    const count = state(5);
-    expect(isMutable(count)).toBe(true);
-    expect(isMutable(computed(() => count.track() * 2))).toBe(false);
-    expect(isMutable(5)).toBe(false);
-    expect(isMutable(() => 5)).toBe(false);
-  });
-
-  test("isReactive", () => {
-    const count = state(5);
-    expect(isReactive(count)).toBe(true);
-    expect(isReactive(computed(() => count.track() * 2))).toBe(true);
-    expect(isReactive(5)).toBe(false);
-    expect(isReactive(() => 5)).toBe(false);
-  });
-
-  test("isTrackable", () => {
-    const count = state(5);
-    expect(isTrackable(count)).toBe(true);
-    expect(isTrackable(computed(() => count.track() * 2))).toBe(true);
-    expect(isTrackable(5)).toBe(false);
-    expect(isTrackable(() => 5)).toBe(true);
-  });
-});
+import { batch, effect, getter, type Getter, memo, peek, state, subscribe } from "./reactive";
 
 test("basic composition & tracking", () => {
-  const count = state(5);
-  const doubled = computed(() => count.track() * 2);
-
-  const same = reader(count);
-  expect(same.peek()).toBe(5);
-
-  expect(count.peek()).toBe(5);
-  expect(peek(doubled)).toBe(10);
-  expect(doubled.peek()).toBe(10);
-
-  const fn = vi.fn(() => {
-    doubled.track();
-  });
-  const stop = watch(fn);
-
-  expect(fn).toBeCalledTimes(1);
-
-  // Effects should not run until end of batch.
-  batch(() => {
-    count.set((c) => c + 1);
-    count.set((c) => c + 1);
-    count.set((c) => c + 1);
-    count.set((c) => c + 1);
-  });
-
-  expect(fn).toBeCalledTimes(2);
-  expect(same.peek()).toBe(9);
-
-  stop();
-});
-
-test("basic composition & tracking 2", () => {
-  const [count, setCount] = signal(0);
+  const [count, setCount] = state(0);
   const doubled = memo(() => count() * 2);
 
   const same = getter(count);
@@ -88,7 +15,7 @@ test("basic composition & tracking 2", () => {
   const fn = vi.fn(() => {
     doubled();
   });
-  const stop = watch(fn);
+  const stop = effect(fn);
 
   expect(fn).toBeCalledTimes(1);
 
@@ -107,52 +34,52 @@ test("basic composition & tracking 2", () => {
 });
 
 test("readables returned from computed function are unwrapped", () => {
-  const count = state(5);
-  const doubled = computed(() => count);
+  const [count, setCount] = state(5);
+  const doubled = memo(() => count);
 
-  expect(doubled.peek()).toBe(5);
+  expect(doubled()).toBe(5);
 
-  count.set((x) => x + 1);
+  setCount((x) => x + 1);
 
-  expect(doubled.peek()).toBe(6);
+  expect(doubled()).toBe(6);
 });
 
 test("values are only tracked when accessed with .track()", () => {
-  const a = state(5);
-  const b = state(10);
+  const [a, setA] = state(5);
+  const [b, setB] = state(10);
 
-  const multiplied = computed(() => a.track() * b.peek());
+  const multiplied = memo(() => a() * peek(b));
 
-  expect(multiplied.peek()).toBe(50);
+  expect(multiplied()).toBe(50);
 
-  a.set((x) => x + 1);
+  setA((x) => x + 1);
 
-  expect(multiplied.peek()).toBe(60);
+  expect(multiplied()).toBe(60);
 
-  b.set((x) => x + 1);
+  setB((x) => x + 1);
 
-  expect(multiplied.peek()).toBe(60);
+  expect(multiplied()).toBe(60);
 });
 
 test("solves diamond problem", () => {
-  const count = state(1);
+  const [count, setCount] = state(1);
 
-  const left = computed(() => count.track() + 5);
-  const right = computed(() => count.track() / 2);
+  const left = memo(() => count() + 5);
+  const right = memo(() => count() / 2);
 
-  const sum = computed(() => left.track() + right.track());
+  const sum = memo(() => left() + right());
 
   const fn = vi.fn(() => {
-    sum.track();
+    sum();
   });
-  const unsubscribe = watch(fn);
+  const unsubscribe = effect(fn);
 
   expect(fn).toBeCalledTimes(1);
 
-  count.set((x) => x + 1);
+  setCount((x) => x + 1);
   batch(() => {
-    count.set((x) => x + 1);
-    count.set((x) => x + 1);
+    setCount((x) => x + 1);
+    setCount((x) => x + 1);
   });
 
   expect(fn).toBeCalledTimes(3);
@@ -160,10 +87,10 @@ test("solves diamond problem", () => {
 });
 
 test("nested memo", () => {
-  const count = state(0);
+  const [count, setCount] = state(0);
 
-  const plus1 = (source: Reactive<number>) => {
-    return computed(() => source.track() + 1);
+  const plus1 = (source: Getter<number>) => {
+    return memo(() => source() + 1);
   };
 
   const one = plus1(count);
@@ -171,110 +98,87 @@ test("nested memo", () => {
   const three = plus1(two);
 
   const fn = vi.fn(() => {
-    three.track();
+    three();
   });
-  const stop = watch(fn);
+  const stop = effect(fn);
 
   expect(fn).toBeCalledTimes(1);
 
-  expect(one.peek()).toBe(1);
-  expect(two.peek()).toBe(2);
-  expect(three.peek()).toBe(3);
+  expect(one()).toBe(1);
+  expect(two()).toBe(2);
+  expect(three()).toBe(3);
 
-  count.set((x) => x + 1);
+  setCount((x) => x + 1);
 
   expect(fn).toBeCalledTimes(2);
 
-  expect(one.peek()).toBe(2);
-  expect(two.peek()).toBe(3);
-  expect(three.peek()).toBe(4);
+  expect(one()).toBe(2);
+  expect(two()).toBe(3);
+  expect(three()).toBe(4);
 
   stop();
 });
 
 test("effect runs cleanup function", () => {
   const fn = vi.fn();
-  const count = state(0);
+  const [count, setCount] = state(0);
 
-  const stop = watch(() => {
-    count.track();
+  const stop = effect(() => {
+    count();
     return fn;
   });
   expect(fn).toBeCalledTimes(0);
 
-  count.set(2);
+  setCount(2);
   expect(fn).toBeCalledTimes(1);
 
-  count.set(3);
+  setCount(3);
   expect(fn).toBeCalledTimes(2);
 
   stop();
 });
 
-// describe("subscribe", () => {
-//   test("immediately cancelling doesn't crash", () => {
-//     const fn = vi.fn();
-//     const count = state(5);
+describe("subscribe", () => {
+  //   test("immediately cancelling doesn't crash", () => {
+  //     const fn = vi.fn();
+  //     const count = state(5);
 
-//     expect(() => {
-//       const cancel = subscribe(count, (value) => {
-//         fn(value);
-//         cancel();
-//       });
-//     }).not.toThrowError();
+  //     expect(() => {
+  //       const cancel = subscribe(count, (value) => {
+  //         fn(value);
+  //         cancel();
+  //       });
+  //     }).not.toThrowError();
 
-//     expect(fn).toHaveBeenCalledTimes(1);
+  //     expect(fn).toHaveBeenCalledTimes(1);
 
-//     count.update((current) => current + 1);
+  //     count.update((current) => current + 1);
 
-//     expect(fn).toHaveBeenCalledTimes(1);
-//   });
-// });
-
-describe("transform", () => {
-  test("transforms any kind of value", () => {
-    const count = state(5);
-    const doubled = transform(count, (value) => value * 2);
-    const tripled = transform(
-      () => count.track(),
-      (value) => value * 3,
-    );
-    const frozen = transform(count.peek(), (value) => value * 100);
-
-    expect(doubled.peek()).toBe(10);
-    expect(tripled.peek()).toBe(15);
-    expect(frozen.peek()).toBe(500);
-
-    count.set(count.peek() + 1);
-
-    expect(doubled.peek()).toBe(12);
-    expect(tripled.peek()).toBe(18);
-    expect(frozen.peek()).toBe(500);
-  });
+  //     expect(fn).toHaveBeenCalledTimes(1);
+  //   });
 
   test("ignores tracked values in callback", () => {
-    const count = state(5);
-    const other = state("hi");
+    const [count, setCount] = state(5);
+    const [other, setOther] = state("hi");
 
     const fn = vi.fn();
 
-    const doubled = transform(count, (value) => {
-      other.track();
+    const unsub = subscribe(count, (value) => {
+      other(); // trackable getter
       fn();
       return value * 2;
     });
 
-    expect(doubled.peek()).toBe(10);
     expect(fn).toBeCalledTimes(1);
 
-    count.set(12);
+    setCount(12);
 
-    expect(doubled.peek()).toBe(24);
-    expect(fn).toBeCalledTimes(2);
+    expect(fn).toBeCalledTimes(2); // tracked `count` has updated
 
-    other.set("hello");
+    setOther("hello");
 
-    expect(doubled.peek()).toBe(24);
-    expect(fn).toBeCalledTimes(2);
+    expect(fn).toBeCalledTimes(2); // `other` is not tracked
+
+    unsub();
   });
 });

@@ -1,29 +1,31 @@
-import { computed, Reactive, type Mutable } from "../core";
+import { memo, peek, type Getter, type Setter } from "../core";
 import type { Router } from "./types";
-import { type HistoryAdapter, type Match, mergeQueryParams, resolvePath } from "./utils";
+import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 
 export interface RouterStoreProps {
-  match: Mutable<Match>;
-  progress: Mutable<number>;
+  match: Getter<Match>;
+  setMatch: Setter<Match>;
+  progress: Getter<number>;
   history: HistoryAdapter;
   updateRoute: () => void;
 }
 
-export function RouterStore({ match, progress, history, updateRoute }: RouterStoreProps): Router {
+export function RouterStore({ match, setMatch, progress, history, updateRoute }: RouterStoreProps): Router {
   return {
-    path: computed(() => match.track().path),
-    pattern: computed(() => match.track().pattern),
-    params: computed(() => match.track().params),
-    query: computed(() => match.track().query),
-    meta: computed(() => match.track().meta),
-    progress: computed(() => progress.track()),
+    path: memo(() => match().path),
+    pattern: memo(() => match().pattern),
+    params: memo(() => match().params),
+    query: memo(() => match().query),
+    meta: memo(() => match().meta),
+    progress: progress,
 
-    updateQuery(params) {
-      const path = match.peek().path;
-      const merged = mergeQueryParams(match.peek().query, params, true);
+    setQuery(params) {
+      const m = peek(match);
+      const path = m.path;
+      const merged = mergeQueryParams(m.query, params, true);
       const query = Object.fromEntries(merged);
 
-      match.set((current) => ({ ...current, query }));
+      setMatch((current) => ({ ...current, query }));
 
       const queryString = merged.size > 0 ? "?" + merged.toString() : "";
       history.replace(path + queryString);
@@ -56,8 +58,8 @@ export function RouterStore({ match, progress, history, updateRoute }: RouterSto
     },
 
     isActive(path: string, exact = false) {
-      return computed(() => {
-        const currentPath = match.track().path;
+      return memo(() => {
+        const currentPath = match().path;
 
         if (exact) {
           // Normalize trailing slashes for exact match

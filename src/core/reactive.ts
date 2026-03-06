@@ -184,15 +184,15 @@ export interface Setter<T> {
 /**
  * Any type of value that can be unwrapped by the `get` function.
  */
-export type MaybeTrackable<T> = Trackable<T> | T;
+// export type MaybeTrackable<T> = Trackable<T> | T;
 
-export type Trackable<T> = Reactive<T> | Getter<T>;
+// export type Trackable<T> = Reactive<T> | Getter<T>;
 
-export type MaybeReactive<T> = Reactive<T> | T;
+// export type MaybeReactive<T> = Reactive<T> | T;
 
 export type EqualityFn<T> = (previousValue: T, nextValue: T) => boolean;
 
-export interface SignalOptions<T> {
+export interface ReactiveOptions<T> {
   /**
    * A function to compare the current and next values. Returning `true` means the value has changed.
    */
@@ -214,29 +214,24 @@ export interface Reactive<T> {
    * Returns the stored value. Tracks this value as a dependency of the function it's called in (like a `computed` or `$watch` callback).
    * Tracking functions will be called again each time their dependencies change.
    */
-  track(): T;
+  watch(): T;
 }
 
 /**
  * A Reactive object whose value can be modified.
  */
-export interface Mutable<T> extends Reactive<T> {
+export interface Atom<T> extends Reactive<T> {
   /**
    * Stores the new value and returns the updated value.
    * If a function is passed, that function will be called with the current value and return the new value.
    */
   set(value: T | ((current: T) => T)): T;
-
-  /**
-   * Stores the return value of `callback` as the new value, and returns the updated value.
-   */
-  // update(callback: (current: T) => T): T;
 }
 
 const IS_REACTIVE = Symbol.for("Dolla.Reactive");
 const IS_MUTABLE = Symbol.for("Dolla.Mutable");
 
-class State<T> implements Mutable<T>, ValueNode<T> {
+class State<T> implements Atom<T>, ValueNode<T> {
   get [IS_REACTIVE]() {
     return true;
   }
@@ -251,7 +246,7 @@ class State<T> implements Mutable<T>, ValueNode<T> {
   subsTail: any = undefined;
   flags: ReactiveFlags = 1 satisfies ReactiveFlags.Mutable;
 
-  constructor(initialValue: T, options?: SignalOptions<T>) {
+  constructor(initialValue: T, options?: ReactiveOptions<T>) {
     this.previousValue = initialValue;
     this.value = initialValue;
     this.equals = (options?.equals as EqualityFn<unknown>) ?? strictEqual;
@@ -268,7 +263,7 @@ class State<T> implements Mutable<T>, ValueNode<T> {
     return this.value;
   }
 
-  track(): T {
+  watch(): T {
     const value = this.peek();
     if (activeSub !== undefined) {
       link(this, activeSub);
@@ -310,7 +305,7 @@ export class Computed<T> implements Reactive<T>, ComputedNode<T> {
 
   getter: (previous?: T) => T;
 
-  constructor(callback: (previous?: T) => T, options?: SignalOptions<T>) {
+  constructor(callback: (previous?: T) => T, options?: ReactiveOptions<T>) {
     this.equals = (options?.equals as EqualityFn<unknown>) ?? strictEqual;
     this.getter = (previous?: T) => track(callback(previous));
   }
@@ -332,7 +327,7 @@ export class Computed<T> implements Reactive<T>, ComputedNode<T> {
     return this.value!;
   }
 
-  track(): T {
+  watch(): T {
     const value = this.peek();
     if (activeSub !== undefined) {
       link(this, activeSub);
@@ -341,78 +336,76 @@ export class Computed<T> implements Reactive<T>, ComputedNode<T> {
   }
 }
 
-class StaticReader<T> implements Reactive<T> {
-  get [IS_REACTIVE]() {
-    return true;
-  }
+// class StaticReader<T> implements Reactive<T> {
+//   get [IS_REACTIVE]() {
+//     return true;
+//   }
 
-  #value: T;
+//   #value: T;
 
-  constructor(value: T) {
-    this.#value = value;
-  }
+//   constructor(value: T) {
+//     this.#value = value;
+//   }
 
-  peek(): T {
-    return this.#value;
-  }
+//   peek(): T {
+//     return this.#value;
+//   }
 
-  track(): T {
-    // Static values don't change, so no tracking actually happens.
-    return this.#value;
-  }
-}
+//   watch(): T {
+//     // Static values don't change, so no tracking actually happens.
+//     return this.#value;
+//   }
+// }
 
-export function isReactive<T>(value: any): value is Reactive<T> {
-  return value != null && value[IS_REACTIVE] === true;
-}
+// export function isReactive<T>(value: any): value is Reactive<T> {
+//   return value != null && value[IS_REACTIVE] === true;
+// }
 
-export function isMutable<T>(value: any): value is Mutable<T> {
-  return value != null && value[IS_MUTABLE] === true;
-}
+// export function isMutable<T>(value: any): value is Mutable<T> {
+//   return value != null && value[IS_MUTABLE] === true;
+// }
 
-export function isTrackable<T>(value: any): value is Trackable<T> {
-  return value != null && (value[IS_REACTIVE] === true || typeof value === "function");
-}
+// export function isTrackable<T>(value: any): value is Trackable<T> {
+//   return value != null && (value[IS_REACTIVE] === true || typeof value === "function");
+// }
 
-export function state<T>(value: T, options?: SignalOptions<T>): Mutable<T>;
-export function state<T>(value: undefined, options: SignalOptions<T>): Mutable<T>;
-export function state<T>(): Mutable<T | undefined>;
-export function state<T>(value?: T, options?: SignalOptions<T>) {
-  return new State(value as T, options);
-}
+// export function atom<T>(value: T, options?: ReactiveOptions<T>): Atom<T>;
+// export function atom<T>(value: undefined, options: ReactiveOptions<T>): Atom<T>;
+// export function atom<T>(): Atom<T | undefined>;
+// export function atom<T>(value?: T, options?: ReactiveOptions<T>) {
+//   return new State(value as T, options);
+// }
 
-export function computed<T>(callback: () => T, options?: SignalOptions<T>): Reactive<T> {
-  return new Computed(callback, options);
-}
+// export function compose<T>(callback: () => T, options?: ReactiveOptions<T>): Reactive<T> {
+//   return new Computed(callback, options);
+// }
 
-export function signal<T>(value: T, options?: SignalOptions<T>): [Getter<T>, Setter<T>];
-export function signal<T>(value: undefined, options: SignalOptions<T>): [Getter<T>, Setter<T>];
-export function signal<T>(): [Getter<T | undefined>, Setter<T | undefined>];
-export function signal<T>(value?: T, options?: SignalOptions<T>) {
+export function state<T>(value: T, options?: ReactiveOptions<T>): [Getter<T>, Setter<T>];
+export function state<T>(value: undefined, options: ReactiveOptions<T>): [Getter<T>, Setter<T>];
+export function state<T>(): [Getter<T | undefined>, Setter<T | undefined>];
+export function state<T>(value?: T, options?: ReactiveOptions<T>) {
   const state = new State(value as T, options);
-  return [state.track.bind(state), state.set.bind(state)];
+  return [state.watch.bind(state), state.set.bind(state)];
 }
 
 /**
  * Memoizes a getter, so it will only be called if its dependencies have changed since it was last called.
  */
-export function memo<T>(getter: () => T, options?: SignalOptions<T>): Getter<T> {
+export function memo<T>(getter: () => T, options?: ReactiveOptions<T>): Getter<T> {
   const computed = new Computed(getter, options);
-  return computed.track.bind(computed);
+  return computed.watch.bind(computed);
 }
 
 /**
  * Converts any kind of reactive (including mutable), a getter function or a plain value into a readable Reactive.
  */
-export function reader<T>(value: Reactive<T> | Getter<T> | T): Reactive<T> {
-  if (isReactive<T>(value)) {
-    return value;
-  } else if (isFunction<Getter<T>>(value)) {
-    return new Computed(() => value());
-  } else {
-    return new StaticReader(value);
-  }
-}
+// export function reader<T>(value: Reactive<T> | T): Reactive<T> {
+//   if (isReactive<T>(value)) {
+//     return value;
+//   } else {
+//     return new StaticReader(value);
+//   }
+// }
 
 /**
  * Creates a getter of the value passed in. If the value is already a function it is returned untouched.
@@ -434,27 +427,26 @@ export function batch(fn: () => void): void {
   if (!--batchDepth) flush();
 }
 
-export function peek<T>(value: Reactive<T> | Getter<T> | T): T {
-  if (isReactive(value)) {
-    return value.peek();
-  } else if (isFunction(value)) {
-    return _untracked(() => value());
+/**
+ * Calls a function in an untracked scope and returns its value.
+ */
+export function peek<T>(value: MaybeGetter<T>): T {
+  if (isFunction(value)) {
+    return untrack(value);
   } else {
     return value;
   }
 }
 
-export function track<T>(value: Reactive<T> | Getter<T> | T): T {
-  if (isReactive(value)) {
-    return value.track();
-  } else if (isFunction(value)) {
+export function track<T>(value: MaybeGetter<T>): T {
+  if (isFunction(value)) {
     return value();
   } else {
     return value;
   }
 }
 
-function _untracked<T>(callback: () => T): T {
+function untrack<T>(callback: () => T): T {
   const pausedSub = setCurrentSub(undefined);
   try {
     return callback();
@@ -463,24 +455,17 @@ function _untracked<T>(callback: () => T): T {
   }
 }
 
-export function transform<T, O>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => O): Reactive<O> {
-  return computed(() => {
-    const value = track(target);
-    return _untracked(() => callback(value));
-  });
-}
-
-export function subscribe<T>(target: Reactive<T> | Getter<T> | T, callback: (value: T) => void) {
-  return watch(() => {
-    const value = track(target);
-    _untracked(() => callback(value));
+export function subscribe<T>(target: Getter<T>, callback: (value: T) => void) {
+  return effect(() => {
+    const value = target();
+    untrack(() => callback(value));
   });
 }
 
 /**
  * Function to be invoked for the effect. Can return an optional cleanup function to be called between invocations.
  */
-export type WatchCallback = () => void | (() => void);
+export type EffectCallback = () => void | (() => void);
 
 export type UnsubscribeFn = () => void;
 
@@ -491,7 +476,7 @@ export type UnsubscribeFn = () => void;
  * NOTE: You must call the unsubscribe function to clean up the effect.
  * If you are using an effect inside a View or Store, try the `useEffect` hook instead, which cleans up automatically when the component unmounts.
  */
-export function watch(callback: WatchCallback): UnsubscribeFn {
+export function effect(callback: EffectCallback): UnsubscribeFn {
   const e: Effect = {
     fn: callback,
     subs: undefined,

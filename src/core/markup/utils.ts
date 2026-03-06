@@ -1,7 +1,6 @@
 import { isFunction } from "../../typeChecking.js";
 import type { Renderable, View } from "../../types.js";
 import { Context } from "../context.js";
-import { computed, isReactive, reader } from "../reactive.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
@@ -38,7 +37,7 @@ export function render(content: Renderable, context = new Context("$")): MarkupN
     return nodes[0]; // if it's just one item return it
   }
   // otherwise wrap it in something that can display multiple nodes
-  return new DynamicNode(context, reader(nodes));
+  return new DynamicNode(context, () => nodes);
 }
 
 /**
@@ -121,13 +120,8 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       return;
     }
 
-    if (isReactive(item)) {
-      nodes.push(new DynamicNode(context, item));
-      return;
-    }
-
     if (isFunction(item)) {
-      nodes.push(new DynamicNode(context, computed(item)));
+      nodes.push(new DynamicNode(context, item));
       return;
     }
 

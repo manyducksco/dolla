@@ -3,23 +3,8 @@ export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
 // Reactive
-export {
-  batch,
-  computed,
-  peek,
-  isMutable,
-  isReactive,
-  reader,
-  state,
-  subscribe,
-  track,
-  transform,
-  watch,
-  signal,
-  memo,
-  getter,
-} from "./reactive.js";
-export type { Getter, MaybeGetter, MaybeReactive, MaybeTrackable, Mutable, Reactive, Trackable } from "./reactive.js";
+export { batch, effect, getter, memo, peek, state, subscribe } from "./reactive.js";
+export type { Getter, MaybeGetter, Reactive, Setter } from "./reactive.js";
 
 // Context
 export type { Context } from "./context.js";
@@ -44,7 +29,6 @@ export { html } from "./markup/html.js";
 export { Portal, type PortalProps } from "./views/portal.js";
 // export { Show, type ShowProps } from "./views/show.js";
 export { Fragment, type FragmentProps } from "./views/fragment.js";
-export { createVirtualList, type VirtualListProps } from "./views/virtual.js";
 
 // Logger
 export { createLogger } from "./logger.js";

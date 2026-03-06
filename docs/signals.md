@@ -3,6 +3,7 @@
 Wanna know how Dolla works? It's all about **Signals**. Fr, they're the most important thing to get. They're like little magic boxes that hold your data, and they're the reason Dolla is so fast and reactive without all the drama of other frameworks.
 
 Outline
+
 - Atoms
 - Composition
 - Effects

@@ -1,11 +1,11 @@
-import { describe, test, expect } from "vitest";
-import { isMarkup, isMarkupNode, createMarkup, render, toMarkupNodes } from "./utils";
-import { ViewNode } from "./nodes/view";
-import { DynamicNode } from "./nodes/dynamic";
+import { describe, expect, test } from "vitest";
 import { Context } from "../context";
-import { computed, state } from "../reactive";
+import { state } from "../reactive";
 import { DOMNode } from "./nodes/dom";
+import { DynamicNode } from "./nodes/dynamic";
 import { ElementNode } from "./nodes/element";
+import { ViewNode } from "./nodes/view";
+import { createMarkup, isMarkup, isMarkupNode, toMarkupNodes } from "./utils";
 
 describe("type checking", () => {
   test("isMarkup", () => {
@@ -20,10 +20,7 @@ describe("type checking", () => {
     const context = new Context("test");
     const view = () => "hello";
     const one = new ViewNode(context, view, {});
-    const two = new DynamicNode(
-      context,
-      computed(() => "hello"),
-    );
+    const two = new DynamicNode(context, () => "hello");
 
     expect(isMarkupNode(view)).toBe(false);
     expect(isMarkupNode(one)).toBe(true);
@@ -34,7 +31,7 @@ describe("type checking", () => {
 // test("render", () => {});
 
 test("toMarkupNodes", () => {
-  const count = state(5);
+  const [count, setCount] = state(5);
 
   const context = new Context("test");
   const nodes = toMarkupNodes(
