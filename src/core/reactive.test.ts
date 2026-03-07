@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { batch, effect, getter, type Getter, memo, peek, state, subscribe } from "./reactive";
+import { batch, onCleanup, effect, getter, type Getter, memo, peek, state, subscribe } from "./reactive";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = state(5);
@@ -32,6 +32,66 @@ test("basic composition & tracking", () => {
 
   stop();
 });
+
+test("mutable computed state", () => {
+  const [name, setName] = state("Bon");
+  const [inputValue, setInputValue] = state(() => name());
+
+  const spy = vi.fn();
+  const stop = effect(() => {
+    spy(inputValue());
+  });
+
+  expect(spy).toBeCalledTimes(1);
+  expect(spy).toBeCalledWith("Bon");
+  expect(inputValue()).toBe("Bon");
+  expect(name()).toBe("Bon");
+
+  setInputValue("Charals");
+
+  expect(spy).toBeCalledTimes(2);
+  expect(spy).toBeCalledWith("Charals");
+  expect(inputValue()).toBe("Charals");
+  expect(name()).toBe("Bon");
+
+  setName("Jack");
+
+  expect(spy).toBeCalledTimes(3);
+  expect(spy).toBeCalledWith("Jack");
+  expect(inputValue()).toBe("Jack");
+  expect(name()).toBe("Jack");
+
+  stop();
+});
+
+test("effect cleanup", () => {
+  const [count, setCount] = state(5);
+
+  const spy = vi.fn();
+  const spy2 = vi.fn();
+  const stop = effect(() => {
+    onCleanup(spy); // handle cleanups with hook
+
+    count(); // triggers each time count changes
+
+    return spy2; // can still return a function to clean up
+  });
+
+  expect(spy).toBeCalledTimes(0);
+  expect(spy2).toBeCalledTimes(0);
+
+  setCount(6);
+
+  expect(spy).toBeCalledTimes(1);
+  expect(spy2).toBeCalledTimes(1);
+
+  stop();
+
+  expect(spy).toBeCalledTimes(2);
+  expect(spy2).toBeCalledTimes(2);
+});
+
+test("memo cleanup", () => {});
 
 test("values are not tracked when accessed with peek()", () => {
   const [a, setA] = state(5);

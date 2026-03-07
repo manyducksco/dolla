@@ -37,11 +37,7 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      let viewContent: Renderable;
-
-      contextualize(this.context, () => {
-        viewContent = peek(() => this.view(this.props));
-      });
+      const viewContent = contextualize(this.context, () => peek(() => this.view(this.props)));
 
       if (viewContent != null && viewContent !== false) {
         this.node = render(viewContent, this.context);

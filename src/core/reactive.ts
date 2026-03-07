@@ -6,21 +6,15 @@ const enum EffectFlags {
   Queued = 1 << 6,
 }
 
-interface EffectScope extends ReactiveNode {}
-
 interface Effect extends ReactiveNode {
   fn(): void | (() => void);
-  cleanup?: () => void;
+  cleanups?: (() => void)[];
 }
 
 interface ComputedNode<T = any> extends ReactiveNode {
   value: T | undefined;
-
   getter: (previous?: T) => T;
-
-  // Temp value set when a computed signal has a value passed to it.
-  // This value is held until the real value recomputes.
-  holdValue: T | undefined;
+  cleanups?: (() => void)[];
 }
 
 interface ValueNode<T = any> extends ReactiveNode {
@@ -28,7 +22,7 @@ interface ValueNode<T = any> extends ReactiveNode {
   previousValue: T;
 }
 
-const queuedEffects: (Effect | EffectScope | undefined)[] = [];
+const queuedEffects: (Effect | undefined)[] = [];
 const { link, unlink, propagate, checkDirty, endTracking, startTracking, shallowPropagate } = createReactiveSystem({
   update(signal: ValueNode | ComputedNode): boolean {
     if ("getter" in signal) {
@@ -38,7 +32,7 @@ const { link, unlink, propagate, checkDirty, endTracking, startTracking, shallow
     }
   },
   notify,
-  unwatched(node: ValueNode | ComputedNode | Effect | EffectScope) {
+  unwatched(node: ValueNode | ComputedNode | Effect) {
     if ("getter" in node) {
       let toRemove = node.deps;
       if (toRemove !== undefined) {
@@ -65,10 +59,27 @@ function setCurrentSub(sub: ReactiveNode | undefined) {
   return prevSub;
 }
 
+function untrack<T>(callback: () => T): T {
+  const pausedSub = setCurrentSub(undefined);
+  try {
+    return callback();
+  } finally {
+    setCurrentSub(pausedSub);
+  }
+}
+
 function updateComputed(c: ComputedNode): boolean {
   const prevSub = setCurrentSub(c);
   startTracking(c);
   try {
+    if ("cleanups" in c && c.cleanups !== undefined) {
+      untrack(() => {
+        for (let i = 0; i < c.cleanups!.length; i++) {
+          c.cleanups![i]();
+        }
+      });
+      c.cleanups = undefined;
+    }
     const oldValue = c.value;
     return oldValue !== (c.value = c.getter(oldValue));
   } finally {
@@ -82,20 +93,20 @@ function updateSignal(s: ValueNode, value: any): boolean {
   return s.previousValue !== (s.previousValue = value);
 }
 
-function notify(e: Effect | EffectScope) {
+function notify(e: Effect) {
   const flags = e.flags;
   if (!(flags & EffectFlags.Queued)) {
     e.flags = flags | EffectFlags.Queued;
     const subs = e.subs;
     if (subs !== undefined) {
-      notify(subs.sub as Effect | EffectScope);
+      notify(subs.sub as Effect);
     } else {
       queuedEffects[queuedEffectsLength++] = e;
     }
   }
 }
 
-function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
+function run(e: Effect, flags: ReactiveFlags): void {
   if (
     flags & (16 satisfies ReactiveFlags.Dirty) ||
     (flags & (32 satisfies ReactiveFlags.Pending) && checkDirty(e.deps!, e))
@@ -103,12 +114,18 @@ function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
     const prev = setCurrentSub(e);
     startTracking(e);
     try {
-      if ("cleanup" in e && e.cleanup !== undefined) {
-        e.cleanup();
+      if ("cleanups" in e && e.cleanups !== undefined) {
+        untrack(() => {
+          for (let i = 0; i < e.cleanups!.length; i++) e.cleanups![i]();
+        });
+        e.cleanups = undefined;
       }
+
       const result = (e as Effect).fn();
-      if ("cleanup" in e && isFunction(result)) {
-        e.cleanup = result;
+
+      if (isFunction(result)) {
+        if (e.cleanups === undefined) e.cleanups = [result];
+        else e.cleanups.push(result);
       }
     } finally {
       setCurrentSub(prev);
@@ -123,7 +140,7 @@ function run(e: Effect | EffectScope, flags: ReactiveFlags): void {
     const dep = link.dep;
     const depFlags = dep.flags;
     if (depFlags & EffectFlags.Queued) {
-      run(dep, (dep.flags = depFlags & ~EffectFlags.Queued));
+      run(dep as unknown as Effect, (dep.flags = depFlags & ~EffectFlags.Queued));
     }
     link = link.nextDep;
   }
@@ -153,7 +170,7 @@ function _stateGetter(this: ValueNode) {
   return this.value;
 }
 
-function _stateSetter<T>(this: ValueNode, next: T | ((current: T) => T)) {
+function _stateSetter<T>(this: ValueNode, next: SetterAction<T>): T {
   let value: T;
   if (isFunction<(current: T) => T>(next)) value = next(this.value);
   else value = next;
@@ -190,7 +207,45 @@ function _memoGetter(this: ComputedNode) {
   return this.value!;
 }
 
-function _effect(this: Effect | EffectScope): void {
+function _memoSetter<T>(this: ComputedNode, next: SetterAction<T>): T {
+  let value: T;
+  if (isFunction<(current: T | undefined) => T>(next)) {
+    value = next(this.value);
+  } else {
+    value = next as T;
+  }
+
+  if (this.value !== value) {
+    this.value = value;
+
+    // Clear Dirty and Pending so _memoGetter skips updateComputed
+    this.flags &= ~(16 | 32);
+
+    // Manually push the Dirty flag to all subscribers
+    let link = this.subs;
+    while (link !== undefined) {
+      const sub = link.sub;
+      const subFlags = sub.flags;
+
+      // Only modify and notify if it isn't already queued for an update
+      if ((subFlags & (16 | 32)) === 0) {
+        // Force the node to be Dirty so it bypasses checkDirty() upon flush
+        sub.flags = subFlags | 16;
+        notify(sub as Effect);
+      }
+
+      link = link.nextSub;
+    }
+
+    // 3. Trigger queued effects
+    if (!batchDepth) {
+      flush();
+    }
+  }
+  return value;
+}
+
+function _effect(this: Effect): void {
   let dep = this.deps;
   while (dep !== undefined) {
     dep = unlink(dep, this);
@@ -201,8 +256,13 @@ function _effect(this: Effect | EffectScope): void {
   }
   this.flags = 0 satisfies ReactiveFlags.None;
 
-  if ("cleanup" in this && this.cleanup != null) {
-    this.cleanup();
+  if ("cleanups" in this && this.cleanups !== undefined) {
+    untrack(() => {
+      for (let i = 0; i < this.cleanups!.length; i++) {
+        this.cleanups![i]();
+      }
+    });
+    this.cleanups = undefined;
   }
 }
 
@@ -215,11 +275,22 @@ function _effect(this: Effect | EffectScope): void {
  * Automatically tracked as a dependency when called within a tracking scope (such as `memo` or `effect` functions).
  */
 export interface Getter<T> {
+  /**
+   * Returns the latest value.
+   */
   (): T;
 }
 
+/**
+ * A value passed to a setter. Can be a plain value, or an update function.
+ */
+type SetterAction<T> = T | ((current: T) => T);
+
 export interface Setter<T> {
-  (value: T | ((current: T) => T)): T;
+  /**
+   * Updates the stored value. Can be a plain value or an update function.
+   */
+  (next: SetterAction<T>): T;
 }
 
 /**
@@ -230,10 +301,24 @@ export type MaybeGetter<T> = Getter<T> | T;
 
 /* -------------- PUBLIC API --------------- */
 
+export function state<T>(value: Getter<T>): [Getter<T>, Setter<T>];
 export function state<T>(value: T): [Getter<T>, Setter<T>];
-export function state<T>(value: undefined): [Getter<T>, Setter<T>];
 export function state<T>(): [Getter<T | undefined>, Setter<T | undefined>];
-export function state<T>(value?: T) {
+export function state<T>(value?: MaybeGetter<T>) {
+  if (isFunction<Getter<T>>(value)) {
+    // Return mutable memo.
+    const node: ComputedNode = {
+      value: undefined,
+      subs: undefined,
+      subsTail: undefined,
+      deps: undefined,
+      depsTail: undefined,
+      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
+      getter: () => value(),
+    };
+    return [_memoGetter.bind(node), _memoSetter.bind(node)];
+  }
+
   const node: ValueNode = {
     previousValue: value,
     value: value,
@@ -247,18 +332,16 @@ export function state<T>(value?: T) {
 /**
  * Memoizes a getter, so it will only be called if its dependencies have changed since it was last called.
  */
-export function memo<T>(getter: (prev?: T) => T): Getter<T> {
-  const node: ComputedNode = {
+export function memo<T>(getter: (previous?: T) => T): Getter<T> {
+  return _memoGetter.bind({
     value: undefined,
-    holdValue: undefined,
     subs: undefined,
     subsTail: undefined,
     deps: undefined,
     depsTail: undefined,
     flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
     getter,
-  };
-  return _memoGetter.bind(node);
+  });
 }
 
 /**
@@ -289,24 +372,33 @@ export function effect(callback: EffectCallback): UnsubscribeFn {
   }
   const prev = setCurrentSub(e);
   try {
-    e.cleanup?.();
     const result = e.fn();
-    e.cleanup = isFunction(result) ? result : undefined;
+    if (isFunction(result)) {
+      if (e.cleanups === undefined) e.cleanups = [result];
+      else e.cleanups.push(result);
+    }
   } finally {
     setCurrentSub(prev);
   }
   return _effect.bind(e);
 }
 
+export function onCleanup(fn: () => void) {
+  if (activeSub !== undefined) {
+    const sub = activeSub as Effect | ComputedNode;
+    if (sub.cleanups === undefined) {
+      sub.cleanups = [fn];
+    } else {
+      sub.cleanups.push(fn);
+    }
+  }
+}
+
 /**
- * Creates a getter of the value passed in. If the value is already a function it is returned untouched.
+ * Creates a getter of the value passed in.
  */
 export function getter<T>(value: Getter<T> | T): Getter<T> {
-  if (isFunction<Getter<T>>(value)) {
-    return value;
-  } else {
-    return () => value;
-  }
+  return () => get(value);
 }
 
 /**
@@ -329,20 +421,11 @@ export function peek<T>(value: MaybeGetter<T>): T {
   }
 }
 
-export function track<T>(value: MaybeGetter<T>): T {
+export function get<T>(value: MaybeGetter<T>): T {
   if (isFunction(value)) {
     return value();
   } else {
     return value;
-  }
-}
-
-function untrack<T>(callback: () => T): T {
-  const pausedSub = setCurrentSub(undefined);
-  try {
-    return callback();
-  } finally {
-    setCurrentSub(pausedSub);
   }
 }
 

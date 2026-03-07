@@ -5,7 +5,7 @@ export type { DollaPlugin } from "./root.js";
 export { element, $moved, $adopted } from "./element.js";
 
 // Reactive
-export { batch, effect, getter, memo, peek, state, subscribe } from "./reactive.js";
+export { batch, effect, getter as getter, memo, peek, state, subscribe } from "./reactive.js";
 export type { Getter, MaybeGetter, Setter } from "./reactive.js";
 
 // Context

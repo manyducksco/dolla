@@ -1,5 +1,5 @@
 import { $$context, DollaPlugin } from "../core/index.js";
-import { memo, state, track, type Getter, type MaybeGetter } from "../core/reactive.js";
+import { memo, state, get, type Getter, type MaybeGetter } from "../core/reactive.js";
 import { typeOf } from "../typeChecking.js";
 
 // ----- Types ----- //
@@ -207,7 +207,7 @@ export function createTranslator(options: TranslateOptions): Translator {
       throw new Error(`Unknown format: ${name}`);
     }
 
-    return memo(() => callback(currentLocale(), track(value), options ?? {}));
+    return memo(() => callback(currentLocale(), get(value), options ?? {}));
   }
 
   return {
@@ -247,7 +247,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(track(options.count));
+            selector += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(get(options.count));
           }
         } else {
           // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
@@ -255,7 +255,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_" + new Intl.PluralRules(locale).select(track(options.count));
+            selector += "_" + new Intl.PluralRules(locale).select(get(options.count));
           }
         }
       }
@@ -354,7 +354,7 @@ export function parseTemplate(template: string): CompiledTemplate {
       segments.push((options, formatters, locale) => {
         // Evaluate and track the specific option at runtime.
         // This code runs in the t() computed context.
-        let value = options ? track(options[name]) : undefined;
+        let value = options ? get(options[name]) : undefined;
 
         for (let k = 0; k < parsedFormats.length; k++) {
           const fmt = parsedFormats[k];

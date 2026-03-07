@@ -82,9 +82,9 @@
 
     <div id="element">
       <the-parent value="10">
-        <div>
+        <section>
           <the-child expected="10"></the-child>
-        </div>
+        </section>
       </the-parent>
     </div>
     <script type="module">
@@ -108,6 +108,8 @@
               setValue((current) => current + 1);
               debug.info("incremented", value());
             }, 1000);
+
+            return () => clearInterval(interval);
           });
 
           // The HTMLElement instance can be accessed on `this`.

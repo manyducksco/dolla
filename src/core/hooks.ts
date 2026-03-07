@@ -1,18 +1,18 @@
 import { createLogger, type Store } from "../core";
-import { isFunction, isPromise } from "../typeChecking";
+import { assertTypeOf, isFunction, isPromise } from "../typeChecking";
 import type { Context } from "./context.js";
-import { getCurrentContext } from "./context.js";
-import { type MaybeGetter, effect, type EffectCallback } from "./reactive";
+import { contextualize, getCurrentContext } from "./context.js";
+import { effect, type EffectCallback, type MaybeGetter } from "./reactive";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
  */
 export function $$context(): Context {
-  const context = getCurrentContext();
-  if (!context) {
+  const self = getCurrentContext();
+  if (!self) {
     throw new Error(`No context found; hooks can only be called in the body of a View, Store or Mixin.`);
   }
-  return context;
+  return self;
 }
 
 /**
@@ -26,51 +26,60 @@ export function $name(name: MaybeGetter<string>): void {
  * Returns the component's logger.
  */
 export function $debug(name?: string | ((contextName: string) => string)) {
-  const context = $$context();
-  return createLogger(typeof name === "function" ? () => name(context.getName()) : () => context.getName(), {
-    tag: context.id,
+  const self = $$context();
+  return createLogger(typeof name === "function" ? () => name(self.getName()) : () => self.getName(), {
+    tag: self.id,
     tagName: "ctx",
   });
 }
 
+const STORE_ID = Symbol("Dolla.StoreId");
+
 /**
  * Adds a store to this context and returns the store instance.
  */
-export function $provide<Value, Options>(store: Store<Options, Value>, options?: Options): Value;
+export function $provide<Returns, Options>(
+  store: Store<Options, Returns> & { [STORE_ID]?: symbol },
+  options?: Options,
+): Returns {
+  const self = $$context();
 
-/**
- * Sets a value on this context, making it available to child components.
- */
-export function $provide<Value>(key: string | symbol, value: Value): Value;
+  assertTypeOf(store, isFunction, "Expected a store function. Got: %t");
 
-export function $provide<Value, Options>(...args: any[]): Value {
-  const context = $$context();
-  if (typeof args[0] === "function") {
-    const [store, options] = args as [Store<Options, Value>, options?: Options];
-    return context.provideStore(store, options);
-  } else {
-    const [key, value] = args as [string | symbol, Value];
-    context.state[key] = value;
-    return value;
+  // Tag the store function with a unique symbol if it doesn't have one.
+  if (!store[STORE_ID]) store[STORE_ID] = Symbol(store.name);
+
+  if (self.state.hasOwnProperty(store[STORE_ID])) {
+    let name = store.name ? `'${store.name}'` : "this store";
+    throw new Error(`An instance of ${name} was already provided on this context.`);
   }
+
+  // Give the store its own context bound to this lifecycle.
+  const context = self.createChild(store.name);
+  self.onMount(context.mount.bind(context));
+  self.onUnmount(context.unmount.bind(context));
+
+  contextualize(context, () => {
+    self.state[store[STORE_ID]!] = store(options as any);
+  });
+
+  return self.state[store[STORE_ID]];
 }
 
 /**
  * Returns the nearest instance of a Store.
  */
-export function $use<T>(store: Store<any, T>): T;
+export function $use<Returns>(store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
+  const self = $$context();
 
-export function $use<T>(key: string | symbol, fallback: T): T | undefined;
+  assertTypeOf(store, isFunction, "Expected a store function. Got: %t");
 
-export function $use<T>(key: string | symbol, fallback?: T): T | undefined;
-
-export function $use<T>(arg: Store<any, T> | string | symbol, fallback?: T) {
-  const context = $$context();
-  if (typeof arg === "function") {
-    return context.getStore(arg);
-  } else {
-    return context.state[arg] ?? fallback;
+  const id = store[STORE_ID];
+  const result = id ? self.state[id] : undefined;
+  if (result == null) {
+    throw new Error(`Store '${store.name}' is not provided by this context.`);
   }
+  return result;
 }
 
 type CleanupFnOrVoid = void | (() => void);
@@ -91,22 +100,22 @@ export function $setup(callback: SetupCallback): void;
 export function $setup(callback: AsyncSetupCallback): void;
 
 export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
-  const context = $$context();
+  const self = $$context();
 
-  context.onMount(() => {
+  self.onMount(() => {
     const controller = new AbortController();
     const result = callback(controller.signal);
     if (isPromise(result)) {
-      context.onUnmount(() => {
+      self.onUnmount(() => {
         controller.abort();
       });
       result.then((callback) => {
         if (!controller.signal.aborted && typeof callback === "function") {
-          context.onUnmount(callback);
+          self.onUnmount(callback);
         }
       });
     } else if (isFunction(result)) {
-      context.onUnmount(result);
+      self.onUnmount(result);
     }
   });
 }
@@ -123,16 +132,16 @@ export function $teardown(callback: () => void | Promise<void>): void {
  * The watcher will be cleaned up automatically when the component unmounts.
  */
 export function $effect(callback: EffectCallback) {
-  const context = $$context();
+  const self = $$context();
 
   const setupEffect = () => {
     const unsubscribe = effect(callback);
-    context.onUnmount(unsubscribe);
+    self.onUnmount(unsubscribe);
   };
 
-  if (context.isMounted) {
+  if (self.isMounted) {
     setupEffect();
   } else {
-    context.onMount(setupEffect);
+    self.onMount(setupEffect);
   }
 }

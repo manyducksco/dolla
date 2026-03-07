@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Context } from "../core/context.js";
+import { Context, contextualize } from "../core/context.js";
 import { View } from "../types.js";
 import { createRouter, lazy, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
+import { $use } from "../core/index.js";
 
 async function withMountedView<Props>(view: View<Props>, props: Props, callback: (context: Context) => any) {
   const context = new Context("test");
@@ -52,7 +53,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await Promise.resolve();
 
-      const store = context.getStore(RouterStore);
+      const store = contextualize(context, () => $use(RouterStore));
 
       expect(store.path()).toBe("/dashboard");
       expect(store.meta()).toEqual({ requiresAuth: true, title: "Dashboard" });
@@ -107,7 +108,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = context.getStore(RouterStore);
+      const store = contextualize(context, () => $use(RouterStore));
       expect(store.path()).toBe("/login");
     });
   });
@@ -121,7 +122,7 @@ describe("Router Engine", () => {
     });
 
     await withMountedView(routerView, {}, async (context) => {
-      const store = context.getStore(RouterStore);
+      const store = contextualize(context, () => $use(RouterStore));
 
       store.push("/form");
       await new Promise(process.nextTick);
@@ -155,7 +156,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = context.getStore(RouterStore);
+      const store = contextualize(context, () => $use(RouterStore));
 
       store.setQuery({ q: "potato", sort: "asc" });
 

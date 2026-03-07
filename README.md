@@ -62,6 +62,17 @@ function Counter() {
   `;
 }
 
+function Counter(props) {
+  const count = state(0);
+
+  return html`
+    <div>
+      <p>Count: ${count}</p>
+      <button onclick=${() => count((c) => c + 1)}>Increment</button>
+    </div>
+  `;
+}
+
 createRoot(document.body).mount(Counter);
 ```
 
@@ -82,6 +93,39 @@ Tracking contexts
 
 ```tsx
 import { state, memo, html } from "@manyducks.co/dolla";
+
+function Converter() {
+  const [celsius, setCelsius] = state(0);
+
+  // Depends on `celsius`; updates when `celsius` updates.
+  const fahrenheit = memo(() => {
+    return (celsius() * 9) / 5 + 32;
+  });
+
+  // Depends on `fahrenheit`; updates when `fahrenheit` updates.
+  const description = memo(() => {
+    const f = fahrenheit();
+    if (f <= 32) return "Freezing ❄️";
+    if (f >= 90) return "Hot! 🔥";
+    return "Moderate 🌤️";
+  });
+
+  return html`
+    <div>
+      <input
+        type="number"
+        value=${celsius}
+        oninput=${(e) => {
+          setCelsius(e.target.valueAsNumber);
+        }}
+      />
+
+      <p>Celsius: ${celsius}°C</p>
+      <p>Fahrenheit: ${fahrenheit}°F</p>
+      <p>Condition: ${description}</p>
+    </div>
+  `;
+}
 
 function Converter() {
   const [celsius, setCelsius] = state(0);

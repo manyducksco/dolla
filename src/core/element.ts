@@ -38,7 +38,11 @@ export function element<const T extends readonly AttributeDef[]>({
 }: {
   tag: `${string}-${string}`;
   attributes?: T;
-  view: (this: HTMLElement, props: { children: Renderable; attributes: AttributeGetters<T> }) => Renderable;
+  view: (
+    this: HTMLElement,
+    props: { children: Renderable; attributes: AttributeGetters<T> },
+    element: HTMLElement,
+  ) => Renderable;
 }): void {
   const attrsList = attributes || ([] as unknown as T);
 
@@ -102,14 +106,16 @@ export function element<const T extends readonly AttributeDef[]>({
           attrs[key] = this.#attrs[key].get;
         }
 
-        let viewContent: Renderable;
-
         // Run the view function
-        contextualize(this.#context, () => {
-          viewContent = view.call(this, {
-            attributes: attrs as AttributeGetters<T>,
-            children: document.createElement("slot"),
-          });
+        const viewContent = contextualize(this.#context, () => {
+          return view.call(
+            this,
+            {
+              attributes: attrs as AttributeGetters<T>,
+              children: document.createElement("slot"),
+            },
+            this,
+          );
         });
 
         // Mount the view
