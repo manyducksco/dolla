@@ -17,11 +17,7 @@
         // - any markup element attribute or child
 
         $effect(() => {
-          // Calling a getter in a tracking context will track it.
           console.log("count is", count());
-
-          // Peek to get the value without tracking.
-          console.log("count is", peek(count));
         });
 
         return html`
@@ -54,7 +50,7 @@
       // });
     </script>
 
-    <div id="providers"></div>
+    <!-- <div id="providers"></div>
     <script type="module">
       import { createRoot, state, html, $provide, $use, when } from "../dist/index.js";
 
@@ -82,6 +78,53 @@
       }
 
       createRoot("#providers").mount(Parent);
+    </script> -->
+
+    <div id="element">
+      <the-parent value="10">
+        <div>
+          <the-child expected="10"></the-child>
+        </div>
+      </the-parent>
+    </div>
+    <script type="module">
+      import { element, html, state, when, memo, $provide, $use, $setup, $debug } from "../dist/index.js";
+
+      function Store({ initialValue = 0 }) {
+        const [value, setValue] = state(initialValue);
+        return { value, setValue };
+      }
+
+      element({
+        tag: "the-parent",
+        attributes: [["value", (n) => Number(n ?? 0)]],
+        view({ attributes, children }) {
+          const { value, setValue } = $provide(Store, { initialValue: attributes.value() });
+
+          const debug = $debug();
+
+          $setup(() => {
+            const interval = setInterval(() => {
+              setValue((current) => current + 1);
+              debug.info("incremented", value());
+            }, 1000);
+          });
+
+          // The HTMLElement instance can be accessed on `this`.
+          debug.log({ attributes, children, self: this });
+
+          // Children will always be a `<slot>`
+          return html`<div>${children}</div>`;
+        },
+      });
+
+      element({
+        tag: "the-child",
+        view() {
+          const { value } = $use(Store);
+          return html`<p>Counter: ${value}</p>`;
+        },
+      });
     </script>
 
     <!-- <div id="sibling-lists"></div>
@@ -178,7 +221,7 @@
       createRoot("#sibling-lists", { debug: true }).mount(SiblingLists);
     </script> -->
 
-    <div
+    <!-- <div
       id="chat-wire-demo"
       style="
         width: 400px;
@@ -191,9 +234,9 @@
         overflow: hidden;
         margin: 40px;
       "
-    ></div>
+    ></div> -->
 
-    <style>
+    <!-- <style>
       /* The dimensional bubble styling */
       .chat-bubble {
         margin: 8px 16px;
@@ -356,7 +399,7 @@
       }
 
       createRoot("#chat-wire-demo").mount(ChatWireDemo);
-    </script>
+    </script> -->
 
     <!-- <div id="virtual" style="border: 1px solid red; width: 300px; height: 500px"></div>
     <script type="module">

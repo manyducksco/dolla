@@ -54,6 +54,10 @@ export interface Markup<Type extends string | NodeType | View<any> = string | No
   props: PropsOf<Type>;
 }
 
+export interface MountTarget {
+  insertBefore(node: Node, child: Node | null): any;
+}
+
 /**
  * A node that can be mounted by the Markup layout engine. Can be extended to create new custom node types.
  *
@@ -81,7 +85,7 @@ export abstract class MarkupNode {
    * Mount this node to a `parent` element.
    * If passed, this node will be mounted as the next sibling of `after`.
    */
-  abstract mount(parent: Element, after?: Node): void;
+  abstract mount(parent: MountTarget, after?: Node): void;
 
   /**
    * Unmount this MarkupNode from its parent element.
@@ -96,5 +100,5 @@ export abstract class MarkupNode {
   /**
    * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
    */
-  abstract move(parent: Element, after?: Node): void;
+  abstract move(parent: MountTarget, after?: Node): void;
 }

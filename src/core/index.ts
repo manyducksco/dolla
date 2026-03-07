@@ -2,6 +2,8 @@
 export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
+export { element, $moved, $adopted } from "./element.js";
+
 // Reactive
 export { batch, effect, getter, memo, peek, state, subscribe } from "./reactive.js";
 export type { Getter, MaybeGetter, Setter } from "./reactive.js";
@@ -25,9 +27,9 @@ export type { Ref } from "./ref.js";
 export { html } from "./markup/html.js";
 
 // Built-in Views
-// export { For, type ForProps } from "./views/for.js";
+export { For, type ForProps } from "./views/for.js";
+export { Show, type ShowProps } from "./views/show.js";
 export { Portal, type PortalProps } from "./views/portal.js";
-// export { Show, type ShowProps } from "./views/show.js";
 export { Fragment, type FragmentProps } from "./views/fragment.js";
 
 // Logger
@@ -35,7 +37,7 @@ export { createLogger } from "./logger.js";
 export type { Logger, LoggerOptions, LogLevel } from "./logger.js";
 
 // Other types
-export type { CSSProperties, Env, InputType, Mixin, Renderable, Store, View } from "../types.js";
+export type { CSSProperties, Env, InputType, Renderable, Store, View } from "../types.js";
 // export type { CrashViewProps } from "./views/_default-crash-view.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";

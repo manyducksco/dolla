@@ -7,7 +7,6 @@ import { DynamicNode } from "./markup/nodes/dynamic.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { MarkupNode } from "./markup/types.js";
 import { toMarkupNodes } from "./markup/utils.js";
-import { reader } from "./reactive.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
 export type CleanupCallback = () => void | Promise<void>;
@@ -100,7 +99,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
       if (nodes.length === 1) {
         rootNode = nodes[0];
       } else {
-        rootNode = new DynamicNode(context, reader(nodes));
+        rootNode = new DynamicNode(context, () => nodes);
       }
     }
 

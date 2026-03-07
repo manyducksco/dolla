@@ -1,5 +1,5 @@
 import { createMarkup, Renderable } from "..";
-import { computed, isReactive, isTrackable, MaybeReactive, reader, track } from "../reactive";
+import { MaybeGetter, memo } from "../reactive";
 import { KeyFn, RenderFn } from "./nodes/repeat";
 
 /**
@@ -9,11 +9,16 @@ import { KeyFn, RenderFn } from "./nodes/repeat";
  * @param key - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
  * @param render - Takes (item, index) as Reactive values and returns content to display for that item.
  */
-export function each<T>(items: MaybeReactive<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>): Renderable {
-  if (isReactive(items)) {
+export function each<T>(items: MaybeGetter<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>): Renderable {
+  if (typeof items === "function") {
     return createMarkup("$repeat", { items, key, render });
   } else {
-    return Array.from(items).map((item, index) => render(reader(item), reader(index)));
+    return Array.from(items).map((item, index) =>
+      render(
+        () => item,
+        () => index,
+      ),
+    );
   }
 }
 
@@ -25,9 +30,9 @@ export function each<T>(items: MaybeReactive<Iterable<T>>, key: KeyFn<T>, render
  * @param fallback - Content to display when condition is falsy.
  */
 export function when(condition: any, content?: Renderable, fallback?: Renderable): Renderable {
-  if (isTrackable(condition)) {
+  if (typeof condition === "function") {
     return createMarkup("$dynamic", {
-      slot: computed(() => (track(condition) ? content : fallback)),
+      slot: memo(() => (condition() ? content : fallback)),
     });
   } else if (condition) {
     return content;

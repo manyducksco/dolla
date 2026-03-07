@@ -1,7 +1,7 @@
 import type { Context } from "../../context.js";
 import { subscribe, type Getter, type UnsubscribeFn } from "../../reactive.js";
 import { scheduleUpdate } from "../scheduler.js";
-import { MarkupNode } from "../types.js";
+import { MarkupNode, MountTarget } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
 import { DOMNode } from "./dom.js";
 
@@ -31,7 +31,7 @@ export class DynamicNode extends MarkupNode {
     return this.root.parentElement != null;
   }
 
-  override mount(parent: Node, after?: Node) {
+  override mount(parent: MountTarget, after?: Node) {
     if (!this.isMounted()) {
       parent.insertBefore(this.root, after?.nextSibling ?? null);
 

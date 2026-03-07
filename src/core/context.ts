@@ -1,13 +1,9 @@
-import { assertFunction } from "../typeChecking";
+import { assertTypeOf, isFunction } from "../typeChecking";
 import type { Store } from "../types";
 import { uniqueId } from "../utils";
 import { peek, type Getter, type MaybeGetter } from "./reactive";
 
 export type LifecycleListener = () => any;
-
-export interface LinkedContextOptions {
-  bindLifecycle?: boolean;
-}
 
 /*===================================*\
 ||           Global Context          ||
@@ -62,7 +58,6 @@ export class Context {
   unmountListeners?: LifecycleListener[];
 
   parent?: Context;
-  bound?: Context[];
 
   state: Record<string | symbol, any>;
 
@@ -77,17 +72,8 @@ export class Context {
   /**
    * Returns a new Context with this one as its parent.
    */
-  createChild(name: MaybeGetter<string>, options?: LinkedContextOptions): Context {
-    const context = new Context(name, this);
-
-    if (options?.bindLifecycle) {
-      if (!this.bound) this.bound = [];
-      if (!this.bound.includes(context)) {
-        this.bound.push(context);
-      }
-    }
-
-    return context;
+  createChild(name: MaybeGetter<string>): Context {
+    return new Context(name, this);
   }
 
   // -------------------------- \\
@@ -135,13 +121,6 @@ export class Context {
 
     this.isMounted = true;
     this.mountListeners?.forEach((callback) => callback());
-
-    // Update bound contexts.
-    if (this.bound) {
-      for (let i = 0; i < this.bound.length; i++) {
-        this.bound[i].mount();
-      }
-    }
   }
 
   unmount() {
@@ -149,13 +128,6 @@ export class Context {
 
     this.isMounted = false;
     this.unmountListeners?.forEach((callback) => callback());
-
-    // Update bound contexts.
-    if (this.bound) {
-      for (let i = 0; i < this.bound.length; i++) {
-        this.bound[i].unmount();
-      }
-    }
   }
 
   // -------------------------- \\
@@ -166,6 +138,8 @@ export class Context {
    * Creates an instance of a store and provides it via this context.
    */
   provideStore<T>(store: Store<any, T> & { [STORE_ID]?: symbol }, options?: any): T {
+    assertTypeOf(store, isFunction, "Expected a store function. Got: %t");
+
     // Tag the store function with a unique symbol if it doesn't have one.
     if (!store[STORE_ID]) store[STORE_ID] = Symbol(store.name);
 
@@ -174,10 +148,10 @@ export class Context {
       throw new Error(`An instance of ${name} was already provided on this context.`);
     }
 
-    // Context is bound and therefore will be disposed when this context is disposed.
-    const context = this.createChild(store.name, {
-      bindLifecycle: true,
-    });
+    // Give the store its own context bound to this lifecycle.
+    const context = this.createChild(store.name);
+    this.onMount(context.mount.bind(context));
+    this.onUnmount(context.unmount.bind(context));
 
     contextualize(context, () => {
       this.state[store[STORE_ID]!] = store(options);
@@ -192,7 +166,7 @@ export class Context {
    * 2. No instance is found and an error is thrown.
    */
   getStore<T>(store: Store<any, T> & { [STORE_ID]?: symbol }): T {
-    assertFunction(store, "Expected a store function. Got: %t");
+    assertTypeOf(store, isFunction, "Expected a store function. Got: %t");
 
     const id = store[STORE_ID];
     const result = id ? this.state[id] : undefined;

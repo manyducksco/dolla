@@ -79,18 +79,6 @@ export class ElementNode extends MarkupNode {
     if (!wasMounted) {
       const { props } = this;
 
-      // if (props.mixin) {
-      //   for (const mixin of toArray(props.mixin)) {
-      //     const context = this.context.createChild(getContextName.bind(this), {
-      //       bindLifecycle: true,
-      //     });
-      //     // TODO: Set something on context so the mixin knows it's a mixin:
-
-      //     // logger: { tagName: mixin.name === "mixin" ? undefined : "mixin", tag: mixin.name }
-      //     runWithContext(context, () => mixin(this.root));
-      //   }
-      // }
-
       this.applyProps(this.root, omit(ignoredProps, props));
 
       if (props.children) {

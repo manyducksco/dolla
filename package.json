@@ -30,10 +30,6 @@
       "import": "./dist/index.js",
       "types": "./dist/core/index.d.ts"
     },
-    "./hooks": {
-      "import": "./dist/hooks.js",
-      "types": "./dist/hooks/index.d.ts"
-    },
     "./http": {
       "import": "./dist/http.js",
       "types": "./dist/http/index.d.ts"

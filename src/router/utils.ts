@@ -1,4 +1,4 @@
-import { assertArrayOf, assertString, isFunction, isObject, isString } from "../typeChecking.js";
+import { isFunction, isObject, isString } from "../typeChecking.js";
 import { View } from "../types.js";
 import { uniqueId } from "../utils.js";
 import type { JourneyStep, LazyView, Route, RouteLayer, Stringable } from "./types.js";
@@ -54,8 +54,6 @@ export type RouteMatchOptions = {
  * @returns an array of fragments (e.g. `["api", "users", "5"]`)
  */
 export function splitPath(path: string): string[] {
-  assertString(path, "Expected `path` to be a string. Got type: %t, value: %v");
-
   return path
     .split("/")
     .map((f) => f.trim())
@@ -69,12 +67,6 @@ export function splitPath(path: string): string[] {
  * @returns a joined path (e.g. `"api/users/5"`)
  */
 export function joinPath(parts: { toString(): string }[]): string {
-  assertArrayOf(
-    (part) => isFunction(part?.toString),
-    parts,
-    "Expected `parts` to be an array of objects with a .toString() method. Got type: %t, value: %v",
-  );
-
   parts = parts.filter((x) => x).flatMap(String);
 
   let joined = parts.shift()?.toString();
@@ -109,8 +101,6 @@ export function joinPath(parts: { toString(): string }[]): string {
 }
 
 export function resolvePath(base: string, part: string | null) {
-  assertString(base, "Expected `base` to be a string. Got type: %t, value: %v");
-
   if (part == null) {
     part = base;
     base = "";

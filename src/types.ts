@@ -1,7 +1,7 @@
 import type * as CSS from "csstype";
 import { LogLevel } from "./core/logger.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
-import type { MaybeTrackable, Getter, Reactive } from "./core/reactive.js";
+import type { MaybeGetter, Getter } from "./core/reactive.js";
 import { Context } from "./core/context.js";
 
 export type Env = "production" | "development";
@@ -19,8 +19,8 @@ export type Renderable =
   | false
   | null
   | undefined
-  | MaybeTrackable<any>
-  | (string | number | Node | Markup | MarkupNode | false | null | undefined | MaybeTrackable<any>)[];
+  | MaybeGetter<any>
+  | (string | number | Node | Markup | MarkupNode | false | null | undefined | MaybeGetter<any>)[];
 
 export interface BaseProps {
   children?: Renderable;
@@ -35,11 +35,6 @@ export type View<Props = {}> = (props: Props) => Renderable;
  *
  */
 export type Store<Options, Value> = (options: Options) => Value;
-
-/**
- *
- */
-export type Mixin<E extends Element = Element> = (element: E) => void;
 
 declare global {
   interface Window {
@@ -61,8 +56,8 @@ declare global {
 ||            JSX Types             ||
 \*==================================*/
 
-type RequiredProperty<T> = Reactive<T> | Getter<T> | T;
-type OptionalProperty<T> = Reactive<T> | Reactive<T | undefined> | Getter<T> | Getter<T | undefined> | T;
+type RequiredProperty<T> = Getter<T> | T;
+type OptionalProperty<T> = Getter<T> | Getter<T | undefined> | T;
 
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
@@ -1245,13 +1240,6 @@ export interface HTMLElementProps extends ElementProps {
   onpaste?: OptionalProperty<EventHandler<ClipboardEvent>>;
 }
 
-export interface SVGElementProps extends ElementProps {
-  /**
-   * A mixin function or an array of mixin functions to be applied to this element.
-   */
-  mixin?: Mixin<SVGElement> | Mixin<SVGElement>[];
-}
-
 /**
  * Mapping of event props to event names.
  */
@@ -1585,11 +1573,6 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
     | ((value: HTMLElement) => () => void)
     | ((value: Element) => () => void)
     | ((value: Node) => () => void);
-
-  /**
-   * A mixin function or an array of mixin functions to be applied to this element.
-   */
-  mixin?: Mixin<E> | Mixin<E>[];
 }
 
 /**

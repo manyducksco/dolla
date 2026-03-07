@@ -57,22 +57,33 @@ export function assert(condition: any, errorMessage?: string): void {
   }
 }
 
+export function assertType<T>(
+  test: (value: unknown) => value is T,
+  value: unknown,
+  message = "Unexpected type. Got type: %t, value: %v",
+): value is T {
+  if (test(value)) {
+    return true;
+  }
+  throw new TypeError(formatError(value, message));
+}
+
+export function assertTypeOf<T>(
+  value: unknown,
+  test: (value: unknown) => value is T,
+  message = "Unexpected type. Got type: %t, value: %v",
+): value is T {
+  if (test(value)) {
+    return true;
+  }
+  throw new TypeError(formatError(value, message));
+}
+
 /**
  * Returns true if `value` is an array.
  */
 export function isArray(value: unknown): value is Array<unknown> {
   return Array.isArray(value);
-}
-
-/**
- * Throws an error if `value` is not an array.
- */
-export function assertArray(value: unknown, errorMessage?: string): value is Array<unknown> {
-  if (isArray(value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage || "Expected array. Got type: %t, value: %v"));
 }
 
 /**
@@ -87,43 +98,11 @@ export function isArrayOf<T>(check: (item: unknown) => boolean, value: unknown):
 }
 
 /**
- * Throws a TypeError unless `value` is an array and `check` returns true for every item.
- *
- * @param check - Function to check items against.
- * @param value - A possible array.
- * @param errorMessage - A custom error message.
- */
-export function assertArrayOf<T>(
-  check: (item: unknown) => boolean,
-  value: unknown,
-  errorMessage?: string,
-): value is T[] {
-  if (isArrayOf(check, value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage ?? "Expected an array of valid items. Got type: %t, value: %v"));
-}
-
-/**
  * Returns true if `value` is a string.
  */
 export function isString(value: unknown): value is string {
   return typeof value === "string";
 }
-
-/**
- * Throws a TypeError unless `value` is a string.
- */
-export function assertString(value: unknown, errorMessage?: string): value is string {
-  if (isString(value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage ?? "Expected a string. Got type: %t, value: %v"));
-}
-
-// TODO: More specific validation for common types of strings? Email address, URL, UUID, etc?
 
 /**
  * Returns true if `value` is a function (but not a class).
@@ -133,40 +112,11 @@ export function isFunction<T = (...args: unknown[]) => unknown>(value: unknown):
 }
 
 /**
- * Throws a TypeError unless `value` is a function.
- */
-export function assertFunction<T = (...args: unknown[]) => unknown>(value: unknown, errorMessage?: string): value is T {
-  if (isFunction(value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage ?? "Expected a function. Got type: %t, value: %v"));
-}
-
-/**
  * Returns true if `value` is a number.
  */
 export function isNumber(value: unknown): value is number {
   return typeof value === "number" && !isNaN(value);
 }
-
-/**
- * Throws a TypeError unless `value` is a number.
- */
-export function assertNumber(value: unknown, errorMessage?: string): value is number {
-  if (isNumber(value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage ?? "Expected a number. Got type: %t, value: %v"));
-}
-
-/**
- * Returns a function that takes a `value` and returns true if `value` is an instance of `constructor`.
- *
- * @param constructor - The constructor a value must be an instance of to match.
- */
-export function isInstanceOf<T extends Function>(constructor: T): (value: unknown) => value is T;
 
 /**
  * Returns `true` if `value` is an instance of `constructor`.
@@ -191,43 +141,6 @@ export function isInstanceOf<T extends Function>(...args: unknown[]) {
 }
 
 /**
- * Returns a function that takes a `value` and throws a TypeError unless `value` is an instance of `constructor`.
- *
- * @param constructor - The constructor a value must be an instance of to match.
- */
-export function assertInstanceOf<T extends Function>(constructor: T): (value: unknown) => value is T;
-
-/**
- * Throws a TypeError unless `value` is an instance of `constructor`.
- *
- * @param constructor - The constructor `value` must be an instance of.
- * @param value - A value that may be an instance of `constructor`.
- * @param errorMessage - A custom error message for when the assertion fails.
- */
-export function assertInstanceOf<T extends Function>(constructor: T, value: unknown, errorMessage?: string): value is T;
-
-export function assertInstanceOf<T extends Function>(...args: unknown[]) {
-  const constructor = args[0] as T;
-  const errorMessage = isString(args[2])
-    ? args[2]
-    : `Expected instance of ${constructor.name}. Got type: %t, value: %v`;
-
-  const test = (value: unknown): value is T => {
-    if (value instanceof constructor) {
-      return true;
-    }
-
-    throw new TypeError(formatError(value, errorMessage));
-  };
-
-  if (args.length < 2) {
-    return test;
-  } else {
-    return test(args[1]);
-  }
-}
-
-/**
  * Returns true if `value` is a JavaScript Promise.
  */
 export function isPromise<T = unknown>(value: unknown): value is Promise<T> {
@@ -235,32 +148,10 @@ export function isPromise<T = unknown>(value: unknown): value is Promise<T> {
 }
 
 /**
- * Throws a TypeError unless `value` is a JavaScript Promise.
- */
-export function assertPromise<T = unknown>(value: unknown, errorMessage?: string): value is Promise<T> {
-  if (isPromise(value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage ?? "Expected a Promise. Got type: %t, value: %v"));
-}
-
-/**
  * Returns true if `value` is a plain JavaScript object.
  */
 export function isObject<T = Record<string | number | symbol, unknown>>(value: unknown): value is T {
   return value != null && typeof value === "object" && !isArray(value);
-}
-
-/**
- * Throws a TypeError unless `value` is a plain JavaScript object.
- */
-export function assertObject(value: unknown, errorMessage?: string): value is object {
-  if (isObject(value)) {
-    return true;
-  }
-
-  throw new TypeError(formatError(value, errorMessage ?? "Expected an object. Got type: %t, value: %v"));
 }
 
 /**
