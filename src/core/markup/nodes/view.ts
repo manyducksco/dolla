@@ -1,6 +1,6 @@
-import type { Renderable, View } from "../../../types.js";
-import { contextualize, type Context } from "../../context.js";
-import { peek } from "../../reactive.js";
+import type { View } from "../../../types.js";
+import { Core, hook, type Context } from "../../context.js";
+import { untrack } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { render } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -37,7 +37,8 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      const viewContent = contextualize(this.context, () => peek(() => this.view(this.props)));
+      const core = new Core(this.context);
+      const viewContent = hook(this.context, () => untrack(() => this.view.call(core, this.props, core)));
 
       if (viewContent != null && viewContent !== false) {
         this.node = render(viewContent, this.context);

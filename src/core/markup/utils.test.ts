@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Context } from "../context";
-import { state } from "../reactive";
+import { state } from "../signals";
 import { DOMNode } from "./nodes/dom";
 import { DynamicNode } from "./nodes/dynamic";
 import { ElementNode } from "./nodes/element";

@@ -1,7 +1,7 @@
 import { isFunction, isNumber, isObject, isString } from "../../../typeChecking.js";
 import { omit } from "../../../utils.js";
 import { Context } from "../../context.js";
-import { MaybeGetter, subscribe, type UnsubscribeFn } from "../../reactive.js";
+import { MaybeGetter, subscribe, type UnsubscribeFn } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";

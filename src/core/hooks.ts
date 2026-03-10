@@ -1,14 +1,14 @@
-import { createLogger, type Store } from "../core";
+import { type Store } from "../core";
 import { assertTypeOf, isFunction, isPromise } from "../typeChecking";
 import type { Context } from "./context.js";
-import { contextualize, getCurrentContext } from "./context.js";
-import { effect, type EffectCallback, type MaybeGetter } from "./reactive";
+import { hook, getActiveContext, Core } from "./context.js";
+import { effect, type EffectCallback, type MaybeGetter } from "./signals";
 
 /**
  * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
  */
 export function $$context(): Context {
-  const self = getCurrentContext();
+  const self = getActiveContext();
   if (!self) {
     throw new Error(`No context found; hooks can only be called in the body of a View, Store or Mixin.`);
   }
@@ -22,18 +22,7 @@ export function $name(name: MaybeGetter<string>): void {
   $$context().setName(name);
 }
 
-/**
- * Returns the component's logger.
- */
-export function $debug(name?: string | ((contextName: string) => string)) {
-  const self = $$context();
-  return createLogger(typeof name === "function" ? () => name(self.getName()) : () => self.getName(), {
-    tag: self.id,
-    tagName: "ctx",
-  });
-}
-
-const STORE_ID = Symbol("Dolla.StoreId");
+export const STORE_ID = Symbol("Dolla.StoreId");
 
 /**
  * Adds a store to this context and returns the store instance.
@@ -59,8 +48,9 @@ export function $provide<Returns, Options>(
   self.onMount(context.mount.bind(context));
   self.onUnmount(context.unmount.bind(context));
 
-  contextualize(context, () => {
-    self.state[store[STORE_ID]!] = store(options as any);
+  hook(context, () => {
+    const core = new Core(context);
+    self.state[store[STORE_ID]!] = store.call(core, options as any, core);
   });
 
   return self.state[store[STORE_ID]];
@@ -82,9 +72,9 @@ export function $use<Returns>(store: Store<any, Returns> & { [STORE_ID]?: symbol
   return result;
 }
 
-type CleanupFnOrVoid = void | (() => void);
-type SetupCallback = (signal: AbortSignal) => CleanupFnOrVoid;
-type AsyncSetupCallback = (signal: AbortSignal) => Promise<CleanupFnOrVoid>;
+export type CleanupFnOrVoid = void | (() => void);
+export type SetupCallback = (signal: AbortSignal) => CleanupFnOrVoid;
+export type AsyncSetupCallback = (signal: AbortSignal) => Promise<CleanupFnOrVoid>;
 
 /**
  * Schedules `callback` to run just after the component is mounted.
@@ -125,23 +115,4 @@ export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
  */
 export function $teardown(callback: () => void | Promise<void>): void {
   $$context().onUnmount(callback);
-}
-
-/**
- * Runs `callback` when component mounts, then again each time one of its tracked values changes.
- * The watcher will be cleaned up automatically when the component unmounts.
- */
-export function $effect(callback: EffectCallback) {
-  const self = $$context();
-
-  const setupEffect = () => {
-    const unsubscribe = effect(callback);
-    self.onUnmount(unsubscribe);
-  };
-
-  if (self.isMounted) {
-    setupEffect();
-  } else {
-    self.onMount(setupEffect);
-  }
 }

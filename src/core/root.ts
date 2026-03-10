@@ -1,8 +1,7 @@
-import { isFunction } from "../typeChecking.js";
+import { isFunction, typeOf } from "../typeChecking.js";
 import { Renderable, View } from "../types.js";
 import { getElement } from "../utils.js";
 import { Context } from "./context.js";
-import { LogLevel } from "./logger.js";
 import { DynamicNode } from "./markup/nodes/dynamic.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { MarkupNode } from "./markup/types.js";
@@ -16,22 +15,6 @@ export type CleanupCallback = () => void | Promise<void>;
  * If a cleanup function is returned, it will be called before the app is unmounted. The cleanup function's promise will delay unmounting.
  */
 export type DollaPlugin = (context: Context) => Promise<CleanupCallback | void> | CleanupCallback | void;
-
-export interface DollaDebugOptions {
-  /**
-   * Filters debug messages by context name. Messages will only be printed if this check returns truthy.
-   *
-   * @example
-   * filter: "*,-dolla:*" // (everything, minus those starting with 'dolla:')
-   *
-   * filter: new RegExp("^(?!dolla:).*") // same thing but in RegExp form
-   *
-   * filter: (name) => !name.startsWith("dolla:")
-   */
-  filter?: string | RegExp | ((name: string) => any);
-
-  level?: LogLevel;
-}
 
 export interface DollaRootOptions {
   /**
@@ -91,6 +74,8 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
         cleanup.push(result);
       }
     }
+
+    console.log(content, typeOf(content));
 
     if (isFunction<View<{}>>(content)) {
       rootNode = new ViewNode(context, content, {});

@@ -1,5 +1,5 @@
 import type { IntrinsicElements, Renderable, View } from "../../types.js";
-import type { Getter } from "../reactive.js";
+import type { Getter } from "../signals.js";
 import { KeyFn, RenderFn } from "./nodes/repeat.js";
 
 export type NodeType = "$dom" | "$dynamic" | "$element" | "$portal" | "$repeat" | "$view";

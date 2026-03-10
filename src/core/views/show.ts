@@ -1,7 +1,7 @@
 import type { Renderable } from "../../types";
 import { $$context } from "../hooks";
 import { DynamicNode } from "../markup/nodes/dynamic";
-import { memo, type Getter } from "../reactive";
+import { memo, type Getter } from "../signals";
 
 export interface ShowProps {
   /**

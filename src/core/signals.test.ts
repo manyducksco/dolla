@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { batch, onCleanup, effect, getter, type Getter, memo, peek, state, subscribe } from "./reactive";
+import { accessor, batch, cleanup, effect, getter, type Getter, memo, peek, state, subscribe } from "./signals";
+import { Context, hook } from "./context";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = state(5);
@@ -70,7 +71,7 @@ test("effect cleanup", () => {
   const spy = vi.fn();
   const spy2 = vi.fn();
   const stop = effect(() => {
-    onCleanup(spy); // handle cleanups with hook
+    cleanup(spy); // handle cleanups with hook
 
     count(); // triggers each time count changes
 
@@ -92,6 +93,48 @@ test("effect cleanup", () => {
 });
 
 test("memo cleanup", () => {});
+
+test("effects are bound to the active context", () => {
+  const count = accessor(0);
+
+  const spy = vi.fn();
+
+  const context = new Context("signals");
+  hook(context, () => {
+    effect(() => {
+      spy(count());
+    });
+  });
+
+  // Context not mounted yet; effect should be suspended.
+  expect(spy).toBeCalledTimes(0);
+
+  count(5);
+
+  expect(spy).toBeCalledTimes(0);
+
+  context.mount();
+
+  expect(spy).toBeCalledTimes(1);
+
+  count(40);
+
+  expect(spy).toBeCalledTimes(2);
+
+  context.suspend();
+
+  count((c) => c + 1);
+  expect(spy).toBeCalledTimes(2); // not called while suspended
+
+  context.resume();
+
+  expect(spy).toBeCalledTimes(3); // called again when resumed
+
+  context.unmount();
+
+  count((c) => c + 1);
+  expect(spy).toBeCalledTimes(3);
+});
 
 test("values are not tracked when accessed with peek()", () => {
   const [a, setA] = state(5);

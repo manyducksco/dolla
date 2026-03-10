@@ -1,9 +1,10 @@
-import { $$context, $debug, $provide, $setup } from "../core/hooks.js";
+import { $$context, $provide, $setup } from "../core/hooks.js";
+import { debug } from "../core/debug.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
 import { createMarkup } from "../core/markup/utils.js";
-import { batch, peek, state } from "../core/reactive.js";
+import { batch, peek, state } from "../core/signals.js";
 import { DEBUG, PARENT_ELEMENT } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { uniqueId } from "../utils.js";
@@ -56,7 +57,7 @@ export function createRouter(options: RouterOptions): View {
     const context = $$context();
     context.setName("dolla:router");
 
-    const debug = $debug();
+    const console = debug.bind();
 
     const [rootSlot, setRootSlot] = state<MarkupNode>();
     const rootLayer = {
@@ -85,13 +86,13 @@ export function createRouter(options: RouterOptions): View {
 
           switch (step.kind) {
             case "match":
-              debug.info(`${tag} 📍 ${step.message}`);
+              console.info(`${tag} 📍 ${step.message}`);
               break;
             case "redirect":
-              debug.info(`${tag} ↩️ ${step.message}`);
+              console.info(`${tag} ↩️ ${step.message}`);
               break;
             case "miss":
-              debug.info(`${tag} 💀 ${step.message}`);
+              console.info(`${tag} 💀 ${step.message}`);
               break;
             default:
               break;

@@ -6,17 +6,23 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { createRoot, state, html, $effect } from "../dist/index.js";
+      import { createRoot, state, html, effect } from "../dist/index.js";
 
-      function Counter() {
+      function Counter(_, ctx) {
         const [count, setCount] = state(0);
 
-        // What are all the tracking contexts?
-        // - $effect() callback
-        // - memo() callback
-        // - any markup element attribute or child
+        const console = ctx.debug();
 
-        $effect(() => {
+        ctx.setup(() => {
+          console.log("WE ARE SET UP");
+        });
+
+        // What are all the tracking contexts?
+        // - effect() callback
+        // - memo() callback
+        // - any markup element attribute or child (besides event handlers)
+
+        ctx.effect(() => {
           console.log("count is", count());
         });
 
@@ -50,7 +56,7 @@
       // });
     </script>
 
-    <!-- <div id="providers"></div>
+    <div id="providers"></div>
     <script type="module">
       import { createRoot, state, html, $provide, $use, when } from "../dist/index.js";
 
@@ -78,7 +84,7 @@
       }
 
       createRoot("#providers").mount(Parent);
-    </script> -->
+    </script>
 
     <div id="element">
       <the-parent value="10">
@@ -88,7 +94,7 @@
       </the-parent>
     </div>
     <script type="module">
-      import { element, html, state, when, memo, $provide, $use, $setup, $debug } from "../dist/index.js";
+      import { element, html, state, when, memo, $provide, $use, $setup, debug } from "../dist/index.js";
 
       function Store({ initialValue = 0 }) {
         const [value, setValue] = state(initialValue);
@@ -101,19 +107,19 @@
         view({ attributes, children }) {
           const { value, setValue } = $provide(Store, { initialValue: attributes.value() });
 
-          const debug = $debug();
+          const console = debug.bind();
 
           $setup(() => {
             const interval = setInterval(() => {
               setValue((current) => current + 1);
-              debug.info("incremented", value());
+              console.info("incremented", value());
             }, 1000);
 
             return () => clearInterval(interval);
           });
 
           // The HTMLElement instance can be accessed on `this`.
-          debug.log({ attributes, children, self: this });
+          console.log({ attributes, children, self: this });
 
           // Children will always be a `<slot>`
           return html`<div>${children}</div>`;
@@ -348,15 +354,15 @@
           renderSticky: (itemSignal) => html`
             <div
               style="padding: 12px 0; width: 100%; display: flex; justify-content: center; cursor: pointer;"
-              onclick=${() => listApi.scrollToItem(itemSignal.track(), { smooth: true })}
+              onclick=${() => listApi.scrollToItem(itemSignal(), { smooth: true })}
             >
-              <div class="sticky-header">${() => itemSignal.track()?.text}</div>
+              <div class="sticky-header">${() => itemSignal()?.text}</div>
             </div>
           `,
           render: (itemSignal, indexSignal, context) => html`
             <div style="padding: 2px 0;">
               ${() => {
-                const item = itemSignal.track();
+                const item = itemSignal();
                 if (!item) return null;
 
                 if (item.type === "header") {

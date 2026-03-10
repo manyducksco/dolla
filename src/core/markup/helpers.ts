@@ -1,5 +1,5 @@
 import { createMarkup, Renderable } from "..";
-import { MaybeGetter, memo } from "../reactive";
+import { MaybeGetter, memo } from "../signals";
 import { KeyFn, RenderFn } from "./nodes/repeat";
 
 /**

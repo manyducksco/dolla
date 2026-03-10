@@ -1,5 +1,5 @@
 import { $$context, DollaPlugin } from "../core/index.js";
-import { memo, state, get, type Getter, type MaybeGetter } from "../core/reactive.js";
+import { memo, state, get, type Getter, type MaybeGetter } from "../core/signals.js";
 import { typeOf } from "../typeChecking.js";
 
 // ----- Types ----- //

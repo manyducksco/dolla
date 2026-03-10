@@ -1,6 +1,6 @@
 import { $$context, MarkupNode, render, Renderable } from ".";
-import { Context, contextualize } from "./context";
-import { Getter, memo, Setter, state, peek } from "./reactive";
+import { Context, hook } from "./context";
+import { Getter, memo, Setter, state, peek, untrack } from "./signals";
 
 type AttributeDefault = string;
 type AttributeParser = (val: string | undefined) => any;
@@ -54,6 +54,9 @@ export function element<const T extends readonly AttributeDef[]>({
       #attrs: Record<string, { get: Getter<unknown>; set: Setter<string | undefined> }> = {};
       #context!: Context;
       #node?: MarkupNode;
+      #teardownTimer?: number;
+      #isInitialized = false;
+      #keepAliveTime = 0;
 
       constructor() {
         super();
@@ -74,31 +77,42 @@ export function element<const T extends readonly AttributeDef[]>({
           this.#attrs[key] = { get, set };
         }
 
+        if (this.hasAttribute("keep-alive")) {
+          this.#keepAliveTime = Number(this.getAttribute("keep-alive"));
+        }
+
+        this.addEventListener("dolla:seekContextParent", (event) => {
+          event.stopPropagation();
+          if (this.#context) {
+            const { element, callback } = (
+              event as CustomEvent<{ element: HTMLElement; callback: (context: Context) => void }>
+            ).detail;
+
+            if (element !== this) {
+              callback(this.#context);
+            }
+          }
+        });
+
         this.attachShadow({ mode: "open" });
       }
 
-      connectedCallback() {
+      private initializeComponent() {
         // Find context through event emitted up the chain
         this.dispatchEvent(
           new CustomEvent("dolla:seekContextParent", {
             bubbles: true,
             composed: true,
-            detail: (context: Context) => {
-              this.#context = context.createChild(tag);
+            detail: {
+              element: this,
+              callback: (context: Context) => {
+                this.#context = context.createChild(tag);
+              },
             },
           }),
         );
-
         // No parent context. We're it.
-        if (!this.#context) {
-          this.#context = new Context(tag);
-        }
-
-        // Answer the call from children.
-        this.addEventListener("dolla:seekContextParent", (event) => {
-          event.stopPropagation();
-          (event as CustomEvent<(context: Context) => void>).detail(this.#context);
-        });
+        if (!this.#context) this.#context = new Context(tag);
 
         // Initialize attrs for view function.
         const attrs: Record<string, Getter<unknown>> = {};
@@ -107,14 +121,16 @@ export function element<const T extends readonly AttributeDef[]>({
         }
 
         // Run the view function
-        const viewContent = contextualize(this.#context, () => {
-          return view.call(
-            this,
-            {
-              attributes: attrs as AttributeGetters<T>,
-              children: document.createElement("slot"),
-            },
-            this,
+        const viewContent = hook(this.#context, () => {
+          return untrack(() =>
+            view.call(
+              this,
+              {
+                attributes: attrs as AttributeGetters<T>,
+                children: document.createElement("slot"),
+              },
+              this,
+            ),
           );
         });
 
@@ -126,6 +142,24 @@ export function element<const T extends readonly AttributeDef[]>({
 
         // Run context lifecycle events
         this.#context.mount();
+        this.#isInitialized = true;
+      }
+
+      connectedCallback() {
+        // Cancel pending teardown if restored from cache
+        if (this.#teardownTimer !== undefined) {
+          clearTimeout(this.#teardownTimer);
+          this.#teardownTimer = undefined;
+        }
+
+        if (!this.#isInitialized) {
+          // Delay context resolution to handle bottom-up upgrades safely
+          queueMicrotask(() => this.initializeComponent());
+        } else {
+          // It's a move, not a mount. Re-attach the existing node.
+          if (this.#node) this.#node.mount(this.shadowRoot!);
+          this.connectedMoveCallback();
+        }
       }
 
       connectedMoveCallback() {
@@ -134,9 +168,17 @@ export function element<const T extends readonly AttributeDef[]>({
 
       disconnectedCallback() {
         this.#node?.unmount();
-        this.#node = undefined;
 
-        this.#context.unmount();
+        this.#teardownTimer = window.setTimeout(() => {
+          // Only destroy th element if it hasn't been re-connected in the meantime
+          if (!this.isConnected) {
+            this.#context.unmount();
+
+            // Clear references so the garbage collector can free the memory
+            this.#node = undefined;
+            this.#isInitialized = false;
+          }
+        }, this.#keepAliveTime);
       }
 
       adoptedCallback() {

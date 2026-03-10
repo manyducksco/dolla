@@ -1,6 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
-import { batch, Getter, Setter, state, subscribe, type UnsubscribeFn } from "../../reactive.js";
+import { batch, Getter, Setter, state, subscribe, type UnsubscribeFn } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { toMarkupNodes } from "../utils.js";

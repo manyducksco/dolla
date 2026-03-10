@@ -1,5 +1,5 @@
 import type { Context } from "../../context.js";
-import { subscribe, type Getter, type UnsubscribeFn } from "../../reactive.js";
+import { subscribe, type Getter, type UnsubscribeFn } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
