@@ -1,31 +1,35 @@
-import { isFunction } from "../../typeChecking.js";
 import type { Renderable, View } from "../../types.js";
+import { isFunction, isNumber, isString } from "../../utils.js";
 import { Context } from "../context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
-import { PortalNode } from "./nodes/portal.js";
-import { RepeatNode } from "./nodes/repeat.js";
 import { ViewNode } from "./nodes/view.js";
-import { IS_MARKUP, IS_MARKUP_NODE, Markup, MarkupNode, MarkupNodeProps, NodeType, PropsOf } from "./types.js";
+import { IS_MARKUP, IS_MARKUP_NODE, Markup, MarkupNode, PropsOf } from "./types.js";
 
-export function createMarkup<Type extends string | NodeType | View<any>>(
+export function createMarkup<Type extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   type: Type,
   props: PropsOf<Type>,
 ): Markup<Type> {
   return {
-    $$kind: IS_MARKUP,
+    [IS_MARKUP]: true,
     type,
     props,
   };
 }
 
-export function isMarkup<T extends string | NodeType | View<any>>(value: any): value is Markup<T> {
-  return value != null && value.$$kind === IS_MARKUP;
+export function isMarkup<T extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
+  value: any,
+): value is Markup<T> {
+  return value != null && value[IS_MARKUP] === true;
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {
   return value != null && value[IS_MARKUP_NODE] === true;
+}
+
+export function isMarkupNodeClass(fn: any): fn is new (...args: any[]) => MarkupNode {
+  return fn && fn.isMarkupNode === true;
 }
 
 /**
@@ -57,52 +61,25 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       return;
     }
 
-    if (typeof item === "string" || typeof item === "number") {
-      nodes.push(new DOMNode(document.createTextNode(String(item))));
+    if (isString(item) || isNumber(item)) {
+      nodes.push(new DOMNode(context, document.createTextNode(String(item))));
       return;
     }
 
-    if (item && item.$$kind === IS_MARKUP) {
+    if (isMarkup(item)) {
       const { type, props } = item;
 
-      if (typeof type === "function") {
+      if (isFunction(type)) {
+        if (isMarkupNodeClass(type)) {
+          nodes.push(new type(context, ...props.args));
+          return;
+        }
+
         nodes.push(new ViewNode(context, type as View<any>, props));
         return;
       }
 
-      if (typeof type === "string") {
-        // starts with "$"
-        if (type.charCodeAt(0) === 36) {
-          switch (type) {
-            case "$dom":
-              nodes.push(new DOMNode((props as MarkupNodeProps["$dom"]).node));
-              return;
-            case "$dynamic":
-              nodes.push(new DynamicNode(context, (props as MarkupNodeProps["$dynamic"]).slot));
-              return;
-            case "$element": {
-              const p = props as MarkupNodeProps["$element"];
-              nodes.push(new ElementNode(context, p.tag, p.props));
-              return;
-            }
-            case "$portal": {
-              const p = props as MarkupNodeProps["$portal"];
-              nodes.push(new PortalNode(context, p.parent, p.content));
-              return;
-            }
-            case "$repeat": {
-              const p = props as MarkupNodeProps["$repeat"];
-              nodes.push(new RepeatNode(context, p.items, p.key, p.render));
-              return;
-            }
-            case "$view": {
-              const p = props as MarkupNodeProps["$view"];
-              nodes.push(new ViewNode(context, p.view, p.props));
-              return;
-            }
-          }
-        }
-
+      if (isString(type)) {
         nodes.push(new ElementNode(context, type, props));
         return;
       }
@@ -116,7 +93,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
     }
 
     if (item instanceof Node) {
-      nodes.push(new DOMNode(item));
+      nodes.push(new DOMNode(context, item));
       return;
     }
 
@@ -125,8 +102,10 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       return;
     }
 
-    // Fallback for unhandled objects
-    nodes.push(new DOMNode(document.createTextNode(String(item))));
+    // Fallback to printing unhandled objects
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(item, null, 2);
+    nodes.push(new DOMNode(context, pre));
   }
 
   for (let i = 0; i < content.length; i++) {

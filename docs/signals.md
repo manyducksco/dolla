@@ -4,10 +4,10 @@ Wanna know how Dolla works? It's all about **Signals**. Fr, they're the most imp
 
 Outline
 
-- Atoms
-- Composition
-- Effects
-- Utils (get, peek, batch)
+- State
+- Memo
+- Effect
+- Utils (peek, )
 
 ## So, what even IS a Signal?
 

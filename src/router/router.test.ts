@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Context, hook } from "../core/context.js";
+import { Context, callInContext } from "../core/context.js";
 import { View } from "../types.js";
 import { createRouter, lazy, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
@@ -53,7 +53,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await Promise.resolve();
 
-      const store = hook(context, () => $use(RouterStore));
+      const store = callInContext(context, () => $use(RouterStore));
 
       expect(store.path()).toBe("/dashboard");
       expect(store.meta()).toEqual({ requiresAuth: true, title: "Dashboard" });
@@ -108,7 +108,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = hook(context, () => $use(RouterStore));
+      const store = callInContext(context, () => $use(RouterStore));
       expect(store.path()).toBe("/login");
     });
   });
@@ -122,7 +122,7 @@ describe("Router Engine", () => {
     });
 
     await withMountedView(routerView, {}, async (context) => {
-      const store = hook(context, () => $use(RouterStore));
+      const store = callInContext(context, () => $use(RouterStore));
 
       store.push("/form");
       await new Promise(process.nextTick);
@@ -156,7 +156,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = hook(context, () => $use(RouterStore));
+      const store = callInContext(context, () => $use(RouterStore));
 
       store.setQuery({ q: "potato", sort: "asc" });
 

@@ -1,43 +1,14 @@
-import type { IntrinsicElements, Renderable, View } from "../../types.js";
-import type { Getter } from "../signals.js";
-import { KeyFn, RenderFn } from "./nodes/repeat.js";
-
-export type NodeType = "$dom" | "$dynamic" | "$element" | "$portal" | "$repeat" | "$view";
-
-export interface MarkupNodeProps {
-  $dom: {
-    node: Node;
-  };
-  $dynamic: {
-    slot: Getter<any>;
-  };
-  $element: {
-    tag: string;
-    props: Record<string, any>;
-  };
-  $portal: {
-    parent: Element;
-    content: Renderable;
-  };
-  $repeat: {
-    items: Getter<Iterable<any>>;
-    key: KeyFn<any>;
-    render: RenderFn<Renderable>;
-  };
-  $view: {
-    view: View<any>;
-    props: any;
-  };
-}
+import type { IntrinsicElements, View } from "../../types.js";
+import { Context } from "../index.js";
 
 /**
  * Determines the type of the `props` object for any kind of Markup type.
  */
-export type PropsOf<T extends string | NodeType | View<any>> =
+export type PropsOf<T extends string | View<any> | (new (...args: any[]) => MarkupNode)> =
   T extends View<infer P>
     ? P
-    : T extends NodeType
-      ? MarkupNodeProps[T]
+    : T extends new (...args: infer Args) => MarkupNode
+      ? { args: Args extends [Context, ...infer Rest] ? Rest : [] }
       : T extends keyof IntrinsicElements
         ? IntrinsicElements[T]
         : any;
@@ -48,8 +19,13 @@ export const IS_MARKUP_NODE = Symbol.for("Dolla.MarkupNode");
 /**
  * A set of basic metadata that can be constructed into a `MarkupNode`.
  */
-export interface Markup<Type extends string | NodeType | View<any> = string | NodeType | View<any>> {
-  $$kind: typeof IS_MARKUP;
+export interface Markup<
+  Type extends string | View<any> | (new (...args: any[]) => MarkupNode) =
+    | string
+    | View<any>
+    | (new (...args: any[]) => MarkupNode),
+> {
+  [IS_MARKUP]: true;
   type: Type;
   props: PropsOf<Type>;
 }
@@ -64,6 +40,8 @@ export interface MountTarget {
  * A `MarkupNode` instance can be passed anywhere a `Renderable` is required.
  */
 export abstract class MarkupNode {
+  static readonly isMarkupNode = true;
+
   get [IS_MARKUP_NODE]() {
     return true;
   }

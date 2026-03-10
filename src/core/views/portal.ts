@@ -1,4 +1,4 @@
-import { isString } from "../../typeChecking";
+import { isString } from "../../utils";
 import type { Renderable } from "../../types";
 import { $$context } from "../hooks";
 import { PortalNode } from "../markup/nodes/portal";

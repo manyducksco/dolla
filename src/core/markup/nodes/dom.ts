@@ -1,4 +1,5 @@
 import { moveBefore } from "../../../utils.js";
+import { Context } from "../../context.js";
 import { MarkupNode } from "../types.js";
 
 /**
@@ -7,7 +8,7 @@ import { MarkupNode } from "../types.js";
 export class DOMNode extends MarkupNode {
   private root: Node;
 
-  constructor(node: Node) {
+  constructor(_context: Context, node: Node) {
     super();
     this.root = node;
   }

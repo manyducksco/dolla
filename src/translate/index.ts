@@ -1,6 +1,6 @@
 import { $$context, DollaPlugin } from "../core/index.js";
 import { memo, state, get, type Getter, type MaybeGetter } from "../core/signals.js";
-import { typeOf } from "../typeChecking.js";
+import { typeOf } from "../utils.js";
 
 // ----- Types ----- //
 
@@ -93,9 +93,9 @@ export interface TranslateOptions {
 const TRANSLATOR = Symbol.for("Dolla.Translator");
 
 export function createTranslate(options: TranslateOptions): DollaPlugin {
-  return async function setup(context) {
+  return async function () {
     const translator = createTranslator(options);
-    context.state[TRANSLATOR] = translator;
+    $$context().state[TRANSLATOR] = translator;
     await translator.setLocale(options.locale);
   };
 }

@@ -1,7 +1,7 @@
 import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
-import { getActiveContext, type Context } from "./context";
-import { isFunction } from "../typeChecking";
+import { isFunction } from "../utils.js";
+import { getActiveContext, type Context } from "./context.js";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -193,8 +193,15 @@ function _valueGetter(this: ValueNode) {
 
 function _valueSetter<T>(this: ValueNode, next: SetterAction<T>): T {
   let value: T;
-  if (isFunction<(current: T) => T>(next)) value = next(this.value);
-  else value = next;
+  if (isFunction<(current: T) => T>(next)) {
+    if (isAccessor(next)) {
+      value = peek(next); // Take value from accessor
+    } else {
+      value = next(this.value);
+    }
+  } else {
+    value = next;
+  }
   if (this.value !== value) {
     this.value = value;
     this.flags = 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty;
@@ -239,7 +246,11 @@ function _computedGetter(this: ComputedNode) {
 function _computedSetter<T>(this: ComputedNode, next: SetterAction<T>): T {
   let value: T;
   if (isFunction<(current: T | undefined) => T>(next)) {
-    value = next(this.value);
+    if (isAccessor(next)) {
+      value = peek(next); // Take value from accessor
+    } else {
+      value = next(this.value);
+    }
   } else {
     value = next as T;
   }
@@ -305,6 +316,11 @@ function _effectCleanup(this: Effect): void {
     });
     this.cleanups = undefined;
   }
+}
+
+function isAccessor<T = any>(value: unknown): value is Accessor<T> {
+  if (typeof value !== "function") return false;
+  return value.name === "bound " + _valueAccessor.name || value.name === "bound " + _computedAccessor.name;
 }
 
 /*===================================*\
@@ -489,10 +505,10 @@ export function getter<T>(value: Getter<T> | T): Getter<T> {
   return () => get(value);
 }
 
-export function accessor<T>(value: Getter<T>): Accessor<T>;
-export function accessor<T>(value: T): Accessor<T>;
-export function accessor<T>(): Accessor<T | undefined>;
-export function accessor<T>(value?: MaybeGetter<T>) {
+export function signal<T>(value: Getter<T>): Accessor<T>;
+export function signal<T>(value: T): Accessor<T>;
+export function signal<T>(): Accessor<T | undefined>;
+export function signal<T>(value?: MaybeGetter<T>) {
   if (isFunction<Getter<T>>(value)) {
     return _computedAccessor.bind({
       value: undefined,

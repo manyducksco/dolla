@@ -1,11 +1,9 @@
-import { isFunction, typeOf } from "../typeChecking.js";
 import { Renderable, View } from "../types.js";
-import { getElement } from "../utils.js";
-import { Context } from "./context.js";
-import { DynamicNode } from "./markup/nodes/dynamic.js";
+import { getElement, isFunction } from "../utils.js";
+import { callInContext, Context } from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { MarkupNode } from "./markup/types.js";
-import { toMarkupNodes } from "./markup/utils.js";
+import { render } from "./markup/utils.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
 export type CleanupCallback = () => void | Promise<void>;
@@ -13,8 +11,10 @@ export type CleanupCallback = () => void | Promise<void>;
 /**
  * Plugins run before the app is mounted. If they return a promise, mounting will be delayed until the promise resolves.
  * If a cleanup function is returned, it will be called before the app is unmounted. The cleanup function's promise will delay unmounting.
+ *
+ * Hooks can be used inside plugins.
  */
-export type DollaPlugin = (context: Context) => Promise<CleanupCallback | void> | CleanupCallback | void;
+export type DollaPlugin = () => Promise<CleanupCallback | void> | CleanupCallback | void;
 
 export interface DollaRootOptions {
   /**
@@ -68,26 +68,14 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   async function mount(content: Renderable) {
     if (context.isMounted) return;
 
-    const results = await Promise.all(plugins.map((fn) => fn(context)));
+    const results = await Promise.all(plugins.map((fn) => callInContext(context, fn)));
     for (const result of results) {
       if (isFunction<CleanupCallback>(result)) {
         cleanup.push(result);
       }
     }
 
-    console.log(content, typeOf(content));
-
-    if (isFunction<View<{}>>(content)) {
-      rootNode = new ViewNode(context, content, {});
-    } else {
-      const nodes = toMarkupNodes(context, content);
-      if (nodes.length === 1) {
-        rootNode = nodes[0];
-      } else {
-        rootNode = new DynamicNode(context, () => nodes);
-      }
-    }
-
+    rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
     rootNode?.mount(element);
 
     context.mount();

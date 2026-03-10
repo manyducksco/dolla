@@ -1,5 +1,5 @@
 import { noOp, okhash } from "../utils.js";
-import { Context, getActiveContext } from "./context.js";
+import { Context } from "./context.js";
 
 enum LogLevelValue {
   /**
@@ -36,89 +36,68 @@ let match: MatcherFunction = _createMatcher(logFilter);
 
 let _console: any = _getDefaultConsole();
 
-function bindMethod(getContext: () => Context | undefined, method: LogLevel) {
+function bindMethod(context: Context, method: LogLevel) {
   if (LogLevelValue[method] < LogLevelValue[logLevel]) return noOp;
 
-  const context = getContext();
-  if (context && !match(context.getName())) return noOp;
+  if (!match(context.getName())) return noOp;
 
-  if (context) {
-    const label = `%c${context.getName()} %c[ctx: %c${context.id}%c]`;
-    // bind() to preserve the original call site
-    return _console[method].bind(
-      _console,
-      label,
-      `color:${okhash(label)};font-weight:bold`,
-      `color:#777`,
-      `color:#aaa`,
-      `color:#777`,
-    );
-  } else {
-    return _console[method].bind(_console);
-  }
+  const label = `%c${context.getName()} %c[ctx: %c${context.id}%c]`;
+  // bind() to preserve the original call site
+  return _console[method].bind(
+    _console,
+    label,
+    `color:${okhash(label)};font-weight:bold`,
+    `color:#777`,
+    `color:#aaa`,
+    `color:#777`,
+  );
 }
 
 export class Debug {
-  constructor(private getContext = () => getActiveContext()) {}
-
-  /**
-   * Returns an instance of Debug bound to the context this function was called in.
-   */
-  bind(): Debug;
-
-  /**
-   * Returns an instance of Debug bound to this specific `context`.
-   */
-  bind(context: Context): Debug;
-
-  bind(context = getActiveContext()) {
-    return new Debug(() => context);
-  }
+  constructor(private context: Context) {}
 
   get info(): (...args: any[]) => void {
-    return bindMethod(this.getContext, "info");
+    return bindMethod(this.context, "info");
   }
   get log(): (...args: any[]) => void {
-    return bindMethod(this.getContext, "log");
+    return bindMethod(this.context, "log");
   }
   get warn(): (...args: any[]) => void {
-    return bindMethod(this.getContext, "warn");
+    return bindMethod(this.context, "warn");
   }
   get error(): (...args: any[]) => void {
-    return bindMethod(this.getContext, "error");
+    return bindMethod(this.context, "error");
   }
 
-  getLevel() {
+  static getLevel() {
     return logLevel;
   }
 
-  setLevel(level: LogLevel) {
+  static setLevel(level: LogLevel) {
     logLevel = level;
   }
 
-  getFilter() {
+  static getFilter() {
     return logFilter;
   }
 
-  setFilter(filter: string | RegExp | ((value: string) => boolean)) {
+  static setFilter(filter: string | RegExp | ((value: string) => boolean)) {
     logFilter = filter;
     match = _createMatcher(filter);
   }
 }
-
-export const debug = new Debug();
 
 // Log level and filter can be set globally on the window.
 // This is helpful when you need to gather info about a bug in the production environment which doesn't usually log anything, for example.
 if (typeof window !== "undefined") {
   Object.defineProperties(window, {
     DOLLA_LOG_LEVEL: {
-      get: debug.getLevel,
-      set: debug.setLevel,
+      get: Debug.getLevel,
+      set: Debug.setLevel,
     },
     DOLLA_LOG_FILTER: {
-      get: debug.getFilter,
-      set: debug.setFilter,
+      get: Debug.getFilter,
+      set: Debug.setFilter,
     },
   });
 }

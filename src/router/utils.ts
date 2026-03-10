@@ -1,6 +1,5 @@
-import { isFunction, isObject, isString } from "../typeChecking.js";
 import { View } from "../types.js";
-import { uniqueId } from "../utils.js";
+import { isFunction, isObject, isString, uniqueId } from "../utils.js";
 import type { JourneyStep, LazyView, Route, RouteLayer, Stringable } from "./types.js";
 
 export interface Match {

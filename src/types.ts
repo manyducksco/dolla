@@ -2,7 +2,7 @@ import type * as CSS from "csstype";
 import { LogLevel } from "./core/debug.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { MaybeGetter, Getter } from "./core/signals.js";
-import { Context, Core } from "./core/context.js";
+import { Context } from "./core/context.js";
 
 export type Env = "production" | "development";
 
@@ -29,12 +29,12 @@ export interface BaseProps {
 /**
  *
  */
-export type View<Props = {}> = (this: Core, props: Props, core: Core) => Renderable;
+export type View<Props = {}> = (props: Props) => Renderable;
 
 /**
  *
  */
-export type Store<Options, Value> = (this: Core, options: Options, core: Core) => Value;
+export type Store<Options, Value> = (options: Options) => Value;
 
 declare global {
   interface Window {

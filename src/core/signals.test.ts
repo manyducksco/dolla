@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { accessor, batch, cleanup, effect, getter, type Getter, memo, peek, state, subscribe } from "./signals";
-import { Context, hook } from "./context";
+import { signal, batch, cleanup, effect, getter, type Getter, memo, peek, state, subscribe } from "./signals";
+import { Context, callInContext } from "./context";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = state(5);
@@ -94,13 +94,29 @@ test("effect cleanup", () => {
 
 test("memo cleanup", () => {});
 
+test("setting via accessor will take the value", () => {
+  const count = signal(500);
+  const other = signal(36);
+  const [val, setVal] = state(12);
+
+  count(other);
+
+  expect(count()).toBe(36);
+  expect(other()).toBe(36);
+
+  setVal(count);
+
+  expect(count()).toBe(36);
+  expect(val()).toBe(36);
+});
+
 test("effects are bound to the active context", () => {
-  const count = accessor(0);
+  const count = signal(0);
 
   const spy = vi.fn();
 
   const context = new Context("signals");
-  hook(context, () => {
+  callInContext(context, () => {
     effect(() => {
       spy(count());
     });

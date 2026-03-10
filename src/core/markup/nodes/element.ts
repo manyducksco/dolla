@@ -1,5 +1,4 @@
-import { isFunction, isNumber, isObject, isString } from "../../../typeChecking.js";
-import { omit } from "../../../utils.js";
+import { isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
 import { Context } from "../../context.js";
 import { MaybeGetter, subscribe, type UnsubscribeFn } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
@@ -11,7 +10,7 @@ import { VIEW, ViewNode } from "./view.js";
 const IS_SVG = Symbol("isSVG");
 
 // Properties in this list will not be processed by applyProps because they are already handled elsewhere.
-const ignoredProps = ["ref", "mixin", "children"];
+const ignoredProps = ["ref", "children"];
 
 /**
  * Renders an HTML or SVG element.

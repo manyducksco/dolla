@@ -1,20 +1,22 @@
 import { createMarkup, Renderable } from "..";
 import { MaybeGetter, memo } from "../signals";
-import { KeyFn, RenderFn } from "./nodes/repeat";
+import { DynamicNode } from "./nodes/dynamic";
+import { PortalNode } from "./nodes/portal";
+import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
 
 /**
  * Displays a dynamic list. Items will be added and removed as the list is updated.
  *
  * @param items - List items. Can be reactive.
- * @param key - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
- * @param render - Takes (item, index) as Reactive values and returns content to display for that item.
+ * @param keyFn - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
+ * @param renderFn - Takes (item, index) as Reactive values and returns content to display for that item.
  */
-export function each<T>(items: MaybeGetter<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>): Renderable {
+export function repeat<T>(items: MaybeGetter<Iterable<T>>, keyFn: KeyFn<T>, renderFn: RenderFn<T>): Renderable {
   if (typeof items === "function") {
-    return createMarkup("$repeat", { items, key, render });
+    return createMarkup(RepeatNode<T>, { args: [items, keyFn, renderFn] });
   } else {
     return Array.from(items).map((item, index) =>
-      render(
+      renderFn(
         () => item,
         () => index,
       ),
@@ -26,17 +28,21 @@ export function each<T>(items: MaybeGetter<Iterable<T>>, key: KeyFn<T>, render: 
  * Displays content conditionally. When `condition` is truthy, display `content`. When `condition` is falsy, display `fallback`.
  *
  * @param condition - Condition to hide or show content on. Can be reactive.
- * @param content - Content to display when condition is truthy.
- * @param fallback - Content to display when condition is falsy.
+ * @param whenTruthy - Content to display when condition is truthy.
+ * @param whenFalsy - Content to display when condition is falsy.
  */
-export function when(condition: any, content?: Renderable, fallback?: Renderable): Renderable {
+export function show(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (typeof condition === "function") {
-    return createMarkup("$dynamic", {
-      slot: memo(() => (condition() ? content : fallback)),
+    return createMarkup(DynamicNode, {
+      args: [memo(() => (condition() ? whenTruthy : whenFalsy))],
     });
   } else if (condition) {
-    return content;
+    return whenTruthy;
   } else {
-    return fallback;
+    return whenFalsy;
   }
+}
+
+export function portal(content: Renderable, parent: Element) {
+  return createMarkup(PortalNode, { args: [content, parent] });
 }

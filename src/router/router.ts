@@ -1,5 +1,4 @@
-import { $$context, $provide, $setup } from "../core/hooks.js";
-import { debug } from "../core/debug.js";
+import { $$context, $provide, $setup, $debug } from "../core/hooks.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
@@ -57,7 +56,7 @@ export function createRouter(options: RouterOptions): View {
     const context = $$context();
     context.setName("dolla:router");
 
-    const console = debug.bind();
+    const console = $debug();
 
     const [rootSlot, setRootSlot] = state<MarkupNode>();
     const rootLayer = {

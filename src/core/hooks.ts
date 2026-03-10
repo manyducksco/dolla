@@ -1,11 +1,11 @@
-import { type Store } from "../core";
-import { assertTypeOf, isFunction, isPromise } from "../typeChecking";
-import type { Context } from "./context.js";
-import { hook, getActiveContext, Core } from "./context.js";
-import { effect, type EffectCallback, type MaybeGetter } from "./signals";
+import type { Store } from "../types.js";
+import { assertTypeOf, isFunction, isPromise } from "../utils.js";
+import { callInContext, Context, getActiveContext } from "./context.js";
+import { Debug } from "./debug.js";
+import { effect, type EffectCallback, type MaybeGetter, type UnsubscribeFn } from "./signals.js";
 
 /**
- * Returns the component's Context object. Prefer using standard hooks unless you have an advanced use case.
+ * Returns the active Context object. Prefer using standard hooks unless you have an advanced use case.
  */
 export function $$context(): Context {
   const self = getActiveContext();
@@ -48,9 +48,8 @@ export function $provide<Returns, Options>(
   self.onMount(context.mount.bind(context));
   self.onUnmount(context.unmount.bind(context));
 
-  hook(context, () => {
-    const core = new Core(context);
-    self.state[store[STORE_ID]!] = store.call(core, options as any, core);
+  callInContext(context, () => {
+    self.state[store[STORE_ID]!] = store(options as any);
   });
 
   return self.state[store[STORE_ID]];
@@ -115,4 +114,21 @@ export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
  */
 export function $teardown(callback: () => void | Promise<void>): void {
   $$context().onUnmount(callback);
+}
+
+/**
+ * Creates an effect that is bound to the active context.
+ * This effect will be automatically cleaned up when the component is unmounted.
+ */
+export function $effect(callback: EffectCallback): UnsubscribeFn {
+  const context = $$context();
+  return effect(callback, { context });
+}
+
+/**
+ * Returns a Debug instance bound to the active context.
+ */
+export function $debug() {
+  const context = $$context();
+  return new Debug(context);
 }

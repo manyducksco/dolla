@@ -1,217 +1,138 @@
-import { $$context, MarkupNode, render, Renderable } from ".";
-import { Context, hook } from "./context";
-import { Getter, memo, Setter, state, peek, untrack } from "./signals";
+import { MarkupNode, render, Renderable } from ".";
+import { callInContext, Context } from "./context";
+import { Getter, Setter, state, untrack } from "./signals";
 
 type AttributeDefault = string;
 type AttributeParser = (val: string | undefined) => any;
 
 export type AttributeDef = string | readonly [string, AttributeDefault | AttributeParser];
 
-type ExtractAttrValue<T> =
-  // Plain string -> returns string | undefined
-  T extends string
-    ? string | undefined
-    : // Tuple -> extract the second element
-      T extends readonly [string, infer Config]
-      ? // It's a parser function -> return its ReturnType
-        Config extends (val: string | undefined) => infer ReturnType
-        ? ReturnType
-        : // It's a primitive default -> return the primitive
-          Config
-      : never;
+type AttributesMap = Record<string, { get: Getter<string | undefined>; set: Setter<string | undefined> }>;
 
-type AttributeGetters<T extends readonly any[]> = {
-  [Item in T[number] as Item extends string
-    ? Item
-    : Item extends readonly [infer Name extends string, any]
-      ? Name
-      : never]: () => ExtractAttrValue<Item>;
-};
+export abstract class CoreDollaElement<const T extends readonly string[]> extends HTMLElement {
+  _attrs: AttributesMap = {};
+  #context!: Context;
+  #node?: MarkupNode;
+  #teardownTimer?: number;
+  #isInitialized = false;
+  #keepAliveTime = 0;
 
-const MOVED_CALLBACKS = Symbol.for("Dolla.MovedCallbacks");
-const ADOPTED_CALLBACKS = Symbol.for("Dolla.AdoptedCallbacks");
+  constructor() {
+    super();
 
-export function element<const T extends readonly AttributeDef[]>({
-  tag,
-  attributes,
-  view,
-}: {
-  tag: `${string}-${string}`;
-  attributes?: T;
-  view: (
-    this: HTMLElement,
-    props: { children: Renderable; attributes: AttributeGetters<T> },
-    element: HTMLElement,
-  ) => Renderable;
-}): void {
-  const attrsList = attributes || ([] as unknown as T);
+    if (this.hasAttribute("keep-alive")) {
+      this.#keepAliveTime = Number(this.getAttribute("keep-alive"));
+    }
 
-  customElements.define(
-    tag,
-    class extends HTMLElement {
-      static observedAttributes = attrsList.map((item) => (typeof item === "string" ? item : item[0]));
+    this.addEventListener("dolla:seekContextParent", (event) => {
+      event.stopPropagation();
+      if (this.#context) {
+        const { element, callback } = (
+          event as CustomEvent<{ element: HTMLElement; callback: (context: Context) => void }>
+        ).detail;
 
-      #attrs: Record<string, { get: Getter<unknown>; set: Setter<string | undefined> }> = {};
-      #context!: Context;
-      #node?: MarkupNode;
-      #teardownTimer?: number;
-      #isInitialized = false;
-      #keepAliveTime = 0;
-
-      constructor() {
-        super();
-
-        for (const attr of attrsList) {
-          const [key, def] = typeof attr === "string" ? [attr, undefined] : attr;
-
-          const [getRaw, set] = state<string | undefined>();
-
-          const get =
-            typeof def === "function"
-              ? memo(() => {
-                  const val = getRaw();
-                  return peek(() => def(val)); // Peek ensures the parser itself isn't tracked
-                })
-              : () => getRaw() ?? def;
-
-          this.#attrs[key] = { get, set };
-        }
-
-        if (this.hasAttribute("keep-alive")) {
-          this.#keepAliveTime = Number(this.getAttribute("keep-alive"));
-        }
-
-        this.addEventListener("dolla:seekContextParent", (event) => {
-          event.stopPropagation();
-          if (this.#context) {
-            const { element, callback } = (
-              event as CustomEvent<{ element: HTMLElement; callback: (context: Context) => void }>
-            ).detail;
-
-            if (element !== this) {
-              callback(this.#context);
-            }
-          }
-        });
-
-        this.attachShadow({ mode: "open" });
-      }
-
-      private initializeComponent() {
-        // Find context through event emitted up the chain
-        this.dispatchEvent(
-          new CustomEvent("dolla:seekContextParent", {
-            bubbles: true,
-            composed: true,
-            detail: {
-              element: this,
-              callback: (context: Context) => {
-                this.#context = context.createChild(tag);
-              },
-            },
-          }),
-        );
-        // No parent context. We're it.
-        if (!this.#context) this.#context = new Context(tag);
-
-        // Initialize attrs for view function.
-        const attrs: Record<string, Getter<unknown>> = {};
-        for (const key in this.#attrs) {
-          attrs[key] = this.#attrs[key].get;
-        }
-
-        // Run the view function
-        const viewContent = hook(this.#context, () => {
-          return untrack(() =>
-            view.call(
-              this,
-              {
-                attributes: attrs as AttributeGetters<T>,
-                children: document.createElement("slot"),
-              },
-              this,
-            ),
-          );
-        });
-
-        // Mount the view
-        if (viewContent != null && viewContent !== false) {
-          this.#node = render(viewContent, this.#context);
-          this.#node.mount(this.shadowRoot!);
-        }
-
-        // Run context lifecycle events
-        this.#context.mount();
-        this.#isInitialized = true;
-      }
-
-      connectedCallback() {
-        // Cancel pending teardown if restored from cache
-        if (this.#teardownTimer !== undefined) {
-          clearTimeout(this.#teardownTimer);
-          this.#teardownTimer = undefined;
-        }
-
-        if (!this.#isInitialized) {
-          // Delay context resolution to handle bottom-up upgrades safely
-          queueMicrotask(() => this.initializeComponent());
-        } else {
-          // It's a move, not a mount. Re-attach the existing node.
-          if (this.#node) this.#node.mount(this.shadowRoot!);
-          this.connectedMoveCallback();
+        if (element !== this) {
+          callback(this.#context);
         }
       }
+    });
 
-      connectedMoveCallback() {
-        this.#context.state[MOVED_CALLBACKS]?.forEach((callback: () => void) => callback());
+    this.attachShadow({ mode: "open" });
+  }
+
+  abstract create(): Renderable;
+
+  trackAttribute(name: keyof T): string | undefined {
+    return this._attrs[name as string]?.get();
+  }
+
+  _initializeComponent() {
+    // Find context through event emitted up the chain
+    this.dispatchEvent(
+      new CustomEvent("dolla:seekContextParent", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          element: this,
+          callback: (context: Context) => {
+            this.#context = context.createChild(this.localName);
+          },
+        },
+      }),
+    );
+    // No parent context. We're it.
+    if (!this.#context) this.#context = new Context(this.localName);
+
+    // Initialize attrs for view function.
+    const attrs: Record<string, Getter<unknown>> = {};
+    for (const key in this._attrs) {
+      attrs[key] = this._attrs[key].get;
+    }
+
+    // Run the view function
+    const viewContent = callInContext(this.#context, () => {
+      return untrack(() => this.create());
+    });
+
+    // Mount the view
+    if (viewContent != null && viewContent !== false) {
+      this.#node = render(viewContent, this.#context);
+      this.#node.mount(this.shadowRoot!);
+    }
+
+    // Run context lifecycle events
+    this.#context.mount();
+    this.#isInitialized = true;
+  }
+
+  connectedCallback() {
+    // Cancel pending teardown if restored from cache
+    if (this.#teardownTimer !== undefined) {
+      clearTimeout(this.#teardownTimer);
+      this.#teardownTimer = undefined;
+      this.#context.resume();
+    }
+
+    if (!this.#isInitialized) {
+      // Delay context resolution to handle bottom-up upgrades safely
+      queueMicrotask(() => this._initializeComponent());
+    } else {
+      // It's a move, not a mount. Re-attach the existing node.
+      if (this.#node) this.#node.mount(this.shadowRoot!);
+    }
+  }
+
+  disconnectedCallback() {
+    this.#node?.unmount();
+
+    this.#context.suspend();
+
+    this.#teardownTimer = window.setTimeout(() => {
+      // Only destroy th element if it hasn't been re-connected in the meantime
+      if (!this.isConnected) {
+        this.#context.unmount();
+
+        // Clear references so the garbage collector can free the memory
+        this.#node = undefined;
+        this.#isInitialized = false;
       }
+    }, this.#keepAliveTime);
+  }
 
-      disconnectedCallback() {
-        this.#node?.unmount();
-
-        this.#teardownTimer = window.setTimeout(() => {
-          // Only destroy th element if it hasn't been re-connected in the meantime
-          if (!this.isConnected) {
-            this.#context.unmount();
-
-            // Clear references so the garbage collector can free the memory
-            this.#node = undefined;
-            this.#isInitialized = false;
-          }
-        }, this.#keepAliveTime);
-      }
-
-      adoptedCallback() {
-        this.#context.state[ADOPTED_CALLBACKS]?.forEach((callback: () => void) => callback());
-      }
-
-      attributeChangedCallback(name: string, oldValue: string, newValue: string) {
-        this.#attrs[name]?.set(newValue);
-      }
-    },
-  );
+  attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+    this._attrs[name]?.set(newValue);
+  }
 }
 
-export function $moved(callback: () => void) {
-  const context = $$context();
-  if (!context.state[MOVED_CALLBACKS]) {
-    context.state[MOVED_CALLBACKS] = [];
+export function ElementWithAttrs<const T extends readonly string[]>(attributes: T) {
+  const attrs: AttributesMap = {};
+  for (const attr of attributes) {
+    const [get, set] = state<string | undefined>();
+    attrs[attr] = { get, set };
   }
-  const list = context.state[MOVED_CALLBACKS];
-  list.push(callback);
-  return () => {
-    list.splice(list.indexOf(callback), 1);
-  };
-}
-
-export function $adopted(callback: () => void) {
-  const context = $$context();
-  if (!context.state[ADOPTED_CALLBACKS]) {
-    context.state[ADOPTED_CALLBACKS] = [];
+  abstract class Mixin extends CoreDollaElement<T> {
+    static observedAttributes = attributes;
+    _attrs = attrs;
   }
-  const list = context.state[ADOPTED_CALLBACKS];
-  list.push(callback);
-  return () => {
-    list.splice(list.indexOf(callback), 1);
-  };
+  return Mixin;
 }

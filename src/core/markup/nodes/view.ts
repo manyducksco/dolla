@@ -1,5 +1,5 @@
 import type { View } from "../../../types.js";
-import { Core, hook, type Context } from "../../context.js";
+import { callInContext, type Context } from "../../context.js";
 import { untrack } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { render } from "../utils.js";
@@ -37,13 +37,12 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      const core = new Core(this.context);
-      const viewContent = hook(this.context, () => untrack(() => this.view.call(core, this.props, core)));
+      const viewContent = callInContext(this.context, () => untrack(() => this.view(this.props)));
 
       if (viewContent != null && viewContent !== false) {
         this.node = render(viewContent, this.context);
       } else {
-        this.node = new DOMNode(document.createComment(`View: ${this.context.getName()}`));
+        this.node = new DOMNode(this.context, document.createComment(`View: ${this.context.getName()}`));
       }
     }
 

@@ -6,15 +6,19 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { createRoot, state, html, effect } from "../dist/index.js";
+      import { mount, signal, html, $debug, $setup, $teardown, $effect } from "../dist/index.js";
 
-      function Counter(_, ctx) {
-        const [count, setCount] = state(0);
+      function Counter() {
+        const count = signal(0);
 
-        const console = ctx.debug();
+        const console = $debug();
 
-        ctx.setup(() => {
-          console.log("WE ARE SET UP");
+        $setup(() => {
+          console.log("WE ARE MOUNTED");
+        });
+
+        $teardown(() => {
+          console.log("WE ARE UNMOUNTED");
         });
 
         // What are all the tracking contexts?
@@ -22,38 +26,19 @@
         // - memo() callback
         // - any markup element attribute or child (besides event handlers)
 
-        ctx.effect(() => {
+        $effect(() => {
           console.log("count is", count());
         });
 
         return html`
           <p>Count: ${count}</p>
-          <button onclick=${() => setCount((c) => c + 1)}>+1</button>
-          <button onclick=${() => setCount((c) => c - 1)}>-1</button>
-          <button onclick=${() => setCount(0)}>Reset</button>
+          <button onclick=${() => count((c) => c + 1)}>+1</button>
+          <button onclick=${() => count((c) => c - 1)}>-1</button>
+          <button onclick=${() => count(0)}>Reset</button>
         `;
       }
 
-      createRoot("#counter").mount(Counter);
-
-      // Footgun #1
-      // function doComplexLogic() {
-      //   // Define a function that calls a getter directly
-      //   const value = count();
-      // }
-      // // Calling that function most of the time will just run the function once.
-      // doComplexLogic();
-      // // However...
-      // $effect(() => {
-      //   // Calling that function in this scope WILL track count.
-      //   doComplexLogic();
-
-      //   // You might have to defensively peek if you want to avoid this.
-      //   // This makes you always have to be cognizant of tracking contexts.
-      //   peek(() => {
-      //     doComplexLogic();
-      //   });
-      // });
+      // createRoot("#counter").mount(Counter);
     </script>
 
     <div id="providers"></div>
@@ -94,18 +79,16 @@
       </the-parent>
     </div>
     <script type="module">
-      import { element, html, state, when, memo, $provide, $use, $setup, debug } from "../dist/index.js";
+      import { ElementWithAttrs, html, state, when, memo, $provide, $use, $setup, debug } from "../dist/index.js";
 
       function Store({ initialValue = 0 }) {
         const [value, setValue] = state(initialValue);
         return { value, setValue };
       }
 
-      element({
-        tag: "the-parent",
-        attributes: [["value", (n) => Number(n ?? 0)]],
-        view({ attributes, children }) {
-          const { value, setValue } = $provide(Store, { initialValue: attributes.value() });
+      class ParentView extends ElementWithAttrs(["value"]) {
+        create() {
+          const { value, setValue } = $provide(Store, { initialValue: Number(this.getAttribute("value") ?? 0) });
 
           const console = debug.bind();
 
@@ -118,21 +101,32 @@
             return () => clearInterval(interval);
           });
 
-          // The HTMLElement instance can be accessed on `this`.
-          console.log({ attributes, children, self: this });
+          // Render children with a `<slot>`
+          return html`<div><slot /></div>`;
+        }
+      }
 
-          // Children will always be a `<slot>`
-          return html`<div>${children}</div>`;
-        },
-      });
+      class ChildView extends ElementWithAttrs(["value", "expected"]) {
+        create() {
+          const value = memo(() => Number(this.trackAttribute("value") ?? 0));
 
-      element({
-        tag: "the-child",
-        view() {
-          const { value } = $use(Store);
-          return html`<p>Counter: ${value}</p>`;
-        },
-      });
+          $setup(() => {
+            const interval = setInterval(() => {
+              this.setAttribute("value", String(value() + 1));
+              console.info("incremented", value());
+            }, 1000);
+
+            return () => clearInterval(interval);
+          });
+
+          return html`<span>${value}</span>`;
+          // const { value } = $use(Store);
+          // return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
+        }
+      }
+
+      customElements.define("the-parent", ParentView);
+      customElements.define("the-child", ChildView);
     </script>
 
     <!-- <div id="sibling-lists"></div>

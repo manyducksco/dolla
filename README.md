@@ -49,21 +49,10 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 ## Example: Counter
 
 ```jsx
-import { state, html, createRoot } from "@manyducks.co/dolla";
+import { signal, html, mount } from "@manyducks.co/dolla";
 
 function Counter() {
-  const [count, setCount] = state(0);
-
-  return html`
-    <div>
-      <p>Count: ${count}</p>
-      <button onclick=${() => setCount((c) => c + 1)}>Increment</button>
-    </div>
-  `;
-}
-
-function Counter(props) {
-  const count = state(0);
+  const count = signal(0);
 
   return html`
     <div>
@@ -73,7 +62,7 @@ function Counter(props) {
   `;
 }
 
-createRoot(document.body).mount(Counter);
+mount(Counter, document.body);
 ```
 
 That will give you a basic counter mounted to the body of your document with a button you can click to increase the number. Reactivity is fully wired up.
@@ -92,10 +81,10 @@ Tracking contexts
 ## Example: Temperature Converter
 
 ```tsx
-import { state, memo, html } from "@manyducks.co/dolla";
+import { signal, memo, html, mount } from "@manyducks.co/dolla";
 
 function Converter() {
-  const [celsius, setCelsius] = state(0);
+  const celsius = signal(0);
 
   // Depends on `celsius`; updates when `celsius` updates.
   const fahrenheit = memo(() => {
@@ -116,7 +105,7 @@ function Converter() {
         type="number"
         value=${celsius}
         oninput=${(e) => {
-          setCelsius(e.target.valueAsNumber);
+          celsius(e.target.valueAsNumber);
         }}
       />
 
@@ -127,46 +116,15 @@ function Converter() {
   `;
 }
 
-function Converter() {
-  const [celsius, setCelsius] = state(0);
-
-  // Depends on `celsius`; updates when `celsius` updates.
-  const fahrenheit = memo(() => {
-    return (celsius() * 9) / 5 + 32;
-  });
-
-  // Depends on `fahrenheit`; updates when `fahrenheit` updates.
-  const description = memo(() => {
-    const f = fahrenheit();
-    if (f <= 32) return "Freezing ❄️";
-    if (f >= 90) return "Hot! 🔥";
-    return "Moderate 🌤️";
-  });
-
-  return html`
-    <div>
-      <input
-        type="number"
-        value=${celsius}
-        oninput=${(e) => {
-          setCelsius(e.target.valueAsNumber);
-        }}
-      />
-
-      <p>Celsius: ${celsius}°C</p>
-      <p>Fahrenheit: ${fahrenheit}°F</p>
-      <p>Condition: ${description}</p>
-    </div>
-  `;
-}
+mount(Converter, document.body);
 ```
 
-The `computed` function creates a read-only `Reactive`. That `Reactive` holds the latest return value of the callback function. That function is called once right away, then again each time its tracked values change. Tracking in Dolla is explicit. Calling `.track()` is our _signal_ that we want the `computed` to update when our value changes.
+The `memo` function creates a read-only signal that derives its state from the signals it depends on. Its callback is called immediately, accessed signals are tracked as dependencies, and then the callback runs again if any of those dependencies change. Calling the memoized signal in the meantime will simply return the last computed value.
 
-If we called `.get()` we would have the current value at first, but `computed` wouldn't track it.
+## Opting out of tracking with `peek(signal)`
 
 ```ts
-const [count, setCount] = state(2);
+const count = signal(2);
 const doubled = memo(() => {
   return peek(count) * 2;
 });
