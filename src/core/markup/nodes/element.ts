@@ -1,6 +1,6 @@
 import { isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
 import { Context } from "../../context.js";
-import { MaybeGetter, subscribe, type UnsubscribeFn } from "../../signals.js";
+import { type Getter, subscribe, type UnsubscribeFn } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
@@ -142,14 +142,15 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attach<T>(value: MaybeGetter<T>, callback: (value: T) => void) {
-    if (isFunction<() => T>(value)) {
+  private attach<T>(value: Getter<T> | T, callback: (value: T) => void) {
+    if (isFunction<Getter<T>>(value)) {
       this.unsubscribers.add(
         subscribe(value, (current) => {
           scheduleUpdate(() => callback(current));
         }),
       );
     } else {
+      // No need to schedule since DOM node is not connected yet.
       callback(value);
     }
   }

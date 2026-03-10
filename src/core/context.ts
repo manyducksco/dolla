@@ -1,5 +1,5 @@
 import { uniqueId } from "../utils";
-import { getter, peek, resumeEffects, type Getter, type MaybeGetter } from "./signals";
+import { getter, peek, resumeEffects, type Getter } from "./signals";
 
 export type LifecycleListener = () => any;
 
@@ -44,6 +44,8 @@ export function callInContext<T>(context: Context | undefined, callback: () => T
 ||        Context Definition         ||
 \*===================================*/
 
+function createContext(name: Getter<string> | string, parent?: Context) {}
+
 export class Context {
   readonly id = uniqueId();
   isMounted = false;
@@ -54,10 +56,7 @@ export class Context {
   #mountListeners?: LifecycleListener[];
   #unmountListeners?: LifecycleListener[];
 
-  protected parent?: Context;
-
   constructor(name: Getter<string> | string, parent?: Context) {
-    this.parent = parent;
     this.#name = getter(name);
 
     // Inherit parent state as prototype for quick lookups.
@@ -67,7 +66,7 @@ export class Context {
   /**
    * Returns a new Context with this one as its parent.
    */
-  createChild(name: MaybeGetter<string>): Context {
+  createChild(name: Getter<string> | string): Context {
     return new Context(name, this);
   }
 
@@ -75,7 +74,7 @@ export class Context {
     return peek(this.#name);
   }
 
-  setName(name: MaybeGetter<string>) {
+  setName(name: Getter<string> | string) {
     this.#name = getter(name);
   }
 

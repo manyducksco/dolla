@@ -1,5 +1,5 @@
 import { createMarkup, Renderable } from "..";
-import { MaybeGetter, memo } from "../signals";
+import { type Getter, memo } from "../signals";
 import { DynamicNode } from "./nodes/dynamic";
 import { PortalNode } from "./nodes/portal";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
@@ -11,7 +11,11 @@ import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
  * @param keyFn - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
  * @param renderFn - Takes (item, index) as Reactive values and returns content to display for that item.
  */
-export function repeat<T>(items: MaybeGetter<Iterable<T>>, keyFn: KeyFn<T>, renderFn: RenderFn<T>): Renderable {
+export function repeat<T>(
+  items: Getter<Iterable<T>> | Iterable<T>,
+  keyFn: KeyFn<T>,
+  renderFn: RenderFn<T>,
+): Renderable {
   if (typeof items === "function") {
     return createMarkup(RepeatNode<T>, { args: [items, keyFn, renderFn] });
   } else {

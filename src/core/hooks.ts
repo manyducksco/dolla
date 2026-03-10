@@ -2,7 +2,7 @@ import type { Store } from "../types.js";
 import { assertTypeOf, isFunction, isPromise } from "../utils.js";
 import { callInContext, Context, getActiveContext } from "./context.js";
 import { Debug } from "./debug.js";
-import { effect, type EffectCallback, type MaybeGetter, type UnsubscribeFn } from "./signals.js";
+import { effect, type EffectFn, type Getter, type UnsubscribeFn } from "./signals.js";
 
 /**
  * Returns the active Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -18,7 +18,7 @@ export function $$context(): Context {
 /**
  * Sets the context name for logging purposes.
  */
-export function $name(name: MaybeGetter<string>): void {
+export function $name(name: Getter<string> | string): void {
   $$context().setName(name);
 }
 
@@ -49,7 +49,7 @@ export function $provide<Returns, Options>(
   self.onUnmount(context.unmount.bind(context));
 
   callInContext(context, () => {
-    self.state[store[STORE_ID]!] = store(options as any);
+    self.state[store[STORE_ID]!] = store.call(context.state, options as any);
   });
 
   return self.state[store[STORE_ID]];
@@ -120,7 +120,7 @@ export function $teardown(callback: () => void | Promise<void>): void {
  * Creates an effect that is bound to the active context.
  * This effect will be automatically cleaned up when the component is unmounted.
  */
-export function $effect(callback: EffectCallback): UnsubscribeFn {
+export function $effect(callback: EffectFn): UnsubscribeFn {
   const context = $$context();
   return effect(callback, { context });
 }

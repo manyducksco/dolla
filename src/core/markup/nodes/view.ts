@@ -37,7 +37,9 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      const viewContent = callInContext(this.context, () => untrack(() => this.view(this.props)));
+      const viewContent = callInContext(this.context, () =>
+        untrack(() => this.view.call(this.context.state, this.props)),
+      );
 
       if (viewContent != null && viewContent !== false) {
         this.node = render(viewContent, this.context);

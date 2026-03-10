@@ -104,6 +104,11 @@ test("setting via accessor will take the value", () => {
   expect(count()).toBe(36);
   expect(other()).toBe(36);
 
+  other(50);
+
+  expect(count()).toBe(36);
+  expect(other()).toBe(50);
+
   setVal(count);
 
   expect(count()).toBe(36);

@@ -256,7 +256,7 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     // Handle Views/Layers
     let view: View<any> = (props: any) => props.children;
     if (isFunction(route.view)) {
-      view = route.view;
+      view = route.view as View<any>;
     } else if (route.view && !(route.view as LazyView)._lazy) {
       throw new TypeError(`Route '${route.path}' expected a view function. Got: ${route.view}`);
     }

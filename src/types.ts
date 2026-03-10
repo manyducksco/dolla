@@ -1,7 +1,7 @@
 import type * as CSS from "csstype";
 import { LogLevel } from "./core/debug.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
-import type { MaybeGetter, Getter } from "./core/signals.js";
+import type { Getter } from "./core/signals.js";
 import { Context } from "./core/context.js";
 
 export type Env = "production" | "development";
@@ -19,8 +19,9 @@ export type Renderable =
   | false
   | null
   | undefined
-  | MaybeGetter<any>
-  | (string | number | Node | Markup | MarkupNode | false | null | undefined | MaybeGetter<any>)[];
+  | void
+  | Getter<Renderable>
+  | Renderable[];
 
 export interface BaseProps {
   children?: Renderable;
@@ -29,12 +30,12 @@ export interface BaseProps {
 /**
  *
  */
-export type View<Props = {}> = (props: Props) => Renderable;
+export type View<Props = {}> = (this: Record<string | symbol, any>, props: Props) => Renderable;
 
 /**
  *
  */
-export type Store<Options, Value> = (options: Options) => Value;
+export type Store<Options, Value> = (this: Record<string | symbol, any>, options: Options) => Value;
 
 declare global {
   interface Window {

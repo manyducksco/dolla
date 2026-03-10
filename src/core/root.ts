@@ -65,7 +65,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     return self;
   }
 
-  async function mount(content: Renderable) {
+  async function mount(content: View<{}> | Renderable) {
     if (context.isMounted) return;
 
     const results = await Promise.all(plugins.map((fn) => callInContext(context, fn)));

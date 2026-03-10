@@ -38,12 +38,14 @@
         `;
       }
 
+      mount(Counter, document.getElementById("counter"));
+
       // createRoot("#counter").mount(Counter);
     </script>
 
     <div id="providers"></div>
     <script type="module">
-      import { createRoot, state, html, $provide, $use, when } from "../dist/index.js";
+      import { createRoot, state, html, $provide, $use, show } from "../dist/index.js";
 
       function Store() {
         const [value, setValue] = state();
@@ -65,13 +67,48 @@
       function Child() {
         const { value } = $use(Store);
 
-        return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
+        return html` <p>${show(() => value() === 10, "We're good", "Something is off")}</p> `;
       }
 
       createRoot("#providers").mount(Parent);
     </script>
 
-    <div id="element">
+    <div id="inherited-state"></div>
+    <script type="module">
+      import { mount, signal, html, $setup } from "../dist/index.js";
+
+      function Parent() {
+        this.count = signal(0); // set count on context
+
+        $setup(() => {
+          const interval = setInterval(() => {
+            this.count((current) => current + 1);
+          }, 1000);
+
+          return () => clearInterval(interval);
+        });
+
+        return html`
+          <div>
+            <${Child} />
+          </div>
+        `;
+      }
+
+      function Child() {
+        const count = this.count; // get count from context
+
+        return html`
+          <p>Count from context: ${count}</p>
+
+          <button onClick=${() => count(0)}>Reset</button>
+        `;
+      }
+
+      mount(Parent, document.getElementById("inherited-state"));
+    </script>
+
+    <!-- <div id="element">
       <the-parent value="10">
         <section>
           <the-child expected="10"></the-child>
@@ -127,7 +164,7 @@
 
       customElements.define("the-parent", ParentView);
       customElements.define("the-child", ChildView);
-    </script>
+    </script> -->
 
     <!-- <div id="sibling-lists"></div>
     <script type="module">

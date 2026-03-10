@@ -1,5 +1,5 @@
 import { $$context, DollaPlugin } from "../core/index.js";
-import { memo, state, get, type Getter, type MaybeGetter } from "../core/signals.js";
+import { memo, state, get, type Getter } from "../core/signals.js";
 import { typeOf } from "../utils.js";
 
 // ----- Types ----- //
@@ -18,14 +18,14 @@ export type TOptions = {
   /**
    *
    */
-  count?: MaybeGetter<number>;
+  count?: Getter<number> | number;
 
   /**
    *
    */
-  context?: MaybeGetter<string>;
+  context?: Getter<string> | string;
 
-  [value: string]: MaybeGetter<any>;
+  [value: string]: Getter<any> | any;
 };
 
 export type LookupFn = (selector: string, options?: TOptions) => string;
@@ -70,11 +70,11 @@ export interface Translator {
 
   format<K extends keyof BuiltInFormatters, V extends BuiltInFormatters[K][0], O extends BuiltInFormatters[K][1]>(
     name: K,
-    value: MaybeGetter<V>,
+    value: Getter<V> | V,
     options?: O,
   ): Getter<string>;
 
-  format<V, O>(name: string, value: MaybeGetter<V>, options?: O): Getter<string>;
+  format<V, O>(name: string, value: Getter<V> | V, options?: O): Getter<string>;
 }
 
 export interface TranslateOptions {
@@ -197,11 +197,11 @@ export function createTranslator(options: TranslateOptions): Translator {
     K extends keyof BuiltInFormatters,
     V extends BuiltInFormatters[K][0],
     O extends BuiltInFormatters[K][1],
-  >(name: K, value: MaybeGetter<V>, options?: O): Getter<string>;
+  >(name: K, value: Getter<V> | V, options?: O): Getter<string>;
 
-  function format<V, O>(name: string, value: MaybeGetter<V>, options?: O): Getter<string>;
+  function format<V, O>(name: string, value: Getter<V> | V, options?: O): Getter<string>;
 
-  function format(name: string, value: MaybeGetter<any>, options?: Record<string, any>): Getter<string> {
+  function format(name: string, value: unknown, options?: Record<string, any>): Getter<string> {
     const callback = formatters.get(name);
     if (!callback) {
       throw new Error(`Unknown format: ${name}`);

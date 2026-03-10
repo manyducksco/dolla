@@ -351,7 +351,7 @@ export interface Setter<T> {
 }
 
 /**
- * One hybrid getter-setter that returns the latest value when called with no arguments, and sets the value when called with one argument.
+ * A hybrid getter-setter that acts as a getter when called with no arguments, and a setter when called with one argument.
  *
  * @example
  * const count = accessor(123);
@@ -362,18 +362,37 @@ export interface Setter<T> {
  */
 export interface Accessor<T> extends Getter<T>, Setter<T> {}
 
-/**
- * Utility type for a value that may be a getter or a plain value.
- * This value can be unwrapped to a plain value with `get` or `untracked` (depending on whether you're in a tracking context and need to track it).
- */
-export type MaybeGetter<T> = Getter<T> | T;
-
 /* -------------- PUBLIC API --------------- */
+
+export function signal<T>(value: Getter<T>): Accessor<T>;
+export function signal<T>(value: T): Accessor<T>;
+export function signal<T>(): Accessor<T | undefined>;
+export function signal<T>(value?: Getter<T> | T) {
+  if (isFunction<Getter<T>>(value)) {
+    return _computedAccessor.bind({
+      value: undefined,
+      subs: undefined,
+      subsTail: undefined,
+      deps: undefined,
+      depsTail: undefined,
+      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
+      getter,
+    });
+  } else {
+    return _valueAccessor.bind({
+      previousValue: value,
+      value: value,
+      subs: undefined,
+      subsTail: undefined,
+      flags: 1 satisfies ReactiveFlags.Mutable,
+    });
+  }
+}
 
 export function state<T>(value: Getter<T>): [Getter<T>, Setter<T>];
 export function state<T>(value: T): [Getter<T>, Setter<T>];
 export function state<T>(): [Getter<T | undefined>, Setter<T | undefined>];
-export function state<T>(value?: MaybeGetter<T>) {
+export function state<T>(value?: Getter<T> | T) {
   if (isFunction<Getter<T>>(value)) {
     // Return mutable memo.
     const node: ComputedNode = {
@@ -416,7 +435,7 @@ export function memo<T>(getter: (previous?: T) => T): Getter<T> {
 /**
  * Function to be invoked for the effect. Can return an optional cleanup function to be called between invocations.
  */
-export type EffectCallback = () => void | (() => void);
+export type EffectFn = () => void | (() => void);
 
 export type UnsubscribeFn = () => void;
 
@@ -431,9 +450,9 @@ export type EffectOptions = {
  * NOTE: You must call the unsubscribe function to clean up the effect.
  * If you are using an effect inside a View or Store, try the `useEffect` hook instead, which cleans up automatically when the component unmounts.
  */
-export function effect(callback: EffectCallback, options: EffectOptions = {}): UnsubscribeFn {
+export function effect(fn: EffectFn, options: EffectOptions = {}): UnsubscribeFn {
   const e: Effect = {
-    fn: callback,
+    fn: fn,
     subs: undefined,
     subsTail: undefined,
     deps: undefined,
@@ -505,31 +524,6 @@ export function getter<T>(value: Getter<T> | T): Getter<T> {
   return () => get(value);
 }
 
-export function signal<T>(value: Getter<T>): Accessor<T>;
-export function signal<T>(value: T): Accessor<T>;
-export function signal<T>(): Accessor<T | undefined>;
-export function signal<T>(value?: MaybeGetter<T>) {
-  if (isFunction<Getter<T>>(value)) {
-    return _computedAccessor.bind({
-      value: undefined,
-      subs: undefined,
-      subsTail: undefined,
-      deps: undefined,
-      depsTail: undefined,
-      flags: 17 as ReactiveFlags.Mutable | ReactiveFlags.Dirty,
-      getter,
-    });
-  } else {
-    return _valueAccessor.bind({
-      previousValue: value,
-      value: value,
-      subs: undefined,
-      subsTail: undefined,
-      flags: 1 satisfies ReactiveFlags.Mutable,
-    });
-  }
-}
-
 /**
  * Suspends effects during `fn`. Effects for all updated Signal values are called at the end of the batch.
  */
@@ -540,9 +534,9 @@ export function batch(fn: () => void): void {
 }
 
 /**
- * Calls a function in an untracked scope and returns its value.
+ * Unwraps the value from a getter without tracking, or returns the value if not a getter.
  */
-export function peek<T>(value: MaybeGetter<T>): T {
+export function peek<T>(value: Getter<T> | T): T {
   if (isFunction(value)) {
     return untrack(value);
   } else {
@@ -550,7 +544,10 @@ export function peek<T>(value: MaybeGetter<T>): T {
   }
 }
 
-export function get<T>(value: MaybeGetter<T>): T {
+/**
+ * Unwraps the value from a getter (with tracking), or returns the value if not a getter.
+ */
+export function get<T>(value: Getter<T> | T): T {
   if (isFunction(value)) {
     return value();
   } else {
