@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Context } from "../context";
+import { createContext } from "../context";
 import { state } from "../signals";
 import { DOMNode } from "./nodes/dom";
 import { DynamicNode } from "./nodes/dynamic";
@@ -17,7 +17,7 @@ describe("type checking", () => {
   });
 
   test("isMarkupNode", () => {
-    const context = new Context("test");
+    const context = createContext("test");
     const view = () => "hello";
     const one = new ViewNode(context, view, {});
     const two = new DynamicNode(context, () => "hello");
@@ -33,7 +33,7 @@ describe("type checking", () => {
 test("toMarkupNodes", () => {
   const [count, setCount] = state(5);
 
-  const context = new Context("test");
+  const context = createContext("test");
   const nodes = toMarkupNodes(
     context,
     "one",

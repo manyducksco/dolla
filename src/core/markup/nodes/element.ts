@@ -1,6 +1,6 @@
 import { isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
-import { Context } from "../../context.js";
-import { type Getter, subscribe, type UnsubscribeFn } from "../../signals.js";
+import { Context, createContext, mountContext, unmountContext } from "../../context.js";
+import { type Getter, peek, subscribe, type UnsubscribeFn } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
@@ -37,28 +37,28 @@ export class ElementNode extends MarkupNode {
 
     if (tag === "svg") {
       // This and all nested views will be created as SVG elements.
-      this.context = context.createChild(getContextName.bind(this));
-      this.context.state[IS_SVG] = true;
+      this.context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
+      this.context[IS_SVG] = true;
       this.ownContext = true;
-    } else if (this.context.state[IS_SVG] && tag === "foreignObject") {
+    } else if (this.context[IS_SVG] && tag === "foreignObject") {
       // No longer in SVG.
-      this.context = context.createChild(getContextName.bind(this));
-      this.context.state[IS_SVG] = false;
+      this.context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
+      this.context[IS_SVG] = false;
       this.ownContext = false;
     }
 
     // Create node with the appropriate constructor.
-    if (this.context.state[IS_SVG]) {
+    if (this.context[IS_SVG]) {
       this.root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
       this.root = document.createElement(tag);
     }
 
     // Add view name as a data attribute debug mode.
-    if (this.context.state[DEBUG]) {
-      const view = this.context.state[VIEW] as ViewNode<any>;
+    if (this.context[DEBUG]) {
+      const view = this.context[VIEW] as ViewNode<any>;
       if (view) {
-        this.root.dataset.parentView = view.context.getName() + "#" + view.context.id;
+        this.root.dataset.parentView = view.context.name + "#" + view.context.id;
         this.root.dataset.contextId = this.context.id;
       }
     }
@@ -101,7 +101,7 @@ export class ElementNode extends MarkupNode {
         }
       }
 
-      if (this.ownContext) this.context.mount();
+      if (this.ownContext) mountContext(this.context);
     }
   }
 
@@ -118,7 +118,7 @@ export class ElementNode extends MarkupNode {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.unsubscribers.clear();
 
-    if (this.ownContext) this.context.unmount();
+    if (this.ownContext) unmountContext(this.context);
 
     // Clear ref
     if (this.refCleanup) {
@@ -201,7 +201,7 @@ export class ElementNode extends MarkupNode {
         this.unsubscribers.add(() => {
           element.removeEventListener(eventName, value);
         });
-      } else if (key in element && !this.context.state[IS_SVG]) {
+      } else if (key in element && !this.context[IS_SVG]) {
         // Set as property if the element has one.
 
         if (typeof element[key] === "boolean") {
@@ -338,21 +338,6 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
     );
   }
   return {};
-}
-
-function getContextName(this: ElementNode) {
-  const root = this.getRoot();
-  if (root == null) return this.tag;
-  let name = this.getRoot().tagName.toLowerCase();
-  if (root.id) {
-    name += `#${root.id}`;
-  }
-  if (root.classList.length > 0) {
-    for (const className of root.classList.values()) {
-      name += `.${className}`;
-    }
-  }
-  return name;
 }
 
 /**

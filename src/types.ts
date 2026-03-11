@@ -1,5 +1,5 @@
 import type * as CSS from "csstype";
-import { LogLevel } from "./core/debug.js";
+import { LogLevel } from "./debug/debug.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { Getter } from "./core/signals.js";
 import { Context } from "./core/context.js";

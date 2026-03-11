@@ -1,6 +1,6 @@
 import { Renderable, View } from "../types.js";
 import { getElement, isFunction } from "../utils.js";
-import { callInContext, Context } from "./context.js";
+import { callInContext, Context, createContext, mountContext, unmountContext } from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
@@ -14,7 +14,7 @@ export type CleanupCallback = () => void | Promise<void>;
  *
  * Hooks can be used inside plugins.
  */
-export type DollaPlugin = () => Promise<CleanupCallback | void> | CleanupCallback | void;
+export type DollaPlugin = (context: Context) => Promise<CleanupCallback | void> | CleanupCallback | void;
 
 export interface DollaRootOptions {
   /**
@@ -49,12 +49,12 @@ export function createRoot(selector: string, options?: DollaRootOptions): DollaR
 export function createRoot(element: Element, options?: DollaRootOptions): DollaRoot;
 export function createRoot(target: string | Element, options?: DollaRootOptions) {
   const element = getElement(target);
-  const context = new Context("dolla:root");
+  const context = createContext("dolla:root");
   const plugins: DollaPlugin[] = [];
   const cleanup: CleanupCallback[] = [];
 
-  context.state[PARENT_ELEMENT] = element;
-  context.state[DEBUG] = Boolean(options?.debug);
+  context[PARENT_ELEMENT] = element;
+  context[DEBUG] = Boolean(options?.debug);
 
   let rootNode: MarkupNode | null = null;
 
@@ -68,7 +68,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   async function mount(content: View<{}> | Renderable) {
     if (context.isMounted) return;
 
-    const results = await Promise.all(plugins.map((fn) => callInContext(context, fn)));
+    const results = await Promise.all(plugins.map((fn) => callInContext(context, () => fn(context))));
     for (const result of results) {
       if (isFunction<CleanupCallback>(result)) {
         cleanup.push(result);
@@ -78,7 +78,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
     rootNode?.mount(element);
 
-    context.mount();
+    mountContext(context);
   }
 
   async function unmount() {
@@ -87,7 +87,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     rootNode?.unmount(false);
     rootNode = null;
 
-    context.unmount();
+    unmountContext(context);
 
     await Promise.all(cleanup.map((callback) => callback()));
     cleanup.length = 0;

@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Context, callInContext } from "../core/context.js";
+import { callInContext, Context, createContext } from "../core/context.js";
+import { $use } from "../core/index.js";
+import { ViewNode } from "../core/markup/nodes/view.js";
+import { PARENT_ELEMENT } from "../core/symbols.js";
 import { View } from "../types.js";
 import { createRouter, lazy, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
-import { ViewNode } from "../core/markup/nodes/view.js";
-import { PARENT_ELEMENT } from "../core/symbols.js";
-import { $use } from "../core/index.js";
 
 async function withMountedView<Props>(view: View<Props>, props: Props, callback: (context: Context) => any) {
-  const context = new Context("test");
-  context.state[PARENT_ELEMENT] = document.body;
+  const context = createContext("test");
+  context[PARENT_ELEMENT] = document.body;
 
   const node = new ViewNode(context, view, props);
 

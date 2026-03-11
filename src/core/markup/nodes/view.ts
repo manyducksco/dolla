@@ -1,5 +1,5 @@
 import type { View } from "../../../types.js";
-import { callInContext, type Context } from "../../context.js";
+import { callInContext, Context, createContext, mountContext, unmountContext } from "../../context.js";
 import { untrack } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { render } from "../utils.js";
@@ -19,8 +19,8 @@ export class ViewNode<P> extends MarkupNode {
 
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = context.createChild(view.name);
-    this.context.state[VIEW] = this;
+    this.context = createContext(view.name, context);
+    this.context[VIEW] = this;
     this.props = props;
     this.view = view;
   }
@@ -37,25 +37,23 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      const viewContent = callInContext(this.context, () =>
-        untrack(() => this.view.call(this.context.state, this.props)),
-      );
+      const viewContent = callInContext(this.context, () => untrack(() => this.view.call(this.context, this.props)));
 
       if (viewContent != null && viewContent !== false) {
         this.node = render(viewContent, this.context);
       } else {
-        this.node = new DOMNode(this.context, document.createComment(`View: ${this.context.getName()}`));
+        this.node = new DOMNode(this.context, document.createComment(`View: ${this.context.name}`));
       }
     }
 
     this.node!.mount(parent, after);
 
-    if (!wasMounted) this.context.mount();
+    if (!wasMounted) mountContext(this.context);
   }
 
   unmount(skipDOM = false) {
     this.node?.unmount(skipDOM);
-    this.context.unmount();
+    unmountContext(this.context);
   }
 
   move(parent: Element, after?: Node) {

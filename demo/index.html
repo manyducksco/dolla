@@ -75,7 +75,7 @@
 
     <div id="inherited-state"></div>
     <script type="module">
-      import { mount, signal, html, $setup } from "../dist/index.js";
+      import { mount, signal, html, $setup, $debug } from "../dist/index.js";
 
       function Parent() {
         this.count = signal(0); // set count on context
@@ -98,6 +98,9 @@
       function Child() {
         const count = this.count; // get count from context
 
+        const console = $debug();
+        console.log(this);
+
         return html`
           <p>Count from context: ${count}</p>
 
@@ -108,67 +111,60 @@
       mount(Parent, document.getElementById("inherited-state"));
     </script>
 
-    <!-- <div id="element">
-      <the-parent value="10">
-        <section>
-          <the-child expected="10"></the-child>
-        </section>
-      </the-parent>
+    <div id="web-components">
+      <app-counter id="counter" count="12"></app-counter>
+      <button id="randomize">Randomize</button>
     </div>
     <script type="module">
-      import { ElementWithAttrs, html, state, when, memo, $provide, $use, $setup, debug } from "../dist/index.js";
+      import { html, signal, mount } from "../dist/index.js";
 
-      function Store({ initialValue = 0 }) {
-        const [value, setValue] = state(initialValue);
-        return { value, setValue };
-      }
+      // Simple web components usage.
+      class CounterElement extends HTMLElement {
+        static observedAttributes = ["count"];
 
-      class ParentView extends ElementWithAttrs(["value"]) {
-        create() {
-          const { value, setValue } = $provide(Store, { initialValue: Number(this.getAttribute("value") ?? 0) });
+        count = signal(0);
 
-          const console = debug.bind();
+        constructor() {
+          super();
+          this.root = this.attachShadow({ mode: "open" });
+        }
 
-          $setup(() => {
-            const interval = setInterval(() => {
-              setValue((current) => current + 1);
-              console.info("incremented", value());
-            }, 1000);
+        connectedCallback() {
+          this.unmount = mount(
+            html`
+              <p>Element count: ${this.count}</p>
+              <button onclick=${() => this.count((current) => current + 1)}>Increment</button>
+              <button onclick=${() => this.count((current) => current - 1)}>Decrement</button>
+              <button onclick=${() => this.count(0)}>Reset</button>
+            `,
+            this.root,
+          );
+        }
 
-            return () => clearInterval(interval);
-          });
+        disconnectedCallback() {
+          this.unmount?.();
+        }
 
-          // Render children with a `<slot>`
-          return html`<div><slot /></div>`;
+        attributeChangedCallback(name, oldValue, newValue) {
+          if (name === "count") {
+            const parsed = Number(newValue);
+            if (!isNaN(parsed)) {
+              this.count(parsed);
+            }
+          }
         }
       }
 
-      class ChildView extends ElementWithAttrs(["value", "expected"]) {
-        create() {
-          const value = memo(() => Number(this.trackAttribute("value") ?? 0));
+      customElements.define("app-counter", CounterElement);
 
-          $setup(() => {
-            const interval = setInterval(() => {
-              this.setAttribute("value", String(value() + 1));
-              console.info("incremented", value());
-            }, 1000);
+      document.getElementById("randomize").addEventListener("click", () => {
+        document.getElementById("counter").setAttribute("count", String(Math.round(Math.random() * 500)));
+      });
+    </script>
 
-            return () => clearInterval(interval);
-          });
-
-          return html`<span>${value}</span>`;
-          // const { value } = $use(Store);
-          // return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
-        }
-      }
-
-      customElements.define("the-parent", ParentView);
-      customElements.define("the-child", ChildView);
-    </script> -->
-
-    <!-- <div id="sibling-lists"></div>
+    <div id="sibling-lists"></div>
     <script type="module">
-      import { createRoot, state, computed, track, html, each, when, $setup, $debug } from "../dist/index.js";
+      import { createRoot, state, memo, signal, html, repeat, show, $setup, $debug } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -188,14 +184,14 @@
       }
 
       function List({ color, items }) {
-        const sorted = state([...items]);
+        const sorted = signal([...items]);
         const debug = $debug();
 
         function randomize() {
-          debug.info("sorted", sorted.update(shuffled));
+          debug.info("sorted", sorted(shuffled));
         }
 
-        const visible = state(false);
+        const visible = signal(false);
 
         $setup(() => {
           const interval = setInterval(
@@ -210,26 +206,26 @@
           return () => clearInterval(interval);
         });
 
-        return each(
+        return repeat(
           sorted,
           (item) => item,
           (item) => {
             return html`
-              <div style=${{ color: color }}>${item} ${when(visible, html`<input type="text"></input>`)}</div>
+              <div style=${{ color: color }}>${item} ${show(visible, html`<input type="text"></input>`)}</div>
             `;
           },
         );
       }
 
       function SiblingLists() {
-        const lists = state([
+        const lists = signal([
           html`<${List} color="red" items=${["broccoli", "zucchini", "radish"]} />`,
           html`<${List} color="blue" items=${["salami", "bacon", "turkey"]} />`,
           html`<${List} color="green" items=${["water", "tea", "coffee"]} />`,
         ]);
 
         function randomize() {
-          lists.update(shuffled);
+          lists(shuffled);
         }
 
         $setup(() => {
@@ -242,7 +238,7 @@
         return html`
           <div>
             ${lists}
-            ${each(
+            ${repeat(
               lists,
               (item) => item.props.color,
               (item) => item,
@@ -258,7 +254,7 @@
       }
 
       createRoot("#sibling-lists", { debug: true }).mount(SiblingLists);
-    </script> -->
+    </script>
 
     <!-- <div
       id="chat-wire-demo"

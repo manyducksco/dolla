@@ -1,5 +1,4 @@
-import { $$context, DollaPlugin } from "../core/index.js";
-import { memo, state, get, type Getter } from "../core/signals.js";
+import { get, memo, state, type Getter } from "../core/signals.js";
 import { typeOf } from "../utils.js";
 
 // ----- Types ----- //
@@ -89,24 +88,6 @@ export interface TranslateOptions {
 }
 
 // ----- Code ----- //
-
-const TRANSLATOR = Symbol.for("Dolla.Translator");
-
-export function createTranslate(options: TranslateOptions): DollaPlugin {
-  return async function () {
-    const translator = createTranslator(options);
-    $$context().state[TRANSLATOR] = translator;
-    await translator.setLocale(options.locale);
-  };
-}
-
-export function $translate() {
-  const translator = $$context().state[TRANSLATOR] as Translator;
-  if (translator == null) {
-    throw new Error("Translate plugin isn't loaded.");
-  }
-  return translator;
-}
 
 export function createTranslator(options: TranslateOptions): Translator {
   const formatters = new Map<string, Formatter>();

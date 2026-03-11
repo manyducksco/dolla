@@ -1,6 +1,6 @@
 import type { Renderable, View } from "../../types.js";
 import { isFunction, isNumber, isString } from "../../utils.js";
-import { Context } from "../context.js";
+import { Context, createContext } from "../context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
@@ -35,7 +35,7 @@ export function isMarkupNodeClass(fn: any): fn is new (...args: any[]) => Markup
 /**
  * Takes any `Renderable` value and returns a `MarkupNode` that will display it.
  */
-export function render(content: Renderable, context = new Context("$")): MarkupNode {
+export function render(content: Renderable, context = createContext("$")): MarkupNode {
   const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
     return nodes[0]; // if it's just one item return it
@@ -69,12 +69,12 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
     if (isMarkup(item)) {
       const { type, props } = item;
 
-      if (isFunction(type)) {
-        if (isMarkupNodeClass(type)) {
-          nodes.push(new type(context, ...props.args));
-          return;
-        }
+      if (isMarkupNodeClass(type)) {
+        nodes.push(new type(context, ...props.args));
+        return;
+      }
 
+      if (isFunction(type)) {
         nodes.push(new ViewNode(context, type as View<any>, props));
         return;
       }

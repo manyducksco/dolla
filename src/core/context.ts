@@ -1,31 +1,31 @@
 import { uniqueId } from "../utils";
-import { getter, peek, resumeEffects, type Getter } from "./signals";
+import { resumeEffects } from "./signals";
 
 export type LifecycleListener = () => any;
+
+type BaseContextState = {
+  id: string;
+  name: string;
+  isMounted: boolean;
+  isSuspended: boolean;
+};
+
+export type Context<T = Record<string | symbol, any>> = BaseContextState & T;
 
 /*===================================*\
 ||           Global Context          ||
 \*===================================*/
 
-export let getActiveContext: () => Context | undefined;
-export let setActiveContext: (context: Context | undefined) => Context | undefined;
+let activeContext: Context | undefined;
 
-if (typeof window !== "undefined") {
-  getActiveContext = () => window.DOLLA_CURRENT_CONTEXT;
-  setActiveContext = (context) => {
-    const prev = window.DOLLA_CURRENT_CONTEXT;
-    window.DOLLA_CURRENT_CONTEXT = context;
-    return prev;
-  };
-} else {
-  let currentContext: Context | undefined;
+export function getActiveContext() {
+  return activeContext;
+}
 
-  getActiveContext = () => currentContext;
-  setActiveContext = (context) => {
-    const prev = currentContext;
-    currentContext = context;
-    return prev;
-  };
+export function setActiveContext(context: Context | undefined) {
+  const prev = activeContext;
+  activeContext = context;
+  return prev;
 }
 
 /**
@@ -41,84 +41,65 @@ export function callInContext<T>(context: Context | undefined, callback: () => T
 }
 
 /*===================================*\
-||        Context Definition         ||
+||              Context              ||
 \*===================================*/
 
-function createContext(name: Getter<string> | string, parent?: Context) {}
+const MOUNT_LISTENERS = Symbol("Context.mountListeners");
+const UNMOUNT_LISTENERS = Symbol("Context.unmountListeners");
 
-export class Context {
-  readonly id = uniqueId();
-  isMounted = false;
-  isSuspended = true;
-  state: Record<string | symbol, any>;
+export function createContext(name: string, parent?: Context): Context {
+  const ctx: Record<any, any> = parent ? Object.create(parent) : {};
+  ctx.id = uniqueId();
+  ctx.name = name;
+  ctx.isMounted = false;
+  ctx.isSuspended = true;
+  return ctx as Context;
+}
 
-  #name: Getter<string>;
-  #mountListeners?: LifecycleListener[];
-  #unmountListeners?: LifecycleListener[];
+export function mountContext(context: Context) {
+  if (context.isMounted) return;
+  context.isMounted = true;
+  resumeContext(context);
+  _callListeners(context, MOUNT_LISTENERS);
+}
 
-  constructor(name: Getter<string> | string, parent?: Context) {
-    this.#name = getter(name);
+export function unmountContext(context: Context) {
+  if (!context.isMounted) return;
+  context.isMounted = false;
+  _callListeners(context, UNMOUNT_LISTENERS);
+}
 
-    // Inherit parent state as prototype for quick lookups.
-    this.state = parent ? Object.create(parent.state) : {};
-  }
+export function suspendContext(context: Context) {
+  context.isSuspended = true;
+}
 
-  /**
-   * Returns a new Context with this one as its parent.
-   */
-  createChild(name: Getter<string> | string): Context {
-    return new Context(name, this);
-  }
+export function resumeContext(context: Context) {
+  context.isSuspended = false;
+  resumeEffects(context);
+}
 
-  getName(): string {
-    return peek(this.#name);
-  }
+export function onMount(context: Context, fn: LifecycleListener) {
+  if (!Object.hasOwn(context, MOUNT_LISTENERS)) context[MOUNT_LISTENERS] = [fn];
+  else context[MOUNT_LISTENERS].push(fn);
+  return _unsubscribe.bind(context[MOUNT_LISTENERS], fn);
+}
 
-  setName(name: Getter<string> | string) {
-    this.#name = getter(name);
-  }
+export function onUnmount(context: Context, fn: LifecycleListener) {
+  if (!Object.hasOwn(context, UNMOUNT_LISTENERS)) context[UNMOUNT_LISTENERS] = [fn];
+  else context[UNMOUNT_LISTENERS].push(fn);
+  return _unsubscribe.bind(context[UNMOUNT_LISTENERS], fn);
+}
 
-  mount() {
-    if (this.isMounted) return;
+function _unsubscribe(this: LifecycleListener[] | undefined, fn: LifecycleListener) {
+  if (!this) return;
+  const index = this.indexOf(fn);
+  if (index !== -1) this.splice(index, 1);
+}
 
-    this.isMounted = true;
-    this.resume();
-    this.#mountListeners?.forEach((callback) => callback());
-  }
-
-  unmount() {
-    if (!this.isMounted) return;
-
-    this.isMounted = false;
-    this.#unmountListeners?.forEach((callback) => callback());
-  }
-
-  suspend() {
-    // Pause execution of bound effects.
-    this.isSuspended = true;
-  }
-
-  resume() {
-    // Resume bound effects.
-    this.isSuspended = false;
-    resumeEffects(this);
-  }
-
-  onMount(listener: LifecycleListener) {
-    if (!this.#mountListeners) this.#mountListeners = [];
-    this.#mountListeners.push(listener);
-    return this.#unsubscribe.bind(this.#mountListeners);
-  }
-
-  onUnmount(listener: LifecycleListener) {
-    if (!this.#unmountListeners) this.#unmountListeners = [];
-    this.#unmountListeners.push(listener);
-    return this.#unsubscribe.bind(this.#unmountListeners);
-  }
-
-  #unsubscribe(this: LifecycleListener[], listener: LifecycleListener) {
-    if (!this) return;
-    const index = this.indexOf(listener);
-    if (index !== -1) this.splice(index, 1);
+function _callListeners(context: Context, key: symbol) {
+  if (Object.hasOwn(context, key)) {
+    for (const callback of context[key]) {
+      callback();
+    }
   }
 }

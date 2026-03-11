@@ -35,7 +35,7 @@ export function repeat<T>(
  * @param whenTruthy - Content to display when condition is truthy.
  * @param whenFalsy - Content to display when condition is falsy.
  */
-export function show(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
+export function when(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (typeof condition === "function") {
     return createMarkup(DynamicNode, {
       args: [memo(() => (condition() ? whenTruthy : whenFalsy))],

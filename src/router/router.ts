@@ -1,4 +1,5 @@
-import { $$context, $provide, $setup, $debug } from "../core/hooks.js";
+import { $$context, $provide, $setup } from "../core/hooks.js";
+import { Debug } from "../debug/debug.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
@@ -56,7 +57,7 @@ export function createRouter(options: RouterOptions): View {
     const context = $$context();
     context.setName("dolla:router");
 
-    const console = $debug();
+    const console = new Debug("dolla:router");
 
     const [rootSlot, setRootSlot] = state<MarkupNode>();
     const rootLayer = {
@@ -78,7 +79,7 @@ export function createRouter(options: RouterOptions): View {
       const path = href ?? history.getPath();
       const { match, journey } = await resolveRoute(routeTree, path);
 
-      if (context.state[DEBUG]) {
+      if (context[DEBUG]) {
         for (let i = 0; i < journey.length; i++) {
           const step = journey[i];
           const tag = `(update: step ${i + 1} of ${journey.length})`;
@@ -272,7 +273,7 @@ export function createRouter(options: RouterOptions): View {
 
     // Intercept clicks on `<a>` tags within the app.
     $setup(() => {
-      const parentElement = context.state[PARENT_ELEMENT] as Element;
+      const parentElement = context[PARENT_ELEMENT] as Element;
       return catchLinks(parentElement, (path) => {
         api.push(path);
       });

@@ -1,5 +1,5 @@
 import { noOp, okhash } from "../utils.js";
-import { Context } from "./context.js";
+import { Context } from "../core/context.js";
 
 enum LogLevelValue {
   /**
@@ -36,37 +36,60 @@ let match: MatcherFunction = _createMatcher(logFilter);
 
 let _console: any = _getDefaultConsole();
 
-function bindMethod(context: Context, method: LogLevel) {
-  if (LogLevelValue[method] < LogLevelValue[logLevel]) return noOp;
-
-  if (!match(context.getName())) return noOp;
-
-  const label = `%c${context.getName()} %c[ctx: %c${context.id}%c]`;
-  // bind() to preserve the original call site
-  return _console[method].bind(
-    _console,
-    label,
-    `color:${okhash(label)};font-weight:bold`,
-    `color:#777`,
-    `color:#aaa`,
-    `color:#777`,
-  );
+export interface DebugOptions {
+  tags?: [string, any][];
 }
 
 export class Debug {
-  constructor(private context: Context) {}
+  constructor(
+    private name: string,
+    private tags: [string, any][] = [],
+  ) {}
 
   get info(): (...args: any[]) => void {
-    return bindMethod(this.context, "info");
+    if (LogLevelValue.info < LogLevelValue[logLevel] || !match(this.name)) return noOp;
+    const [label, styles] = this.#getLabel();
+    return _console.info.bind(_console, label, ...styles);
   }
   get log(): (...args: any[]) => void {
-    return bindMethod(this.context, "log");
+    if (LogLevelValue.log < LogLevelValue[logLevel] || !match(this.name)) return noOp;
+    const [label, styles] = this.#getLabel();
+    return _console.log.bind(_console, label, ...styles);
   }
   get warn(): (...args: any[]) => void {
-    return bindMethod(this.context, "warn");
+    if (LogLevelValue.warn < LogLevelValue[logLevel] || !match(this.name)) return noOp;
+    const [label, styles] = this.#getLabel();
+    return _console.warn.bind(_console, label, ...styles);
   }
   get error(): (...args: any[]) => void {
-    return bindMethod(this.context, "error");
+    if (LogLevelValue.error < LogLevelValue[logLevel] || !match(this.name)) return noOp;
+    const [label, styles] = this.#getLabel();
+    return _console.error.bind(_console, label, ...styles);
+  }
+  get trace(): (...args: any[]) => void {
+    if (LogLevelValue.info < LogLevelValue[logLevel] || !match(this.name)) return noOp;
+    const [label, styles] = this.#getLabel();
+    return _console.trace.bind(_console, label, ...styles);
+  }
+
+  #getLabel() {
+    let parts: string[] = ["%c" + this.name];
+    let styles: string[] = [`color:${okhash(this.name)};font-weight:bold`];
+
+    if (this.tags.length) {
+      for (const [name, value] of this.tags) {
+        parts.push("%c[" + name + ": ");
+        styles.push("color:#777");
+
+        parts.push("%c" + value);
+        styles.push("color:#aaa");
+
+        parts.push("%c]");
+        styles.push("color:#777");
+      }
+    }
+
+    return [parts.join(""), styles];
   }
 
   static getLevel() {
@@ -86,6 +109,8 @@ export class Debug {
     match = _createMatcher(filter);
   }
 }
+
+new Debug("name", [["ctx", 13]]);
 
 // Log level and filter can be set globally on the window.
 // This is helpful when you need to gather info about a bug in the production environment which doesn't usually log anything, for example.

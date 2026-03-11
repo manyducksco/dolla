@@ -1,7 +1,7 @@
 import type { ReactiveFlags, ReactiveNode } from "alien-signals";
 import { createReactiveSystem } from "alien-signals/system";
 import { isFunction } from "../utils.js";
-import { getActiveContext, type Context } from "./context.js";
+import { getActiveContext, onMount, onUnmount, type Context } from "./context.js";
 
 const enum EffectFlags {
   Queued = 1 << 6,
@@ -478,14 +478,14 @@ export function effect(fn: EffectFn, options: EffectOptions = {}): UnsubscribeFn
       setActiveSub(prev);
     }
 
-    e.context?.onUnmount(unsubscribe);
+    e.context && onUnmount(e.context, unsubscribe);
   };
 
   if (e.context) {
     if (e.context.isMounted) {
       init();
     } else {
-      e.context.onMount(init);
+      onMount(e.context, init);
     }
   } else {
     init();

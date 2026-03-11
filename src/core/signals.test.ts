@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { signal, batch, cleanup, effect, getter, type Getter, memo, peek, state, subscribe } from "./signals";
-import { Context, callInContext } from "./context";
+import { callInContext, createContext, mountContext, resumeContext, suspendContext, unmountContext } from "./context";
+import { batch, cleanup, effect, getter, memo, peek, signal, state, subscribe, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = state(5);
@@ -120,7 +120,7 @@ test("effects are bound to the active context", () => {
 
   const spy = vi.fn();
 
-  const context = new Context("signals");
+  const context = createContext("signals");
   callInContext(context, () => {
     effect(() => {
       spy(count());
@@ -134,7 +134,7 @@ test("effects are bound to the active context", () => {
 
   expect(spy).toBeCalledTimes(0);
 
-  context.mount();
+  mountContext(context);
 
   expect(spy).toBeCalledTimes(1);
 
@@ -142,16 +142,16 @@ test("effects are bound to the active context", () => {
 
   expect(spy).toBeCalledTimes(2);
 
-  context.suspend();
+  suspendContext(context);
 
   count((c) => c + 1);
   expect(spy).toBeCalledTimes(2); // not called while suspended
 
-  context.resume();
+  resumeContext(context);
 
   expect(spy).toBeCalledTimes(3); // called again when resumed
 
-  context.unmount();
+  unmountContext(context);
 
   count((c) => c + 1);
   expect(spy).toBeCalledTimes(3);

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { Context, getActiveContext, setActiveContext } from "./context.js";
+import { Context, createContext, getActiveContext, setActiveContext } from "./context.js";
 import { $setup, $teardown } from "./hooks";
 
 const _mount = () => getActiveContext()!.mount();
 const _unmount = () => getActiveContext()!.unmount();
 
 beforeEach(() => {
-  setActiveContext(new Context("test"));
+  setActiveContext(createContext("test"));
 });
 
 describe("$setup", () => {

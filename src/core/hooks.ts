@@ -1,8 +1,17 @@
 import type { Store } from "../types.js";
 import { assertTypeOf, isFunction, isPromise } from "../utils.js";
-import { callInContext, Context, getActiveContext } from "./context.js";
-import { Debug } from "./debug.js";
-import { effect, type EffectFn, type Getter, type UnsubscribeFn } from "./signals.js";
+import {
+  callInContext,
+  Context,
+  createContext,
+  getActiveContext,
+  mountContext,
+  onMount,
+  onUnmount,
+  unmountContext,
+} from "./context.js";
+import { Debug } from "../debug/debug.js";
+import { effect, peek, type EffectFn, type Getter, type UnsubscribeFn } from "./signals.js";
 
 /**
  * Returns the active Context object. Prefer using standard hooks unless you have an advanced use case.
@@ -19,7 +28,7 @@ export function $$context(): Context {
  * Sets the context name for logging purposes.
  */
 export function $name(name: Getter<string> | string): void {
-  $$context().setName(name);
+  $$context().name = peek(name);
 }
 
 export const STORE_ID = Symbol("Dolla.StoreId");
@@ -38,21 +47,21 @@ export function $provide<Returns, Options>(
   // Tag the store function with a unique symbol if it doesn't have one.
   if (!store[STORE_ID]) store[STORE_ID] = Symbol(store.name);
 
-  if (self.state.hasOwnProperty(store[STORE_ID])) {
+  if (self.hasOwnProperty(store[STORE_ID])) {
     let name = store.name ? `'${store.name}'` : "this store";
     throw new Error(`An instance of ${name} was already provided on this context.`);
   }
 
   // Give the store its own context bound to this lifecycle.
-  const context = self.createChild(store.name);
-  self.onMount(context.mount.bind(context));
-  self.onUnmount(context.unmount.bind(context));
+  const context = createContext(store.name, self);
+  onMount(self, () => mountContext(context));
+  onUnmount(self, () => unmountContext(context));
 
   callInContext(context, () => {
-    self.state[store[STORE_ID]!] = store.call(context.state, options as any);
+    self[store[STORE_ID]!] = store.call(context, options as any);
   });
 
-  return self.state[store[STORE_ID]];
+  return self[store[STORE_ID]];
 }
 
 /**
@@ -64,7 +73,7 @@ export function $use<Returns>(store: Store<any, Returns> & { [STORE_ID]?: symbol
   assertTypeOf(store, isFunction, "Expected a store function. Got: %t");
 
   const id = store[STORE_ID];
-  const result = id ? self.state[id] : undefined;
+  const result = id ? self[id] : undefined;
   if (result == null) {
     throw new Error(`Store '${store.name}' is not provided by this context.`);
   }
@@ -91,20 +100,20 @@ export function $setup(callback: AsyncSetupCallback): void;
 export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
   const self = $$context();
 
-  self.onMount(() => {
+  onMount(self, () => {
     const controller = new AbortController();
     const result = callback(controller.signal);
     if (isPromise(result)) {
-      self.onUnmount(() => {
+      onUnmount(self, () => {
         controller.abort();
       });
       result.then((callback) => {
         if (!controller.signal.aborted && typeof callback === "function") {
-          self.onUnmount(callback);
+          onUnmount(self, callback);
         }
       });
     } else if (isFunction(result)) {
-      self.onUnmount(result);
+      onUnmount(self, result);
     }
   });
 }
@@ -113,7 +122,7 @@ export function $setup(callback: SetupCallback | AsyncSetupCallback): void {
  * Schedules `callback` to run when the component is unmounted.
  */
 export function $teardown(callback: () => void | Promise<void>): void {
-  $$context().onUnmount(callback);
+  onUnmount($$context(), callback);
 }
 
 /**
@@ -123,12 +132,4 @@ export function $teardown(callback: () => void | Promise<void>): void {
 export function $effect(callback: EffectFn): UnsubscribeFn {
   const context = $$context();
   return effect(callback, { context });
-}
-
-/**
- * Returns a Debug instance bound to the active context.
- */
-export function $debug() {
-  const context = $$context();
-  return new Debug(context);
 }
