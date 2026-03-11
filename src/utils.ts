@@ -1,55 +1,10 @@
+import { MountTarget } from "./core/markup/types";
+
 export const noOp = () => {};
 
-/**
- * Generates effectively infinite incrementing IDs.
- */
-export class IdGenerator {
-  static #ALPHABET = new TextEncoder().encode("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_");
-
-  #indices = new Uint8Array(12); // Sufficient for 2^72 IDs
-  #asciiBuffer = new Uint8Array(12);
-  #currentLength = 1;
-  #decoder = new TextDecoder();
-
-  next() {
-    let carry = true;
-
-    // Increment the indices (Right-to-Left)
-    for (let i = this.#currentLength - 1; i >= 0; i--) {
-      if (this.#indices[i] < 63) {
-        this.#indices[i]++;
-        carry = false;
-        break;
-      } else {
-        this.#indices[i] = 0;
-      }
-    }
-
-    // Handle overflow (Increase ID length)
-    if (carry) {
-      if (this.#currentLength >= this.#indices.length) {
-        throw new Error("ID Buffer Overflow: Maximum length reached.");
-      }
-      this.#currentLength++;
-      this.#indices.fill(0, 0, this.#currentLength);
-      this.#indices[0] = 1; // Start new length at 'B'
-    }
-
-    // Map indices to ASCII values
-    for (let i = 0; i < this.#currentLength; i++) {
-      this.#asciiBuffer[i] = IdGenerator.#ALPHABET[this.#indices[i]];
-    }
-
-    // Decode the used portion of the buffer into a single string
-    return this.#decoder.decode(this.#asciiBuffer.subarray(0, this.#currentLength));
-  }
-}
-
-let ids: IdGenerator | undefined;
-
+let lastId = 0;
 export function uniqueId() {
-  if (!ids) ids = new IdGenerator();
-  return ids.next();
+  return (lastId++).toString(36);
 }
 
 /*=============================*\
@@ -68,11 +23,11 @@ export function strictEqual(a: any, b: any): boolean {
  * Equality check that passes if both values are the same object, or if both are objects or arrays with equal keys and values.
  */
 export function shallowEqual(a: any, b: any): boolean {
-  if (Object.is(a, b)) return true;
+  if (strictEqual(a, b)) return true;
   if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
 
-  if (Array.isArray(a)) {
-    if (!Array.isArray(b) || a.length !== b.length) return false;
+  if (isArray(a)) {
+    if (!isArray(b) || a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
     return true;
   }
@@ -111,7 +66,7 @@ export function deepEqual(a: any, b: any): boolean {
     if (a.constructor !== b.constructor) return false;
 
     var length, i, keys;
-    if (Array.isArray(a)) {
+    if (isArray(a)) {
       length = a.length;
       if (length != b.length) return false;
       for (i = length; i-- !== 0; ) if (!deepEqual(a[i], b[i])) return false;
@@ -211,7 +166,7 @@ export function omit<O extends Record<any, any>>(keys: (keyof O)[], object: O): 
 \*=============================*/
 
 export function toArray<T>(value: T | T[]): T[] {
-  if (Array.isArray(value)) {
+  if (isArray(value)) {
     return value;
   } else {
     return [value];
@@ -225,6 +180,14 @@ export function toCamelCase(s: string) {
 // export function deepFreeze<T>(obj: T): T {
 
 // }
+
+export function addChild(parent: MountTarget, node: Node, after?: Node | null) {
+  if (after) {
+    parent.insertBefore(node, after?.nextSibling);
+  } else {
+    parent.appendChild(node);
+  }
+}
 
 /**
  * Moves an element using `moveBefore` if the browser supports it, otherwise falls back to `insertBefore`.
@@ -254,6 +217,19 @@ export function getElement(element: string | Element): Element {
   }
 }
 
+export function addListener<T extends Event>(target: EventTarget, event: string, listener: (event: T) => any) {
+  target.addEventListener(event, listener as any);
+  return () => target.removeEventListener(event, listener as any);
+}
+
+export function setAttribute(element: Element, name: string, value: any) {
+  if (value) {
+    element.setAttribute(name, String(value));
+  } else {
+    element.removeAttribute(name);
+  }
+}
+
 /**
  * Takes any string and returns an OKLCH color.
  */
@@ -269,51 +245,6 @@ export function okhash(value: string) {
 ||        Type Checking        ||
 \*=============================*/
 
-type TypeNames =
-  // These values can be returned by `typeof`.
-  | "string"
-  | "number"
-  | "bigint"
-  | "boolean"
-  | "symbol"
-  | "undefined"
-  | "object"
-  | "function"
-  // These values are more specific ones that the `typeOf` function can return.
-  | "null"
-  | "array"
-  | "class"
-  | "promise"
-  | "map"
-  | "set"
-  | "NaN";
-
-/**
- * Extends `typeof` operator with more specific and useful type distinctions.
- */
-export function typeOf(value: any): TypeNames {
-  const type = typeof value;
-  switch (type) {
-    case "undefined":
-      return type;
-    case "number":
-      if (isNaN(value as any)) return "NaN";
-      return type;
-    case "function":
-      if (/^\s*class\s+/.test(value.toString())) return "class";
-      return type;
-    case "object":
-      if (value === null) return "null";
-      if (value instanceof Promise) return "promise";
-      if (value instanceof Map) return "map";
-      if (value instanceof Set) return "set";
-      if (Array.isArray(value)) return "array";
-      return type;
-    default:
-      return type;
-  }
-}
-
 /**
  * Throws a TypeError unless `condition` is truthy.
  *
@@ -322,32 +253,8 @@ export function typeOf(value: any): TypeNames {
  */
 export function assert(condition: any, errorMessage?: string): void {
   if (!condition) {
-    throw new TypeError(
-      _formatError(condition, errorMessage || "Failed assertion. Value is not truthy. Got type: %t, value: %v"),
-    );
+    throw new TypeError(errorMessage || "Failed assertion");
   }
-}
-
-export function assertType<T>(
-  test: (value: unknown) => value is T,
-  value: unknown,
-  message = "Unexpected type. Got type: %t, value: %v",
-): value is T {
-  if (test(value)) {
-    return true;
-  }
-  throw new TypeError(_formatError(value, message));
-}
-
-export function assertTypeOf<T>(
-  value: unknown,
-  test: (value: unknown) => value is T,
-  message = "Unexpected type. Got type: %t, value: %v",
-): value is T {
-  if (test(value)) {
-    return true;
-  }
-  throw new TypeError(_formatError(value, message));
 }
 
 /**
@@ -385,7 +292,11 @@ export function isString(value: unknown): value is string {
  * Returns true if `value` is a function (but not a class).
  */
 export function isFunction<T = (...args: unknown[]) => unknown>(value: unknown): value is T {
-  return typeOf(value) === "function";
+  return typeof value === "function" && !isClass(value);
+}
+
+export function isClass(value: unknown) {
+  return /^\s*class\s+/.test(String(value));
 }
 
 /**
@@ -424,16 +335,4 @@ export function isPromise<T = unknown>(value: unknown): value is Promise<T> {
  */
 export function isObject<T = Record<string | number | symbol, unknown>>(value: unknown): value is T {
   return value != null && typeof value === "object" && !isArray(value);
-}
-
-/**
- * Replaces `%t` and `%v` placeholders in a message with real values.
- */
-function _formatError(value: unknown, message: string) {
-  const typeName = typeOf(value);
-
-  // TODO: Pretty format value as string based on type.
-  const valueString = value?.toString?.() || String(value);
-
-  return message.replaceAll("%t", typeName).replaceAll("%v", valueString);
 }

@@ -1,5 +1,5 @@
 import { View } from "../types.js";
-import { isFunction, isObject, isString, uniqueId } from "../utils.js";
+import { isArray, isFunction, isObject, isString, uniqueId } from "../utils.js";
 import type { JourneyStep, LazyView, Route, RouteLayer, Stringable } from "./types.js";
 
 export interface Match {
@@ -144,7 +144,7 @@ export function mergeQueryParams(
 
   if (preserve === true) {
     Object.assign(merged, previous, current);
-  } else if (Array.isArray(preserve)) {
+  } else if (isArray(preserve)) {
     const preserved: Record<string, any> = {};
     for (const key in previous) {
       if (preserve.includes(key)) {
@@ -398,7 +398,7 @@ export async function resolveRoute(
 
     if (isString(redirect)) {
       path = replaceParams(redirect, match.params);
-    } else if (typeof redirect === "function") {
+    } else if (isFunction(redirect)) {
       path = await redirect(match);
 
       if (!isString(path)) {

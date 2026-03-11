@@ -29,18 +29,13 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
   - tracking contexts (memo, `$watch`, `<For>` render, getters -- goes into views)
 - Components
   - basic types overview
-  - ($hooks) lifecycle and `$setup`, `$teardown`
-  - context (and `$$context` special hook)
+  - lifecycle: `onMount`, `onCleanup`
+  - context
   - Views
-    - reactive element props/attrs
-    - control flow with `<Show>`, `<For>`
-    - `<Portal>`
-    - Error handling with `<Boundary>` and `$catch`
-  - Mixins
-  - Stores (and `$provide` and `$use`)
-- createRoot
-  - mount + unmount
-  - plugins
+    - reactive props/attrs
+    - helpers (`repeat`, `when`, `portal`)
+  - Stores (with `provide` and `inject`)
+- mount
 - Extras
   - Router
   - Translate
@@ -60,6 +55,18 @@ function Counter() {
       <button onclick=${() => count((c) => c + 1)}>Increment</button>
     </div>
   `;
+}
+
+function AuthStore() {
+  return {
+    /* ... */
+  };
+}
+
+function Example() {
+  provide(this, AuthStore);
+
+  const auth = inject(this, AuthStore);
 }
 
 mount(Counter, document.body);
@@ -120,106 +127,6 @@ mount(Converter, document.body);
 ```
 
 The `memo` function creates a read-only signal that derives its state from the signals it depends on. Its callback is called immediately, accessed signals are tracked as dependencies, and then the callback runs again if any of those dependencies change. Calling the memoized signal in the meantime will simply return the last computed value.
-
-## Opting out of tracking with `peek(signal)`
-
-```ts
-const count = signal(2);
-const doubled = memo(() => {
-  return peek(count) * 2;
-});
-
-doubled.get(); // is 4
-count.get(); // is 2
-```
-
-That seems to be working as expected, but if we update `count` things don't update:
-
-```ts
-count.set(15);
-
-doubled.get(); // still 4
-count.get(); // now 15
-```
-
-We can fix this by opting in to tracking with `.track()` instead of simply getting the value with `.get()`:
-
-```ts
-const count = state(2);
-const doubled = computed(() => {
-  return count.track() * 2; // we're tracking now
-});
-
-doubled.get(); // is 4
-count.get(); // is 2
-
-count.set(15);
-
-doubled.get(); // now 30
-count.get(); // now 15
-```
-
-This makes the relationship between `count` and `doubled` very apparent. We need `doubled` to update when the value of `count` is changed.
-
-## Example: To Do List
-
-```tsx
-// bind, <For> and getter functions
-
-function ToDoList() {
-  const items = ["React", "Vue", "Angular", "Svelte", "Solid", "Dolla"];
-  const [query, setQuery] = state("");
-
-  const filtered = memo(() => {
-    return items.toLowerCase().includes(query().toLowerCase());
-  });
-
-  return (
-    <div>
-      <input
-        type="text"
-        placeholder="Search..."
-        value={query}
-        onInput={(e) => {
-          setQuery(e.target.value);
-        }}
-      />
-
-      <ul>
-        <For each={filtered} key={(item) => item}>
-          {(item, index) => <li>{item}</li>}
-        </For>
-      </ul>
-
-      <p>Showing {() => filtered().length} result(s)</p>
-    </div>
-  );
-}
-
-// Hooks and <Show>
-
-function $fetch(url) {
-  const [data, setData] = state();
-
-  $watch(() => {
-    fetch(url)
-      .then((res) => res.json())
-      .then((json) => setData(json));
-  });
-
-  return { data };
-}
-
-function Fetcher() {
-  const { data } = $fetch("https://api.example.com/data");
-
-  return (
-    <Show when={data} fallback={<p>Loading...</p>}>
-      <pre>{() => JSON.stringify(data(), null, 2)}</pre>
-    </Show>
-  );
-}
-```
 
 ### 2\. Stores: For your shared state
 

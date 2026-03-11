@@ -1,4 +1,5 @@
 import { createMarkup, Renderable } from "..";
+import { isFunction } from "../../utils";
 import { type Getter, memo } from "../signals";
 import { DynamicNode } from "./nodes/dynamic";
 import { PortalNode } from "./nodes/portal";
@@ -16,7 +17,7 @@ export function repeat<T>(
   keyFn: KeyFn<T>,
   renderFn: RenderFn<T>,
 ): Renderable {
-  if (typeof items === "function") {
+  if (isFunction(items)) {
     return createMarkup(RepeatNode<T>, { args: [items, keyFn, renderFn] });
   } else {
     return Array.from(items).map((item, index) =>
@@ -36,7 +37,7 @@ export function repeat<T>(
  * @param whenFalsy - Content to display when condition is falsy.
  */
 export function when(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
-  if (typeof condition === "function") {
+  if (isFunction(condition)) {
     return createMarkup(DynamicNode, {
       args: [memo(() => (condition() ? whenTruthy : whenFalsy))],
     });

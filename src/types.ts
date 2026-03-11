@@ -20,7 +20,7 @@ export type Renderable =
   | null
   | undefined
   | void
-  | Getter<Renderable>
+  | Getter<any>
   | Renderable[];
 
 export interface BaseProps {
@@ -30,12 +30,20 @@ export interface BaseProps {
 /**
  *
  */
-export type View<Props = {}> = (this: Record<string | symbol, any>, props: Props) => Renderable;
+export type View<Props = {}, State = Record<string | symbol, any>> = (
+  this: Context<State>,
+  props: Props,
+  context: Context<State>,
+) => Renderable;
 
 /**
  *
  */
-export type Store<Options, Value> = (this: Record<string | symbol, any>, options: Options) => Value;
+export type Store<Options, Value, State = Record<string | symbol, any>> = (
+  this: Context<State>,
+  options: Options,
+  context: Context<State>,
+) => Value;
 
 declare global {
   interface Window {

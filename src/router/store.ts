@@ -1,31 +1,30 @@
-import { memo, peek, type Getter, type Setter } from "../core";
+import { memo, peek, type Accessor, type Getter } from "../core";
 import type { Router } from "./types";
 import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 
 export interface RouterStoreProps {
-  match: Getter<Match>;
-  setMatch: Setter<Match>;
+  currentMatch: Accessor<Match>;
   progress: Getter<number>;
   history: HistoryAdapter;
   updateRoute: () => void;
 }
 
-export function RouterStore({ match, setMatch, progress, history, updateRoute }: RouterStoreProps): Router {
+export function RouterStore({ currentMatch, progress, history, updateRoute }: RouterStoreProps): Router {
   return {
-    path: memo(() => match().path),
-    pattern: memo(() => match().pattern),
-    params: memo(() => match().params),
-    query: memo(() => match().query),
-    meta: memo(() => match().meta),
+    path: memo(() => currentMatch().path),
+    pattern: memo(() => currentMatch().pattern),
+    params: memo(() => currentMatch().params),
+    query: memo(() => currentMatch().query),
+    meta: memo(() => currentMatch().meta),
     progress: progress,
 
     setQuery(params) {
-      const m = peek(match);
+      const m = peek(currentMatch);
       const path = m.path;
       const merged = mergeQueryParams(m.query, params, true);
       const query = Object.fromEntries(merged);
 
-      setMatch((current) => ({ ...current, query }));
+      currentMatch((prev) => ({ ...prev, query }));
 
       const queryString = merged.size > 0 ? "?" + merged.toString() : "";
       history.replace(path + queryString);
@@ -59,7 +58,7 @@ export function RouterStore({ match, setMatch, progress, history, updateRoute }:
 
     isActive(path: string, exact = false) {
       return memo(() => {
-        const currentPath = match().path;
+        const currentPath = currentMatch().path;
 
         if (exact) {
           // Normalize trailing slashes for exact match

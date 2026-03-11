@@ -1,4 +1,4 @@
-import { $$context, $provide, $setup } from "../core/hooks.js";
+import { Context, provide, inject, onMount, onCleanup } from "../core/context.js";
 import { Debug } from "../debug/debug.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
@@ -42,29 +42,30 @@ export function createRouter(options: RouterOptions): View {
   const scrollCache = new Map<string, number>();
   let currentKey = history.getKey();
 
-  const [currentMatch, setCurrentMatch] = state<Match>({
+  const currentMatch = state<Match>({
     path: history.getPath(),
     pattern: "",
     params: {},
     query: Object.fromEntries(new URLSearchParams(history.getSearch())),
     meta: {},
   });
-  const [progress, setProgress] = state<number>(0);
+  const progress = state(0);
 
   const routeTree = buildRouteTree(options.routes);
 
-  return function RouterView() {
-    const context = $$context();
-    context.setName("dolla:router");
+  return function RouterView(this: Context) {
+    const context = this;
+
+    this.name = "dolla:router";
 
     const console = new Debug("dolla:router");
 
-    const [rootSlot, setRootSlot] = state<MarkupNode>();
+    const rootSlot = state<MarkupNode>();
     const rootLayer = {
       id: uniqueId(),
       node: new DynamicNode(context, rootSlot),
       context,
-      setSlot: setRootSlot,
+      slot: rootSlot,
     };
     const activeLayers: ActiveLayer[] = [];
 
@@ -151,13 +152,13 @@ export function createRouter(options: RouterOptions): View {
       // Track loading progress.
       const totalTasks = tasks.length;
       if (totalTasks > 0) {
-        setProgress(0.1);
+        progress(0.1);
         let completed = 0;
 
         tasks.forEach((p) => {
           p.then(() => {
             completed++;
-            setProgress(0.1 + (completed / totalTasks) * 0.8);
+            progress(0.1 + (completed / totalTasks) * 0.8);
           }).catch(() => {}); // Errors handled by Promise.all below.
         });
       }
@@ -166,7 +167,7 @@ export function createRouter(options: RouterOptions): View {
       try {
         await Promise.all(tasks);
       } catch (error) {
-        setProgress(0);
+        progress(0);
 
         if (error instanceof RedirectError) {
           api.replace(error.redirectPath);
@@ -192,7 +193,7 @@ export function createRouter(options: RouterOptions): View {
       // Run in batch so all new layers are mounted simultaneously with match signal change.
       // This avoids the old route effects receiving new signal values just before they unmount.
       batch(() => {
-        setCurrentMatch({ ...match, query: Object.fromEntries(query) });
+        currentMatch({ ...match, query: Object.fromEntries(query) });
 
         // If nothing actually diverged (e.g. just a query param change), we are done.
         if (divergenceIndex === layers.length && activeLayers.length === layers.length) {
@@ -210,7 +211,7 @@ export function createRouter(options: RouterOptions): View {
         for (let i = divergenceIndex; i < layers.length; i++) {
           const currentLayer = layers[i];
           const parentLayer = activeLayers[i - 1] ?? rootLayer;
-          const [slot, setSlot] = state<MarkupNode>();
+          const slot = state<MarkupNode>();
 
           let viewToMount = currentLayer.view as View<any>;
           let propsToPass: any = {
@@ -230,14 +231,14 @@ export function createRouter(options: RouterOptions): View {
           }
 
           const node = new ViewNode(parentLayer.context, viewToMount, propsToPass);
-          parentLayer.setSlot(node);
+          parentLayer.slot(node);
 
           activeLayers.push({
             id: currentLayer.id,
             key: layerKeys[i],
             node,
             context: node.context,
-            setSlot,
+            slot,
           });
 
           // Stop mounting deeper layers if we hit an error boundary layer
@@ -245,7 +246,7 @@ export function createRouter(options: RouterOptions): View {
         }
       });
 
-      setProgress(0);
+      progress(0);
 
       // Restore the scroll position of the page we are entering.
       requestAnimationFrame(() => {
@@ -256,27 +257,27 @@ export function createRouter(options: RouterOptions): View {
       });
     }
 
-    const api = $provide(RouterStore, {
-      match: currentMatch,
-      setMatch: setCurrentMatch,
+    const api = provide(this, RouterStore, {
+      currentMatch,
       progress,
       history,
       updateRoute,
     });
 
     // Listen for `popstate` events and update route accordingly.
-    $setup(() => {
+    onMount(this, () => {
       const onPopState = () => updateRoute(undefined, true);
       window.addEventListener("popstate", onPopState);
-      return () => window.removeEventListener("popstate", onPopState);
+      onCleanup(this, () => window.removeEventListener("popstate", onPopState));
     });
 
     // Intercept clicks on `<a>` tags within the app.
-    $setup(() => {
+    onMount(this, () => {
       const parentElement = context[PARENT_ELEMENT] as Element;
-      return catchLinks(parentElement, (path) => {
+      const stop = catchLinks(parentElement, (path) => {
         api.push(path);
       });
+      onCleanup(this, stop);
     });
 
     updateRoute();

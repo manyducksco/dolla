@@ -1,10 +1,10 @@
 import type { Renderable } from "../../../types.js";
+import { addChild } from "../../../utils.js";
 import type { Context } from "../../context.js";
-import { batch, Getter, Setter, state, subscribe, type UnsubscribeFn } from "../../signals.js";
+import { batch, Getter, state, subscribe, type Accessor } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
-import { toMarkupNodes } from "../utils.js";
-import { DynamicNode } from "./dynamic.js";
+import { render } from "../utils.js";
 
 // ----- Types ----- //
 
@@ -14,12 +14,10 @@ export type KeyFn<T> = (item: T, index: number) => Key;
 export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable;
 
 type ConnectedItem<T> = {
-  key: Key;
-  item: Getter<T>;
-  setItem: Setter<T>;
-  index: Getter<number>;
-  setIndex: Setter<number>;
-  node: MarkupNode;
+  _key: Key;
+  _item: Accessor<T>;
+  _index: Accessor<number>;
+  _node: MarkupNode;
 };
 
 // ----- Code ----- //
@@ -28,39 +26,39 @@ type ConnectedItem<T> = {
  * Renders a list of items.
  */
 export class RepeatNode<T> extends MarkupNode {
-  private root = document.createTextNode("");
+  #root = document.createTextNode("");
 
-  private context;
+  #context;
 
-  private items: Getter<Iterable<T>>;
-  private key: KeyFn<T>;
-  private render: RenderFn<T>;
+  #items: Getter<Iterable<T>>;
+  #key: KeyFn<T>;
+  #render: RenderFn<T>;
 
-  private unsubscribe: UnsubscribeFn | null = null;
-  private connectedItems: Map<Key, ConnectedItem<T>> = new Map();
+  #unsubscribe: (() => void) | null = null;
+  #connectedItems: Map<Key, ConnectedItem<T>> = new Map();
 
   constructor(context: Context, items: Getter<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
-    this.context = context;
+    this.#context = context;
 
-    this.items = items;
-    this.key = key;
-    this.render = render;
+    this.#items = items;
+    this.#key = key;
+    this.#render = render;
   }
 
   override getRoot() {
-    return this.root;
+    return this.#root;
   }
 
   override isMounted() {
-    return this.root.parentElement != null;
+    return this.#root.parentElement != null;
   }
 
   override mount(parent: Element, after?: Node) {
     if (!this.isMounted()) {
-      parent.insertBefore(this.root, after?.nextSibling ?? null);
+      addChild(parent, this.#root, after);
 
-      this.unsubscribe = subscribe(this.items, (items) => {
+      this.#unsubscribe = subscribe(this.#items, (items) => {
         scheduleUpdate(() => {
           this._update(Array.from(items));
         });
@@ -69,13 +67,13 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   override unmount(skipDOM = false) {
-    if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
+    if (this.#unsubscribe) {
+      this.#unsubscribe();
+      this.#unsubscribe = null;
     }
 
     if (!skipDOM && this.isMounted()) {
-      this.root.parentNode?.removeChild(this.root);
+      this.#root.parentNode?.removeChild(this.#root);
     }
 
     this._cleanup(skipDOM);
@@ -87,10 +85,10 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   private _cleanup(skipDOM: boolean) {
-    for (const item of this.connectedItems.values()) {
-      item.node.unmount(skipDOM);
+    for (const item of this.#connectedItems.values()) {
+      item._node.unmount(skipDOM);
     }
-    this.connectedItems.clear();
+    this.#connectedItems.clear();
   }
 
   private _update(value: T[]) {
@@ -104,59 +102,60 @@ export class RepeatNode<T> extends MarkupNode {
 
     batch(() => {
       // Track keys for the incoming list
-      const nextKeys = new Set(value.map((item, index) => this.key(item, index)));
+      const nextKeys = new Set(value.map((item, index) => this.#key(item, index)));
 
       // Unmount deleted items immediately.
       // This collapses the DOM tree so surviving items sit adjacent to each other.
-      for (const [key, connected] of this.connectedItems.entries()) {
+      for (const [key, connected] of this.#connectedItems.entries()) {
         if (!nextKeys.has(key)) {
-          connected.node.unmount(false);
+          connected._node.unmount(false);
         }
       }
 
       // Prepare state and allocate new nodes.
       for (let i = 0; i < value.length; i++) {
         const itemVal = value[i];
-        const key = this.key(itemVal, i);
-        let connected = this.connectedItems.get(key);
+        const key = this.#key(itemVal, i);
+        let connected = this.#connectedItems.get(key);
 
         if (connected && nextKeys.has(key)) {
-          connected.setItem(itemVal);
-          connected.setIndex(i);
+          connected._item(itemVal);
+          connected._index(i);
         } else {
-          const [item, setItem] = state(itemVal);
-          const [index, setIndex] = state(i);
+          const item = state(itemVal);
+          const index = state(i);
 
-          const rendered = this.render(item, index);
+          const renderContent = this.#render(
+            () => item(),
+            () => index(),
+          );
+          const node = render(renderContent, this.#context);
 
-          const nodes = toMarkupNodes(this.context, [rendered]);
-          const node = nodes.length === 1 ? nodes[0] : new DynamicNode(this.context, () => nodes);
-
-          connected = { key, item, setItem, index, setIndex, node };
+          connected = { _key: key, _item: item, _index: index, _node: node };
         }
         nextItems.set(key, connected);
       }
     });
 
-    this.connectedItems = nextItems;
+    this.#connectedItems = nextItems;
 
     // Forward pass to insert or move nodes.
-    const parent = this.root.parentElement!;
-    let referenceNode: Node = this.root;
+    const parent = this.#root.parentElement!;
+    let referenceNode: Node = this.#root;
 
-    for (const connected of this.connectedItems.values()) {
+    for (const connected of this.#connectedItems.values()) {
       const expectedNext = referenceNode.nextSibling;
 
-      if (!connected.node.isMounted()) {
+      if (!connected._node.isMounted()) {
         // Node is new. Mount it exactly at the current cursor.
-        connected.node.mount(parent, referenceNode);
-      } else if (connected.node.getRoot() !== expectedNext) {
+        connected._node.mount(parent, referenceNode);
+      } else if (connected._node.getRoot() !== expectedNext) {
         // Node is out of order. Move it.
-        connected.node.move(parent, referenceNode);
+        connected._node.move(parent, referenceNode);
       }
 
       // Advance the cursor.
-      referenceNode = connected.node.getRoot()!;
+      referenceNode = connected._node.getRoot()!;
     }
   }
 }

@@ -55,9 +55,6 @@
     "dist",
     "*.d.ts"
   ],
-  "dependencies": {
-    "alien-signals": "^2.0.5"
-  },
   "devDependencies": {
     "@types/node": "^24.1.0",
     "csstype": "^3.2.3",

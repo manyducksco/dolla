@@ -31,7 +31,7 @@ describe("type checking", () => {
 // test("render", () => {});
 
 test("toMarkupNodes", () => {
-  const [count, setCount] = state(5);
+  const count = state(5);
 
   const context = createContext("test");
   const nodes = toMarkupNodes(

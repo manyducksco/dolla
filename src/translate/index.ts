@@ -1,5 +1,5 @@
 import { get, memo, state, type Getter } from "../core/signals.js";
-import { typeOf } from "../utils.js";
+import { isFunction } from "../utils.js";
 
 // ----- Types ----- //
 
@@ -110,7 +110,7 @@ export function createTranslator(options: TranslateOptions): Translator {
 
   let lookup: LookupFn | undefined;
 
-  const [currentLocale, setCurrentLocale] = state("en");
+  const currentLocale = state("en");
   const supportedLocales = [...Object.keys(options.translations)];
 
   /**
@@ -164,7 +164,7 @@ export function createTranslator(options: TranslateOptions): Translator {
     lookup = await createLookup(locale, formatters, options.translations[locale]);
 
     // Update locale string after init so t() signals will update.
-    setCurrentLocale(locale);
+    currentLocale(locale);
   }
 
   function t(selector: string, options?: TOptions): Getter<string> {
@@ -193,7 +193,7 @@ export function createTranslator(options: TranslateOptions): Translator {
 
   return {
     supportedLocales,
-    currentLocale,
+    currentLocale: () => currentLocale(),
     setLocale,
     t,
     format,
@@ -208,7 +208,7 @@ async function createLookup(
   formatters: Map<string, Formatter>,
   translation: TranslationFetchFn | LocalizedStrings,
 ) {
-  const strings = typeof translation === "function" ? await translation() : translation;
+  const strings = isFunction(translation) ? await translation() : translation;
   const entries = compile(strings);
   const templates = new Map(entries);
 
@@ -262,7 +262,7 @@ export function compile(strings: { [key: string]: any }, path: string[] = []): [
   const entries: [string, CompiledTemplate][] = [];
 
   for (const key in strings) {
-    switch (typeOf(strings[key])) {
+    switch (typeof strings[key]) {
       case "string":
         entries.push([[...path, key].join("."), parseTemplate(strings[key])]);
         break;
@@ -271,7 +271,7 @@ export function compile(strings: { [key: string]: any }, path: string[] = []): [
         break;
       default:
         throw new Error(
-          `Expected to find a string or object at ${[...path, key].join(".")}. Got: ${typeOf(strings[key])}`,
+          `Expected to find a string or object at ${[...path, key].join(".")}. Got: ${typeof strings[key]}`,
         );
     }
   }

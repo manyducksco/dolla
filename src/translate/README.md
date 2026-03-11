@@ -1,8 +1,8 @@
 # Translate
 
-```js
-// In translate.js
+In `translate.js`:
 
+```js
 import { createTranslator } from "...";
 
 export const { t, setLocale, currentLocale } = createTranslator({
@@ -11,16 +11,22 @@ export const { t, setLocale, currentLocale } = createTranslator({
     ja: () => fetch("/locales/ja.json").then((res) => res.json()),
   },
 });
+```
 
-// In views/App.js
+In `./views/App.js`:
+
+```js
 import { t } from "../translate.js";
 
 export function App() {
   // Use the `t` function to get translated strings. It returns a Getter<string>.
   return html`<button>${t("buttonLabel")}</button>`;
 }
+```
 
-// In main.js
+`In`main.js`:
+
+```js
 import { mount } from "@manyducks.co/dolla";
 import { App } from "./views/App.js";
 import { setLocale } from "./translate.js";

@@ -6,27 +6,25 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { mount, signal, html, $debug, $setup, $teardown, $effect } from "../dist/index.js";
+      import { mount, state, html, onMount, onCleanup, onEffect } from "../dist/index.js";
 
       function Counter() {
-        const count = signal(0);
+        const count = state(0);
 
-        const console = $debug();
-
-        $setup(() => {
-          console.log("WE ARE MOUNTED");
+        onMount(this, () => {
+          console.log("WE ARE MOUNTED", this);
         });
 
-        $teardown(() => {
+        onCleanup(this, () => {
           console.log("WE ARE UNMOUNTED");
         });
 
         // What are all the tracking contexts?
         // - effect() callback
         // - memo() callback
-        // - any markup element attribute or child (besides event handlers)
+        // - any markup element attribute or child (except event handlers)
 
-        $effect(() => {
+        onEffect(this, () => {
           console.log("count is", count());
         });
 
@@ -39,21 +37,19 @@
       }
 
       mount(Counter, document.getElementById("counter"));
-
-      // createRoot("#counter").mount(Counter);
     </script>
 
     <div id="providers"></div>
     <script type="module">
-      import { createRoot, state, html, $provide, $use, show } from "../dist/index.js";
+      import { mount, state, html, provide, inject, when } from "../dist/index.js";
 
       function Store() {
-        const [value, setValue] = state();
-        return { value, setValue };
+        const value = state(0);
+        return { value: () => value(), setValue: value };
       }
 
-      function Parent() {
-        const { setValue } = $provide(Store);
+      function Parent(props, ctx) {
+        const { setValue } = provide(ctx, Store);
 
         setValue(10);
 
@@ -65,22 +61,22 @@
       }
 
       function Child() {
-        const { value } = $use(Store);
+        const { value } = inject(this, Store);
 
-        return html` <p>${show(() => value() === 10, "We're good", "Something is off")}</p> `;
+        return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
       }
 
-      createRoot("#providers").mount(Parent);
+      mount(Parent, document.getElementById("providers"));
     </script>
 
     <div id="inherited-state"></div>
     <script type="module">
-      import { mount, signal, html, $setup, $debug } from "../dist/index.js";
+      import { mount, state, html, onMount } from "../dist/index.js";
 
       function Parent() {
-        this.count = signal(0); // set count on context
+        this.count = state(0); // set count on context
 
-        $setup(() => {
+        onMount(this, () => {
           const interval = setInterval(() => {
             this.count((current) => current + 1);
           }, 1000);
@@ -98,9 +94,6 @@
       function Child() {
         const count = this.count; // get count from context
 
-        const console = $debug();
-        console.log(this);
-
         return html`
           <p>Count from context: ${count}</p>
 
@@ -111,18 +104,64 @@
       mount(Parent, document.getElementById("inherited-state"));
     </script>
 
+    <div id="stores-and-injection"></div>
+    <script type="module">
+      import { mount, state, html, provide, inject, onMount, onCleanup } from "../dist/index.js";
+
+      function CounterStore() {
+        const count = state(0);
+
+        return {
+          // Read-only count
+          count: () => count(),
+          increment: () => count((c) => c + 1),
+          reset: () => count(0),
+        };
+      }
+
+      function Parent() {
+        const { increment } = provide(this, CounterStore);
+
+        onMount(this, () => {
+          const interval = setInterval(increment, 1000);
+
+          onCleanup(this, () => {
+            clearInterval(interval);
+          });
+        });
+
+        return html`
+          <div>
+            <${Child} />
+          </div>
+        `;
+      }
+
+      function Child() {
+        const { count, reset } = inject(this, CounterStore);
+
+        return html`
+          <p>Count from CounterStore: ${count}</p>
+
+          <button onClick=${reset}>Reset</button>
+        `;
+      }
+
+      mount(Parent, document.getElementById("stores-and-injection"));
+    </script>
+
     <div id="web-components">
-      <app-counter id="counter" count="12"></app-counter>
-      <button id="randomize">Randomize</button>
+      <app-counter id="counter-component" count="12"></app-counter>
+      <button id="randomize-button">Randomize</button>
     </div>
     <script type="module">
-      import { html, signal, mount } from "../dist/index.js";
+      import { html, state, mount } from "../dist/index.js";
 
       // Simple web components usage.
       class CounterElement extends HTMLElement {
         static observedAttributes = ["count"];
 
-        count = signal(0);
+        count = state(0);
 
         constructor() {
           super();
@@ -130,12 +169,16 @@
         }
 
         connectedCallback() {
+          // TODO: Allow mounting an `html` block with multiple root nodes.
+          // I had to wrap them in a div to get them to show up.
           this.unmount = mount(
             html`
-              <p>Element count: ${this.count}</p>
-              <button onclick=${() => this.count((current) => current + 1)}>Increment</button>
-              <button onclick=${() => this.count((current) => current - 1)}>Decrement</button>
-              <button onclick=${() => this.count(0)}>Reset</button>
+              <div>
+                <p>Element count: ${this.count}</p>
+                <button onclick=${() => this.count((current) => current + 1)}>Increment</button>
+                <button onclick=${() => this.count((current) => current - 1)}>Decrement</button>
+                <button onclick=${() => this.count(0)}>Reset</button>
+              </div>
             `,
             this.root,
           );
@@ -157,14 +200,14 @@
 
       customElements.define("app-counter", CounterElement);
 
-      document.getElementById("randomize").addEventListener("click", () => {
-        document.getElementById("counter").setAttribute("count", String(Math.round(Math.random() * 500)));
+      document.getElementById("randomize-button").addEventListener("click", () => {
+        document.getElementById("counter-component").setAttribute("count", String(Math.round(Math.random() * 500)));
       });
     </script>
 
     <div id="sibling-lists"></div>
     <script type="module">
-      import { createRoot, state, memo, signal, html, repeat, show, $setup, $debug } from "../dist/index.js";
+      import { mount, memo, state, html, repeat, when, onMount, onCleanup } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -184,26 +227,17 @@
       }
 
       function List({ color, items }) {
-        const sorted = signal([...items]);
-        const debug = $debug();
+        const sorted = state([...items]);
 
         function randomize() {
-          debug.info("sorted", sorted(shuffled));
+          sorted(shuffled);
         }
 
-        const visible = signal(false);
+        const visible = state(false);
 
-        $setup(() => {
-          const interval = setInterval(
-            () => {
-              randomize();
-              // if (Math.random() > 0.75) {
-              //   visible.set(!visible.get());
-              // }
-            },
-            1000 + (Math.random() * 600 - 300),
-          );
-          return () => clearInterval(interval);
+        onMount(this, () => {
+          const interval = setInterval(randomize, 1000 + (Math.random() * 600 - 300));
+          onCleanup(this, () => clearInterval(interval));
         });
 
         return repeat(
@@ -211,14 +245,14 @@
           (item) => item,
           (item) => {
             return html`
-              <div style=${{ color: color }}>${item} ${show(visible, html`<input type="text"></input>`)}</div>
+              <div style=${{ color: color }}>${item} ${when(visible, html`<input type="text"></input>`)}</div>
             `;
           },
         );
       }
 
       function SiblingLists() {
-        const lists = signal([
+        const lists = state([
           html`<${List} color="red" items=${["broccoli", "zucchini", "radish"]} />`,
           html`<${List} color="blue" items=${["salami", "bacon", "turkey"]} />`,
           html`<${List} color="green" items=${["water", "tea", "coffee"]} />`,
@@ -228,12 +262,10 @@
           lists(shuffled);
         }
 
-        $setup(() => {
+        onMount(this, () => {
           const interval = setInterval(randomize, 2000 + (Math.random() * 600 - 300));
-          return () => clearInterval(interval);
+          onCleanup(this, () => clearInterval(interval));
         });
-
-        // return html``;
 
         return html`
           <div>
@@ -253,7 +285,7 @@
         // `;
       }
 
-      createRoot("#sibling-lists", { debug: true }).mount(SiblingLists);
+      mount(SiblingLists, document.getElementById("sibling-lists"));
     </script>
 
     <!-- <div

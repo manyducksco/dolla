@@ -1,5 +1,6 @@
+import { addChild } from "../../../utils.js";
 import type { Context } from "../../context.js";
-import { subscribe, type Getter, type UnsubscribeFn } from "../../signals.js";
+import { effect, peek, subscribe, type Getter } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
@@ -11,31 +12,40 @@ import { DOMNode } from "./dom.js";
  */
 
 export class DynamicNode extends MarkupNode {
-  private root = document.createTextNode("");
-  private children: MarkupNode[] = [];
-  private context: Context;
-  private slot: Getter<any>;
-  private unsubscribe?: UnsubscribeFn;
+  #root = document.createTextNode("");
+  #children: MarkupNode[] = [];
+  #context: Context;
+  #slot: Getter<any>;
+  #unsubscribe?: () => void;
 
   constructor(context: Context, slot: Getter<any>) {
     super();
-    this.context = context;
-    this.slot = slot;
+    this.#context = context;
+    this.#slot = slot;
   }
 
   override getRoot() {
-    return this.root;
+    return this.#root;
   }
 
   override isMounted() {
-    return this.root.parentElement != null;
+    return this.#root.parentElement != null;
   }
 
   override mount(parent: MountTarget, after?: Node) {
     if (!this.isMounted()) {
-      parent.insertBefore(this.root, after?.nextSibling ?? null);
+      addChild(parent, this.#root, after);
 
-      this.unsubscribe = subscribe(this.slot, (content) => {
+      this.#unsubscribe = effect(() => {
+        const content = this.#slot();
+        peek(() => {
+          scheduleUpdate(() => {
+            this.update(content);
+          });
+        });
+      });
+
+      this.#unsubscribe = subscribe(this.#slot, (content) => {
         scheduleUpdate(() => {
           this.update(content);
         });
@@ -44,11 +54,11 @@ export class DynamicNode extends MarkupNode {
   }
 
   override unmount(skipDOM = false) {
-    this.unsubscribe?.();
+    this.#unsubscribe?.();
 
     if (this.isMounted()) {
       if (!skipDOM) {
-        this.root.parentNode?.removeChild(this.root);
+        this.#root.parentNode?.removeChild(this.#root);
       }
       this.cleanup(skipDOM);
     }
@@ -59,11 +69,11 @@ export class DynamicNode extends MarkupNode {
 
     if ("moveBefore" in parent) {
       try {
-        (parent as any).moveBefore(this.root, referenceNode);
-        referenceNode = this.root.nextSibling;
+        (parent as any).moveBefore(this.#root, referenceNode);
+        referenceNode = this.#root.nextSibling;
 
-        for (let i = 0; i < this.children.length; i++) {
-          const childRoot = this.children[i].getRoot();
+        for (let i = 0; i < this.#children.length; i++) {
+          const childRoot = this.#children[i].getRoot();
           if (childRoot) {
             (parent as any).moveBefore(childRoot, referenceNode);
           }
@@ -75,19 +85,19 @@ export class DynamicNode extends MarkupNode {
     }
 
     // Standard DOM fallback (moves root AND children)
-    parent.insertBefore(this.root, referenceNode);
-    referenceNode = this.root.nextSibling;
+    parent.insertBefore(this.#root, referenceNode);
+    referenceNode = this.#root.nextSibling;
 
-    for (let i = 0; i < this.children.length; i++) {
-      this.children[i].move(parent, this.children[i - 1]?.getRoot() ?? this.root);
+    for (let i = 0; i < this.#children.length; i++) {
+      this.#children[i].move(parent, this.#children[i - 1]?.getRoot() ?? this.#root);
     }
   }
 
   private cleanup(skipDOM: boolean) {
-    for (let i = 0; i < this.children.length; i++) {
-      this.children[i].unmount(skipDOM);
+    for (let i = 0; i < this.#children.length; i++) {
+      this.#children[i].unmount(skipDOM);
     }
-    this.children.length = 0;
+    this.#children.length = 0;
   }
 
   private update(content: any) {
@@ -95,8 +105,8 @@ export class DynamicNode extends MarkupNode {
 
     // Fast-path for primitive text updates
     const isPrimitive = typeof content === "string" || typeof content === "number";
-    if (isPrimitive && this.children.length === 1) {
-      const child = this.children[0];
+    if (isPrimitive && this.#children.length === 1) {
+      const child = this.#children[0];
       if (child instanceof DOMNode) {
         const domNode = child.getRoot();
         if (domNode && domNode.nodeType === Node.TEXT_NODE) {
@@ -110,15 +120,15 @@ export class DynamicNode extends MarkupNode {
 
     if (content == null || content === false) return;
 
-    const nodes = toMarkupNodes(this.context, content);
+    const nodes = toMarkupNodes(this.#context, content);
 
-    const parent = this.root.parentElement!;
-    let referenceNode: Node = this.root;
+    const parent = this.#root.parentElement!;
+    let referenceNode: Node = this.#root;
 
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       node.mount(parent, referenceNode);
-      this.children.push(node);
+      this.#children.push(node);
 
       const nextRoot = node.getRoot();
       if (nextRoot) referenceNode = nextRoot;

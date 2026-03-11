@@ -1,4 +1,5 @@
 import type { Renderable } from "../../../types.js";
+import { addChild } from "../../../utils.js";
 import { Context } from "../../context.js";
 import { MarkupNode } from "../types.js";
 import { render } from "../utils.js";
@@ -8,57 +9,56 @@ import { render } from "../utils.js";
  */
 export class PortalNode extends MarkupNode {
   // Acts as a physical placeholder in the logical DOM tree
-  private anchor = document.createTextNode("");
+  #anchor = document.createTextNode("");
 
-  private context: Context;
-  private value: Renderable;
-  private parent: Element;
-
-  private childNode?: MarkupNode;
+  #context: Context;
+  #value: Renderable;
+  #parent: Element;
+  #childNode?: MarkupNode;
 
   constructor(context: Context, value: Renderable, parent: Element) {
     super();
-    this.context = context;
-    this.value = value;
-    this.parent = parent;
+    this.#context = context;
+    this.#value = value;
+    this.#parent = parent;
   }
 
   override getRoot() {
     // Return the anchor, allowing siblings to mount correctly around it
-    return this.anchor;
+    return this.#anchor;
   }
 
   override isMounted() {
-    return this.anchor.parentElement != null;
+    return this.#anchor.parentElement != null;
   }
 
   override mount(logicalParent: Element, after?: Node) {
     if (!this.isMounted()) {
       // Mount the anchor in the standard document flow
-      logicalParent.insertBefore(this.anchor, after?.nextSibling ?? null);
+      addChild(logicalParent, this.#anchor, after);
 
       // Render the content and mount it to the portal target
-      if (!this.childNode) {
-        this.childNode = render(this.value, this.context);
+      if (!this.#childNode) {
+        this.#childNode = render(this.#value, this.#context);
       }
-      this.childNode.mount(this.parent);
+      this.#childNode.mount(this.#parent);
     }
   }
 
   override unmount(skipDOM = false) {
     if (this.isMounted()) {
       if (!skipDOM) {
-        this.anchor.parentNode?.removeChild(this.anchor);
+        this.#anchor.parentNode?.removeChild(this.#anchor);
       }
 
       // Portals always force unmount the DOM of their children
-      if (this.childNode?.isMounted()) {
-        this.childNode.unmount(false);
+      if (this.#childNode?.isMounted()) {
+        this.#childNode.unmount(false);
       }
     }
   }
 
   override move(logicalParent: Element, after?: Node) {
-    logicalParent.insertBefore(this.anchor, after?.nextSibling ?? null);
+    logicalParent.insertBefore(this.#anchor, after?.nextSibling ?? null);
   }
 }

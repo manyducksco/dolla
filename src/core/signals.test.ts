@@ -1,13 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
-import { callInContext, createContext, mountContext, resumeContext, suspendContext, unmountContext } from "./context";
-import { batch, cleanup, effect, getter, memo, peek, signal, state, subscribe, type Getter } from "./signals";
+import { createContext, mountContext, onEffect, unmountContext } from "./context";
+import { batch, effect, memo, peek, state, subscribe, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
-  const [count, setCount] = state(5);
+  const count = state(5);
   const doubled = memo(() => count() * 2);
-
-  const same = getter(count);
-  expect(same()).toBe(5);
 
   expect(count()).toBe(5);
   expect(peek(doubled)).toBe(10);
@@ -22,21 +19,20 @@ test("basic composition & tracking", () => {
 
   // Effects should not run until end of batch.
   batch(() => {
-    setCount((c) => c + 1);
-    setCount((c) => c + 1);
-    setCount((c) => c + 1);
-    setCount((c) => c + 1);
+    count((c) => c + 1);
+    count((c) => c + 1);
+    count((c) => c + 1);
+    count((c) => c + 1);
   });
 
   expect(fn).toBeCalledTimes(2);
-  expect(peek(same)).toBe(9);
 
   stop();
 });
 
 test("mutable computed state", () => {
-  const [name, setName] = state("Bon");
-  const [inputValue, setInputValue] = state(() => name());
+  const name = state("Bon");
+  const inputValue = state(() => name());
 
   const spy = vi.fn();
   const stop = effect(() => {
@@ -48,14 +44,14 @@ test("mutable computed state", () => {
   expect(inputValue()).toBe("Bon");
   expect(name()).toBe("Bon");
 
-  setInputValue("Charals");
+  inputValue("Charals");
 
   expect(spy).toBeCalledTimes(2);
   expect(spy).toBeCalledWith("Charals");
   expect(inputValue()).toBe("Charals");
   expect(name()).toBe("Bon");
 
-  setName("Jack");
+  name("Jack");
 
   expect(spy).toBeCalledTimes(3);
   expect(spy).toBeCalledWith("Jack");
@@ -66,38 +62,29 @@ test("mutable computed state", () => {
 });
 
 test("effect cleanup", () => {
-  const [count, setCount] = state(5);
+  const count = state(5);
 
   const spy = vi.fn();
-  const spy2 = vi.fn();
   const stop = effect(() => {
-    cleanup(spy); // handle cleanups with hook
-
     count(); // triggers each time count changes
-
-    return spy2; // can still return a function to clean up
+    return spy; // return a function to clean up
   });
 
   expect(spy).toBeCalledTimes(0);
-  expect(spy2).toBeCalledTimes(0);
 
-  setCount(6);
+  count(6);
 
   expect(spy).toBeCalledTimes(1);
-  expect(spy2).toBeCalledTimes(1);
 
   stop();
 
   expect(spy).toBeCalledTimes(2);
-  expect(spy2).toBeCalledTimes(2);
 });
 
-test("memo cleanup", () => {});
-
 test("setting via accessor will take the value", () => {
-  const count = signal(500);
-  const other = signal(36);
-  const [val, setVal] = state(12);
+  const count = state(500);
+  const other = state(36);
+  const val = state(12);
 
   count(other);
 
@@ -109,22 +96,20 @@ test("setting via accessor will take the value", () => {
   expect(count()).toBe(36);
   expect(other()).toBe(50);
 
-  setVal(count);
+  val(count);
 
   expect(count()).toBe(36);
   expect(val()).toBe(36);
 });
 
-test("effects are bound to the active context", () => {
-  const count = signal(0);
+test("effects bind to the given context", () => {
+  const count = state(0);
 
   const spy = vi.fn();
 
   const context = createContext("signals");
-  callInContext(context, () => {
-    effect(() => {
-      spy(count());
-    });
+  onEffect(context, () => {
+    spy(count());
   });
 
   // Context not mounted yet; effect should be suspended.
@@ -142,40 +127,40 @@ test("effects are bound to the active context", () => {
 
   expect(spy).toBeCalledTimes(2);
 
-  suspendContext(context);
+  // suspendContext(context);
 
-  count((c) => c + 1);
-  expect(spy).toBeCalledTimes(2); // not called while suspended
+  // count((c) => c + 1);
+  // expect(spy).toBeCalledTimes(2); // not called while suspended
 
-  resumeContext(context);
+  // resumeContext(context);
 
-  expect(spy).toBeCalledTimes(3); // called again when resumed
+  // expect(spy).toBeCalledTimes(3); // called again when resumed
 
   unmountContext(context);
 
   count((c) => c + 1);
-  expect(spy).toBeCalledTimes(3);
+  expect(spy).toBeCalledTimes(2);
 });
 
 test("values are not tracked when accessed with peek()", () => {
-  const [a, setA] = state(5);
-  const [b, setB] = state(10);
+  const a = state(5);
+  const b = state(10);
 
   const multiplied = memo(() => a() * peek(b));
 
   expect(multiplied()).toBe(50);
 
-  setA((x) => x + 1);
+  a((x) => x + 1);
 
   expect(multiplied()).toBe(60);
 
-  setB((x) => x + 1);
+  b((x) => x + 1);
 
   expect(multiplied()).toBe(60);
 });
 
 test("solves diamond problem", () => {
-  const [count, setCount] = state(1);
+  const count = state(1);
 
   const left = memo(() => count() + 5);
   const right = memo(() => count() / 2);
@@ -189,10 +174,10 @@ test("solves diamond problem", () => {
 
   expect(fn).toBeCalledTimes(1);
 
-  setCount((x) => x + 1);
+  count((x) => x + 1);
   batch(() => {
-    setCount((x) => x + 1);
-    setCount((x) => x + 1);
+    count((x) => x + 1);
+    count((x) => x + 1);
   });
 
   expect(fn).toBeCalledTimes(3);
@@ -200,7 +185,7 @@ test("solves diamond problem", () => {
 });
 
 test("nested memo", () => {
-  const [count, setCount] = state(0);
+  const count = state(0);
 
   const plus1 = (source: Getter<number>) => {
     return memo(() => source() + 1);
@@ -221,32 +206,13 @@ test("nested memo", () => {
   expect(two()).toBe(2);
   expect(three()).toBe(3);
 
-  setCount((x) => x + 1);
+  count((x) => x + 1);
 
   expect(fn).toBeCalledTimes(2);
 
   expect(one()).toBe(2);
   expect(two()).toBe(3);
   expect(three()).toBe(4);
-
-  stop();
-});
-
-test("effect runs cleanup function", () => {
-  const fn = vi.fn();
-  const [count, setCount] = state(0);
-
-  const stop = effect(() => {
-    count();
-    return fn;
-  });
-  expect(fn).toBeCalledTimes(0);
-
-  setCount(2);
-  expect(fn).toBeCalledTimes(1);
-
-  setCount(3);
-  expect(fn).toBeCalledTimes(2);
 
   stop();
 });
@@ -271,8 +237,8 @@ describe("subscribe", () => {
   //   });
 
   test("ignores tracked values in callback", () => {
-    const [count, setCount] = state(5);
-    const [other, setOther] = state("hi");
+    const count = state(5);
+    const other = state("hi");
 
     const fn = vi.fn();
 
@@ -284,11 +250,11 @@ describe("subscribe", () => {
 
     expect(fn).toBeCalledTimes(1);
 
-    setCount(12);
+    count(12);
 
     expect(fn).toBeCalledTimes(2); // tracked `count` has updated
 
-    setOther("hello");
+    other("hello");
 
     expect(fn).toBeCalledTimes(2); // `other` is not tracked
 

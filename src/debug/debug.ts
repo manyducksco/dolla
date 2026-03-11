@@ -1,4 +1,4 @@
-import { noOp, okhash } from "../utils.js";
+import { isFunction, noOp, okhash } from "../utils.js";
 import { Context } from "../core/context.js";
 
 enum LogLevelValue {
@@ -26,13 +26,13 @@ enum LogLevelValue {
 
 export type LogLevel = "info" | "log" | "warn" | "error" | "silent";
 
-export type MatcherFunction = (value: string) => boolean;
+export type MatcherFn = (value: string) => boolean;
 
 const DEFAULT_LOG_LEVEL = "info";
 
 let logLevel: LogLevel = DEFAULT_LOG_LEVEL;
-let logFilter: string | RegExp | MatcherFunction = "*,-dolla:*";
-let match: MatcherFunction = _createMatcher(logFilter);
+let logFilter: string | RegExp | MatcherFn = "*,-dolla:*";
+let match: MatcherFn = _createMatcher(logFilter);
 
 let _console: any = _getDefaultConsole();
 
@@ -136,12 +136,12 @@ function _getDefaultConsole() {
   }
 }
 
-function _createMatcher(pattern: string | RegExp | MatcherFunction): MatcherFunction {
+function _createMatcher(pattern: string | RegExp | MatcherFn): MatcherFn {
   if (pattern instanceof RegExp) {
     return (value: string) => pattern.test(value);
   }
 
-  if (typeof pattern === "function") {
+  if (isFunction<MatcherFn>(pattern)) {
     return pattern;
   }
 

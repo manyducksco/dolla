@@ -5,15 +5,15 @@
 export { mount, type MountOptions } from "./mount.js";
 
 // Signals
-export { batch, cleanup, effect, getter, memo, peek, signal, state, subscribe } from "./signals.js";
+export { batch, effect, memo, peek, subscribe, state } from "./signals.js";
 export type { Accessor, Getter, Setter } from "./signals.js";
 
 // Context & Hooks
+export { inject, onCleanup, onMount, onEffect, provide } from "./context.js";
 export type { Context } from "./context.js";
-export * from "./hooks.js";
 
 // Markup
-export { repeat, when, portal } from "./markup/helpers.js";
+export { portal, repeat, when } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export type { Markup, MarkupNode } from "./markup/types.js";
 export { createMarkup, render, toMarkupNodes } from "./markup/utils.js";

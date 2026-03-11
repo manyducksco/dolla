@@ -1,11 +1,11 @@
 import type { Renderable, View } from "../../types.js";
-import { isFunction, isNumber, isString } from "../../utils.js";
+import { isArray, isFunction, isNumber, isString } from "../../utils.js";
 import { Context, createContext } from "../context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
 import { ViewNode } from "./nodes/view.js";
-import { IS_MARKUP, IS_MARKUP_NODE, Markup, MarkupNode, PropsOf } from "./types.js";
+import { IS_MARKUP, IS_MARKUP_NODE, IS_MARKUP_NODE_CLASS, Markup, MarkupNode, PropsOf } from "./types.js";
 
 export function createMarkup<Type extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   type: Type,
@@ -21,15 +21,15 @@ export function createMarkup<Type extends string | View<any> | (new (...args: an
 export function isMarkup<T extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   value: any,
 ): value is Markup<T> {
-  return value != null && value[IS_MARKUP] === true;
+  return value && value[IS_MARKUP];
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {
-  return value != null && value[IS_MARKUP_NODE] === true;
+  return value && value[IS_MARKUP_NODE];
 }
 
-export function isMarkupNodeClass(fn: any): fn is new (...args: any[]) => MarkupNode {
-  return fn && fn.isMarkupNode === true;
+export function isMarkupNodeClass(value: any): value is new (...args: any[]) => MarkupNode {
+  return value && value[IS_MARKUP_NODE_CLASS];
 }
 
 /**
@@ -54,7 +54,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
   function process(item: any) {
     if (item == null || item === false) return;
 
-    if (Array.isArray(item)) {
+    if (isArray(item)) {
       for (let i = 0; i < item.length; i++) {
         process(item[i]);
       }
@@ -84,7 +84,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
         return;
       }
 
-      throw new Error(`Unknown markup node type: ${type}`);
+      return; // Ignore foreign objects.
     }
 
     if (isMarkupNode(item)) {

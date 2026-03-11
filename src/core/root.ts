@@ -1,6 +1,6 @@
 import { Renderable, View } from "../types.js";
 import { getElement, isFunction } from "../utils.js";
-import { callInContext, Context, createContext, mountContext, unmountContext } from "./context.js";
+import { Context, createContext, mountContext, unmountContext } from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
@@ -68,7 +68,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   async function mount(content: View<{}> | Renderable) {
     if (context.isMounted) return;
 
-    const results = await Promise.all(plugins.map((fn) => callInContext(context, () => fn(context))));
+    const results = await Promise.all(plugins.map((fn) => fn(context)));
     for (const result of results) {
       if (isFunction<CleanupCallback>(result)) {
         cleanup.push(result);

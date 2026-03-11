@@ -1,6 +1,17 @@
-import { isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
+import {
+  addChild,
+  addListener,
+  isArray,
+  isFunction,
+  isNumber,
+  isObject,
+  isString,
+  omit,
+  setAttribute,
+} from "../../../utils.js";
 import { Context, createContext, mountContext, unmountContext } from "../../context.js";
-import { type Getter, peek, subscribe, type UnsubscribeFn } from "../../signals.js";
+import { Ref } from "../../ref.js";
+import { type Getter, peek, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
@@ -16,124 +27,120 @@ const ignoredProps = ["ref", "children"];
  * Renders an HTML or SVG element.
  */
 export class ElementNode extends MarkupNode {
-  private root: HTMLElement | SVGElement;
+  #root: HTMLElement | SVGElement;
 
-  readonly tag;
-  readonly props: Record<string, any>;
+  readonly #props: Record<string, any>;
 
-  private context: Context;
-  private ownContext = false;
-  private childNodes: MarkupNode[] = [];
-  private unsubscribers = new Set<UnsubscribeFn>();
+  #context: Context;
+  #ownContext = false;
+  #childNodes: MarkupNode[] = [];
+  #unsubscribers = new Set<() => void>();
 
-  private refCleanup?: () => void;
+  #refCleanup?: () => void;
 
   constructor(context: Context, tag: string, props: Record<string, any>) {
     super();
 
-    this.tag = tag;
-    this.props = props;
-    this.context = context;
+    this.#props = props;
+    this.#context = context;
 
     if (tag === "svg") {
       // This and all nested views will be created as SVG elements.
-      this.context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
-      this.context[IS_SVG] = true;
-      this.ownContext = true;
-    } else if (this.context[IS_SVG] && tag === "foreignObject") {
+      this.#context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
+      this.#context[IS_SVG] = true;
+      this.#ownContext = true;
+    } else if (this.#context[IS_SVG] && tag === "foreignObject") {
       // No longer in SVG.
-      this.context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
-      this.context[IS_SVG] = false;
-      this.ownContext = false;
+      this.#context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
+      this.#context[IS_SVG] = false;
+      this.#ownContext = false;
     }
 
     // Create node with the appropriate constructor.
-    if (this.context[IS_SVG]) {
-      this.root = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (this.#context[IS_SVG]) {
+      this.#root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
-      this.root = document.createElement(tag);
+      this.#root = document.createElement(tag);
     }
 
     // Add view name as a data attribute debug mode.
-    if (this.context[DEBUG]) {
-      const view = this.context[VIEW] as ViewNode<any>;
+    if (this.#context[DEBUG]) {
+      const view = this.#context[VIEW] as ViewNode<any>;
       if (view) {
-        this.root.dataset.parentView = view.context.name + "#" + view.context.id;
-        this.root.dataset.contextId = this.context.id;
+        this.#root.dataset.parentView = view.context.name + "#" + view.context.id;
+        this.#root.dataset.contextId = this.#context.id;
       }
     }
   }
 
   override getRoot() {
-    return this.root;
+    return this.#root;
   }
 
   override isMounted() {
-    return this.root.parentNode != null;
+    return this.#root.parentNode != null;
   }
 
   override mount(parent: Node, after?: Node) {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      const { props } = this;
+      this.#applyProps(this.#root, omit(ignoredProps, this.#props));
 
-      this.applyProps(this.root, omit(ignoredProps, props));
-
-      if (props.children) {
-        this.childNodes = toMarkupNodes(this.context, props.children);
-        for (const child of this.childNodes) {
-          child.mount(this.root);
+      if (this.#props.children) {
+        this.#childNodes = toMarkupNodes(this.#context, this.#props.children);
+        for (const child of this.#childNodes) {
+          child.mount(this.#root);
         }
       }
     }
 
     const targetSibling = after?.nextSibling ?? null;
-    if (this.root.parentNode !== parent || this.root.nextSibling !== targetSibling) {
-      parent.insertBefore(this.root, targetSibling);
+    if (this.#root.parentNode !== parent || this.#root.nextSibling !== targetSibling) {
+      addChild(parent, this.#root, targetSibling);
     }
 
     if (!wasMounted) {
-      if (this.props.ref && typeof this.props.ref === "function") {
-        const result = this.props.ref(this.root);
-        if (typeof result === "function") {
-          this.refCleanup = result;
+      if (isFunction<Ref<any>>(this.#props.ref)) {
+        const result = this.#props.ref(this.#root);
+        if (isFunction(result)) {
+          this.#refCleanup = result;
         }
       }
 
-      if (this.ownContext) mountContext(this.context);
+      if (this.#ownContext) mountContext(this.#context);
     }
   }
 
   override unmount(skipDOM = false) {
-    if (!skipDOM && this.root.parentNode) {
-      this.root.parentNode.removeChild(this.root);
+    if (!skipDOM && this.#root.parentNode) {
+      this.#root.parentNode.removeChild(this.#root);
     }
 
-    for (const child of this.childNodes) {
+    for (const child of this.#childNodes) {
       child.unmount(true); // Skip DOM removal for children
     }
 
     // Clear reactivity
-    this.unsubscribers.forEach((unsubscribe) => unsubscribe());
-    this.unsubscribers.clear();
+    this.#unsubscribers.forEach((unsubscribe) => unsubscribe());
+    this.#unsubscribers.clear();
 
-    if (this.ownContext) unmountContext(this.context);
+    if (this.#ownContext) unmountContext(this.#context);
 
     // Clear ref
-    if (this.refCleanup) {
-      this.refCleanup();
-      this.refCleanup = undefined;
+    if (this.#refCleanup) {
+      this.#refCleanup();
+      this.#refCleanup = undefined;
     }
 
     // Release memory
-    this.childNodes.length = 0;
+    this.#childNodes.length = 0;
   }
 
   override move(parent: Element, after?: Node) {
     if ("moveBefore" in parent) {
       try {
-        (parent as any).moveBefore(this.root!, after?.nextSibling ?? null);
+        (parent as any).moveBefore(this.#root!, after?.nextSibling ?? null);
       } catch {
         this.mount(parent, after);
       }
@@ -142,9 +149,9 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private attach<T>(value: Getter<T> | T, callback: (value: T) => void) {
+  #attach<T>(value: Getter<T> | T, callback: (value: T) => void) {
     if (isFunction<Getter<T>>(value)) {
-      this.unsubscribers.add(
+      this.#unsubscribers.add(
         subscribe(value, (current) => {
           scheduleUpdate(() => callback(current));
         }),
@@ -155,91 +162,73 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  private applyProps(element: any, props: Record<string, unknown>) {
+  #applyProps(element: any, props: Record<string, unknown>) {
     for (const key in props) {
       const value = props[key];
 
       if (key === "style") {
-        this.applyStyles(element, value);
+        this.#applyStyles(element, value);
       } else if (key === "class" || key === "className") {
-        this.applyClasses(element, value);
+        this.#applyClasses(element, value);
       } else if (key === "for") {
-        this.attach(value, (current) => {
+        this.#attach(value, (current) => {
           element.htmlFor = current;
         });
       } else if (key[0] === "." || key.startsWith("prop:")) {
         // Keys starting with `.` or `prop:` are set as props.
 
         const _key = key.substring(5);
-        this.attach(value, (current) => {
+        this.#attach(value, (current) => {
           element[_key] = current;
         });
       } else if (key[0] === ":" || key.startsWith("attr:")) {
         // Keys starting with `:` or `attr:` are set as attributes.
 
         const _key = key.substring(5).toLowerCase();
-        this.attach(value, (current) => {
-          if (current != null) {
-            element.setAttribute(_key, String(current));
-          } else {
-            element.removeAttribute(_key);
-          }
+        this.#attach(value, (current) => {
+          setAttribute(element, _key, current);
         });
       } else if (key[0] === "@" && isFunction(value)) {
         // Anything that's a function starting with `@` is an event listener.
 
         const eventName = key.substring(1);
-        element.addEventListener(eventName, value);
-        this.unsubscribers.add(() => {
-          element.removeEventListener(eventName, value);
-        });
+        this.#unsubscribers.add(addListener(element, eventName, value));
       } else if (key.startsWith("on") && isFunction(value)) {
         // Anything that's a function starting with `on` is an event listener.
 
         const eventName = key.toLowerCase().slice(2);
-        element.addEventListener(eventName, value);
-        this.unsubscribers.add(() => {
-          element.removeEventListener(eventName, value);
-        });
-      } else if (key in element && !this.context[IS_SVG]) {
+        this.#unsubscribers.add(addListener(element, eventName, value));
+      } else if (key in element && !this.#context[IS_SVG]) {
         // Set as property if the element has one.
 
         if (typeof element[key] === "boolean") {
-          this.attach(value, (current) => {
+          this.#attach(value, (current) => {
             const isTrue = Boolean(current);
             element[key] = isTrue;
-            if (isTrue) {
-              element.setAttribute(key, "");
-            } else {
-              element.removeAttribute(key);
-            }
+            setAttribute(element, key, isTrue);
           });
         } else {
-          this.attach(value, (current) => {
+          this.#attach(value, (current) => {
             element[key] = current;
           });
         }
       } else {
         // Fall back to attributes.
 
-        this.attach(value, (current) => {
-          if (current == null) {
-            element.removeAttribute(key);
-          } else {
-            element.setAttribute(key, String(current));
-          }
+        this.#attach(value, (current) => {
+          setAttribute(element, key, current);
         });
       }
     }
   }
 
-  private applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
-    const localUnsubs = new Set<UnsubscribeFn>();
+  #applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
+    const localUnsubs = new Set<() => void>();
 
     const apply = (current: unknown) => {
       localUnsubs.forEach((unsub) => {
         unsub();
-        this.unsubscribers.delete(unsub);
+        this.#unsubscribers.delete(unsub);
       });
       localUnsubs.clear();
       element.style.cssText = "";
@@ -251,7 +240,7 @@ export class ElementNode extends MarkupNode {
             if (v) element.style.setProperty(name, asPixelsIfNumber(v), priority);
             else element.style.removeProperty(name);
           });
-          this.unsubscribers.add(unsub);
+          this.#unsubscribers.add(unsub);
           localUnsubs.add(unsub);
         } else if (value != null) {
           element.style.setProperty(name, asPixelsIfNumber(value), priority);
@@ -260,23 +249,23 @@ export class ElementNode extends MarkupNode {
     };
 
     if (isFunction(styles)) {
-      this.unsubscribers.add(subscribe(styles, apply));
+      this.#unsubscribers.add(subscribe(styles, apply));
     } else {
       apply(styles);
     }
   }
 
-  private applyClasses(element: HTMLElement | SVGElement, classes: unknown) {
-    const localUnsubs = new Set<UnsubscribeFn>();
+  #applyClasses(element: HTMLElement | SVGElement, classes: unknown) {
+    const localUnsubs = new Set<() => void>();
 
     const apply = (current: unknown) => {
       // Clean up nested subscriptions if the top-level signal emits a new object
       localUnsubs.forEach((unsub) => {
         unsub();
-        this.unsubscribers.delete(unsub);
+        this.#unsubscribers.delete(unsub);
       });
       localUnsubs.clear();
-      element.removeAttribute("class");
+      setAttribute(element, "class", null);
 
       const mapped = getClassMap(current);
       for (const [name, value] of Object.entries(mapped)) {
@@ -284,7 +273,7 @@ export class ElementNode extends MarkupNode {
 
         if (isFunction(value)) {
           const unsub = subscribe(value, (isActive) => element.classList.toggle(name, !!isActive));
-          this.unsubscribers.add(unsub);
+          this.#unsubscribers.add(unsub);
           localUnsubs.add(unsub);
         } else if (value) {
           element.classList.add(name);
@@ -293,7 +282,7 @@ export class ElementNode extends MarkupNode {
     };
 
     if (isFunction(classes)) {
-      this.unsubscribers.add(subscribe(classes, apply));
+      this.#unsubscribers.add(subscribe(classes, apply));
     } else {
       apply(classes);
     }
@@ -305,7 +294,7 @@ export class ElementNode extends MarkupNode {
  */
 function getClassMap(classes: unknown): Record<string, unknown> {
   if (isString(classes)) return Object.fromEntries(classes.split(" ").map((c) => [c, true]));
-  if (Array.isArray(classes)) return Object.assign({}, ...classes.filter(Boolean).map(getClassMap));
+  if (isArray(classes)) return Object.assign({}, ...classes.filter(Boolean).map(getClassMap));
   if (isObject(classes)) return classes as Record<string, unknown>;
   return {};
 }
@@ -331,7 +320,7 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
         }),
     );
   }
-  if (Array.isArray(styles)) return Object.assign({}, ...styles.filter(Boolean).map(getStyleMap));
+  if (isArray(styles)) return Object.assign({}, ...styles.filter(Boolean).map(getStyleMap));
   if (isObject(styles)) {
     return Object.fromEntries(
       Object.entries(styles).map(([k, v]) => [k.startsWith("--") ? k : camelToKebab(k), { value: v }]),

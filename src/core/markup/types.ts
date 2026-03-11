@@ -13,8 +13,9 @@ export type PropsOf<T extends string | View<any> | (new (...args: any[]) => Mark
         ? IntrinsicElements[T]
         : any;
 
-export const IS_MARKUP = Symbol.for("Dolla.Markup");
-export const IS_MARKUP_NODE = Symbol.for("Dolla.MarkupNode");
+export const IS_MARKUP = Symbol();
+export const IS_MARKUP_NODE = Symbol();
+export const IS_MARKUP_NODE_CLASS = Symbol();
 
 /**
  * A set of basic metadata that can be constructed into a `MarkupNode`.
@@ -32,6 +33,7 @@ export interface Markup<
 
 export interface MountTarget {
   insertBefore(node: Node, child: Node | null): any;
+  appendChild(node: Node): any;
 }
 
 /**
@@ -40,7 +42,7 @@ export interface MountTarget {
  * A `MarkupNode` instance can be passed anywhere a `Renderable` is required.
  */
 export abstract class MarkupNode {
-  static readonly isMarkupNode = true;
+  static [IS_MARKUP_NODE_CLASS] = true;
 
   get [IS_MARKUP_NODE]() {
     return true;

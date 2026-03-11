@@ -2,6 +2,10 @@ import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  esbuild: {
+    // Mangle any property name that starts with an underscore
+    mangleProps: /^_/,
+  },
   build: {
     sourcemap: true,
     minify: true,
