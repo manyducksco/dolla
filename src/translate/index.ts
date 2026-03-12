@@ -1,3 +1,5 @@
+import { Context } from "../core/context.js";
+import { DollaPlugin } from "../core/root.js";
 import { get, memo, state, type Getter } from "../core/signals.js";
 import { isFunction } from "../utils.js";
 
@@ -85,6 +87,21 @@ export interface TranslateOptions {
   locale?: string;
 
   formatters?: Record<string, Formatter>;
+}
+
+const TRANSLATE = Symbol("Dolla.Translate");
+
+export function useTranslate(context: Context) {
+  if (!context[TRANSLATE]) throw new Error("Translate plugin isn't loaded.");
+  return context[TRANSLATE];
+}
+
+export function createTranslate(options: TranslateOptions): DollaPlugin {
+  return async function (context) {
+    const translator = createTranslator(options);
+    context[TRANSLATE] = translator;
+    await translator.setLocale(options.locale);
+  };
 }
 
 // ----- Code ----- //

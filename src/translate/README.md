@@ -3,37 +3,26 @@
 In `translate.js`:
 
 ```js
-import { createTranslator } from "...";
+import { createRoot, html } from "lmntl";
+import { createTranslate, useTranslate } from "lmntl/translate";
 
-export const { t, setLocale, currentLocale } = createTranslator({
-  translations: {
-    "en-US": {},
-    ja: () => fetch("/locales/ja.json").then((res) => res.json()),
-  },
-});
-```
+function App() {
+  const { t } = useTranslate(this);
 
-In `./views/App.js`:
-
-```js
-import { t } from "../translate.js";
-
-export function App() {
-  // Use the `t` function to get translated strings. It returns a Getter<string>.
-  return html`<button>${t("buttonLabel")}</button>`;
+  return <button onClick={() => alert("HELLO!")}>{t("helloButtonLabel")}</button>;
 }
-```
 
-`In`main.js`:
-
-```js
-import { mount } from "@manyducks.co/dolla";
-import { App } from "./views/App.js";
-import { setLocale } from "./translate.js";
-
-// Loads the translation and then mounts the app.
-// You'll probably want a loader that the app will hide when it mounts to cover this time.
-setLocale("en-US").then(() => {
-  mount(App, document.body);
-});
+createRoot("#app")
+  .plugin(
+    createTranslate({
+      locale: "en-US",
+      translations: {
+        "en-US": {
+          helloButtonLabel: "Hello",
+        },
+        ja: () => fetch("/locales/ja.json").then((res) => res.json()),
+      },
+    }),
+  )
+  .mount(App);
 ```

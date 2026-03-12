@@ -189,6 +189,10 @@ export function addChild(parent: MountTarget, node: Node, after?: Node | null) {
   }
 }
 
+export function createTextNode(text: string) {
+  return document.createTextNode(text);
+}
+
 /**
  * Moves an element using `moveBefore` if the browser supports it, otherwise falls back to `insertBefore`.
  */

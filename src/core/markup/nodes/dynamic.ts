@@ -1,4 +1,4 @@
-import { addChild } from "../../../utils.js";
+import { addChild, createTextNode } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { effect, peek, subscribe, type Getter } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
@@ -12,7 +12,7 @@ import { DOMNode } from "./dom.js";
  */
 
 export class DynamicNode extends MarkupNode {
-  #root = document.createTextNode("");
+  #root = createTextNode("");
   #children: MarkupNode[] = [];
   #context: Context;
   #slot: Getter<any>;
@@ -36,18 +36,9 @@ export class DynamicNode extends MarkupNode {
     if (!this.isMounted()) {
       addChild(parent, this.#root, after);
 
-      this.#unsubscribe = effect(() => {
-        const content = this.#slot();
-        peek(() => {
-          scheduleUpdate(() => {
-            this.update(content);
-          });
-        });
-      });
-
       this.#unsubscribe = subscribe(this.#slot, (content) => {
         scheduleUpdate(() => {
-          this.update(content);
+          this.#update(content);
         });
       });
     }
@@ -60,7 +51,7 @@ export class DynamicNode extends MarkupNode {
       if (!skipDOM) {
         this.#root.parentNode?.removeChild(this.#root);
       }
-      this.cleanup(skipDOM);
+      this.#cleanup(skipDOM);
     }
   }
 
@@ -93,14 +84,14 @@ export class DynamicNode extends MarkupNode {
     }
   }
 
-  private cleanup(skipDOM: boolean) {
+  #cleanup(skipDOM: boolean) {
     for (let i = 0; i < this.#children.length; i++) {
       this.#children[i].unmount(skipDOM);
     }
     this.#children.length = 0;
   }
 
-  private update(content: any) {
+  #update(content: any) {
     if (!this.isMounted()) return;
 
     // Fast-path for primitive text updates
@@ -116,7 +107,7 @@ export class DynamicNode extends MarkupNode {
       }
     }
 
-    this.cleanup(false);
+    this.#cleanup(false);
 
     if (content == null || content === false) return;
 

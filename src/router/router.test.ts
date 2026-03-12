@@ -8,7 +8,7 @@ import { createRouter, lazy, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
 
 async function withMountedView<Props>(view: View<Props>, props: Props, callback: (context: Context) => any) {
-  const context = createContext("test");
+  const context = createContext();
   context[PARENT_ELEMENT] = document.body;
 
   const node = new ViewNode(context, view, props);

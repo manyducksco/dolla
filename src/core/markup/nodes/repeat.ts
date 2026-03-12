@@ -1,5 +1,5 @@
 import type { Renderable } from "../../../types.js";
-import { addChild } from "../../../utils.js";
+import { addChild, createTextNode } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { batch, Getter, state, subscribe, type Accessor } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
@@ -26,7 +26,7 @@ type ConnectedItem<T> = {
  * Renders a list of items.
  */
 export class RepeatNode<T> extends MarkupNode {
-  #root = document.createTextNode("");
+  #root = createTextNode("");
 
   #context;
 

@@ -49,7 +49,7 @@ export function createRoot(selector: string, options?: DollaRootOptions): DollaR
 export function createRoot(element: Element, options?: DollaRootOptions): DollaRoot;
 export function createRoot(target: string | Element, options?: DollaRootOptions) {
   const element = getElement(target);
-  const context = createContext("dolla:root");
+  const context = createContext();
   const plugins: DollaPlugin[] = [];
   const cleanup: CleanupCallback[] = [];
 

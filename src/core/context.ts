@@ -1,13 +1,11 @@
 import { Store } from "../types";
-import { assert, isFunction, uniqueId } from "../utils";
+import { assert, isFunction } from "../utils";
 import { effect } from "./signals";
 // import { resumeEffects } from "./signals";
 
 export type LifecycleListener = () => any;
 
 type BaseContextState = {
-  id: string;
-  name: string;
   isMounted: boolean;
   // isSuspended: boolean;
 };
@@ -21,13 +19,8 @@ export type Context<T = Record<string | symbol, any>> = BaseContextState & T;
 const MOUNT_LISTENERS = Symbol("Context.mountListeners");
 const CLEANUP_LISTENERS = Symbol("Context.cleanupListeners");
 
-export function createContext(name: string, parent?: Context): Context {
-  const ctx: Record<any, any> = parent ? Object.create(parent) : {};
-  ctx.id = uniqueId();
-  ctx.name = name;
-  ctx.isMounted = false;
-  // ctx.isSuspended = true;
-  return ctx as Context;
+export function createContext(parent?: Context): Context {
+  return Object.assign(Object.create(parent ?? null), { isMounted: false });
 }
 
 export function mountContext(context: Context) {
@@ -92,19 +85,17 @@ export function provide<Options, Returns>(
   store: Store<Options, Returns> & { [STORE_ID]?: symbol },
   ...args: undefined extends Options ? [options?: Options] : [options: Options]
 ) {
-  // assert(isFunction(store), "Store must be a function.");
+  assert(isFunction(store), "Store must be a function.");
 
   // Tag the store function with a unique symbol if it doesn't have one.
   if (!store[STORE_ID]) store[STORE_ID] = Symbol(store.name);
 
-  // if (Object.hasOwn(context, store[STORE_ID])) {
-  //   throw new Error(
-  //     `An instance of ${store.name ? `'${store.name}'` : "this store"} was already provided on this context.`,
-  //   );
-  // }
+  if (Object.hasOwn(context, store[STORE_ID])) {
+    throw new Error("Store was already provided on this context.");
+  }
 
   // Give the store its own context bound to this lifecycle.
-  const storeContext = createContext(store.name, context);
+  const storeContext = createContext(context);
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => unmountContext(storeContext));
 
@@ -112,7 +103,7 @@ export function provide<Options, Returns>(
 }
 
 export function inject<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
-  // assert(isFunction(store), "Store must be a function.");
+  assert(isFunction(store), "Store must be a function.");
 
   const id = store[STORE_ID];
   const result = id ? context[id] : undefined;

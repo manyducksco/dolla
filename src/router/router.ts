@@ -1,5 +1,5 @@
 import { Context, provide, inject, onMount, onCleanup } from "../core/context.js";
-import { Debug } from "../debug/debug.js";
+import { Debug } from "../debug/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";

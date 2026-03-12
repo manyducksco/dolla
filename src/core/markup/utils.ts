@@ -1,5 +1,5 @@
 import type { Renderable, View } from "../../types.js";
-import { isArray, isFunction, isNumber, isString } from "../../utils.js";
+import { createTextNode, isArray, isFunction, isNumber, isString } from "../../utils.js";
 import { Context, createContext } from "../context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
@@ -35,7 +35,7 @@ export function isMarkupNodeClass(value: any): value is new (...args: any[]) => 
 /**
  * Takes any `Renderable` value and returns a `MarkupNode` that will display it.
  */
-export function render(content: Renderable, context = createContext("$")): MarkupNode {
+export function render(content: Renderable, context = createContext()): MarkupNode {
   const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
     return nodes[0]; // if it's just one item return it
@@ -58,54 +58,25 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       for (let i = 0; i < item.length; i++) {
         process(item[i]);
       }
-      return;
-    }
-
-    if (isString(item) || isNumber(item)) {
-      nodes.push(new DOMNode(context, document.createTextNode(String(item))));
-      return;
-    }
-
-    if (isMarkup(item)) {
+    } else if (isString(item) || isNumber(item)) {
+      nodes.push(new DOMNode(context, createTextNode(String(item))));
+    } else if (isMarkup(item)) {
       const { type, props } = item;
 
       if (isMarkupNodeClass(type)) {
         nodes.push(new type(context, ...props.args));
-        return;
-      }
-
-      if (isFunction(type)) {
+      } else if (isFunction(type)) {
         nodes.push(new ViewNode(context, type as View<any>, props));
-        return;
-      }
-
-      if (isString(type)) {
+      } else if (isString(type)) {
         nodes.push(new ElementNode(context, type, props));
-        return;
       }
-
-      return; // Ignore foreign objects.
-    }
-
-    if (isMarkupNode(item)) {
+    } else if (isMarkupNode(item)) {
       nodes.push(item);
-      return;
-    }
-
-    if (item instanceof Node) {
+    } else if (item instanceof Node) {
       nodes.push(new DOMNode(context, item));
-      return;
-    }
-
-    if (isFunction(item)) {
+    } else if (isFunction(item)) {
       nodes.push(new DynamicNode(context, item));
-      return;
     }
-
-    // Fallback to printing unhandled objects
-    const pre = document.createElement("pre");
-    pre.textContent = JSON.stringify(item, null, 2);
-    nodes.push(new DOMNode(context, pre));
   }
 
   for (let i = 0; i < content.length; i++) {

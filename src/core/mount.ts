@@ -15,7 +15,7 @@ export interface MountOptions {
  * If `content` is a function it will be interpreted as a view.
  */
 export function mount(content: Renderable, parent: MountTarget, options?: MountOptions): () => void {
-  const context = createContext("$");
+  const context = createContext();
   context[PARENT_ELEMENT] = parent;
   context[DEBUG] = Boolean(options?.debug);
   const node = isFunction(content) ? new ViewNode(context, content as View<{}>, {}) : render(content, context);

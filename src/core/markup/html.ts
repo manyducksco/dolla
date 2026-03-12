@@ -17,37 +17,39 @@ import { createMarkup } from "./utils.js";
 
 export type Template = Markup | Markup[];
 
-const MODE_SLASH = 0;
-const MODE_TEXT = 1;
-const MODE_WHITESPACE = 2;
-const MODE_TAGNAME = 3;
-const MODE_COMMENT = 4;
-const MODE_PROP_SET = 5;
-const MODE_PROP_APPEND = 6;
+const enum Mode {
+  Slash = 0,
+  Text = 1,
+  Whitespace = 2,
+  TagName = 3,
+  Comment = 4,
+  PropSet = 5,
+  PropAppend = 6,
+}
 
 export function html(statics: TemplateStringsArray, ...args: any[]): Template {
   const fields = [statics, ...args];
 
-  let mode = MODE_TEXT;
+  let mode = Mode.Text;
   let buffer = "";
   let quote = "";
   let current: any[] = [0];
   let propName = "";
 
   const commit = (field?: number) => {
-    if (mode === MODE_TEXT && (field || (buffer = buffer.replace(/^\s*\n\s*|\s*\n\s*$/g, "")))) {
+    if (mode === Mode.Text && (field || (buffer = buffer.replace(/^\s*\n\s*|\s*\n\s*$/g, "")))) {
       current.push(field ? fields[field] : buffer);
-    } else if (mode === MODE_TAGNAME && (field || buffer)) {
+    } else if (mode === Mode.TagName && (field || buffer)) {
       current[1] = field ? fields[field] : buffer;
-      mode = MODE_WHITESPACE;
-    } else if (mode === MODE_WHITESPACE && buffer === "..." && field) {
+      mode = Mode.Whitespace;
+    } else if (mode === Mode.Whitespace && buffer === "..." && field) {
       current[2] = Object.assign(current[2] || {}, fields[field]);
-    } else if (mode === MODE_WHITESPACE && buffer && !field) {
+    } else if (mode === Mode.Whitespace && buffer && !field) {
       (current[2] = current[2] || {})[buffer] = true;
-    } else if (mode >= MODE_PROP_SET) {
-      if (mode === MODE_PROP_SET) {
+    } else if (mode >= Mode.PropSet) {
+      if (mode === Mode.PropSet) {
         (current[2] = current[2] || {})[propName] = field ? (buffer ? buffer + fields[field] : fields[field]) : buffer;
-        mode = MODE_PROP_APPEND;
+        mode = Mode.PropAppend;
       } else if (field || buffer) {
         current[2][propName] += field ? buffer + fields[field] : buffer;
       }
@@ -58,26 +60,26 @@ export function html(statics: TemplateStringsArray, ...args: any[]): Template {
 
   for (let i = 0; i < statics.length; i++) {
     if (i) {
-      if (mode === MODE_TEXT) commit();
+      if (mode === Mode.Text) commit();
       commit(i);
     }
 
     for (let j = 0; j < statics[i].length; j++) {
       const char = statics[i][j];
 
-      if (mode === MODE_TEXT) {
+      if (mode === Mode.Text) {
         if (char === "<") {
           // commit buffer
           commit();
           current = [current, "", null];
-          mode = MODE_TAGNAME;
+          mode = Mode.TagName;
         } else {
           buffer += char;
         }
-      } else if (mode === MODE_COMMENT) {
+      } else if (mode === Mode.Comment) {
         // Ignore everything until the last three characters are '-', '-' and '>'
         if (buffer === "--" && char === ">") {
-          mode = MODE_TEXT;
+          mode = Mode.Text;
           buffer = "";
         } else {
           buffer = char + buffer[0];
@@ -92,16 +94,16 @@ export function html(statics: TemplateStringsArray, ...args: any[]): Template {
         quote = char;
       } else if (char === ">") {
         commit();
-        mode = MODE_TEXT;
+        mode = Mode.Text;
       } else if (!mode) {
         // Ignore everything until the tag ends
       } else if (char === "=") {
-        mode = MODE_PROP_SET;
+        mode = Mode.PropSet;
         propName = buffer;
         buffer = "";
-      } else if (char === "/" && (mode < MODE_PROP_SET || statics[i][j + 1] === ">")) {
+      } else if (char === "/" && (mode < Mode.PropSet || statics[i][j + 1] === ">")) {
         commit();
-        if (mode === MODE_TAGNAME) {
+        if (mode === Mode.TagName) {
           current = current[0];
         }
         const node = current;
@@ -113,17 +115,17 @@ export function html(statics: TemplateStringsArray, ...args: any[]): Template {
 
         current.push(createMarkup(type, { ...props, children }));
 
-        mode = MODE_SLASH;
+        mode = Mode.Slash;
       } else if (char === " " || char === "\t" || char === "\n" || char === "\r") {
         // <a disabled>
         commit();
-        mode = MODE_WHITESPACE;
+        mode = Mode.Whitespace;
       } else {
         buffer += char;
       }
 
-      if (mode === MODE_TAGNAME && buffer === "!--") {
-        mode = MODE_COMMENT;
+      if (mode === Mode.TagName && buffer === "!--") {
+        mode = Mode.Comment;
         current = current[0];
       }
     }

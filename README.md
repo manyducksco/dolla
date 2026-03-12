@@ -25,8 +25,8 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 ### Topics to introduce
 
 - Reactivity
-  - Reactive, Mutable API
-  - tracking contexts (memo, `$watch`, `<For>` render, getters -- goes into views)
+  - Signals
+  - tracking contexts (memo, effect, attributes and children)
 - Components
   - basic types overview
   - lifecycle: `onMount`, `onCleanup`
@@ -44,10 +44,22 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 ## Example: Counter
 
 ```jsx
-import { signal, html, mount } from "@manyducks.co/dolla";
+import { state, html, mount, onMount, onCleanup, onEffect } from "@manyducks.co/dolla";
 
 function Counter() {
-  const count = signal(0);
+  const count = state(0);
+
+  onMount(this, () => {
+    console.log("Counter has mounted.");
+  });
+
+  onCleanup(this, () => {
+    console.log("Counter has unmounted.");
+  });
+
+  onEffect(this, () => {
+    console.log({ count: count() });
+  });
 
   return html`
     <div>
@@ -55,18 +67,6 @@ function Counter() {
       <button onclick=${() => count((c) => c + 1)}>Increment</button>
     </div>
   `;
-}
-
-function AuthStore() {
-  return {
-    /* ... */
-  };
-}
-
-function Example() {
-  provide(this, AuthStore);
-
-  const auth = inject(this, AuthStore);
 }
 
 mount(Counter, document.body);
@@ -88,10 +88,10 @@ Tracking contexts
 ## Example: Temperature Converter
 
 ```tsx
-import { signal, memo, html, mount } from "@manyducks.co/dolla";
+import { state, memo, html, mount } from "@manyducks.co/dolla";
 
 function Converter() {
-  const celsius = signal(0);
+  const celsius = state(0);
 
   // Depends on `celsius`; updates when `celsius` updates.
   const fahrenheit = memo(() => {
@@ -126,7 +126,7 @@ function Converter() {
 mount(Converter, document.body);
 ```
 
-The `memo` function creates a read-only signal that derives its state from the signals it depends on. Its callback is called immediately, accessed signals are tracked as dependencies, and then the callback runs again if any of those dependencies change. Calling the memoized signal in the meantime will simply return the last computed value.
+The `memo` function creates a read-only signal that derives its state from other signals. Its callback function is called immediately, accessed signals are tracked as dependencies, and then the callback runs again if any of those dependencies change. Calling the memoized signal in the meantime will simply return the last computed value.
 
 ### 2\. Stores: For your shared state
 

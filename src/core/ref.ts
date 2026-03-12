@@ -23,11 +23,9 @@ export function ref<T = HTMLElement>(): Ref<T> {
       };
     } else {
       if (!currentValue) {
-        throw new EmptyRefError(`Ref has no value.`);
+        throw new Error(`Ref has no value.`);
       }
       return currentValue;
     }
   }) as Ref<T>;
 }
-
-export class EmptyRefError extends Error {}

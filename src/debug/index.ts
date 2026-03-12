@@ -1,5 +1,4 @@
 import { isFunction, noOp, okhash } from "../utils.js";
-import { Context } from "../core/context.js";
 
 enum LogLevelValue {
   /**
@@ -109,8 +108,6 @@ export class Debug {
     match = _createMatcher(filter);
   }
 }
-
-new Debug("name", [["ctx", 13]]);
 
 // Log level and filter can be set globally on the window.
 // This is helpful when you need to gather info about a bug in the production environment which doesn't usually log anything, for example.

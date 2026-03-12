@@ -2,13 +2,7 @@ const pendingUpdates = new Set<() => void>();
 let isScheduled = false;
 
 function flushUpdates() {
-  for (const update of pendingUpdates) {
-    try {
-      update();
-    } catch (error) {
-      console.error("Reactivity Error:", error);
-    }
-  }
+  for (const update of pendingUpdates) update();
   pendingUpdates.clear();
   isScheduled = false;
 }

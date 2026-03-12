@@ -1,7 +1,7 @@
 import type { Renderable } from "../../../types.js";
-import { addChild } from "../../../utils.js";
+import { addChild, createTextNode } from "../../../utils.js";
 import { Context } from "../../context.js";
-import { MarkupNode } from "../types.js";
+import { MarkupNode, MountTarget } from "../types.js";
 import { render } from "../utils.js";
 
 /**
@@ -9,14 +9,14 @@ import { render } from "../utils.js";
  */
 export class PortalNode extends MarkupNode {
   // Acts as a physical placeholder in the logical DOM tree
-  #anchor = document.createTextNode("");
+  #anchor = createTextNode("");
 
   #context: Context;
   #value: Renderable;
-  #parent: Element;
+  #parent: MountTarget;
   #childNode?: MarkupNode;
 
-  constructor(context: Context, value: Renderable, parent: Element) {
+  constructor(context: Context, value: Renderable, parent: MountTarget) {
     super();
     this.#context = context;
     this.#value = value;
@@ -32,7 +32,7 @@ export class PortalNode extends MarkupNode {
     return this.#anchor.parentElement != null;
   }
 
-  override mount(logicalParent: Element, after?: Node) {
+  override mount(logicalParent: MountTarget, after?: Node) {
     if (!this.isMounted()) {
       // Mount the anchor in the standard document flow
       addChild(logicalParent, this.#anchor, after);
@@ -58,7 +58,7 @@ export class PortalNode extends MarkupNode {
     }
   }
 
-  override move(logicalParent: Element, after?: Node) {
+  override move(logicalParent: MountTarget, after?: Node) {
     logicalParent.insertBefore(this.#anchor, after?.nextSibling ?? null);
   }
 }

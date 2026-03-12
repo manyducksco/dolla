@@ -107,7 +107,7 @@ test("effects bind to the given context", () => {
 
   const spy = vi.fn();
 
-  const context = createContext("signals");
+  const context = createContext();
   onEffect(context, () => {
     spy(count());
   });

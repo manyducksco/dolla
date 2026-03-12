@@ -1,4 +1,5 @@
 import type { View } from "../../../types.js";
+import { createTextNode } from "../../../utils.js";
 import { Context, createContext, mountContext, unmountContext } from "../../context.js";
 import { peek } from "../../signals.js";
 import { MarkupNode } from "../types.js";
@@ -12,14 +13,14 @@ export const VIEW = Symbol.for("Dolla.ViewNode");
  */
 export class ViewNode<P> extends MarkupNode {
   readonly #props: P;
-  readonly context: Context;
   readonly #view: View<P>;
-
   #node?: MarkupNode;
+
+  readonly context: Context;
 
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = createContext(view.name, context);
+    this.context = createContext(context);
     this.context[VIEW] = this;
     this.#props = props;
     this.#view = view;
@@ -42,7 +43,7 @@ export class ViewNode<P> extends MarkupNode {
       if (viewContent != null && viewContent !== false) {
         this.#node = render(viewContent, this.context);
       } else {
-        this.#node = new DOMNode(this.context, document.createComment(`View: ${this.context.name}`));
+        this.#node = new DOMNode(this.context, createTextNode(""));
       }
     }
 

@@ -46,12 +46,12 @@ export class ElementNode extends MarkupNode {
 
     if (tag === "svg") {
       // This and all nested views will be created as SVG elements.
-      this.#context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
+      this.#context = createContext(context);
       this.#context[IS_SVG] = true;
       this.#ownContext = true;
     } else if (this.#context[IS_SVG] && tag === "foreignObject") {
       // No longer in SVG.
-      this.#context = createContext(tag + props.id ? "#" + peek(props.id) : "", context);
+      this.#context = createContext(context);
       this.#context[IS_SVG] = false;
       this.#ownContext = false;
     }
