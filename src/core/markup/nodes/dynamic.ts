@@ -1,6 +1,6 @@
 import { addChild, createTextNode } from "../../../utils.js";
 import type { Context } from "../../context.js";
-import { effect, peek, subscribe, type Getter } from "../../signals.js";
+import { subscribe, type Getter } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { toMarkupNodes } from "../utils.js";
@@ -29,7 +29,7 @@ export class DynamicNode extends MarkupNode {
   }
 
   override isMounted() {
-    return this.#root.parentElement != null;
+    return this.#root.parentNode != null;
   }
 
   override mount(parent: MountTarget, after?: Node) {

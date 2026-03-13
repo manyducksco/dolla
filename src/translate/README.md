@@ -15,7 +15,7 @@ function App() {
 createRoot("#app")
   .plugin(
     createTranslate({
-      locale: "en-US",
+      locale: "en-US", // Load this locale by default.
       translations: {
         "en-US": {
           helloButtonLabel: "Hello",

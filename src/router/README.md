@@ -1,6 +1,8 @@
 # Router
 
 ```js
+import { createRouter, useRouter } from "lmntl-router";
+
 const router = createRouter({
   routes: [
     { path: "/", view: HomePage },

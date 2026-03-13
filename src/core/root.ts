@@ -1,8 +1,8 @@
-import { Renderable, View } from "../types.js";
-import { getElement, isFunction } from "../utils.js";
-import { Context, createContext, mountContext, unmountContext } from "./context.js";
+import type { Renderable, View } from "../types.js";
+import { assert, getElement, isFunction } from "../utils.js";
+import { type Context, createContext, mountContext, unmountContext } from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
-import { MarkupNode } from "./markup/types.js";
+import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
@@ -49,6 +49,8 @@ export function createRoot(selector: string, options?: DollaRootOptions): DollaR
 export function createRoot(element: Element, options?: DollaRootOptions): DollaRoot;
 export function createRoot(target: string | Element, options?: DollaRootOptions) {
   const element = getElement(target);
+  assert(element, "Element cannot be null.");
+
   const context = createContext();
   const plugins: DollaPlugin[] = [];
   const cleanup: CleanupCallback[] = [];
@@ -76,7 +78,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     }
 
     rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
-    rootNode?.mount(element);
+    rootNode?.mount(element!);
 
     mountContext(context);
   }

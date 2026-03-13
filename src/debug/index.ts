@@ -1,3 +1,5 @@
+import { Context } from "../core/context.js";
+import { VIEW } from "../core/markup/nodes/view.js";
 import { isFunction, noOp, okhash } from "../utils.js";
 
 enum LogLevelValue {
@@ -107,6 +109,10 @@ export class Debug {
     logFilter = filter;
     match = _createMatcher(filter);
   }
+}
+
+export function useDebug(context: Context, ...tags: [string, any][]) {
+  return new Debug(context.name, tags);
 }
 
 // Log level and filter can be set globally on the window.

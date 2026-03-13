@@ -2,14 +2,12 @@
 export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
-export { mount, type MountOptions } from "./mount.js";
-
 // Signals
-export { batch, effect, memo, peek, state } from "./signals.js";
+export { batch, effect, get, memo, peek, state } from "./signals.js";
 export type { Accessor, Getter, Setter } from "./signals.js";
 
 // Context & Hooks
-export { inject, onCleanup, onMount, onEffect, provide } from "./context.js";
+export { inject, onCleanup, onEffect, onMount, provide } from "./context.js";
 export type { Context } from "./context.js";
 
 // Markup
@@ -19,7 +17,10 @@ export type { Markup, MarkupNode } from "./markup/types.js";
 export { createMarkup } from "./markup/utils.js";
 
 // Ref
-export { ref, type Ref } from "./ref.js";
+export { ref } from "./ref.js";
+export type { Ref } from "./ref.js";
+
+export { useDebug } from "../debug";
 
 // TESTING
 // export * from "../http";
@@ -32,12 +33,10 @@ export { ref, type Ref } from "./ref.js";
 export type { CSSProperties, Env, InputType, Renderable, Store, View } from "../types.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";
-
 declare global {
   namespace JSX {
     interface IntrinsicElements extends Elements {
-      // Catch all for custom elements
-      [tag: `${string}-${string}`]: any;
+      [tag: `${string}-${string}`]: any; // Catch all for custom elements
     }
   }
 }

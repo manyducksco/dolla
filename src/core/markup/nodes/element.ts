@@ -11,7 +11,7 @@ import {
 } from "../../../utils.js";
 import { Context, createContext, mountContext, unmountContext } from "../../context.js";
 import { Ref } from "../../ref.js";
-import { type Getter, peek, subscribe } from "../../signals.js";
+import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";

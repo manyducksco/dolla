@@ -98,6 +98,7 @@ export function provide<Options, Returns>(
   const storeContext = createContext(context);
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => unmountContext(storeContext));
+  storeContext.name = store.name;
 
   return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Options, storeContext));
 }

@@ -22,6 +22,7 @@ export class ViewNode<P> extends MarkupNode {
     super();
     this.context = createContext(context);
     this.context[VIEW] = this;
+    this.context.name = view.name;
     this.#props = props;
     this.#view = view;
   }

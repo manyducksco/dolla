@@ -1,15 +1,14 @@
-import { Context, provide, inject, onMount, onCleanup } from "../core/context.js";
-import { Debug } from "../debug/index.js";
+import { Context, onCleanup, onMount, provide } from "../core/context.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
 import { createMarkup } from "../core/markup/utils.js";
 import { batch, peek, state } from "../core/signals.js";
-import { DEBUG, PARENT_ELEMENT } from "../core/symbols.js";
+import { PARENT_ELEMENT } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { uniqueId } from "../utils.js";
 import { RouterStore } from "./store.js";
-import type { ActiveLayer, LazyLoader, LazyView, RouteLayer, RouterOptions } from "./types.js";
+import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
 import {
   buildRouteTree,
   catchLinks,
@@ -58,7 +57,7 @@ export function createRouter(options: RouterOptions): View {
 
     this.name = "dolla:router";
 
-    const console = new Debug("dolla:router");
+    // const console = new Debug("dolla:router");
 
     const rootSlot = state<MarkupNode>();
     const rootLayer = {
@@ -80,26 +79,26 @@ export function createRouter(options: RouterOptions): View {
       const path = href ?? history.getPath();
       const { match, journey } = await resolveRoute(routeTree, path);
 
-      if (context[DEBUG]) {
-        for (let i = 0; i < journey.length; i++) {
-          const step = journey[i];
-          const tag = `(update: step ${i + 1} of ${journey.length})`;
+      // if (context[DEBUG]) {
+      //   for (let i = 0; i < journey.length; i++) {
+      //     const step = journey[i];
+      //     const tag = `(update: step ${i + 1} of ${journey.length})`;
 
-          switch (step.kind) {
-            case "match":
-              console.info(`${tag} 📍 ${step.message}`);
-              break;
-            case "redirect":
-              console.info(`${tag} ↩️ ${step.message}`);
-              break;
-            case "miss":
-              console.info(`${tag} 💀 ${step.message}`);
-              break;
-            default:
-              break;
-          }
-        }
-      }
+      //     switch (step.kind) {
+      //       case "match":
+      //         console.info(`${tag} 📍 ${step.message}`);
+      //         break;
+      //       case "redirect":
+      //         console.info(`${tag} ↩️ ${step.message}`);
+      //         break;
+      //       case "miss":
+      //         console.info(`${tag} 💀 ${step.message}`);
+      //         break;
+      //       default:
+      //         break;
+      //     }
+      //   }
+      // }
 
       if (!match) {
         throw new NoRouteError(`Failed to match route '${path}'`);

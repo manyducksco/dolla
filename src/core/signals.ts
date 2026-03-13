@@ -420,12 +420,6 @@ function computedGetter(this: ComputedNode) {
   return this._value!;
 }
 
-function resolveValue<T>(next: SetterAction<T>, current: T): T {
-  if (isAccessor(next)) return peek(next) as T;
-  if (isFunction(next)) return peek(() => next(current)) as T;
-  return next as T;
-}
-
 function computedSetter(this: ComputedNode, next: SetterAction<any>) {
   const value = resolveValue(next, this._value);
   if (this._value !== value) {
@@ -517,6 +511,12 @@ function isAccessor<T>(value: unknown): value is Accessor<T> {
   return value.name === "bound " + valueAccessor.name || value.name === "bound " + computedAccessor.name;
 }
 
+function resolveValue<T>(next: SetterAction<T>, current: T): T {
+  if (isAccessor(next)) return peek(next) as T;
+  if (isFunction(next)) return peek(() => next(current)) as T;
+  return next as T;
+}
+
 function purgeDeps(sub: ReactiveNode) {
   const depsTail = sub._depsTail;
   let dep = depsTail !== undefined ? depsTail._nextDep : sub._deps;
@@ -606,7 +606,7 @@ export function effect(fn: () => void): () => void {
   return effectCleanup.bind(e);
 }
 
-export function peek<T>(value: Getter<T>): T {
+export function peek<T>(value: T | Getter<T>): T {
   const prevSub = setActiveSub(undefined);
   try {
     return get(value);

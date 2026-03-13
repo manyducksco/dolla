@@ -6,10 +6,14 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { mount, state, html, onMount, onCleanup, onEffect } from "../dist/index.js";
+      import { createRoot, state, html, onMount, onCleanup, onEffect, useDebug } from "../dist/index.js";
 
       function Counter() {
         const count = state(0);
+
+        // Debug uses name from context.
+        this.name = "POTATO";
+        const console = useDebug(this, ["fff", 2]);
 
         onMount(this, () => {
           console.log("WE ARE MOUNTED", this);
@@ -36,12 +40,12 @@
         `;
       }
 
-      mount(Counter, document.getElementById("counter"));
+      createRoot("#counter").mount(Counter);
     </script>
 
     <div id="providers"></div>
     <script type="module">
-      import { mount, state, html, provide, inject, when } from "../dist/index.js";
+      import { createRoot, state, html, provide, inject, when } from "../dist/index.js";
 
       function Store() {
         const value = state(0);
@@ -53,6 +57,8 @@
 
         setValue(10);
 
+        // return ["div", [Child]];
+
         return html`
           <div>
             <${Child} />
@@ -63,15 +69,17 @@
       function Child() {
         const { value } = inject(this, Store);
 
+        // return ["p", ["@if", () => value() === 10, "We're good", "Something is off"]];
+
         return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
       }
 
-      mount(Parent, document.getElementById("providers"));
+      createRoot("#providers").mount(Parent);
     </script>
 
     <div id="inherited-state"></div>
     <script type="module">
-      import { mount, state, html, onMount } from "../dist/index.js";
+      import { createRoot, state, html, onMount } from "../dist/index.js";
 
       function Parent() {
         this.count = state(0); // set count on context
@@ -101,12 +109,12 @@
         `;
       }
 
-      mount(Parent, document.getElementById("inherited-state"));
+      createRoot("#inherited-state").mount(Parent);
     </script>
 
     <div id="stores-and-injection"></div>
     <script type="module">
-      import { mount, state, html, provide, inject, onMount, onCleanup } from "../dist/index.js";
+      import { createRoot, state, html, provide, inject, onMount, onCleanup } from "../dist/index.js";
 
       function CounterStore() {
         const count = state(0);
@@ -147,7 +155,7 @@
         `;
       }
 
-      mount(Parent, document.getElementById("stores-and-injection"));
+      createRoot("#stores-and-injection").mount(Parent);
     </script>
 
     <div id="web-components">
@@ -155,7 +163,7 @@
       <button id="randomize-button">Randomize</button>
     </div>
     <script type="module">
-      import { html, state, mount } from "../dist/index.js";
+      import { html, state, createRoot } from "../dist/index.js";
 
       // Simple web components usage.
       class CounterElement extends HTMLElement {
@@ -165,27 +173,24 @@
 
         constructor() {
           super();
-          this.root = this.attachShadow({ mode: "open" });
+          this.root = createRoot(this.attachShadow({ mode: "open" }));
         }
 
         connectedCallback() {
           // TODO: Allow mounting an `html` block with multiple root nodes.
           // I had to wrap them in a div to get them to show up.
-          this.unmount = mount(
-            html`
-              <div>
-                <p>Element count: ${this.count}</p>
-                <button onclick=${() => this.count((current) => current + 1)}>Increment</button>
-                <button onclick=${() => this.count((current) => current - 1)}>Decrement</button>
-                <button onclick=${() => this.count(0)}>Reset</button>
-              </div>
-            `,
-            this.root,
-          );
+          this.root.mount(html`
+            <div>
+              <p>Element count: ${this.count}</p>
+              <button onclick=${() => this.count((current) => current + 1)}>Increment</button>
+              <button onclick=${() => this.count((current) => current - 1)}>Decrement</button>
+              <button onclick=${() => this.count(0)}>Reset</button>
+            </div>
+          `);
         }
 
         disconnectedCallback() {
-          this.unmount?.();
+          this.root.unmount();
         }
 
         attributeChangedCallback(name, oldValue, newValue) {
@@ -207,7 +212,7 @@
 
     <div id="sibling-lists"></div>
     <script type="module">
-      import { mount, memo, state, html, repeat, when, onMount, onCleanup } from "../dist/index.js";
+      import { createRoot, memo, state, html, repeat, when, onMount, onCleanup } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -285,7 +290,7 @@
         // `;
       }
 
-      mount(SiblingLists, document.getElementById("sibling-lists"));
+      createRoot("#sibling-lists").mount(SiblingLists);
     </script>
 
     <!-- <div

@@ -29,7 +29,7 @@ export class PortalNode extends MarkupNode {
   }
 
   override isMounted() {
-    return this.#anchor.parentElement != null;
+    return this.#anchor.parentNode != null;
   }
 
   override mount(logicalParent: MountTarget, after?: Node) {

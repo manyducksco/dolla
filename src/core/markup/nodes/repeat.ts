@@ -51,7 +51,7 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   override isMounted() {
-    return this.#root.parentElement != null;
+    return this.#root.parentNode != null;
   }
 
   override mount(parent: Element, after?: Node) {

@@ -218,46 +218,34 @@ test("nested memo", () => {
 });
 
 describe("subscribe", () => {
-  //   test("immediately cancelling doesn't crash", () => {
-  //     const fn = vi.fn();
-  //     const count = state(5);
-
-  //     expect(() => {
-  //       const cancel = subscribe(count, (value) => {
-  //         fn(value);
-  //         cancel();
-  //       });
-  //     }).not.toThrowError();
-
-  //     expect(fn).toHaveBeenCalledTimes(1);
-
-  //     count.update((current) => current + 1);
-
-  //     expect(fn).toHaveBeenCalledTimes(1);
-  //   });
+  // test("immediately cancelling doesn't crash", () => {
+  //   const fn = vi.fn();
+  //   const count = state(5);
+  //   expect(() => {
+  //     const cancel = subscribe(count, (value) => {
+  //       fn(value);
+  //       cancel();
+  //     });
+  //   }).not.toThrowError();
+  //   expect(fn).toHaveBeenCalledTimes(1);
+  //   count((current) => current + 1);
+  //   expect(fn).toHaveBeenCalledTimes(1);
+  // });
 
   test("ignores tracked values in callback", () => {
     const count = state(5);
     const other = state("hi");
-
     const fn = vi.fn();
-
     const unsub = subscribe(count, (value) => {
       other(); // trackable getter
       fn();
       return value * 2;
     });
-
     expect(fn).toBeCalledTimes(1);
-
     count(12);
-
     expect(fn).toBeCalledTimes(2); // tracked `count` has updated
-
     other("hello");
-
     expect(fn).toBeCalledTimes(2); // `other` is not tracked
-
     unsub();
   });
 });
