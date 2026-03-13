@@ -1,12 +1,11 @@
 import type { View } from "../../../types.js";
-import { createTextNode } from "../../../utils.js";
-import { Context, createContext, mountContext, unmountContext } from "../../context.js";
+import { ComponentState, Context, createContext, mountContext, unmountContext } from "../../context.js";
 import { peek } from "../../signals.js";
 import { MarkupNode } from "../types.js";
-import { render } from "../utils.js";
+import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";
 
-export const VIEW = Symbol.for("Dolla.ViewNode");
+export const VIEW = Symbol.for("ViewNode");
 
 /**
  * Renders a View.
@@ -16,11 +15,11 @@ export class ViewNode<P> extends MarkupNode {
   readonly #view: View<P>;
   #node?: MarkupNode;
 
-  readonly context: Context;
+  readonly context: Context<ComponentState & Record<string | symbol, any>>;
 
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = createContext(context);
+    this.context = createContext(context) as Context<ComponentState>;
     this.context[VIEW] = this;
     this.context.name = view.name;
     this.#props = props;

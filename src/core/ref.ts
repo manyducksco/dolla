@@ -1,3 +1,5 @@
+import { assert } from "../utils";
+
 export interface Ref<T> {
   /**
    * Call with no arguments to get the stored value.
@@ -15,16 +17,14 @@ export interface Ref<T> {
 export function ref<T = HTMLElement>(): Ref<T> {
   let currentValue: T | undefined;
 
-  return ((value?: T) => {
-    if (value) {
-      currentValue = value;
+  return ((...args: [T]) => {
+    if (args.length) {
+      currentValue = args[0];
       return () => {
         currentValue = undefined;
       };
     } else {
-      if (!currentValue) {
-        throw new Error(`Ref has no value.`);
-      }
+      assert(currentValue !== undefined, "Empty ref!");
       return currentValue;
     }
   }) as Ref<T>;

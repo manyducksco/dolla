@@ -1,10 +1,9 @@
 import type { Renderable } from "../../../types.js";
-import { addChild, createTextNode } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { batch, Getter, state, subscribe, type Accessor } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
-import { render } from "../utils.js";
+import { addChild, createTextNode, render } from "../utils.js";
 
 // ----- Types ----- //
 

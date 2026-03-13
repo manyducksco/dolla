@@ -1,6 +1,6 @@
-import { addChild, moveBefore } from "../../../utils.js";
 import { Context } from "../../context.js";
-import { MarkupNode, MountTarget } from "../types.js";
+import { MarkupNode, type MountTarget } from "../types.js";
+import { addChild, moveAfter } from "../utils.js";
 
 /**
  * A lightweight MarkupNode wrapper for a plain DOM node.
@@ -26,12 +26,11 @@ export class DOMNode extends MarkupNode {
   }
 
   override unmount(skipDOM = false) {
-    if (!skipDOM && this.#root.parentNode != null) {
-      this.#root.parentNode.removeChild(this.#root);
-    }
+    if (skipDOM) return;
+    this.#root.parentNode?.removeChild(this.#root);
   }
 
   override move(parent: Element, after?: Node) {
-    moveBefore(parent, this.#root, after?.nextSibling ?? null);
+    moveAfter(parent, this.#root, after);
   }
 }

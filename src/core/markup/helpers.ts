@@ -12,11 +12,7 @@ import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
  * @param keyFn - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
  * @param renderFn - Takes (item, index) as Reactive values and returns content to display for that item.
  */
-export function repeat<T>(
-  items: Getter<Iterable<T>> | Iterable<T>,
-  keyFn: KeyFn<T>,
-  renderFn: RenderFn<T>,
-): Renderable {
+export function each<T>(items: Getter<Iterable<T>> | Iterable<T>, keyFn: KeyFn<T>, renderFn: RenderFn<T>): Renderable {
   if (isFunction(items)) {
     return createMarkup(RepeatNode<T>, { args: [items, keyFn, renderFn] });
   } else {

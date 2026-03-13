@@ -150,10 +150,13 @@ export interface Router {
    */
   replace(path: string): void;
 
+  /**
+   * Prevents attempted navigations if the condition returns true.
+   */
   block(guard: () => boolean | Promise<boolean>): () => void;
 
   /**
    * Contains `true` when the current route matches `path`.
    */
-  isActive(path: string, exact?: boolean): Getter<boolean>;
+  isActive(path: string | Getter<string>, exact?: boolean): Getter<boolean>;
 }

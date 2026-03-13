@@ -38,6 +38,10 @@ interface Stack<T> {
   _prev: Stack<T> | undefined;
 }
 
+/*==================================*\
+||         Signal Internals         ||
+\*==================================*/
+
 const enum ReactiveFlags {
   None = 0,
   Mutable = 1,
@@ -390,6 +394,29 @@ function flush(): void {
   }
 }
 
+function purgeDeps(sub: ReactiveNode) {
+  const depsTail = sub._depsTail;
+  let dep = depsTail !== undefined ? depsTail._nextDep : sub._deps;
+  while (dep !== undefined) {
+    dep = unlink(dep, sub);
+  }
+}
+
+/*==================================*\
+||        API Implementation        ||
+\*==================================*/
+
+function isAccessor<T>(value: unknown): value is Accessor<T> {
+  if (typeof value !== "function") return false;
+  return value.name === "bound " + valueAccessor.name || value.name === "bound " + computedAccessor.name;
+}
+
+function resolveValue<T>(next: SetterAction<T>, current: T): T {
+  if (isAccessor(next)) return peek(next) as T;
+  if (isFunction(next)) return peek(() => next(current)) as T;
+  return next as T;
+}
+
 function computedGetter(this: ComputedNode) {
   const flags = this._flags;
   if (
@@ -462,7 +489,7 @@ function computedAccessor<T>(this: ComputedNode<T>, ...next: [SetterAction<T>]):
 
 function valueAccessor<T>(this: ValueNode<T>, ...args: [SetterAction<T>]): T | void {
   if (args.length) {
-    const value = resolveValue(args[0], this._currentValue);
+    const value = resolveValue(args[0], this._pendingValue);
     if (this._pendingValue !== (this._pendingValue = value)) {
       this._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
       const subs = this._subs;
@@ -506,25 +533,6 @@ function effectCleanup(this: ReactiveNode): void {
   (this as EffectNode)._cleanup = undefined;
 }
 
-function isAccessor<T>(value: unknown): value is Accessor<T> {
-  if (typeof value !== "function") return false;
-  return value.name === "bound " + valueAccessor.name || value.name === "bound " + computedAccessor.name;
-}
-
-function resolveValue<T>(next: SetterAction<T>, current: T): T {
-  if (isAccessor(next)) return peek(next) as T;
-  if (isFunction(next)) return peek(() => next(current)) as T;
-  return next as T;
-}
-
-function purgeDeps(sub: ReactiveNode) {
-  const depsTail = sub._depsTail;
-  let dep = depsTail !== undefined ? depsTail._nextDep : sub._deps;
-  while (dep !== undefined) {
-    dep = unlink(dep, sub);
-  }
-}
-
 /*==================================*\
 ||            Public API            ||
 \*==================================*/
@@ -534,12 +542,11 @@ function purgeDeps(sub: ReactiveNode) {
  */
 export type Getter<T> = () => T;
 
-export type SetterAction<T> = T | ((prev: T) => T);
-
 /**
  * Updates the held value. Can take a raw value or an update function that takes the previous state and returns a new one.
  */
 export type Setter<T> = (next: SetterAction<T>) => T;
+export type SetterAction<T> = T | ((prev: T) => T);
 
 /**
  * A combined getter-setter. Acts as a getter when called with no arguments, and as a setter when called with one argument.

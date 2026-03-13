@@ -33,6 +33,7 @@ export interface Markup<
 
 export interface MountTarget {
   insertBefore(node: Node, child: Node | null): any;
+  moveBefore?: (node: Node, child: Node | null) => any;
   appendChild(node: Node): any;
 }
 

@@ -9,10 +9,9 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - 📦 Two types of [components](./docs/components.md):
   - 🖥️ [**Views**](./docs/views.md) for reusable UI elements.
   - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
-- 🪝 [**Hooks**](./docs/hooks.md) for reaching into the component context and hooking into stores, lifecycle and more.
 - 🔀 A client-side [**router**](./docs/router.md) with nested routes, auth guards, async data loading and more.
 - 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translated strings into a JSON file and access them with the `t` function in your views.
-- 🍳 The build system is optional. You can [write JSX](./docs/setup.md) with a bundler, or [use tagged template literals](./docs/buildless.md) directly in the browser.
+- 🍳 The build step is optional. You can [write JSX](./docs/jsx.md) with a bundler, or use tagged template literals directly in the browser.
 
 ## ...
 

@@ -91,7 +91,7 @@ export interface TranslateOptions {
 
 const TRANSLATE = Symbol("Dolla.Translate");
 
-export function useTranslate(context: Context) {
+export function useTranslate(context: Context): Translator {
   if (!context[TRANSLATE]) throw new Error("Translate plugin isn't loaded.");
   return context[TRANSLATE];
 }
@@ -106,7 +106,7 @@ export function createTranslate(options: TranslateOptions): DollaPlugin {
 
 // ----- Code ----- //
 
-export function createTranslator(options: TranslateOptions): Translator {
+function createTranslator(options: TranslateOptions): Translator {
   const formatters = new Map<string, Formatter>();
 
   formatters.set("number", (locale, value, options) => {

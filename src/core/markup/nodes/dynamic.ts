@@ -1,9 +1,8 @@
-import { addChild, createTextNode } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { subscribe, type Getter } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
-import { toMarkupNodes } from "../utils.js";
+import { addChild, createTextNode, toMarkupNodes } from "../utils.js";
 import { DOMNode } from "./dom.js";
 
 /**
@@ -55,12 +54,12 @@ export class DynamicNode extends MarkupNode {
     }
   }
 
-  override move(parent: Element, after?: Node) {
+  override move(parent: MountTarget, after?: Node) {
     let referenceNode: Node | null = after?.nextSibling ?? null;
 
-    if ("moveBefore" in parent) {
+    if (parent.moveBefore) {
       try {
-        (parent as any).moveBefore(this.#root, referenceNode);
+        parent.moveBefore(this.#root, referenceNode);
         referenceNode = this.#root.nextSibling;
 
         for (let i = 0; i < this.#children.length; i++) {

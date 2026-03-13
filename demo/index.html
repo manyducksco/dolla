@@ -44,7 +44,7 @@
 
     <div id="providers"></div>
     <script type="module">
-      import { createRoot, state, html, provideStore, useStore, when } from "../dist/index.js";
+      import { createRoot, state, html, addStore, useStore, when } from "../dist/index.js";
 
       function Store() {
         const value = state(0);
@@ -52,7 +52,7 @@
       }
 
       function Parent(props, ctx) {
-        const { setValue } = provide(ctx, Store);
+        const { setValue } = addStore(ctx, Store);
 
         setValue(10);
 
@@ -66,7 +66,7 @@
       }
 
       function Child() {
-        const { value } = inject(this, Store);
+        const { value } = useStore(this, Store);
 
         // return ["p", ["@if", () => value() === 10, "We're good", "Something is off"]];
 
@@ -113,7 +113,7 @@
 
     <div id="stores-and-injection"></div>
     <script type="module">
-      import { createRoot, state, html, provide, inject, onMount, onCleanup } from "../dist/index.js";
+      import { createRoot, state, html, addStore, useStore, onMount, onCleanup } from "../dist/index.js";
 
       function CounterStore() {
         const count = state(0);
@@ -127,7 +127,7 @@
       }
 
       function Parent() {
-        const { increment } = provide(this, CounterStore);
+        const { increment } = addStore(this, CounterStore);
 
         onMount(this, () => {
           const interval = setInterval(increment, 1000);
@@ -145,7 +145,7 @@
       }
 
       function Child() {
-        const { count, reset } = inject(this, CounterStore);
+        const { count, reset } = useStore(this, CounterStore);
 
         return html`
           <p>Count from CounterStore: ${count}</p>
@@ -211,7 +211,7 @@
 
     <div id="sibling-lists"></div>
     <script type="module">
-      import { createRoot, memo, state, html, repeat, when, onMount, onCleanup } from "../dist/index.js";
+      import { createRoot, memo, state, html, each, when, onMount, onCleanup } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -244,7 +244,7 @@
           onCleanup(this, () => clearInterval(interval));
         });
 
-        return repeat(
+        return each(
           sorted,
           (item) => item,
           (item) => {
@@ -274,7 +274,7 @@
         return html`
           <div>
             ${lists}
-            ${repeat(
+            ${each(
               lists,
               (item) => item.props.color,
               (item) => item,
@@ -292,7 +292,7 @@
       createRoot("#sibling-lists").mount(SiblingLists);
     </script>
 
-    <!-- <div
+    <div
       id="chat-wire-demo"
       style="
         width: 400px;
@@ -305,9 +305,9 @@
         overflow: hidden;
         margin: 40px;
       "
-    ></div> -->
+    ></div>
 
-    <!-- <style>
+    <style>
       /* The dimensional bubble styling */
       .chat-bubble {
         margin: 8px 16px;
@@ -362,7 +362,8 @@
     </style>
 
     <script type="module">
-      import { createRoot, createVirtualList, state, html, when, watch } from "../dist/index.js";
+      import { createRoot, state, html, when, onEffect, batch } from "../dist/index.js";
+      import { createVirtualList } from "../dist/virtual.js";
 
       function ChatWireDemo() {
         let nextId = 0;
@@ -377,7 +378,7 @@
         let counter = 1;
 
         function addMessage() {
-          items.update((arr) => {
+          items((arr) => {
             const newArr = [...arr];
 
             // Auto-insert a new header every 5 messages to test the push effect
@@ -395,15 +396,21 @@
           });
         }
 
-        let i = 0;
-        while (i < 200) {
-          i++;
-          addMessage();
-        }
+        batch(() => {
+          let i = 0;
+          while (i < 200) {
+            i++;
+            addMessage();
+          }
+        });
 
         setInterval(() => {
           addMessage();
         }, 5000);
+
+        onEffect(this, () => {
+          console.log("length", items().length);
+        });
 
         const [MessageList, listApi] = createVirtualList({
           items,
@@ -440,7 +447,7 @@
                 }
 
                 return html`
-                  <div class=${() => (context.isEntering.track() ? "chat-bubble animate-enter" : "chat-bubble")}>
+                  <div class=${() => (context.isEntering() ? "chat-bubble animate-enter" : "chat-bubble")}>
                     ${item.text}
                   </div>
                 `;
@@ -470,7 +477,7 @@
       }
 
       createRoot("#chat-wire-demo").mount(ChatWireDemo);
-    </script> -->
+    </script>
 
     <!-- <div id="virtual" style="border: 1px solid red; width: 300px; height: 500px"></div>
     <script type="module">

@@ -1,6 +1,6 @@
 import { View } from "../types.js";
 import { assert, isArray, isFunction, isObject, isString, uniqueId } from "../utils.js";
-import type { JourneyStep, LazyView, Route, RouteLayer, Stringable } from "./types.js";
+import type { JourneyStep, Route, RouteLayer, Stringable } from "./types.js";
 
 export interface Match {
   /**
@@ -56,7 +56,7 @@ export function splitPath(path: string): string[] {
   return path
     .split("/")
     .map((f) => f.trim())
-    .filter((f) => f !== "");
+    .filter(Boolean);
 }
 
 /**
@@ -65,69 +65,38 @@ export function splitPath(path: string): string[] {
  * @param parts - One or more URL fragments (e.g. `["api", "users", 5]`)
  * @returns a joined path (e.g. `"api/users/5"`)
  */
+
 export function joinPath(parts: { toString(): string }[]): string {
-  parts = parts.filter((x) => x).flatMap(String);
+  let joined = parts.map(String).filter(Boolean).join("/").replace(/\/+/g, "/");
+  if (!joined) return "";
 
-  let joined = parts.shift()?.toString();
+  let path = new URL(joined, "http://x/").pathname;
+  if (!joined.startsWith("/") && path.startsWith("/")) path = path.slice(1);
+  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
 
-  if (joined) {
-    for (const part of parts.map((p) => p.toString())) {
-      if (part.startsWith(".")) {
-        // Resolve relative path against joined
-        joined = resolvePath(joined, part);
-      } else if (joined[joined.length - 1] !== "/") {
-        if (part[0] !== "/") {
-          joined += "/" + part;
-        } else {
-          joined += part;
-        }
-      } else {
-        if (part[0] === "/") {
-          joined += part.slice(1);
-        } else {
-          joined += part;
-        }
-      }
-    }
-
-    // Remove trailing slash (unless path is just '/')
-    if (joined && joined !== "/" && joined.endsWith("/")) {
-      joined = joined.slice(0, joined.length - 1);
-    }
-  }
-
-  return joined ?? "";
+  return path;
 }
 
-export function resolvePath(base: string, part: string | null) {
+export function resolvePath(base: string, part: string | null = null) {
   if (part == null) {
     part = base;
     base = "";
   }
 
-  if (part.startsWith("/")) {
-    return part;
+  if (part.startsWith("/")) return part;
+
+  // Enforce trailing slash so URL constructor treats base as a directory
+  let urlBase = base.startsWith("/") ? base : `/${base}`;
+  if (!urlBase.endsWith("/")) urlBase += "/";
+
+  let resolved = new URL(part, `http://x${urlBase}`).pathname;
+
+  // Strip trailing slash from result
+  if (resolved !== "/" && resolved.endsWith("/")) {
+    resolved = resolved.slice(0, -1);
   }
 
-  let resolved = base;
-
-  while (true) {
-    if (part.startsWith("..")) {
-      for (let i = resolved.length; i > 0; --i) {
-        if (resolved[i] === "/" || i === 0) {
-          resolved = resolved.slice(0, i);
-          part = part.replace(/^\.\.\/?/, "");
-          break;
-        }
-      }
-    } else if (part.startsWith(".")) {
-      part = part.replace(/^\.\/?/, "");
-    } else {
-      break;
-    }
-  }
-
-  return joinPath([resolved, part]);
+  return base.startsWith("/") ? resolved : resolved.slice(1);
 }
 
 export function parseQueryParams(query: string): Record<string, string> {
@@ -139,26 +108,18 @@ export function mergeQueryParams(
   current: Record<string, Stringable>,
   preserve?: boolean | string[],
 ) {
-  const merged: Record<string, string> = {};
-  const params = new URLSearchParams();
+  const merged: Record<string, any> = {};
 
   if (preserve === true) {
-    Object.assign(merged, previous, current);
+    Object.assign(merged, previous);
   } else if (isArray(preserve)) {
-    const preserved: Record<string, any> = {};
-    for (const key in previous) {
-      if (preserve.includes(key)) {
-        preserved[key] = current[key];
-      }
+    for (const key of preserve) {
+      if (key in previous) merged[key] = previous[key];
     }
-    Object.assign(merged, preserved, current);
   }
 
-  for (const key in merged) {
-    params.set(key, String(merged[key]));
-  }
-
-  return params;
+  Object.assign(merged, current);
+  return new URLSearchParams(merged as Record<string, string>);
 }
 
 export class RouteNode {
@@ -175,70 +136,45 @@ export class RouteNode {
 
 export function buildRouteTree(routes: Route[]): RouteNode {
   const root = new RouteNode();
-
   const redirectsToValidate: RoutePayload[] = [];
 
   function insertIntoTree(pattern: string, payload: RoutePayload) {
     const parts = splitPath(pattern);
     let current = root;
 
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-
+    for (const part of parts) {
       if (part === "*") {
-        if (!current.wildcardChild) current.wildcardChild = new RouteNode();
-        current = current.wildcardChild;
+        current = current.wildcardChild ??= new RouteNode();
       } else if (part.charCodeAt(0) === 123) {
         // {
         if (part.charCodeAt(1) === 35) {
           // #
-          if (!current.numericChild) current.numericChild = new RouteNode();
-          current.numericChild.numericName = part.slice(2, -1);
-          current = current.numericChild;
+          current = current.numericChild ??= new RouteNode();
+          current.numericName = part.slice(2, -1);
         } else {
-          if (!current.paramChild) current.paramChild = new RouteNode();
-          current.paramChild.paramName = part.slice(1, -1);
-          current = current.paramChild;
+          current = current.paramChild ??= new RouteNode();
+          current.paramName = part.slice(1, -1);
         }
       } else {
         const key = part.toLowerCase();
         let next = current.staticChildren.get(key);
-        if (!next) {
-          next = new RouteNode();
-          current.staticChildren.set(key, next);
-        }
+        if (!next) current.staticChildren.set(key, (next = new RouteNode()));
         current = next;
       }
     }
-
     current.route = payload;
   }
 
   function parse(route: Route, parents: Route[] = [], layers: RouteLayer[] = []) {
-    if (!isObject<Route>(route) || !isString(route.path)) {
-      throw new TypeError(`Routes must be objects with a 'path' string property. Got: ${route}`);
-    }
-
-    if (route.redirect && route.routes) {
-      throw new Error(`Route cannot have both a 'redirect' and nested 'routes'.`);
-    } else if (route.redirect && route.view) {
-      throw new Error(`Route cannot have both a 'redirect' and a 'view'.`);
-    } else if (!route.view && !route.routes && !route.redirect) {
-      throw new Error(`Route must have a 'view', a 'redirect', or a set of nested 'routes'.`);
-    }
+    assert(isObject<Route>(route) && isString(route.path), "Invalid route object");
 
     const parentPaths = parents.map((p) => p.path);
     const pattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
+    const parent = parents.at(-1);
+    const meta = parent && route.meta ? { ...parent.meta, ...route.meta } : route.meta || {};
 
-    // Merge meta
-    let meta: Record<any, any> = {};
-    if (route.meta) {
-      const parent = parents.at(-1);
-      meta = parent ? { ...parent.meta, ...route.meta } : route.meta;
-    }
-
-    // Handle Redirects
     if (route.redirect) {
+      assert(!route.routes && !route.view, "Route cannot mix redirect with view/routes");
       let redirect = route.redirect;
 
       if (isString(redirect)) {
@@ -248,17 +184,15 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 
       const payload: RoutePayload = { pattern, meta, redirect };
       insertIntoTree(pattern, payload);
-
       if (isString(redirect)) redirectsToValidate.push(payload);
       return;
     }
 
-    // Handle Views/Layers
-    let view: View<any> = (props: any) => props.children;
-    if (isFunction(route.view)) {
-      view = route.view as View<any>;
-    } else if (route.view && !(route.view as LazyView)._lazy) {
-      throw new TypeError(`Route '${route.path}' expected a view function. Got: ${route.view}`);
+    assert(route.view || route.routes, "Route must have view, redirect, or routes");
+
+    let view = (route.view || ((props: any) => props.children)) as View<any>;
+    if (!isFunction(view) && !(view as any)._lazy) {
+      throw new TypeError(`Expected view function for ${route.path}`);
     }
 
     const layer: RouteLayer = {
@@ -270,28 +204,19 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     };
 
     if (route.routes) {
-      for (const subroute of route.routes) {
-        parse(subroute, [...parents, route], [...layers, layer]);
-      }
+      for (const subroute of route.routes) parse(subroute, [...parents, route], [...layers, layer]);
     } else {
       insertIntoTree(pattern, { pattern, meta, layers: [...layers, layer] });
     }
   }
 
-  for (const route of routes) {
-    parse(route);
-  }
+  for (const route of routes) parse(route);
 
-  // Validate string redirects against the tree
   for (const payload of redirectsToValidate) {
-    const match = matchRoute(root, payload.redirect as string, {
-      willMatch(r) {
-        return r !== payload;
-      },
-    });
-    if (!match) {
-      throw new Error(`Found a redirect to an undefined URL. From '${payload.pattern}' to '${payload.redirect}'`);
-    }
+    assert(
+      matchRoute(root, payload.redirect as string, { willMatch: (r) => r !== payload }),
+      `Dead redirect: ${payload.pattern} -> ${payload.redirect}`,
+    );
   }
 
   return root;
@@ -300,63 +225,71 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatchOptions = {}): RouteMatch | undefined {
   const [path, query] = url.split("?");
   const parts = splitPath(path);
+  const paramState: Record<string, string> = {}; // Reused across branches
 
-  function search(node: RouteNode, index: number, currentParams: Record<string, string>): RouteMatch | undefined {
+  function search(node: RouteNode, index: number): RouteMatch | undefined {
     // if we've consumed all URL parts
     if (index === parts.length) {
       if (node.route && (!options.willMatch || options.willMatch(node.route))) {
         return {
           path: path || "/",
           pattern: node.route.pattern,
-          params: currentParams,
-          query: Object.fromEntries(new URLSearchParams(query || "")),
+          params: { ...paramState },
+          query: parseQueryParams(query || ""),
           meta: node.route.meta,
           layers: node.route.layers ?? [],
           redirect: node.route.redirect,
         };
       }
+
+      // Allow wildcards to match zero remaining segments
+      if (node.wildcardChild && node.wildcardChild.route) {
+        if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
+          return {
+            path: path || "/",
+            pattern: node.wildcardChild.route.pattern,
+            params: { ...paramState, wildcard: "/" },
+            query: parseQueryParams(query || ""),
+            meta: node.wildcardChild.route.meta,
+            layers: node.wildcardChild.route.layers ?? [],
+            redirect: node.wildcardChild.route.redirect,
+          };
+        }
+      }
+
       return undefined;
     }
 
     const part = parts[index];
     const lowerPart = part.toLowerCase();
 
-    // #1 check literal match
     const staticNode = node.staticChildren.get(lowerPart);
     if (staticNode) {
-      const result = search(staticNode, index + 1, currentParams);
+      const result = search(staticNode, index + 1);
       if (result) return result;
     }
 
-    // #2 check numeric match
     if (node.numericChild && !isNaN(Number(part))) {
-      const result = search(node.numericChild, index + 1, {
-        ...currentParams,
-        [node.numericChild.numericName!]: part,
-      });
+      paramState[node.numericChild.numericName!] = part;
+      const result = search(node.numericChild, index + 1);
       if (result) return result;
+      delete paramState[node.numericChild.numericName!];
     }
 
-    // #3 check param match
     if (node.paramChild) {
-      const result = search(node.paramChild, index + 1, {
-        ...currentParams,
-        [node.paramChild.paramName!]: decodeURIComponent(part),
-      });
+      paramState[node.paramChild.paramName!] = decodeURIComponent(part);
+      const result = search(node.paramChild, index + 1);
       if (result) return result;
+      delete paramState[node.paramChild.paramName!];
     }
 
-    // #4 check wildcard match
     if (node.wildcardChild && node.wildcardChild.route) {
       if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
         return {
           path: path || "/",
           pattern: node.wildcardChild.route.pattern,
-          params: {
-            ...currentParams,
-            wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/"),
-          },
-          query: Object.fromEntries(new URLSearchParams(query || "")),
+          params: { ...paramState, wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/") },
+          query: parseQueryParams(query || ""),
           meta: node.wildcardChild.route.meta,
           layers: node.wildcardChild.route.layers ?? [],
           redirect: node.wildcardChild.route.redirect,
@@ -367,7 +300,7 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
     return undefined;
   }
 
-  return search(rootNode, 0, {});
+  return search(rootNode, 0);
 }
 
 export interface ResolvedRoute {
@@ -385,32 +318,22 @@ export async function resolveRoute(
 ): Promise<ResolvedRoute> {
   const match = matchRoute(rootNode, path);
 
-  if (!match) {
-    return {
-      journey: [...journey, { kind: "miss", message: `no match for '${path}'` }],
-    };
-  }
+  if (!match) return { journey: [...journey, { kind: "miss", message: `no match for '${path}'` }] };
 
-  let redirect = match.redirect;
+  if (match.redirect != null) {
+    let target = match.redirect;
 
-  if (redirect != null) {
-    let path: string;
-
-    if (isString(redirect)) {
-      path = replaceParams(redirect, match.params);
-    } else if (isFunction(redirect)) {
-      path = await redirect(match);
-      assert(isString(path), "Redirect function must return a path.");
-      if (!path.startsWith("/")) {
-        path = resolvePath(match.path, path);
-      }
+    if (isString(target)) {
+      target = replaceParams(target, match.params);
     } else {
-      throw new TypeError(`Redirect must be a string or a function.`);
+      target = await target(match);
+      assert(isString(target), "Redirect function must return a path.");
+      if (!target.startsWith("/")) target = resolvePath(match.path, target);
     }
 
-    return resolveRoute(rootNode, path, [
+    return resolveRoute(rootNode, target, [
       ...journey,
-      { kind: "redirect", message: `redirecting '${match.path}' -> '${path}'` },
+      { kind: "redirect", message: `redirecting '${match.path}' -> '${target}'` },
     ]);
   }
 
@@ -418,9 +341,6 @@ export async function resolveRoute(
 
   return { match, journey: [...journey, { kind: "match", message: `matched route '${match.path}'` }] };
 }
-
-const safeExternalLink = /(noopener|noreferrer) (noopener|noreferrer)/;
-const protocolLink = /^[\w-_]+:/;
 
 /**
  * Intercepts links within the root node.
@@ -451,8 +371,8 @@ export function catchLinks(
       _window.location.port !== anchor.port ||
       anchor.hasAttribute("data-router-ignore") ||
       anchor.hasAttribute("download") ||
-      (anchor.getAttribute("target") === "_blank" && safeExternalLink.test(anchor.getAttribute("rel")!)) ||
-      protocolLink.test(href)
+      anchor.getAttribute("target") === "_blank" ||
+      /^[\w-_]+:/.test(href)
     ) {
       return;
     }
@@ -462,10 +382,7 @@ export function catchLinks(
   }
 
   root.addEventListener("click", handler as any);
-
-  return function cancel() {
-    root.removeEventListener("click", handler as any);
-  };
+  return () => root.removeEventListener("click", handler as any);
 }
 
 /**
@@ -473,10 +390,9 @@ export function catchLinks(
  */
 export function replaceParams(path: string, params: Record<string, string | number>) {
   for (const key in params) {
-    const value = params[key].toString();
+    const value = String(params[key]);
     path = path.replace(`{${key}}`, value).replace(`{#${key}}`, value);
   }
-
   return path;
 }
 
@@ -484,36 +400,43 @@ export interface HistoryAdapter {
   getPath(): string;
   getSearch(): string;
   getKey(): string;
+  getIndex(): number;
   push(url: string): void;
   replace(url: string): void;
 }
 
 export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
-  if (!window.history.state?.key) {
-    window.history.replaceState({ ...window.history.state, key: Date.now().toString() }, "");
+  let currentIndex = window.history.state?.index || 0;
+
+  if (window.history.state?.index === undefined) {
+    window.history.replaceState({ ...window.history.state, key: Date.now().toString(), index: currentIndex }, "");
   }
 
-  const getKey = () => window.history.state?.key || "root";
-
-  if (useHash) {
-    return {
-      getPath: () => window.location.hash.slice(1).split("?")[0] || "/",
-      getSearch: () => {
+  const getPath = useHash ? () => window.location.hash.slice(1).split("?")[0] || "/" : () => window.location.pathname;
+  const getSearch = useHash
+    ? () => {
         const hash = window.location.hash;
         const searchIndex = hash.indexOf("?");
         return searchIndex !== -1 ? hash.slice(searchIndex) : "";
-      },
-      getKey,
-      push: (url) => window.history.pushState({ key: uniqueId() }, "", "/#" + url),
-      replace: (url) => window.history.replaceState({ key: getKey() }, "", "/#" + url),
-    };
-  }
+      }
+    : () => window.location.search;
+
+  const getKey = () => window.history.state?.key || "root";
+  const getIndex = () => window.history.state?.index || 0;
 
   return {
-    getPath: () => window.location.pathname,
-    getSearch: () => window.location.search,
+    getPath,
+    getSearch,
     getKey,
-    push: (url) => window.history.pushState({ key: uniqueId() }, "", url),
-    replace: (url) => window.history.replaceState({ key: getKey() }, "", url),
+    getIndex,
+    push: (url) => {
+      currentIndex++;
+      const prefix = useHash ? "/#" : "";
+      window.history.pushState({ key: uniqueId(), index: currentIndex }, "", prefix + url);
+    },
+    replace: (url) => {
+      const prefix = useHash ? "/#" : "";
+      window.history.replaceState({ key: getKey(), index: currentIndex }, "", prefix + url);
+    },
   };
 }

@@ -1,8 +1,7 @@
 import type { Renderable } from "../../../types.js";
-import { addChild, createTextNode } from "../../../utils.js";
 import { Context } from "../../context.js";
 import { MarkupNode, MountTarget } from "../types.js";
-import { render } from "../utils.js";
+import { addChild, createTextNode, moveAfter, render } from "../utils.js";
 
 /**
  * Renders content into a specified parent node.
@@ -59,6 +58,6 @@ export class PortalNode extends MarkupNode {
   }
 
   override move(logicalParent: MountTarget, after?: Node) {
-    logicalParent.insertBefore(this.#anchor, after?.nextSibling ?? null);
+    moveAfter(logicalParent, this.#anchor, after);
   }
 }

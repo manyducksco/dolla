@@ -1,6 +1,6 @@
 import { createMarkup } from "./core/markup/utils.js";
 
-export { Fragment } from "./core/views/fragment.js";
+export const Fragment = ({ children }) => children;
 
 /**
  * JSX function for elements with dynamic children.

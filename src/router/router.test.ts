@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Context, createContext } from "../core/context.js";
-import { inject } from "../core/index.js";
+import { useStore } from "../core/index.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
 import { View } from "../types.js";
@@ -53,7 +53,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await Promise.resolve();
 
-      const store = inject(context, RouterStore);
+      const store = useStore(context, RouterStore);
 
       expect(store.path()).toBe("/dashboard");
       expect(store.meta()).toEqual({ requiresAuth: true, title: "Dashboard" });
@@ -108,7 +108,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = inject(context, RouterStore);
+      const store = useStore(context, RouterStore);
       expect(store.path()).toBe("/login");
     });
   });
@@ -122,7 +122,7 @@ describe("Router Engine", () => {
     });
 
     await withMountedView(routerView, {}, async (context) => {
-      const store = inject(context, RouterStore);
+      const store = useStore(context, RouterStore);
 
       store.push("/form");
       await new Promise(process.nextTick);
@@ -156,7 +156,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = inject(context, RouterStore);
+      const store = useStore(context, RouterStore);
 
       store.setQuery({ q: "potato", sort: "asc" });
 

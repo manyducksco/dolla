@@ -1,13 +1,12 @@
-import { Context, onCleanup, onMount, provide } from "../core/context.js";
+import { addStore, Context, onMount } from "../core/context.js";
 import { useDebug } from "../core/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
-import { createMarkup } from "../core/markup/utils.js";
+import { addListener, createMarkup } from "../core/markup/utils.js";
 import { batch, peek, state } from "../core/signals.js";
 import { DEBUG, PARENT_ELEMENT } from "../core/symbols.js";
 import type { View } from "../types.js";
-import { uniqueId } from "../utils.js";
 import { RouterStore } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
 import {
@@ -25,8 +24,8 @@ import {
  *
  * @example
  * {
- *   path: "/users",
- *   view: lazy(() => import("./views/users.js"))
+ * path: "/users",
+ * view: lazy(() => import("./views/users.js"))
  * }
  */
 export function lazy(load: LazyLoader): LazyView {
@@ -49,31 +48,31 @@ export function createRouter(options: RouterOptions): View {
     query: Object.fromEntries(new URLSearchParams(history.getSearch())),
     meta: {},
   });
-  const progress = state(0);
 
+  const progress = state(0);
   const routeTree = buildRouteTree(options.routes);
+
+  const guards = new Set<() => boolean | Promise<boolean>>();
 
   return function RouterView(this: Context) {
     const context = this;
+    context.name = "dolla:router";
 
-    this.name = "dolla:router";
-    const console = useDebug(this);
-
+    const console = useDebug(context);
     const rootSlot = state<MarkupNode>();
-    const rootLayer = {
-      id: uniqueId(),
-      node: new DynamicNode(context, rootSlot),
+
+    const rootLayer: Partial<ActiveLayer> = {
       context,
       slot: rootSlot,
     };
+
     const activeLayers: ActiveLayer[] = [];
 
     /**
      * Run when the location changes. Diffs and mounts new routes and updates
-     * the $path, $route, $params and $query states accordingly.
+     * the signals accordingly.
      */
-    async function updateRoute(href?: string | undefined, isPopState = false) {
-      // Record the outgoing page's scroll position.
+    async function updateRoute(href?: string) {
       scrollCache.set(currentKey, window.scrollY);
 
       const path = href ?? history.getPath();
@@ -82,212 +81,223 @@ export function createRouter(options: RouterOptions): View {
       if (context[DEBUG]) {
         for (let i = 0; i < journey.length; i++) {
           const step = journey[i];
-          const tag = `(update: step ${i + 1} of ${journey.length})`;
-
-          switch (step.kind) {
-            case "match":
-              console.info(`${tag} 📍 ${step.message}`);
-              break;
-            case "redirect":
-              console.info(`${tag} ↩️ ${step.message}`);
-              break;
-            case "miss":
-              console.info(`${tag} 💀 ${step.message}`);
-              break;
-            default:
-              break;
+          const tag = `(update ${i + 1}/${journey.length})`;
+          if (step.kind === "match") {
+            console.info(`${tag} 📍 ${step.message}`);
+          } else if (step.kind === "redirect") {
+            console.info(`${tag} ↩️ ${step.message}`);
+          } else {
+            console.info(`${tag} 💀 ${step.message}`);
           }
         }
       }
 
-      if (!match) {
-        throw new Error(`Failed to match route '${path}'`);
-      }
+      if (!match) throw new Error(`Failed to match route '${path}'`);
 
       const { layers, params } = match;
+      const targetKeys: string[] = [];
+      let branchIndex = 0;
 
-      const layerKeys = layers.map((layer) => {
-        return `${layer.id}:${replaceParams(layer.pattern, params)}`;
-      });
-
-      // Find the index where the layers diverge.
-      let divergenceIndex = 0;
-      while (
-        divergenceIndex < layers.length &&
-        divergenceIndex < activeLayers.length &&
-        layerKeys[divergenceIndex] === activeLayers[divergenceIndex].key
-      ) {
-        divergenceIndex++;
+      // Compute keys and find out where mounted layers diverge from matched layers
+      for (let i = 0; i < layers.length; i++) {
+        const key = `${layers[i].id}:${replaceParams(layers[i].pattern, params)}`;
+        targetKeys.push(key);
+        if (branchIndex === i && activeLayers[i]?.key === key) branchIndex++;
       }
-
-      // Execute preloads for the new layers.
-      const newLayers = layers.slice(divergenceIndex);
-      const preloadedData: any[] = new Array(newLayers.length).fill(null);
 
       const tasks: Promise<void>[] = [];
+      const preloadedData: any[] = []; // Offsets match loop index minus divIndex
 
-      newLayers.forEach((layer, index) => {
-        // Queue data preload
+      // Execute preloads and lazy component fetches
+      for (let i = branchIndex; i < layers.length; i++) {
+        const layer = layers[i];
+
         if (layer.preload) {
-          const dataPromise = Promise.resolve(layer.preload(match)).then((data) => {
-            preloadedData[index] = data;
-          });
-          tasks.push(dataPromise);
+          tasks.push(
+            Promise.resolve(layer.preload(match)).then((data) => {
+              preloadedData[i - branchIndex] = data;
+            }),
+          );
         }
 
-        // Queue async component fetch.
-        if (layer.view && typeof layer.view === "object" && "_lazy" in layer.view) {
-          const viewPromise = layer.view.load().then((mod) => {
-            // Overwrite the layer's view permanently so it doesn't fetch again.
-            layer.view = "default" in mod ? mod.default : mod;
-          });
-          tasks.push(viewPromise);
+        const view = layer.view as LazyView;
+        if (view._lazy) {
+          tasks.push(
+            view.load().then((mod) => {
+              layer.view = (mod as any).default ?? mod; // Overwrite with loaded module
+            }),
+          );
         }
-      });
+      }
 
       let caughtError: Error | null = null;
-      let errorLayerIndex = -1;
+      let errorIndex = -1;
 
-      // Track loading progress.
-      const totalTasks = tasks.length;
-      if (totalTasks > 0) {
+      // Track loading progress if there are async tasks
+      if (tasks.length > 0) {
         progress(0.1);
         let completed = 0;
+        const increment = 0.8 / tasks.length;
 
-        tasks.forEach((p) => {
-          p.then(() => {
-            completed++;
-            progress(0.1 + (completed / totalTasks) * 0.8);
-          }).catch(() => {}); // Errors handled by Promise.all below.
-        });
-      }
+        tasks.forEach((p) => p.then(() => progress(0.1 + ++completed * increment)).catch(() => {}));
 
-      // Await code and data.
-      try {
-        await Promise.all(tasks);
-      } catch (error) {
-        progress(0);
+        try {
+          await Promise.all(tasks);
+        } catch (error) {
+          progress(0);
+          if (error instanceof RedirectError) return api.replace(error.redirectPath);
 
-        if (error instanceof RedirectError) {
-          api.replace(error.redirectPath);
-          return;
+          caughtError = error instanceof Error ? error : new Error(String(error));
+          errorIndex = branchIndex;
         }
-
-        caughtError = error instanceof Error ? error : new Error(String(error));
-        errorLayerIndex = divergenceIndex;
       }
 
-      // Merge query params.
+      // Merge query params and sync URL if redirect occurred
       const query = mergeQueryParams(peek(currentMatch).query, match.query, options.preserveQuery);
-
       const queryString = query.toString();
-      const searchString = queryString.length > 0 ? "?" + queryString : "";
+      const newUrl = match.path + (queryString ? `?${queryString}` : "");
 
-      // Update the URL if matched path differs from navigator path.
-      // This happens if route resolution involved redirects.
-      if (match.path !== history.getPath() || searchString !== history.getSearch()) {
-        history.replace(match.path + searchString);
+      if (newUrl !== history.getPath() + history.getSearch()) {
+        history.replace(newUrl);
       }
 
-      // Run in batch so all new layers are mounted simultaneously with match signal change.
-      // This avoids the old route effects receiving new signal values just before they unmount.
+      // Batch state updates and DOM mutations
       batch(() => {
         currentMatch({ ...match, query: Object.fromEntries(query) });
 
-        // If nothing actually diverged (e.g. just a query param change), we are done.
-        if (divergenceIndex === layers.length && activeLayers.length === layers.length) {
-          return;
+        if (branchIndex === layers.length && activeLayers.length === layers.length) return;
+
+        // Fast truncate arrays and drop old DOM branches
+        if (activeLayers[branchIndex]) {
+          activeLayers[branchIndex].node.unmount();
+          activeLayers.length = branchIndex;
         }
 
-        // Unmount old layers from the divergence point downwards.
-        const firstDiscardedLayer = activeLayers[divergenceIndex];
-        if (firstDiscardedLayer) {
-          firstDiscardedLayer.node.unmount();
-          activeLayers.splice(divergenceIndex);
-        }
-
-        // Mount new layers.
-        for (let i = divergenceIndex; i < layers.length; i++) {
-          const currentLayer = layers[i];
-          const parentLayer = activeLayers[i - 1] ?? rootLayer;
+        // Mount new layers
+        for (let i = branchIndex; i < layers.length; i++) {
+          const layer = layers[i];
+          const parent = activeLayers[i - 1] ?? rootLayer;
           const slot = state<MarkupNode>();
 
-          let viewToMount = currentLayer.view as View<any>;
+          let viewToMount = layer.view as View<any>;
           let propsToPass: any = {
-            data: preloadedData[i - divergenceIndex],
-            children: createMarkup("$dynamic", { slot }),
+            data: preloadedData[i - branchIndex],
+            children: createMarkup(DynamicNode, { args: [slot] }),
           };
 
-          // If we hit an error, mount the errorView instead of the standard view
-          if (caughtError && i === errorLayerIndex) {
-            if (currentLayer.errorView) {
-              viewToMount = currentLayer.errorView;
-              propsToPass = { error: caughtError };
-            } else {
-              // If no errorView is defined, let it bubble up to the nearest ErrorBoundaryNode
-              throw caughtError;
-            }
+          // Handle Error Boundaries
+          if (caughtError && i === errorIndex) {
+            if (!layer.errorView) throw caughtError;
+            viewToMount = layer.errorView;
+            propsToPass = { error: caughtError };
           }
 
-          const node = new ViewNode(parentLayer.context, viewToMount, propsToPass);
-          parentLayer.slot(node);
+          const node = new ViewNode(parent.context!, viewToMount, propsToPass);
+          parent.slot(node);
 
           activeLayers.push({
-            id: currentLayer.id,
-            key: layerKeys[i],
+            id: layer.id,
+            key: targetKeys[i],
             node,
             context: node.context,
             slot,
           });
 
-          // Stop mounting deeper layers if we hit an error boundary layer
-          if (caughtError && i === errorLayerIndex) break;
+          if (caughtError && i === errorIndex) break;
         }
       });
 
       progress(0);
 
-      // Restore the scroll position of the page we are entering.
       requestAnimationFrame(() => {
-        const targetScroll = scrollCache.get(history.getKey()) ?? 0;
-        window.scrollTo(0, targetScroll);
-
+        window.scrollTo(0, scrollCache.get(history.getKey()) ?? 0);
         currentKey = history.getKey();
       });
     }
 
-    const api = provide(this, RouterStore, {
+    const api = addStore(context, RouterStore, {
       currentMatch,
       progress,
       history,
       updateRoute,
+      guards,
     });
 
-    // Listen for `popstate` events and update route accordingly.
-    onMount(this, () => {
-      const onPopState = () => updateRoute(undefined, true);
-      window.addEventListener("popstate", onPopState);
-      onCleanup(this, () => window.removeEventListener("popstate", onPopState));
-    });
+    onMount(context, () => {
+      // const removePop = addListener(window, "popstate", () => updateRoute());
 
-    // Intercept clicks on `<a>` tags within the app.
-    onMount(this, () => {
-      const parentElement = context[PARENT_ELEMENT] as Element;
-      const stop = catchLinks(parentElement, (path) => {
-        api.push(path);
+      let isReverting = false;
+      let isReplaying = false;
+      let lastIndex = history.getIndex();
+
+      const removePop = addListener(window, "popstate", async () => {
+        // If this popstate is the result of us reverting the URL, ignore it.
+        if (isReverting) {
+          isReverting = false;
+          return;
+        }
+
+        // If this popstate is the result of us replaying an allowed navigation, accept it.
+        if (isReplaying) {
+          isReplaying = false;
+          lastIndex = history.getIndex();
+          updateRoute();
+          return;
+        }
+
+        const newIndex = history.getIndex();
+        const delta = lastIndex - newIndex; // Positive if user clicked Back
+
+        // If guards exist, revert synchronously first
+        if (guards.size > 0) {
+          isReverting = true;
+          window.history.go(delta); // Restores the URL immediately
+
+          // Run guards while the URL is back in its original state
+          let blocked = false;
+          for (const guard of guards) {
+            if (await guard()) {
+              blocked = true;
+              break;
+            }
+          }
+
+          // If guards passed, replay the intended navigation
+          if (!blocked) {
+            isReplaying = true;
+            window.history.go(-delta);
+          }
+          return;
+        }
+
+        // Normal flow (no guards)
+        lastIndex = newIndex;
+        updateRoute();
       });
-      onCleanup(this, stop);
+
+      // Block tab closure/reload if guards exist
+      const removeUnload = addListener(window, "beforeunload", (e: BeforeUnloadEvent) => {
+        if (guards.size > 0) {
+          e.preventDefault();
+          e.returnValue = ""; // Triggers the native browser warning dialog
+        }
+      });
+
+      const removeClick = catchLinks(context[PARENT_ELEMENT] as Element, api.push);
+
+      return () => {
+        removePop();
+        removeUnload();
+        removeClick();
+      };
     });
 
     updateRoute();
 
-    return rootLayer.node;
+    return new DynamicNode(context, rootSlot);
   };
 }
 
-/**
- * Triggers a redirect if thrown within a preload function.
- */
 export class RedirectError extends Error {
   constructor(public redirectPath: string) {
     super(`Redirecting to ${redirectPath}`);

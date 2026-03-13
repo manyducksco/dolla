@@ -1,8 +1,7 @@
 import type * as CSS from "csstype";
-import { LogLevel } from "./core/debug.js";
+import type { ComponentState, Context } from "./core/context.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { Getter } from "./core/signals.js";
-import { Context } from "./core/context.js";
 
 export type Env = "production" | "development";
 
@@ -27,39 +26,17 @@ export interface BaseProps {
   children?: Renderable;
 }
 
-/**
- *
- */
 export type View<Props = {}, State = Record<string | symbol, any>> = (
-  this: Context<State>,
+  this: Context<ComponentState & State>,
   props: Props,
-  context: Context<State>,
+  context: Context<ComponentState & State>,
 ) => Renderable;
 
-/**
- *
- */
-export type Store<Options, Value, State = Record<string | symbol, any>> = (
-  this: Context<State>,
-  options: Options,
-  context: Context<State>,
+export type Store<Props, Value, State = Record<string | symbol, any>> = (
+  this: Context<ComponentState & State>,
+  props: Props,
+  context: Context<ComponentState & State>,
 ) => Value;
-
-declare global {
-  interface Window {
-    /**
-     * Sets the minimum log level ('info', 'log', 'warn', 'error', etc.) a message must have to show in the console.
-     */
-    DOLLA_LOG_LEVEL: LogLevel;
-
-    /**
-     * Filters context names to determine which messages should show in the console. Contexts whose names match the pattern or return true will be shown.
-     */
-    DOLLA_LOG_FILTER: string | RegExp | ((name: string) => any);
-
-    DOLLA_CURRENT_CONTEXT: Context | undefined;
-  }
-}
 
 /*==================================*\
 ||            JSX Types             ||

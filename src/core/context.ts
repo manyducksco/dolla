@@ -1,16 +1,18 @@
-import { Store } from "../types";
-import { assert, isFunction, isObject } from "../utils";
-import { effect } from "./signals";
-
-const EXPECTED_CONTEXT = "Expected a Context object.";
+import type { Store } from "../types.js";
+import { assert } from "../utils.js";
+import { effect } from "./signals.js";
 
 export type LifecycleListener = () => any;
 
-type BaseContextState = {
+type ContextState = {
   isMounted: boolean;
 };
 
-export type Context<T = Record<string | symbol, any>> = BaseContextState & T;
+export type ComponentState = ContextState & {
+  name: string;
+};
+
+export type Context<T = Record<string | symbol, any>> = ContextState & T;
 
 /*===================================*\
 ||              Context              ||
@@ -26,7 +28,6 @@ export function createContext(parent?: Context): Context {
 export function mountContext(context: Context) {
   if (context.isMounted) return;
   context.isMounted = true;
-  // resumeContext(context);
   _callListeners(context, MOUNT_LISTENERS);
 }
 
@@ -35,6 +36,16 @@ export function unmountContext(context: Context) {
   context.isMounted = false;
   _callListeners(context, CLEANUP_LISTENERS);
 }
+
+function _callListeners(context: Context, key: symbol) {
+  if (!Object.hasOwn(context, key)) return;
+  for (const callback of context[key]) callback();
+  context[key].length = 0;
+}
+
+/*===================================*\
+||          Lifecycle Hooks          ||
+\*===================================*/
 
 export function onMount(context: Context, fn: LifecycleListener) {
   if (!Object.hasOwn(context, MOUNT_LISTENERS)) context[MOUNT_LISTENERS] = [fn];
@@ -47,8 +58,6 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 }
 
 export function onEffect(context: Context, fn: () => void) {
-  assert(isObject, EXPECTED_CONTEXT);
-
   if (context.isMounted) {
     onCleanup(context, effect(fn));
   } else {
@@ -58,51 +67,34 @@ export function onEffect(context: Context, fn: () => void) {
   }
 }
 
-function _callListeners(context: Context, key: symbol) {
-  if (Object.hasOwn(context, key)) {
-    for (const callback of context[key]) {
-      callback();
-    }
-    context[key].length = 0;
-  }
-}
-
 /*===================================*\
 ||     Stores: Provide & Inject      ||
 \*===================================*/
 
 export const STORE_ID = Symbol("Dolla.StoreId");
 
-export function provide<Options, Returns>(
+export function addStore<Props, Returns>(
   context: Context,
-  store: Store<Options, Returns> & { [STORE_ID]?: symbol },
-  ...args: undefined extends Options ? [options?: Options] : [options: Options]
+  store: Store<Props, Returns> & { [STORE_ID]?: symbol },
+  ...args: undefined extends Props ? [props?: Props] : [props: Props]
 ) {
-  assert(isFunction(store), "Store must be a function.");
-
   // Tag the store function with a unique symbol if it doesn't have one.
-  if (!store[STORE_ID]) store[STORE_ID] = Symbol(store.name);
+  store[STORE_ID] ??= Symbol(store.name);
 
-  if (Object.hasOwn(context, store[STORE_ID])) {
-    throw new Error("Store was already provided on this context.");
-  }
+  assert(!Object.hasOwn(context, store[STORE_ID]), "Store was already provided on this context.");
 
   // Give the store its own context bound to this lifecycle.
-  const storeContext = createContext(context);
+  const storeContext = createContext(context) as Context<ComponentState>;
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => unmountContext(storeContext));
   storeContext.name = store.name;
 
-  return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Options, storeContext));
+  return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Props, storeContext));
 }
 
-export function inject<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
-  assert(isFunction(store), "Store must be a function.");
-
+export function useStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
   const id = store[STORE_ID];
   const result = id ? context[id] : undefined;
-  if (result == null) {
-    throw new Error(`Store '${store.name}' is not provided by this context.`);
-  }
+  assert(result != null, `Store '${store.name}' is not provided by this context.`);
   return result;
 }

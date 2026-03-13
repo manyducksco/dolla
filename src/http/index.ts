@@ -1,113 +1,14 @@
-import { isObject } from "../utils.js";
-
-/**
- * A simple HTTP client with middleware support. Middleware applies to all requests made through this store,
- * so it's the perfect way to handle things like auth headers and permission checks for API calls.
- */
-export class HTTP {
-  #middleware: HTTPMiddleware[] = [];
-  #fetch = getDefaultFetch();
-
-  /**
-   * Adds a new middleware that will apply to subsequent requests.
-   * Returns a function to remove this middleware.
-   *
-   * @param middleware - A middleware function that will intercept requests.
-   */
-  use(fn: HTTPMiddleware) {
-    this.#middleware.push(fn);
-
-    // Call returned function to remove this middleware for subsequent requests.
-    return () => {
-      this.#middleware.splice(this.#middleware.indexOf(fn), 1);
-    };
-  }
-
-  async get<ResBody = unknown>(uri: string, options?: RequestOptions<never, ResBody>) {
-    return this.#request<ResBody, never>("get", uri, options);
-  }
-
-  async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
-    return this.#request<ResBody, ReqBody>("put", uri, options);
-  }
-
-  async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
-    return this.#request<ResBody, ReqBody>("patch", uri, options);
-  }
-
-  async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
-    return this.#request<ResBody, ReqBody>("post", uri, options);
-  }
-
-  async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never, ResBody>) {
-    return this.#request<ResBody, never>("delete", uri, options);
-  }
-
-  async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
-    return this.#request<ResBody, ReqBody>("head", uri, options);
-  }
-
-  async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
-    return this.#request<ResBody, ReqBody>("options", uri, options);
-  }
-
-  async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
-    return this.#request<ResBody, ReqBody>("trace", uri, options);
-  }
-
-  async #request<ResBody, ReqBody>(method: string, uri: string, options?: RequestOptions<any, ResBody>) {
-    const runner = new Runner<ResBody, ReqBody>({
-      ...options,
-      method,
-      uri,
-      middleware: this.#middleware,
-      fetch: this.#fetch,
-    });
-    return runner.fetch();
-  }
-}
-
-function getDefaultFetch(): typeof window.fetch {
-  if (typeof window !== "undefined" && window.fetch) {
-    return window.fetch.bind(window);
-  }
-
-  if (typeof global !== "undefined" && global.fetch) {
-    return global.fetch.bind(global);
-  }
-
-  throw new Error("Running in neither browser nor node. Please run this app in one of the supported environments.");
-}
-
-/*====================*\
-||      Request       ||
-\*====================*/
-
 export type HTTPMiddleware = (
   request: HTTPRequest<unknown>,
   next: () => Promise<HTTPResponse<unknown>>,
-) => void | Promise<void>;
+) => Promise<HTTPResponse<unknown> | void> | void;
 
 export interface RequestOptions<ReqBody, ResBody> {
-  /**
-   * Body to send with the request.
-   */
   body?: ReqBody;
-
-  /**
-   * Headers to send with the request.
-   */
   headers?: Record<string, any> | Headers;
-
-  /**
-   * Query params to interpolate into the URL.
-   */
   query?: Record<string, any> | URLSearchParams;
-
-  /**
-   * Parse the response manually.
-   */
   parse?: (response: Response) => Promise<ResBody>;
+  signal?: AbortSignal;
 }
 
 export interface HTTPRequest<Body> {
@@ -115,6 +16,7 @@ export interface HTTPRequest<Body> {
   url: URL;
   headers: Headers;
   body: Body;
+  signal?: AbortSignal;
 }
 
 export interface HTTPResponse<Body> {
@@ -126,177 +28,148 @@ export interface HTTPResponse<Body> {
   body: Body;
 }
 
-interface MakeRequestConfig<ReqBody> extends RequestOptions<ReqBody, unknown> {
-  method: string;
-  uri: string;
-  middleware: HTTPMiddleware[];
-  fetch: typeof window.fetch;
-}
-
 export class HTTPResponseError extends Error {
-  response;
+  response: HTTPResponse<any>;
 
   constructor(response: HTTPResponse<any>) {
-    const { status, statusText, method, url } = response;
-    const message = `${status} ${statusText}: Request failed (${method.toUpperCase()} ${url.toString()})`;
-
-    super(message);
-
+    super(
+      `${response.status} ${response.statusText}: Request failed (${response.method.toUpperCase()} ${response.url.toString()})`,
+    );
     this.response = response;
   }
 }
 
-class Request<ReqBody> implements HTTPRequest<ReqBody> {
-  method: string;
-  url: URL;
-  headers = new Headers();
-  body!: ReqBody;
+/**
+ * A simple HTTP client with middleware support.
+ */
+export class HTTP {
+  #middleware: HTTPMiddleware[] = [];
+  #fetch =
+    typeof window !== "undefined" && window.fetch
+      ? window.fetch.bind(window)
+      : typeof global !== "undefined" && global.fetch
+        ? global.fetch.bind(global)
+        : null;
 
-  get isSameOrigin() {
-    return this.url.origin === window.location.origin;
+  constructor() {
+    if (!this.#fetch) throw new Error("Fetch API not found. Unsupported environment.");
   }
 
-  constructor(config: MakeRequestConfig<ReqBody>) {
-    this.method = config.method;
-    this.body = config.body!;
-    if (config.uri.startsWith("http")) {
-      this.url = new URL(config.uri);
-    } else {
-      this.url = new URL(config.uri, window.location.origin);
-    }
-
-    this._applyHeaders(config.headers);
-    this._applyQueryParams(config.query);
+  use(fn: HTTPMiddleware) {
+    this.#middleware.push(fn);
+    return () => {
+      this.#middleware = this.#middleware.filter((m) => m !== fn);
+    };
   }
 
-  private _applyHeaders(headers: any) {
-    if (headers == null) return;
+  async get<ResBody = unknown>(uri: string, options?: RequestOptions<never, ResBody>) {
+    return this.#request<ResBody, never>("GET", uri, options);
+  }
+  async put<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
+    return this.#request<ResBody, ReqBody>("PUT", uri, options);
+  }
+  async patch<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
+    return this.#request<ResBody, ReqBody>("PATCH", uri, options);
+  }
+  async post<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
+    return this.#request<ResBody, ReqBody>("POST", uri, options);
+  }
+  async delete<ResBody = unknown>(uri: string, options?: RequestOptions<never, ResBody>) {
+    return this.#request<ResBody, never>("DELETE", uri, options);
+  }
+  async head<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
+    return this.#request<ResBody, ReqBody>("HEAD", uri, options);
+  }
+  async options<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
+    return this.#request<ResBody, ReqBody>("OPTIONS", uri, options);
+  }
+  async trace<ResBody = unknown, ReqBody = unknown>(uri: string, options?: RequestOptions<ReqBody, ResBody>) {
+    return this.#request<ResBody, ReqBody>("TRACE", uri, options);
+  }
 
-    if (headers instanceof Map || headers instanceof Headers) {
-      headers.forEach((value, key) => {
-        this.headers.set(key, value);
-      });
-    } else if (isObject(headers)) {
-      for (const name in headers) {
-        const value = headers[name];
-        if (value instanceof Date) {
-          this.headers.set(name, value.toISOString());
-        } else if (value != null) {
-          this.headers.set(name, String(value));
+  async #request<ResBody, ReqBody>(
+    method: string,
+    uri: string,
+    options: RequestOptions<any, ResBody> = {},
+  ): Promise<HTTPResponse<ResBody>> {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const url = new URL(uri, uri.startsWith("http") ? undefined : base);
+
+    if (options.query) {
+      if (options.query instanceof URLSearchParams) {
+        options.query.forEach((v, k) => url.searchParams.set(k, v));
+      } else {
+        for (const [k, v] of Object.entries(options.query)) {
+          if (v != null) url.searchParams.set(k, v instanceof Date ? v.toISOString() : String(v));
         }
       }
-    } else {
-      throw new TypeError(`Unknown headers type. Got: ${headers}`);
     }
-  }
 
-  private _applyQueryParams(query: any) {
-    if (query == null) return;
+    const headers = new Headers(options.headers as HeadersInit);
 
-    if (query instanceof Map || query instanceof URLSearchParams) {
-      query.forEach((value, key) => {
-        this.url.searchParams.set(key, value);
-      });
-    } else if (isObject(query)) {
-      for (const name in query) {
-        const value = query[name];
-        if (value instanceof Date) {
-          this.url.searchParams.set(name, value.toISOString());
-        } else if (value != null) {
-          this.url.searchParams.set(name, String(value));
-        }
+    let body = options.body;
+    const isPlainObject = body && typeof body === "object" && body.constructor === Object;
+
+    if (!headers.has("content-type") && (isPlainObject || Array.isArray(body))) {
+      headers.set("content-type", "application/json");
+      body = JSON.stringify(body);
+    }
+
+    const req: HTTPRequest<any> = {
+      method,
+      url,
+      headers,
+      body: method === "GET" || method === "HEAD" ? undefined : body,
+      signal: options.signal,
+    };
+
+    // Execute middleware
+    let index = -1;
+    const dispatch = async (i: number): Promise<HTTPResponse<any>> => {
+      if (i <= index) throw new Error("next() called multiple times");
+      index = i;
+
+      const mw = this.#middleware[i];
+      if (mw) {
+        let res: HTTPResponse<any> | undefined;
+        await mw(req, async () => {
+          res = await dispatch(i + 1);
+          return res;
+        });
+        return res!;
       }
-    } else {
-      throw new TypeError(`Unknown query params type. Got: ${query}`);
-    }
-  }
-}
 
-class Runner<ResBody, ReqBody> {
-  private _middleware;
-  private _fetch;
+      // Terminal Request Handler
+      const fetched = await this.#fetch!(req.url.toString(), {
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+        signal: req.signal,
+      });
 
-  private _request: Request<ReqBody>;
-  private _response?: HTTPResponse<ResBody>;
-  private _parse?: (response: Response) => Promise<ResBody>;
+      let resBody: any;
+      if (options.parse) {
+        resBody = await options.parse(fetched);
+      } else {
+        const type = fetched.headers.get("content-type") || "";
+        if (type.includes("json")) resBody = await fetched.json();
+        else if (type.includes("form")) resBody = await fetched.formData();
+        else resBody = await fetched.text();
+      }
 
-  constructor(config: MakeRequestConfig<ReqBody>) {
-    this._middleware = config.middleware;
-    this._fetch = config.fetch;
-    this._parse = config.parse as (response: Response) => Promise<ResBody>;
-
-    this._request = new Request(config);
-  }
-
-  async fetch() {
-    if (this._middleware.length > 0) {
-      const mount = (index = 0) => {
-        const current = this._middleware[index];
-        const next = this._middleware[index + 1] ? mount(index + 1) : this._handler.bind(this);
-
-        return async () =>
-          current(this._request, async () => {
-            await next();
-            return this._response!;
-          });
+      const response: HTTPResponse<any> = {
+        method: req.method,
+        url: req.url,
+        status: fetched.status,
+        statusText: fetched.statusText,
+        headers: fetched.headers,
+        body: resBody,
       };
 
-      await mount()();
-    } else {
-      await this._handler();
-    }
-
-    if (this._response!.status < 200 || this._response!.status >= 400) {
-      throw new HTTPResponseError(this._response!);
-    }
-
-    return this._response!;
-  }
-
-  // This is the function that performs the actual request after the final middleware.
-  private async _handler() {
-    let reqBody: BodyInit;
-
-    const req = this._request;
-
-    if (!req.headers.has("content-type") && isObject(req.body)) {
-      // Auto-detect JSON bodies and encode as a string with correct headers.
-      req.headers.set("content-type", "application/json");
-      reqBody = JSON.stringify(req.body);
-    } else {
-      reqBody = req.body as BodyInit;
-    }
-
-    const fetched = await this._fetch(req.url.toString(), {
-      method: req.method,
-      headers: req.headers,
-      body: reqBody,
-    });
-
-    let body: ResBody;
-
-    if (this._parse) {
-      body = await this._parse(fetched);
-    } else {
-      // Auto-parse response body based on content-type header
-      const contentType = fetched.headers.get("content-type");
-
-      if (contentType?.includes("application/json")) {
-        body = await fetched.json();
-      } else if (contentType?.includes("application/x-www-form-urlencoded")) {
-        body = (await fetched.formData()) as ResBody;
-      } else {
-        body = (await fetched.text()) as ResBody;
-      }
-    }
-
-    this._response = {
-      method: req.method,
-      url: req.url,
-      status: fetched.status,
-      statusText: fetched.statusText,
-      headers: fetched.headers,
-      body,
+      if (!fetched.ok) throw new HTTPResponseError(response);
+      return response;
     };
+
+    return dispatch(0);
   }
 }

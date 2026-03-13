@@ -1,8 +1,8 @@
 import { Context } from "./context.js";
-import { noOp, okhash } from "../utils.js";
+
+export const noOp = () => {};
 
 export type LogLevel = "info" | "log" | "warn" | "error" | "silent";
-
 const LEVELS: Record<string, number> = { trace: 1, info: 1, log: 2, warn: 3, error: 4, silent: 5 };
 
 let logLevel = 1;
@@ -56,4 +56,15 @@ export function useDebug(context: Context, ...tags: [string, any][]) {
       return make("error", 4);
     },
   };
+}
+
+/**
+ * Takes any string and returns an OKLCH color.
+ */
+function okhash(value: string) {
+  let hue = 0;
+  for (let i = 0; i < value.length; i++) {
+    hue = (hue + value.charCodeAt(i) * 10) % 360;
+  }
+  return `oklch(0.68 0.15 ${hue}deg)`;
 }

@@ -1,11 +1,11 @@
 import type { Renderable, View } from "../../types.js";
-import { createTextNode, isArray, isFunction, isNumber, isString } from "../../utils.js";
+import { isArray, isFunction, isNumber, isString } from "../../utils.js";
 import { Context, createContext } from "../context.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
 import { ViewNode } from "./nodes/view.js";
-import { IS_MARKUP, IS_MARKUP_NODE, IS_MARKUP_NODE_CLASS, Markup, MarkupNode, PropsOf } from "./types.js";
+import { IS_MARKUP, IS_MARKUP_NODE, IS_MARKUP_NODE_CLASS, Markup, MarkupNode, MountTarget, PropsOf } from "./types.js";
 
 export function createMarkup<Type extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   type: Type,
@@ -84,4 +84,33 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
   }
 
   return nodes;
+}
+
+export function addChild(parent: MountTarget, node: Node, after?: Node | null) {
+  if (after) {
+    parent.insertBefore(node, after?.nextSibling);
+  } else {
+    parent.appendChild(node);
+  }
+}
+
+export function createTextNode(text: string) {
+  return document.createTextNode(text);
+}
+
+/**
+ * Moves an element using `moveBefore` if the browser supports it, otherwise falls back to `insertBefore`.
+ */
+export function moveAfter(parent: MountTarget, node: Node, after?: Node | null) {
+  const before = after?.nextSibling ?? null;
+  if (parent.moveBefore) {
+    parent.moveBefore(node, before);
+  } else {
+    parent.insertBefore(node, before);
+  }
+}
+
+export function addListener<T extends Event>(target: EventTarget, event: string, listener: (event: T) => any) {
+  target.addEventListener(event, listener as any);
+  return () => target.removeEventListener(event, listener as any);
 }

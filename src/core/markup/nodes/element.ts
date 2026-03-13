@@ -1,21 +1,11 @@
-import {
-  addChild,
-  addListener,
-  isArray,
-  isFunction,
-  isNumber,
-  isObject,
-  isString,
-  omit,
-  setAttribute,
-} from "../../../utils.js";
+import { isArray, isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
 import { Context, createContext, mountContext, unmountContext } from "../../context.js";
 import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
-import { toMarkupNodes } from "../utils.js";
+import { addChild, addListener, toMarkupNodes } from "../utils.js";
 import { VIEW, ViewNode } from "./view.js";
 
 const IS_SVG = Symbol("isSVG");
@@ -67,8 +57,7 @@ export class ElementNode extends MarkupNode {
     if (this.#context[DEBUG]) {
       const view = this.#context[VIEW] as ViewNode<any>;
       if (view) {
-        this.#root.dataset.parentView = view.context.name + "#" + view.context.id;
-        this.#root.dataset.contextId = this.#context.id;
+        this.#root.dataset.view = view.context.name;
       }
     }
   }
@@ -341,5 +330,13 @@ function asPixelsIfNumber(value: any): string {
     return `${value}px`;
   } else {
     return value;
+  }
+}
+
+function setAttribute(element: Element, name: string, value: any) {
+  if (value) {
+    element.setAttribute(name, String(value));
+  } else {
+    element.removeAttribute(name);
   }
 }

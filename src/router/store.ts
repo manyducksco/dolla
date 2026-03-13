@@ -7,9 +7,20 @@ export interface RouterStoreProps {
   progress: Getter<number>;
   history: HistoryAdapter;
   updateRoute: () => void;
+  guards: Set<() => boolean | Promise<boolean>>;
 }
 
-export function RouterStore({ currentMatch, progress, history, updateRoute }: RouterStoreProps): Router {
+export function RouterStore({ currentMatch, progress, history, updateRoute, guards }: RouterStoreProps): Router {
+  async function navigate(path: string, replace: boolean) {
+    for (const guard of guards) {
+      if (await guard()) return;
+    }
+
+    const resolved = resolvePath(history.getPath(), path);
+    replace ? history.replace(resolved) : history.push(resolved);
+    updateRoute();
+  }
+
   return {
     path: memo(() => currentMatch().path),
     pattern: memo(() => currentMatch().pattern),
@@ -20,64 +31,40 @@ export function RouterStore({ currentMatch, progress, history, updateRoute }: Ro
 
     setQuery(params) {
       const m = peek(currentMatch);
-      const path = m.path;
       const merged = mergeQueryParams(m.query, params, true);
       const query = Object.fromEntries(merged);
 
-      currentMatch((prev) => ({ ...prev, query }));
+      currentMatch({ ...m, query });
 
-      const queryString = merged.size > 0 ? "?" + merged.toString() : "";
-      history.replace(path + queryString);
+      const queryString = merged.size ? "?" + merged.toString() : "";
+      history.replace(m.path + queryString);
 
       return query;
     },
 
-    back(steps = 1) {
-      window.history.go(-steps);
-    },
+    back: (steps = 1) => window.history.go(-steps),
+    forward: (steps = 1) => window.history.go(steps),
 
-    forward(steps = 1) {
-      window.history.go(steps);
-    },
+    push: (path) => navigate(path, false),
+    replace: (path) => navigate(path, true),
 
-    push(path: string) {
-      path = resolvePath(history.getPath(), path);
-      history.push(path);
-      updateRoute();
-    },
-
-    replace(path: string) {
-      path = resolvePath(history.getPath(), path);
-      history.replace(path);
-      updateRoute();
-    },
-
-    block(guard) {
-      return () => {};
+    block: (guard) => {
+      guards.add(guard);
+      return () => guards.delete(guard);
     },
 
     isActive(path: string, exact = false) {
-      return memo(() => {
-        const currentPath = currentMatch().path;
+      const target = path === "/" ? "/" : path.replace(/\/$/, "");
+      const targetSlash = target === "/" ? "/" : target + "/";
 
-        if (exact) {
-          // Normalize trailing slashes for exact match
-          const currentNormal = currentPath === "/" ? "/" : currentPath.replace(/\/$/, "");
-          const targetNormal = path === "/" ? "/" : path.replace(/\/$/, "");
-          return currentNormal === targetNormal;
-        }
+      return memo(() => {
+        const current = currentMatch().path;
+        const normalized = current === "/" ? "/" : current.replace(/\/$/, "");
+
+        if (exact) return normalized === target;
 
         // Ensure segment boundaries match (prevents /app matching /apple)
-        const currentSegments = currentPath.split("/").filter(Boolean);
-        const targetSegments = path.split("/").filter(Boolean);
-
-        if (targetSegments.length > currentSegments.length) return false;
-
-        for (let i = 0; i < targetSegments.length; i++) {
-          if (currentSegments[i] !== targetSegments[i]) return false;
-        }
-
-        return true;
+        return normalized === target || normalized.startsWith(targetSlash);
       });
     },
   };
