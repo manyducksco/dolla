@@ -11,9 +11,8 @@
       function Counter() {
         const count = state(0);
 
-        // Debug uses name from context.
-        this.name = "POTATO";
-        const console = useDebug(this, ["fff", 2]);
+        // Debug uses name from context which is the function's name by default.
+        const console = useDebug(this);
 
         onMount(this, () => {
           console.log("WE ARE MOUNTED", this);
@@ -45,7 +44,7 @@
 
     <div id="providers"></div>
     <script type="module">
-      import { createRoot, state, html, provide, inject, when } from "../dist/index.js";
+      import { createRoot, state, html, provideStore, useStore, when } from "../dist/index.js";
 
       function Store() {
         const value = state(0);

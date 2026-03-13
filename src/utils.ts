@@ -241,9 +241,9 @@ export function okhash(value: string) {
  * @param value - Value whose truthiness is in question.
  * @param errorMessage - Optional message for the thrown TypeError.
  */
-export function assert<T = any>(value: T, errorMessage?: string): asserts value is NonNullable<T> {
+export function assert<T = any>(value: T, errorMessage: string): asserts value is NonNullable<T> {
   if (!value) {
-    throw new TypeError(errorMessage || "Failed assertion");
+    throw new TypeError(errorMessage);
   }
 }
 

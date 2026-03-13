@@ -1,5 +1,5 @@
 import { View } from "../types.js";
-import { isArray, isFunction, isObject, isString, uniqueId } from "../utils.js";
+import { assert, isArray, isFunction, isObject, isString, uniqueId } from "../utils.js";
 import type { JourneyStep, LazyView, Route, RouteLayer, Stringable } from "./types.js";
 
 export interface Match {
@@ -400,15 +400,12 @@ export async function resolveRoute(
       path = replaceParams(redirect, match.params);
     } else if (isFunction(redirect)) {
       path = await redirect(match);
-
-      if (!isString(path)) {
-        throw new Error(`Redirect function must return a path to redirect to.`);
-      }
+      assert(isString(path), "Redirect function must return a path.");
       if (!path.startsWith("/")) {
         path = resolvePath(match.path, path);
       }
     } else {
-      throw new TypeError(`Redirect must either be a path string or a function.`);
+      throw new TypeError(`Redirect must be a string or a function.`);
     }
 
     return resolveRoute(rootNode, path, [
@@ -482,8 +479,6 @@ export function replaceParams(path: string, params: Record<string, string | numb
 
   return path;
 }
-
-// history.ts or utils.ts
 
 export interface HistoryAdapter {
   getPath(): string;

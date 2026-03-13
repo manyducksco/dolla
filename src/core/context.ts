@@ -1,13 +1,13 @@
 import { Store } from "../types";
-import { assert, isFunction } from "../utils";
+import { assert, isFunction, isObject } from "../utils";
 import { effect } from "./signals";
-// import { resumeEffects } from "./signals";
+
+const EXPECTED_CONTEXT = "Expected a Context object.";
 
 export type LifecycleListener = () => any;
 
 type BaseContextState = {
   isMounted: boolean;
-  // isSuspended: boolean;
 };
 
 export type Context<T = Record<string | symbol, any>> = BaseContextState & T;
@@ -36,15 +36,6 @@ export function unmountContext(context: Context) {
   _callListeners(context, CLEANUP_LISTENERS);
 }
 
-// export function suspendContext(context: Context) {
-//   context.isSuspended = true;
-// }
-
-// export function resumeContext(context: Context) {
-//   context.isSuspended = false;
-//   resumeEffects(context);
-// }
-
 export function onMount(context: Context, fn: LifecycleListener) {
   if (!Object.hasOwn(context, MOUNT_LISTENERS)) context[MOUNT_LISTENERS] = [fn];
   else context[MOUNT_LISTENERS].push(fn);
@@ -56,6 +47,8 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 }
 
 export function onEffect(context: Context, fn: () => void) {
+  assert(isObject, EXPECTED_CONTEXT);
+
   if (context.isMounted) {
     onCleanup(context, effect(fn));
   } else {

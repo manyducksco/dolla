@@ -20,7 +20,8 @@ export { createMarkup } from "./markup/utils.js";
 export { ref } from "./ref.js";
 export type { Ref } from "./ref.js";
 
-export { useDebug } from "../debug";
+// Debug
+export { useDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // TESTING
 // export * from "../http";
