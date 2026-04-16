@@ -104,10 +104,12 @@ export function createTextNode(text: string) {
 export function moveAfter(parent: MountTarget, node: Node, after?: Node | null) {
   const before = after?.nextSibling ?? null;
   if (parent.moveBefore) {
-    parent.moveBefore(node, before);
-  } else {
-    parent.insertBefore(node, before);
+    try {
+      parent.moveBefore(node, before);
+      return;
+    } catch {}
   }
+  parent.insertBefore(node, before);
 }
 
 export function addListener<T extends Event>(target: EventTarget, event: string, listener: (event: T) => any) {

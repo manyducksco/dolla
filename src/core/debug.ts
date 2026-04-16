@@ -1,4 +1,4 @@
-import { Context } from "./context.js";
+import { Context, createContext } from "./context.js";
 
 export const noOp = () => {};
 
@@ -56,6 +56,12 @@ export function useDebug(context: Context, ...tags: [string, any][]) {
       return make("error", 4);
     },
   };
+}
+
+export function createDebug(name: string, ...tags: [string, any][]) {
+  const context = createContext();
+  context.name = name;
+  return useDebug(context, ...tags);
 }
 
 /**

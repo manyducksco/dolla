@@ -68,7 +68,7 @@ export function onEffect(context: Context, fn: () => void) {
 }
 
 /*===================================*\
-||     Stores: Provide & Inject      ||
+||              Stores               ||
 \*===================================*/
 
 export const STORE_ID = Symbol("Dolla.StoreId");

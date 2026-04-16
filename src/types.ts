@@ -38,6 +38,8 @@ export type Store<Props, Value, State = Record<string | symbol, any>> = (
   context: Context<ComponentState & State>,
 ) => Value;
 
+export type MaybeGetter<T> = Getter<T> | T;
+
 /*==================================*\
 ||            JSX Types             ||
 \*==================================*/

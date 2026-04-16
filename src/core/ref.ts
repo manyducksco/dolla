@@ -14,7 +14,7 @@ export interface Ref<T> {
   (value: T): () => void;
 }
 
-export function ref<T = HTMLElement>(): Ref<T> {
+export function createRef<T = HTMLElement>(): Ref<T> {
   let currentValue: T | undefined;
 
   return ((...args: [T]) => {

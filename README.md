@@ -43,7 +43,7 @@ Static Execution (Setup Once): Unlike React, a Dolla component is a constructor 
 ## Example: Counter
 
 ```jsx
-import { state, html, mount, onMount, onCleanup, onEffect } from "@manyducks.co/dolla";
+import { state, html, createRoot, onMount, onCleanup, onEffect } from "@manyducks.co/dolla";
 
 function Counter() {
   const count = state(0);
@@ -68,12 +68,12 @@ function Counter() {
   `;
 }
 
-mount(Counter, document.body);
+createRoot(document.body).mount(Counter);
 ```
 
-That will give you a basic counter mounted to the body of your document with a button you can click to increase the number. Reactivity is fully wired up.
+That will give you a basic counter mounted to the body of your document. Reactivity is fully wired up, so clicking the button will increase the count and cause the `<p>` tag to update.
 
-Components never re-render in Dolla. They are one-shot constructor functions that get called when the component is created. The `state` function creates a reactive value and returns a pair of functions, the first of which a getter and the second a setter.
+Components never re-render in Dolla. They are one-shot constructor functions that get called when the component is created. The `state` function creates a reactive value and returns an accessor function. When called with a value it will store that value and update all listeners. When called with no arguments it will return the latest stored value.
 
 In the Counter view, we were just passing the getter itself into the `<p>` tag. Getters have a special side-effect that calling them inside specific functions will track them, causing the parent function to re-run when the tracked values are updated. Dolla handles this tracking process automatically when you drop getters into your template as attributes or children.
 
@@ -87,7 +87,7 @@ Tracking contexts
 ## Example: Temperature Converter
 
 ```tsx
-import { state, memo, html, mount } from "@manyducks.co/dolla";
+import { state, memo, html, createRoot } from "@manyducks.co/dolla";
 
 function Converter() {
   const celsius = state(0);
@@ -122,12 +122,12 @@ function Converter() {
   `;
 }
 
-mount(Converter, document.body);
+createRoot(document.body).mount(Converter);
 ```
 
 The `memo` function creates a read-only signal that derives its state from other signals. Its callback function is called immediately, accessed signals are tracked as dependencies, and then the callback runs again if any of those dependencies change. Calling the memoized signal in the meantime will simply return the last computed value.
 
-### 2\. Stores: For your shared state
+### 2\. Stores: For shared state
 
 Got some state you need to use in a bunch of different places? **Stores** are for that. It's Dolla's built-in way to handle state so you don't have to go install another library.
 

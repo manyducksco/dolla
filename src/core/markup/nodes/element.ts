@@ -4,7 +4,7 @@ import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
-import { MarkupNode } from "../types.js";
+import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, addListener, toMarkupNodes } from "../utils.js";
 import { VIEW, ViewNode } from "./view.js";
 
@@ -70,7 +70,7 @@ export class ElementNode extends MarkupNode {
     return this.#root.parentNode != null;
   }
 
-  override mount(parent: Node, after?: Node) {
+  override mount(parent: MountTarget, after?: Node) {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
@@ -126,16 +126,14 @@ export class ElementNode extends MarkupNode {
     this.#childNodes.length = 0;
   }
 
-  override move(parent: Element, after?: Node) {
-    if ("moveBefore" in parent) {
+  override move(parent: MountTarget, after?: Node) {
+    if (parent.moveBefore) {
       try {
-        (parent as any).moveBefore(this.#root!, after?.nextSibling ?? null);
-      } catch {
-        this.mount(parent, after);
-      }
-    } else {
-      this.mount(parent, after);
+        parent.moveBefore(this.#root, after?.nextSibling ?? null);
+        return;
+      } catch {}
     }
+    this.mount(parent, after);
   }
 
   #attach<T>(value: Getter<T> | T, callback: (value: T) => void) {

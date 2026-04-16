@@ -158,5 +158,5 @@ export interface Router {
   /**
    * Contains `true` when the current route matches `path`.
    */
-  isActive(path: string | Getter<string>, exact?: boolean): Getter<boolean>;
+  isActive(path: string, exact?: boolean): Getter<boolean>;
 }

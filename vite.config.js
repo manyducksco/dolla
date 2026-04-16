@@ -12,7 +12,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, "src/core/index.ts"),
-        // http: resolve(__dirname, "src/http/index.ts"),
+        http: resolve(__dirname, "src/http/index.ts"),
         router: resolve(__dirname, "src/router/index.ts"),
         translate: resolve(__dirname, "src/translate/index.ts"),
         // virtual: resolve(__dirname, "src/virtual/index.ts"),

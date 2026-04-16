@@ -434,7 +434,7 @@ function computedGetter(this: ComputedNode) {
     this._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
     const prevSub = setActiveSub(this);
     try {
-      this._value = this._getter();
+      this._value = get(this._getter());
     } finally {
       activeSub = prevSub;
       this._flags &= ~ReactiveFlags.RecursedCheck;
@@ -487,37 +487,45 @@ function computedAccessor<T>(this: ComputedNode<T>, ...next: [SetterAction<T>]):
   }
 }
 
-function valueAccessor<T>(this: ValueNode<T>, ...args: [SetterAction<T>]): T | void {
-  if (args.length) {
-    const value = resolveValue(args[0], this._pendingValue);
-    if (this._pendingValue !== (this._pendingValue = value)) {
-      this._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+function valueGetter<T>(this: ValueNode<T>): T {
+  if (this._flags & ReactiveFlags.Dirty) {
+    if (updateValue(this)) {
       const subs = this._subs;
       if (subs !== undefined) {
-        propagate(subs);
-        if (!batchDepth) {
-          flush();
-        }
+        shallowPropagate(subs);
       }
     }
+  }
+  let sub = activeSub;
+  while (sub !== undefined) {
+    if (sub._flags & (ReactiveFlags.Mutable | ReactiveFlags.Watching)) {
+      link(this, sub, cycle);
+      break;
+    }
+    sub = sub._subs?._sub;
+  }
+  return this._currentValue;
+}
+
+function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): void {
+  const value = resolveValue(next, this._pendingValue);
+  if (this._pendingValue !== (this._pendingValue = value)) {
+    this._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+    const subs = this._subs;
+    if (subs !== undefined) {
+      propagate(subs);
+      if (!batchDepth) {
+        flush();
+      }
+    }
+  }
+}
+
+function valueAccessor<T>(this: ValueNode<T>, ...args: [SetterAction<T>]): T | void {
+  if (args.length) {
+    return valueSetter.call(this, args[0]);
   } else {
-    if (this._flags & ReactiveFlags.Dirty) {
-      if (updateValue(this)) {
-        const subs = this._subs;
-        if (subs !== undefined) {
-          shallowPropagate(subs);
-        }
-      }
-    }
-    let sub = activeSub;
-    while (sub !== undefined) {
-      if (sub._flags & (ReactiveFlags.Mutable | ReactiveFlags.Watching)) {
-        link(this, sub, cycle);
-        break;
-      }
-      sub = sub._subs?._sub;
-    }
-    return this._currentValue;
+    return valueGetter.call(this) as T;
   }
 }
 
@@ -577,7 +585,46 @@ export function state<T>(value?: T) {
   });
 }
 
+export function createAtom<T>(): [Getter<T | undefined>, Setter<T | undefined>];
+export function createAtom<T>(fn: Getter<T>): [Getter<T>, Setter<T>];
+export function createAtom<T>(initialValue: T): [Getter<T>, Setter<T>];
+export function createAtom<T>(value?: T) {
+  if (isFunction<Getter<T>>(value)) {
+    const node: ComputedNode<T> = {
+      _value: undefined,
+      _subs: undefined,
+      _subsTail: undefined,
+      _deps: undefined,
+      _depsTail: undefined,
+      _flags: ReactiveFlags.None,
+      _getter: value as (previousValue?: T | undefined) => T,
+    };
+    return [computedGetter.bind(node), computedSetter.bind(node)];
+  } else {
+    const node: ValueNode<T> = {
+      _currentValue: value as T,
+      _pendingValue: value as T,
+      _subs: undefined,
+      _subsTail: undefined,
+      _flags: ReactiveFlags.Mutable,
+    };
+    return [valueGetter.bind(node), valueSetter.bind(node)];
+  }
+}
+
 export function memo<T>(getter: (previousValue?: T) => T): Getter<T> {
+  return computedGetter.bind({
+    _value: undefined,
+    _subs: undefined,
+    _subsTail: undefined,
+    _deps: undefined,
+    _depsTail: undefined,
+    _flags: ReactiveFlags.None,
+    _getter: getter as (previousValue?: unknown) => unknown,
+  }) as () => T;
+}
+
+export function compose<T>(getter: (previousValue?: T) => Getter<T> | T): Getter<T> {
   return computedGetter.bind({
     _value: undefined,
     _subs: undefined,
@@ -630,7 +677,11 @@ export function get<T>(value: T | Getter<T>): T {
   }
 }
 
-export function batch(fn: () => void) {
+/**
+ * Suspends effect notifications until `fn` has finished running.
+ * Use `batch` to group multiple state changes into a single synchronous update.
+ */
+export function batch(fn: () => void): void {
   ++batchDepth;
   try {
     fn();
@@ -641,7 +692,7 @@ export function batch(fn: () => void) {
   }
 }
 
-export function subscribe<T>(target: Getter<T>, fn: (value: T) => any) {
+export function subscribe<T>(target: Getter<T>, fn: (value: T) => any): () => void {
   return effect(() => {
     const value = target();
     peek(() => fn(value));
