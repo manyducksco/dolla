@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { createContext } from "../context";
-import { state } from "../signals";
+import { createAtom } from "../signals";
 import { DOMNode } from "./nodes/dom";
 import { DynamicNode } from "./nodes/dynamic";
 import { ElementNode } from "./nodes/element";
@@ -31,7 +31,7 @@ describe("type checking", () => {
 // test("render", () => {});
 
 test("toMarkupNodes", () => {
-  const count = state(5);
+  const [count] = createAtom(5);
 
   const context = createContext();
   const nodes = toMarkupNodes(

@@ -67,36 +67,47 @@ export function splitPath(path: string): string[] {
  */
 
 export function joinPath(parts: { toString(): string }[]): string {
-  let joined = parts.map(String).filter(Boolean).join("/").replace(/\/+/g, "/");
+  const joined = parts
+    .map((p) => p.toString())
+    .filter(Boolean)
+    .join("/");
   if (!joined) return "";
 
-  let path = new URL(joined, "http://x/").pathname;
-  if (!joined.startsWith("/") && path.startsWith("/")) path = path.slice(1);
-  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+  const isAbsolute = joined.startsWith("/");
+  const segments = joined.split("/");
+  const resolved: string[] = [];
 
-  return path;
+  for (const segment of segments) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      // Pop the previous segment unless we're at the root, or already backing up
+      if (resolved.length > 0 && resolved[resolved.length - 1] !== "..") {
+        resolved.pop();
+      } else if (!isAbsolute) {
+        resolved.push("..");
+      }
+    } else {
+      resolved.push(segment);
+    }
+  }
+
+  let result = resolved.join("/");
+  if (isAbsolute) result = "/" + result;
+
+  return result || (isAbsolute ? "/" : "");
 }
 
-export function resolvePath(base: string, part: string | null = null) {
+export function resolvePath(base: string, part: string | null = null): string {
   if (part == null) {
     part = base;
     base = "";
   }
 
-  if (part.startsWith("/")) return part;
+  // If the target is absolute, it replaces the base entirely
+  if (part.startsWith("/")) return joinPath([part]);
 
-  // Enforce trailing slash so URL constructor treats base as a directory
-  let urlBase = base.startsWith("/") ? base : `/${base}`;
-  if (!urlBase.endsWith("/")) urlBase += "/";
-
-  let resolved = new URL(part, `http://x${urlBase}`).pathname;
-
-  // Strip trailing slash from result
-  if (resolved !== "/" && resolved.endsWith("/")) {
-    resolved = resolved.slice(0, -1);
-  }
-
-  return base.startsWith("/") ? resolved : resolved.slice(1);
+  // Otherwise, join them and let joinPath resolve the '.' and '..'
+  return joinPath([base, part]);
 }
 
 export function parseQueryParams(query: string): Record<string, string> {
@@ -169,9 +180,11 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     assert(isObject<Route>(route) && isString(route.path), "Invalid route object");
 
     const parentPaths = parents.map((p) => p.path);
-    const pattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
     const parent = parents.at(-1);
     const meta = parent && route.meta ? { ...parent.meta, ...route.meta } : route.meta || {};
+
+    const rawPattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
+    const patterns = expandOptionalPaths(rawPattern);
 
     if (route.redirect) {
       assert(!route.routes && !route.view, "Route cannot mix redirect with view/routes");
@@ -182,9 +195,12 @@ export function buildRouteTree(routes: Route[]): RouteNode {
         if (!redirect.startsWith("/")) redirect = "/" + redirect;
       }
 
-      const payload: RoutePayload = { pattern, meta, redirect };
-      insertIntoTree(pattern, payload);
-      if (isString(redirect)) redirectsToValidate.push(payload);
+      for (const pattern of patterns) {
+        const payload: RoutePayload = { pattern, meta, redirect };
+        insertIntoTree(pattern, payload);
+        if (isString(redirect)) redirectsToValidate.push(payload);
+      }
+
       return;
     }
 
@@ -195,18 +211,28 @@ export function buildRouteTree(routes: Route[]): RouteNode {
       throw new TypeError(`Expected view function for ${route.path}`);
     }
 
-    const layer: RouteLayer = {
-      id: uniqueId(),
-      pattern,
-      view,
-      preload: route.preload,
-      errorView: route.errorView,
-    };
-
     if (route.routes) {
+      // For parent nodes, create the layer using the raw pattern and recurse
+      const layer: RouteLayer = {
+        id: uniqueId(),
+        pattern: rawPattern,
+        view,
+        preload: route.preload,
+        errorView: route.errorView,
+      };
       for (const subroute of route.routes) parse(subroute, [...parents, route], [...layers, layer]);
     } else {
-      insertIntoTree(pattern, { pattern, meta, layers: [...layers, layer] });
+      // For leaf nodes, register every permutation as a valid endpoint
+      for (const pattern of patterns) {
+        const layer: RouteLayer = {
+          id: uniqueId(),
+          pattern, // Use the specific expanded pattern for this layer
+          view,
+          preload: route.preload,
+          errorView: route.errorView,
+        };
+        insertIntoTree(pattern, { pattern, meta, layers: [...layers, layer] });
+      }
     }
   }
 
@@ -385,14 +411,52 @@ export function catchLinks(
   return () => root.removeEventListener("click", handler as any);
 }
 
+export function expandOptionalPaths(path: string): string[] {
+  const parts = splitPath(path);
+  const permutations: string[][] = [[]];
+
+  for (const part of parts) {
+    // Strictly enforces the inside style: {param?} or {#param?}
+    const isOptional = part.endsWith("?}");
+    const cleanPart = isOptional ? part.replace("?", "") : part;
+
+    if (isOptional) {
+      const withPart = permutations.map((p) => [...p, cleanPart]);
+      permutations.push(...withPart);
+    } else {
+      for (const p of permutations) {
+        p.push(cleanPart);
+      }
+    }
+  }
+
+  return permutations.map((p) => "/" + p.join("/")).map((p) => (p === "/" ? p : p.replace(/\/$/, "")));
+}
+
 /**
  * Replace route pattern param placeholders with real matched values.
  */
 export function replaceParams(path: string, params: Record<string, string | number>) {
   for (const key in params) {
     const value = String(params[key]);
-    path = path.replace(`{${key}}`, value).replace(`{#${key}}`, value);
+    path = path
+      .replace(`{${key}}`, value)
+      .replace(`{#${key}}`, value)
+      .replace(`{${key}?}`, value) // Handle optional string param
+      .replace(`{#${key}?}`, value); // Handle optional numeric param
   }
+
+  // Remove any remaining unmatched optional parameters
+  path = path.replace(/\{#?[a-zA-Z0-9_]+\?\}/g, "");
+
+  // Clean up any double slashes created by the removal
+  path = path.replace(/\/+/g, "/");
+
+  // Strip trailing slash unless the entire path is just "/"
+  if (path.length > 1 && path.endsWith("/")) {
+    path = path.slice(0, -1);
+  }
+
   return path;
 }
 

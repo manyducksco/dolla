@@ -1,6 +1,6 @@
 import { Context } from "../core/context.js";
 import { DollaPlugin } from "../core/root.js";
-import { get, memo, state, type Getter } from "../core/signals.js";
+import { unwrap, compose, createAtom, type Getter } from "../core/signals.js";
 import { isFunction } from "../utils.js";
 
 // ----- Types ----- //
@@ -91,17 +91,17 @@ export interface TranslateOptions {
 
 const TRANSLATE = Symbol("Dolla.Translate");
 
-export function useTranslate(context: Context): Translator {
-  if (!context[TRANSLATE]) throw new Error("Translate plugin isn't loaded.");
-  return context[TRANSLATE];
-}
-
-export function createTranslate(options: TranslateOptions): DollaPlugin {
+export function createTranslatePlugin(options: TranslateOptions): DollaPlugin {
   return async function (context) {
     const translator = createTranslator(options);
     context[TRANSLATE] = translator;
     await translator.setLocale(options.locale);
   };
+}
+
+export function getTranslate(context: Context): Translator {
+  if (!context[TRANSLATE]) throw new Error("Translate plugin isn't loaded.");
+  return context[TRANSLATE];
 }
 
 // ----- Code ----- //
@@ -110,10 +110,10 @@ function createTranslator(options: TranslateOptions): Translator {
   const formatters = new Map<string, Formatter>();
 
   formatters.set("number", (locale, value, options) => {
-    return new Intl.NumberFormat(locale, options).format(value);
+    return new Intl.NumberFormat(locale, options).format(Number(value));
   });
   formatters.set("datetime", (locale, value, options) => {
-    return new Intl.DateTimeFormat(locale, options).format(value);
+    return new Intl.DateTimeFormat(locale, options).format(new Date(value));
   });
   formatters.set("list", (locale, value, options) => {
     return new Intl.ListFormat(locale, options).format(value);
@@ -127,7 +127,7 @@ function createTranslator(options: TranslateOptions): Translator {
 
   let lookup: LookupFn | undefined;
 
-  const currentLocale = state("en");
+  const [currentLocale, setCurrentLocale] = createAtom("en");
   const supportedLocales = [...Object.keys(options.translations)];
 
   /**
@@ -181,11 +181,11 @@ function createTranslator(options: TranslateOptions): Translator {
     lookup = await createLookup(locale, formatters, options.translations[locale]);
 
     // Update locale string after init so t() signals will update.
-    currentLocale(locale);
+    setCurrentLocale(locale);
   }
 
   function t(selector: string, options?: TOptions): Getter<string> {
-    return memo(() => {
+    return compose(() => {
       currentLocale(); // track locale
       return lookup?.(selector, options) ?? selector;
     });
@@ -205,7 +205,7 @@ function createTranslator(options: TranslateOptions): Translator {
       throw new Error(`Unknown format: ${name}`);
     }
 
-    return memo(() => callback(currentLocale(), get(value), options ?? {}));
+    return compose(() => callback(currentLocale(), unwrap(value), options ?? {}));
   }
 
   return {
@@ -245,7 +245,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(get(options.count));
+            selector += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(unwrap(options.count));
           }
         } else {
           // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
@@ -253,7 +253,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_" + new Intl.PluralRules(locale).select(get(options.count));
+            selector += "_" + new Intl.PluralRules(locale).select(unwrap(options.count));
           }
         }
       }
@@ -352,7 +352,7 @@ export function parseTemplate(template: string): CompiledTemplate {
       segments.push((options, formatters, locale) => {
         // Evaluate and track the specific option at runtime.
         // This code runs in the t() computed context.
-        let value = options ? get(options[name]) : undefined;
+        let value = options ? unwrap(options[name]) : undefined;
 
         for (let k = 0; k < parsedFormats.length; k++) {
           const fmt = parsedFormats[k];

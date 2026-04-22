@@ -406,13 +406,7 @@ function purgeDeps(sub: ReactiveNode) {
 ||        API Implementation        ||
 \*==================================*/
 
-function isAccessor<T>(value: unknown): value is Accessor<T> {
-  if (typeof value !== "function") return false;
-  return value.name === "bound " + valueAccessor.name || value.name === "bound " + computedAccessor.name;
-}
-
 function resolveValue<T>(next: SetterAction<T>, current: T): T {
-  if (isAccessor(next)) return peek(next) as T;
   if (isFunction(next)) return peek(() => next(current)) as T;
   return next as T;
 }
@@ -434,7 +428,7 @@ function computedGetter(this: ComputedNode) {
     this._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
     const prevSub = setActiveSub(this);
     try {
-      this._value = get(this._getter());
+      this._value = unwrap(this._getter());
     } finally {
       activeSub = prevSub;
       this._flags &= ~ReactiveFlags.RecursedCheck;
@@ -551,43 +545,59 @@ function effectCleanup(this: ReactiveNode): void {
 export type Getter<T> = () => T;
 
 /**
- * Updates the held value. Can take a raw value or an update function that takes the previous state and returns a new one.
+ * A value that may be a static value or a getter function.
+ * Can be converted to a plain value with `unwrap`.
+ */
+export type MaybeGetter<T> = T | Getter<T>;
+
+/**
+ * Updates the value of an atom. Takes a new plain value, or an update function to compute one.
  */
 export type Setter<T> = (next: SetterAction<T>) => T;
 export type SetterAction<T> = T | ((prev: T) => T);
 
 /**
- * A combined getter-setter. Acts as a getter when called with no arguments, and as a setter when called with one argument.
+ * A getter and setter pair, as returned from `createAtom`.
  */
-export type Accessor<T> = Getter<T> & Setter<T>;
+export type AtomAccessors<T> = [Getter<T>, Setter<T>];
 
-export function state<T>(): Accessor<T | undefined>;
-export function state<T>(fn: Getter<T>): Accessor<T>;
-export function state<T>(initialValue: T): Accessor<T>;
-export function state<T>(value?: T) {
-  if (isFunction<Getter<T>>(value)) {
-    return computedAccessor.bind({
-      _value: undefined,
-      _subs: undefined,
-      _subsTail: undefined,
-      _deps: undefined,
-      _depsTail: undefined,
-      _flags: ReactiveFlags.None,
-      _getter: value as (previousValue?: unknown) => unknown,
-    });
-  }
-  return valueAccessor.bind({
-    _currentValue: value,
-    _pendingValue: value,
-    _subs: undefined,
-    _subsTail: undefined,
-    _flags: ReactiveFlags.Mutable,
-  });
-}
+/**
+ * Creates a new atom with a default `undefined` value.
+ * Returns a `[getter, setter]` function tuple.
+ *
+ * @example
+ * const [getValue, setValue] = createAtom();
+ */
+export function createAtom<T>(): AtomAccessors<T | undefined>;
 
-export function createAtom<T>(): [Getter<T | undefined>, Setter<T | undefined>];
-export function createAtom<T>(fn: Getter<T>): [Getter<T>, Setter<T>];
-export function createAtom<T>(initialValue: T): [Getter<T>, Setter<T>];
+/**
+ * Creates a new atom with a value computed from an existing getter.
+ * This is usually used to create a 'settable' getter, in which you can store
+ * a temporary value until it gets overwritten by a _real_ update.
+ *
+ * @example
+ * const [getValue, setValue] = createAtom("");
+ * const [getInputValue, setInputValue] = createAtom(getValue);
+ *
+ * setInputValue("temporary");
+ * getValue("");
+ * getInputValue(); // "temporary"
+ *
+ * setValue("overwritten");
+ * getValue("overwritten");
+ * getInputValue(); // "overwritten"
+ */
+export function createAtom<T>(compute: Getter<T>): AtomAccessors<T>;
+
+/**
+ * Creates a new atom with an initial value.
+ * Returns a `[getter, setter]` function tuple.
+ *
+ * @example
+ * const [getCount, setCount] = createAtom(5);
+ */
+export function createAtom<T>(initialValue: T): AtomAccessors<T>;
+
 export function createAtom<T>(value?: T) {
   if (isFunction<Getter<T>>(value)) {
     const node: ComputedNode<T> = {
@@ -612,18 +622,6 @@ export function createAtom<T>(value?: T) {
   }
 }
 
-export function memo<T>(getter: (previousValue?: T) => T): Getter<T> {
-  return computedGetter.bind({
-    _value: undefined,
-    _subs: undefined,
-    _subsTail: undefined,
-    _deps: undefined,
-    _depsTail: undefined,
-    _flags: ReactiveFlags.None,
-    _getter: getter as (previousValue?: unknown) => unknown,
-  }) as () => T;
-}
-
 export function compose<T>(getter: (previousValue?: T) => Getter<T> | T): Getter<T> {
   return computedGetter.bind({
     _value: undefined,
@@ -636,7 +634,7 @@ export function compose<T>(getter: (previousValue?: T) => Getter<T> | T): Getter
   }) as () => T;
 }
 
-export function effect(fn: () => void): () => void {
+export function createEffect(fn: () => void): () => void {
   const e: EffectNode = {
     _fn: fn,
     _cleanup: undefined,
@@ -660,16 +658,12 @@ export function effect(fn: () => void): () => void {
   return effectCleanup.bind(e);
 }
 
-export function peek<T>(value: T | Getter<T>): T {
-  const prevSub = setActiveSub(undefined);
-  try {
-    return get(value);
-  } finally {
-    setActiveSub(prevSub);
-  }
-}
-
-export function get<T>(value: T | Getter<T>): T {
+/**
+ * Unwraps a `MaybeGetter<T>` into a plain `T`.
+ * Tracks the value if it is a getter.
+ * Use the non-tracking `peek` if you're being stealthy.
+ */
+export function unwrap<T>(value: T | Getter<T>): T {
   if (isFunction<Getter<T>>(value)) {
     return value();
   } else {
@@ -678,13 +672,25 @@ export function get<T>(value: T | Getter<T>): T {
 }
 
 /**
- * Suspends effect notifications until `fn` has finished running.
- * Use `batch` to group multiple state changes into a single synchronous update.
+ * Unwraps a `MaybeGetter<T>` into a plain `T`. Will _not_ track if the value is a getter.
  */
-export function batch(fn: () => void): void {
+export function peek<T>(value: T | Getter<T>): T {
+  const prevSub = setActiveSub(undefined);
+  try {
+    return unwrap(value);
+  } finally {
+    setActiveSub(prevSub);
+  }
+}
+
+/**
+ * Groups several signal changes into a single transaction.
+ * Suspends effects until `callback` finishes, then runs all updates at once.
+ */
+export function batch(callback: () => void): void {
   ++batchDepth;
   try {
-    fn();
+    callback();
   } finally {
     if (!--batchDepth) {
       flush();
@@ -693,7 +699,7 @@ export function batch(fn: () => void): void {
 }
 
 export function subscribe<T>(target: Getter<T>, fn: (value: T) => any): () => void {
-  return effect(() => {
+  return createEffect(() => {
     const value = target();
     peek(() => fn(value));
   });

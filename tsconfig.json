@@ -2,6 +2,7 @@
   "include": ["src/"],
   "exclude": ["!src/"],
   "compilerOptions": {
+    "types": ["node"],
     "target": "es2022",
     "module": "es2022",
     "rootDir": "src",
@@ -14,8 +15,6 @@
     "sourceMap": true,
     "outDir": "dist",
     "removeComments": false,
-    "esModuleInterop": false,
-    "allowSyntheticDefaultImports": false,
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,

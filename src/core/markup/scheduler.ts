@@ -8,9 +8,11 @@ function flushUpdates() {
 }
 
 export function scheduleUpdate(updateFn: () => void) {
-  pendingUpdates.add(updateFn);
-  if (!isScheduled) {
-    isScheduled = true;
-    queueMicrotask(flushUpdates);
-  }
+  updateFn();
+
+  // pendingUpdates.add(updateFn);
+  // if (!isScheduled) {
+  //   isScheduled = true;
+  //   queueMicrotask(flushUpdates);
+  // }
 }

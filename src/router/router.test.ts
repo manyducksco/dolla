@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Context, createContext } from "../core/context.js";
-import { useStore } from "../core/index.js";
+import { DollaPlugin, getStore } from "../core/index.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
-import { View } from "../types.js";
-import { createRouter, lazy, RedirectError } from "./router.js";
+
+import { createRouterPlugin, lazy, Outlet, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
 
-async function withMountedView<Props>(view: View<Props>, props: Props, callback: (context: Context) => any) {
+async function withRouter(plugin: DollaPlugin, callback: (context: Context) => any) {
   const context = createContext();
+  context.name = "test-router";
   context[PARENT_ELEMENT] = document.body;
 
-  const node = new ViewNode(context, view, props);
+  await plugin(context);
+
+  const node = new ViewNode(context, Outlet, {});
 
   node.mount(document.body);
 
@@ -30,12 +33,12 @@ describe("Router Engine", () => {
     const RootView = () => {};
     const ChildView = () => {};
 
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [
         {
           path: "/",
           view: RootView,
-          meta: { requiresAuth: false },
+          meta: { requiresAuth: false, potato: 5 },
           routes: [
             {
               path: "/dashboard",
@@ -47,16 +50,25 @@ describe("Router Engine", () => {
       ],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       // Push new route and wait for microtasks (updateRoute execution)
       window.history.pushState(null, "", "/dashboard");
       window.dispatchEvent(new Event("popstate"));
       await Promise.resolve();
 
-      const store = useStore(context, RouterStore);
+      const store = getStore(context, RouterStore);
 
       expect(store.path()).toBe("/dashboard");
-      expect(store.meta()).toEqual({ requiresAuth: true, title: "Dashboard" });
+      expect(store.meta()).toEqual({
+        // Overwritten:
+        requiresAuth: true,
+
+        // Added:
+        title: "Dashboard",
+
+        // Inherited:
+        potato: 5,
+      });
     });
   });
 
@@ -64,7 +76,7 @@ describe("Router Engine", () => {
     const preloadSpy = vi.fn().mockResolvedValue({ user: "Alice" });
     let capturedProps: any;
 
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [
         {
           path: "/profile",
@@ -77,7 +89,7 @@ describe("Router Engine", () => {
       ],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       window.history.pushState(null, "", "/profile");
       window.dispatchEvent(new Event("popstate"));
 
@@ -90,7 +102,7 @@ describe("Router Engine", () => {
   });
 
   it("handles RedirectError gracefully", async () => {
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [
         { path: "/login", view: () => {} },
         {
@@ -103,26 +115,26 @@ describe("Router Engine", () => {
       ],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       window.history.pushState(null, "", "/protected");
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = useStore(context, RouterStore);
+      const store = getStore(context, RouterStore);
       expect(store.path()).toBe("/login");
     });
   });
 
   it("blocks navigation if guard returns false", async () => {
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [
         { path: "/", view: () => {} },
         { path: "/form", view: () => {} },
       ],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
-      const store = useStore(context, RouterStore);
+    await withRouter(router, async (context) => {
+      const store = getStore(context, RouterStore);
 
       store.push("/form");
       await new Promise(process.nextTick);
@@ -147,16 +159,16 @@ describe("Router Engine", () => {
   });
 
   it("updates query parameters reactively without unmounting", async () => {
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [{ path: "/search", view: () => {} }],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       window.history.pushState(null, "", "/search");
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = useStore(context, RouterStore);
+      const store = getStore(context, RouterStore);
 
       store.setQuery({ q: "potato", sort: "asc" });
 
@@ -176,11 +188,11 @@ describe("Router Engine - Lazy Loading", () => {
     // Simulate `() => import("./View.js")`
     const loaderSpy = vi.fn().mockResolvedValue({ default: MockView });
 
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [{ path: "/async", view: lazy(loaderSpy) }],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       window.history.pushState(null, "", "/async");
       window.dispatchEvent(new Event("popstate"));
 
@@ -196,11 +208,11 @@ describe("Router Engine - Lazy Loading", () => {
     const loaderSpy = vi.fn().mockResolvedValue({ default: MockView });
     const lazyRoute = { path: "/async", view: lazy(loaderSpy) };
 
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [{ path: "/", view: () => {} }, lazyRoute],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       // First visit: triggers network request
       window.history.pushState(null, "", "/async");
       window.dispatchEvent(new Event("popstate"));
@@ -230,7 +242,7 @@ describe("Router Engine - Lazy Loading", () => {
     const loaderSpy = vi.fn().mockRejectedValue(new Error("Chunk failed to load"));
     let capturedError: Error | undefined;
 
-    const routerView = createRouter({
+    const router = createRouterPlugin({
       routes: [
         {
           path: "/async-fail",
@@ -243,7 +255,7 @@ describe("Router Engine - Lazy Loading", () => {
       ],
     });
 
-    await withMountedView(routerView, {}, async (context) => {
+    await withRouter(router, async (context) => {
       window.history.pushState(null, "", "/async-fail");
       window.dispatchEvent(new Event("popstate"));
 

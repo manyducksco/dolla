@@ -3,31 +3,26 @@ export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
 // Signals
-export { batch, compose, createAtom, effect, get, memo, peek, state, subscribe } from "./signals.js";
-export type { Accessor, Getter, Setter } from "./signals.js";
+export { batch, compose, createAtom, createEffect, peek, subscribe, unwrap } from "./signals.js";
+export type { Getter, Setter } from "./signals.js";
 
 // Hooks
-export { addStore, onCleanup, onEffect, onMount, useStore } from "./context.js";
+export { addStore, getStore, onCleanup, onEffect, onMount } from "./context.js";
 export type { Context } from "./context.js";
 
 // Debug
-export { createDebug, setLogFilter, setLogLevel, useDebug } from "./debug.js";
+export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
 export { each, portal, when } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
+export { ViewNode } from "./markup/nodes/view.js";
 export type { Markup, MarkupNode } from "./markup/types.js";
-export { createMarkup } from "./markup/utils.js";
+export { createMarkup, render } from "./markup/utils.js";
 
 // Ref
 export { createRef } from "./ref.js";
 export type { Ref } from "./ref.js";
-
-// TESTING
-// export * from "../http";
-// export * from "../router";
-// export * from "../translate";
-// export * from "../virtual";
 
 // Other types
 export type { CSSProperties, Env, InputType, MaybeGetter, Renderable, Store, View } from "../types.js";
@@ -37,6 +32,7 @@ declare global {
   namespace JSX {
     interface IntrinsicElements extends Elements {
       [tag: `${string}-${string}`]: any; // Catch all for custom elements
+      [tag: string]: any; // Catch-all for as-yet-undefined elements (SVG)
     }
   }
 }

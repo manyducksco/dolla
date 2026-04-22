@@ -1,4 +1,4 @@
-import type { Accessor, Getter, MarkupNode, Renderable, View } from "../core";
+import type { Setter, Getter, MarkupNode, Renderable, View } from "../core";
 import type { Context } from "../core/context";
 import type { Match } from "./utils";
 
@@ -61,7 +61,8 @@ export interface ActiveLayer {
   key: string;
   node: MarkupNode;
   context: Context;
-  slot: Accessor<MarkupNode | undefined>;
+  slot: Getter<MarkupNode | undefined>;
+  setSlot: Setter<MarkupNode | undefined>;
 }
 
 /**

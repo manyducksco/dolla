@@ -4130,3 +4130,11 @@ interface HTMLCanvasElementProps extends PropertiesOf<HTMLCanvasElement> {
    */
   height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
 }
+
+/*====================================*\
+|| ****                           SVG ||
+\*====================================*/
+
+interface SVGElementProps {}
+
+export interface IntrinsicElements {}

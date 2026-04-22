@@ -1,6 +1,6 @@
 import type { Store } from "../types.js";
 import { assert } from "../utils.js";
-import { effect } from "./signals.js";
+import { createEffect } from "./signals.js";
 
 export type LifecycleListener = () => any;
 
@@ -59,10 +59,10 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 
 export function onEffect(context: Context, fn: () => void) {
   if (context.isMounted) {
-    onCleanup(context, effect(fn));
+    onCleanup(context, createEffect(fn));
   } else {
     onMount(context, () => {
-      onCleanup(context, effect(fn));
+      onCleanup(context, createEffect(fn));
     });
   }
 }
@@ -92,7 +92,7 @@ export function addStore<Props, Returns>(
   return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Props, storeContext));
 }
 
-export function useStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
+export function getStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
   const id = store[STORE_ID];
   const result = id ? context[id] : undefined;
   assert(result != null, `Store '${store.name}' is not provided by this context.`);

@@ -1,10 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext, mountContext, onEffect, unmountContext } from "./context";
-import { batch, effect, memo, peek, state, subscribe, type Getter } from "./signals";
+import { batch, compose, createAtom, createEffect, peek, subscribe, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
-  const count = state(5);
-  const doubled = memo(() => count() * 2);
+  const [count, setCount] = createAtom(5);
+  const doubled = compose(() => count() * 2);
 
   expect(count()).toBe(5);
   expect(peek(doubled)).toBe(10);
@@ -13,16 +13,16 @@ test("basic composition & tracking", () => {
   const fn = vi.fn(() => {
     doubled();
   });
-  const stop = effect(fn);
+  const stop = createEffect(fn);
 
   expect(fn).toBeCalledTimes(1);
 
   // Effects should not run until end of batch.
   batch(() => {
-    count((c) => c + 1);
-    count((c) => c + 1);
-    count((c) => c + 1);
-    count((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
   });
 
   expect(fn).toBeCalledTimes(2);
@@ -31,11 +31,11 @@ test("basic composition & tracking", () => {
 });
 
 test("mutable computed state", () => {
-  const name = state("Bon");
-  const inputValue = state(() => name());
+  const [name, setName] = createAtom("Bon");
+  const [inputValue, setInputValue] = createAtom(() => name());
 
   const spy = vi.fn();
-  const stop = effect(() => {
+  const stop = createEffect(() => {
     spy(inputValue());
   });
 
@@ -44,14 +44,14 @@ test("mutable computed state", () => {
   expect(inputValue()).toBe("Bon");
   expect(name()).toBe("Bon");
 
-  inputValue("Charals");
+  setInputValue("Charals");
 
   expect(spy).toBeCalledTimes(2);
   expect(spy).toBeCalledWith("Charals");
   expect(inputValue()).toBe("Charals");
   expect(name()).toBe("Bon");
 
-  name("Jack");
+  setName("Jack");
 
   expect(spy).toBeCalledTimes(3);
   expect(spy).toBeCalledWith("Jack");
@@ -62,17 +62,17 @@ test("mutable computed state", () => {
 });
 
 test("effect cleanup", () => {
-  const count = state(5);
+  const [count, setCount] = createAtom(5);
 
   const spy = vi.fn();
-  const stop = effect(() => {
+  const stop = createEffect(() => {
     count(); // triggers each time count changes
     return spy; // return a function to clean up
   });
 
   expect(spy).toBeCalledTimes(0);
 
-  count(6);
+  setCount(6);
 
   expect(spy).toBeCalledTimes(1);
 
@@ -82,28 +82,28 @@ test("effect cleanup", () => {
 });
 
 test("setting via accessor will take the value", () => {
-  const count = state(500);
-  const other = state(36);
-  const val = state(12);
+  const [count, setCount] = createAtom(500);
+  const [other, setOther] = createAtom(36);
+  const [val, setVal] = createAtom(12);
 
-  count(other);
+  setCount(other);
 
   expect(count()).toBe(36);
   expect(other()).toBe(36);
 
-  other(50);
+  setOther(50);
 
   expect(count()).toBe(36);
   expect(other()).toBe(50);
 
-  val(count);
+  setVal(count);
 
   expect(count()).toBe(36);
   expect(val()).toBe(36);
 });
 
 test("effects bind to the given context", () => {
-  const count = state(0);
+  const [count, setCount] = createAtom(0);
 
   const spy = vi.fn();
 
@@ -115,7 +115,7 @@ test("effects bind to the given context", () => {
   // Context not mounted yet; effect should be suspended.
   expect(spy).toBeCalledTimes(0);
 
-  count(5);
+  setCount(5);
 
   expect(spy).toBeCalledTimes(0);
 
@@ -123,7 +123,7 @@ test("effects bind to the given context", () => {
 
   expect(spy).toBeCalledTimes(1);
 
-  count(40);
+  setCount(40);
 
   expect(spy).toBeCalledTimes(2);
 
@@ -138,46 +138,46 @@ test("effects bind to the given context", () => {
 
   unmountContext(context);
 
-  count((c) => c + 1);
+  setCount((c) => c + 1);
   expect(spy).toBeCalledTimes(2);
 });
 
 test("values are not tracked when accessed with peek()", () => {
-  const a = state(5);
-  const b = state(10);
+  const [a, setA] = createAtom(5);
+  const [b, setB] = createAtom(10);
 
-  const multiplied = memo(() => a() * peek(b));
+  const multiplied = compose(() => a() * peek(b));
 
   expect(multiplied()).toBe(50);
 
-  a((x) => x + 1);
+  setA((x) => x + 1);
 
   expect(multiplied()).toBe(60);
 
-  b((x) => x + 1);
+  setB((x) => x + 1);
 
   expect(multiplied()).toBe(60);
 });
 
 test("solves diamond problem", () => {
-  const count = state(1);
+  const [count, setCount] = createAtom(1);
 
-  const left = memo(() => count() + 5);
-  const right = memo(() => count() / 2);
+  const left = compose(() => count() + 5);
+  const right = compose(() => count() / 2);
 
-  const sum = memo(() => left() + right());
+  const sum = compose(() => left() + right());
 
   const fn = vi.fn(() => {
     sum();
   });
-  const unsubscribe = effect(fn);
+  const unsubscribe = createEffect(fn);
 
   expect(fn).toBeCalledTimes(1);
 
-  count((x) => x + 1);
+  setCount((x) => x + 1);
   batch(() => {
-    count((x) => x + 1);
-    count((x) => x + 1);
+    setCount((x) => x + 1);
+    setCount((x) => x + 1);
   });
 
   expect(fn).toBeCalledTimes(3);
@@ -185,10 +185,10 @@ test("solves diamond problem", () => {
 });
 
 test("nested memo", () => {
-  const count = state(0);
+  const [count, setCount] = createAtom(0);
 
   const plus1 = (source: Getter<number>) => {
-    return memo(() => source() + 1);
+    return compose(() => source() + 1);
   };
 
   const one = plus1(count);
@@ -198,7 +198,7 @@ test("nested memo", () => {
   const fn = vi.fn(() => {
     three();
   });
-  const stop = effect(fn);
+  const stop = createEffect(fn);
 
   expect(fn).toBeCalledTimes(1);
 
@@ -206,7 +206,7 @@ test("nested memo", () => {
   expect(two()).toBe(2);
   expect(three()).toBe(3);
 
-  count((x) => x + 1);
+  setCount((x) => x + 1);
 
   expect(fn).toBeCalledTimes(2);
 
@@ -233,8 +233,8 @@ describe("subscribe", () => {
   // });
 
   test("ignores tracked values in callback", () => {
-    const count = state(5);
-    const other = state("hi");
+    const [count, setCount] = createAtom(5);
+    const [other, setOther] = createAtom("hi");
     const fn = vi.fn();
     const unsub = subscribe(count, (value) => {
       other(); // trackable getter
@@ -242,9 +242,9 @@ describe("subscribe", () => {
       return value * 2;
     });
     expect(fn).toBeCalledTimes(1);
-    count(12);
+    setCount(12);
     expect(fn).toBeCalledTimes(2); // tracked `count` has updated
-    other("hello");
+    setOther("hello");
     expect(fn).toBeCalledTimes(2); // `other` is not tracked
     unsub();
   });

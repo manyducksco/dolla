@@ -24,7 +24,7 @@ export function createRef<T = HTMLElement>(): Ref<T> {
         currentValue = undefined;
       };
     } else {
-      assert(currentValue !== undefined, "Empty ref!");
+      // assert(currentValue !== undefined, "Empty ref!");
       return currentValue;
     }
   }) as Ref<T>;

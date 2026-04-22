@@ -1,6 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
-import { batch, Getter, state, subscribe, type Accessor } from "../../signals.js";
+import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { addChild, createTextNode, render } from "../utils.js";
@@ -14,8 +14,10 @@ export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable
 
 type ConnectedItem<T> = {
   _key: Key;
-  _item: Accessor<T>;
-  _index: Accessor<number>;
+  _item: Getter<T>;
+  _setItem: Setter<T>;
+  _index: Getter<number>;
+  _setIndex: Setter<number>;
   _node: MarkupNode;
 };
 
@@ -118,19 +120,26 @@ export class RepeatNode<T> extends MarkupNode {
         let connected = this.#connectedItems.get(key);
 
         if (connected && nextKeys.has(key)) {
-          connected._item(itemVal);
-          connected._index(i);
+          connected._setItem(itemVal);
+          connected._setIndex(i);
         } else {
-          const item = state(itemVal);
-          const index = state(i);
+          const [_item, _setItem] = createAtom(itemVal);
+          const [_index, _setIndex] = createAtom(i);
 
           const renderContent = this.#render(
-            () => item(),
-            () => index(),
+            () => _item(),
+            () => _index(),
           );
-          const node = render(renderContent, this.#context);
+          const _node = render(renderContent, this.#context);
 
-          connected = { _key: key, _item: item, _index: index, _node: node };
+          connected = {
+            _key: key,
+            _node,
+            _item,
+            _setItem,
+            _index,
+            _setIndex,
+          };
         }
         nextItems.set(key, connected);
       }

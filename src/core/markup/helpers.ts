@@ -1,6 +1,6 @@
 import { createMarkup, Renderable } from "..";
 import { isFunction } from "../../utils";
-import { type Getter, memo } from "../signals";
+import { type Getter, compose } from "../signals";
 import { DynamicNode } from "./nodes/dynamic";
 import { PortalNode } from "./nodes/portal";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
@@ -35,7 +35,7 @@ export function each<T>(items: Getter<Iterable<T>> | Iterable<T>, keyFn: KeyFn<T
 export function when(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (isFunction(condition)) {
     return createMarkup(DynamicNode, {
-      args: [memo(() => (condition() ? whenTruthy : whenFalsy))],
+      args: [compose(() => (condition() ? whenTruthy : whenFalsy))],
     });
   } else if (condition) {
     return whenTruthy;
@@ -44,6 +44,6 @@ export function when(condition: any, whenTruthy?: Renderable, whenFalsy?: Render
   }
 }
 
-export function portal(content: Renderable, parent: Element) {
+export function portal(parent: Element, content: Renderable) {
   return createMarkup(PortalNode, { args: [content, parent] });
 }

@@ -35,6 +35,16 @@ test("add and match routes", () => {
     meta: { testId: 6 },
     view: () => "test",
   });
+  routes.push({
+    path: "/optional/{one?}",
+    meta: { testId: 7 },
+    view: () => "test",
+  });
+  routes.push({
+    path: "/optional2/{#optNumber?}/{required}",
+    meta: { testId: 8 },
+    view: () => "test",
+  });
 
   const routeTree = buildRouteTree(routes);
 
@@ -48,6 +58,10 @@ test("add and match routes", () => {
   );
   const match5 = matchRoute(routeTree, "/users/2/edit");
   const match6 = matchRoute(routeTree, "/wild/some/other/stuff");
+  const match7_1 = matchRoute(routeTree, "/optional");
+  const match7_2 = matchRoute(routeTree, "/optional/additional");
+  const match8_1 = matchRoute(routeTree, "/optional2/5/present");
+  const match8_2 = matchRoute(routeTree, "/optional2/present");
   const matchNone = matchRoute(routeTree, "/no/matches/too/many/segments");
 
   expect(match1).toBeTruthy();
@@ -74,6 +88,20 @@ test("add and match routes", () => {
   expect(match6).toBeTruthy();
   expect(match6!.meta.testId).toStrictEqual(6);
   expect(match6!.params).toStrictEqual({ wildcard: "/some/other/stuff" });
+
+  expect(match7_1).toBeTruthy();
+  expect(match7_1!.meta.testId).toStrictEqual(7);
+  expect(match7_1!.params).toStrictEqual({});
+  expect(match7_2).toBeTruthy();
+  expect(match7_2!.meta.testId).toStrictEqual(7);
+  expect(match7_2!.params).toStrictEqual({ one: "additional" });
+
+  expect(match8_1).toBeTruthy();
+  expect(match8_1!.meta.testId).toStrictEqual(8);
+  expect(match8_1!.params).toStrictEqual({ optNumber: "5", required: "present" });
+  expect(match8_2).toBeTruthy();
+  expect(match8_2!.meta.testId).toStrictEqual(8);
+  expect(match8_2!.params).toStrictEqual({ required: "present" });
 
   expect(matchNone).toBeUndefined();
 });

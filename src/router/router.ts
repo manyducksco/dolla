@@ -1,12 +1,13 @@
-import { addStore, Context, onMount } from "../core/context.js";
-import { useDebug } from "../core/index.js";
+import { addStore, Context, createContext, onCleanup, onMount } from "../core/context.js";
+import { DollaPlugin, getDebug } from "../core/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
 import { addListener, createMarkup } from "../core/markup/utils.js";
-import { batch, peek, state } from "../core/signals.js";
+import { batch, peek, createAtom } from "../core/signals.js";
 import { DEBUG, PARENT_ELEMENT } from "../core/symbols.js";
 import type { View } from "../types.js";
+import { assert } from "../utils.js";
 import { RouterStore } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
 import {
@@ -18,6 +19,8 @@ import {
   replaceParams,
   resolveRoute,
 } from "./utils.js";
+
+const ROUTER_ROOT_SLOT = Symbol();
 
 /**
  * Lazy loads a view when its route is first matched.
@@ -32,38 +35,41 @@ export function lazy(load: LazyLoader): LazyView {
   return { _lazy: true, load };
 }
 
-export function createRouter(options: RouterOptions): View {
-  if ("scrollRestoration" in window.history) {
-    window.history.scrollRestoration = "manual";
-  }
+export function createRouterPlugin(options: RouterOptions): DollaPlugin {
+  return function (context) {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
 
-  const history = createHistoryAdapter(!!options.hash);
-  const scrollCache = new Map<string, number>();
-  let currentKey = history.getKey();
+    const history = createHistoryAdapter(!!options.hash);
+    const scrollCache = new Map<string, number>();
+    let currentKey = history.getKey();
 
-  const currentMatch = state<Match>({
-    path: history.getPath(),
-    pattern: "",
-    params: {},
-    query: Object.fromEntries(new URLSearchParams(history.getSearch())),
-    meta: {},
-  });
+    const [currentMatch, setCurrentMatch] = createAtom<Match>({
+      path: history.getPath(),
+      pattern: "",
+      params: {},
+      query: Object.fromEntries(new URLSearchParams(history.getSearch())),
+      meta: {},
+    });
 
-  const progress = state(0);
-  const routeTree = buildRouteTree(options.routes);
+    const [progress, setProgress] = createAtom(0);
+    const routeTree = buildRouteTree(options.routes);
 
-  const guards = new Set<() => boolean | Promise<boolean>>();
+    const guards = new Set<() => boolean | Promise<boolean>>();
 
-  return function RouterView(this: Context) {
-    const context = this;
-    context.name = "dolla:router";
+    const routerContext = createContext(context);
+    routerContext.name = "dolla:router";
 
-    const console = useDebug(context);
-    const rootSlot = state<MarkupNode>();
+    const console = getDebug(routerContext);
+    const [rootSlot, setRootSlot] = createAtom<MarkupNode>();
+
+    context[ROUTER_ROOT_SLOT] = rootSlot;
 
     const rootLayer: Partial<ActiveLayer> = {
       context,
       slot: rootSlot,
+      setSlot: setRootSlot,
     };
 
     const activeLayers: ActiveLayer[] = [];
@@ -83,11 +89,11 @@ export function createRouter(options: RouterOptions): View {
           const step = journey[i];
           const tag = `(update ${i + 1}/${journey.length})`;
           if (step.kind === "match") {
-            console.info(`${tag} 📍 ${step.message}`);
+            console.info(`📍 ${tag} ${step.message}`);
           } else if (step.kind === "redirect") {
-            console.info(`${tag} ↩️ ${step.message}`);
+            console.info(`↩️ ${tag} ${step.message}`);
           } else {
-            console.info(`${tag} 💀 ${step.message}`);
+            console.info(`💀 ${tag} ${step.message}`);
           }
         }
       }
@@ -135,16 +141,16 @@ export function createRouter(options: RouterOptions): View {
 
       // Track loading progress if there are async tasks
       if (tasks.length > 0) {
-        progress(0.1);
+        setProgress(0.1);
         let completed = 0;
         const increment = 0.8 / tasks.length;
 
-        tasks.forEach((p) => p.then(() => progress(0.1 + ++completed * increment)).catch(() => {}));
+        tasks.forEach((p) => p.then(() => setProgress(0.1 + ++completed * increment)).catch(() => {}));
 
         try {
           await Promise.all(tasks);
         } catch (error) {
-          progress(0);
+          setProgress(0);
           if (error instanceof RedirectError) return api.replace(error.redirectPath);
 
           caughtError = error instanceof Error ? error : new Error(String(error));
@@ -163,7 +169,7 @@ export function createRouter(options: RouterOptions): View {
 
       // Batch state updates and DOM mutations
       batch(() => {
-        currentMatch({ ...match, query: Object.fromEntries(query) });
+        setCurrentMatch({ ...match, query: Object.fromEntries(query) });
 
         if (branchIndex === layers.length && activeLayers.length === layers.length) return;
 
@@ -177,7 +183,7 @@ export function createRouter(options: RouterOptions): View {
         for (let i = branchIndex; i < layers.length; i++) {
           const layer = layers[i];
           const parent = activeLayers[i - 1] ?? rootLayer;
-          const slot = state<MarkupNode>();
+          const [slot, setSlot] = createAtom<MarkupNode>();
 
           let viewToMount = layer.view as View<any>;
           let propsToPass: any = {
@@ -193,7 +199,7 @@ export function createRouter(options: RouterOptions): View {
           }
 
           const node = new ViewNode(parent.context!, viewToMount, propsToPass);
-          parent.slot(node);
+          parent.setSlot(node);
 
           activeLayers.push({
             id: layer.id,
@@ -201,13 +207,14 @@ export function createRouter(options: RouterOptions): View {
             node,
             context: node.context,
             slot,
+            setSlot,
           });
 
           if (caughtError && i === errorIndex) break;
         }
       });
 
-      progress(0);
+      setProgress(0);
 
       requestAnimationFrame(() => {
         window.scrollTo(0, scrollCache.get(history.getKey()) ?? 0);
@@ -217,6 +224,7 @@ export function createRouter(options: RouterOptions): View {
 
     const api = addStore(context, RouterStore, {
       currentMatch,
+      setCurrentMatch,
       progress,
       history,
       updateRoute,
@@ -224,8 +232,6 @@ export function createRouter(options: RouterOptions): View {
     });
 
     onMount(context, () => {
-      // const removePop = addListener(window, "popstate", () => updateRoute());
-
       let isReverting = false;
       let isReplaying = false;
       let lastIndex = history.getIndex();
@@ -285,17 +291,27 @@ export function createRouter(options: RouterOptions): View {
 
       const removeClick = catchLinks(context[PARENT_ELEMENT] as Element, api.push);
 
-      return () => {
+      onCleanup(context, () => {
         removePop();
         removeUnload();
         removeClick();
-      };
+      });
+
+      updateRoute();
     });
-
-    updateRoute();
-
-    return new DynamicNode(context, rootSlot);
   };
+}
+
+/**
+ * Displays the router's content.
+ */
+export function Outlet(this: Context) {
+  this.name = "dolla:router";
+
+  const rootSlot = this[ROUTER_ROOT_SLOT];
+  assert(rootSlot != null, "Router plugin not found on root.");
+
+  return new DynamicNode(this, rootSlot);
 }
 
 export class RedirectError extends Error {

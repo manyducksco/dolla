@@ -34,7 +34,6 @@ export class DynamicNode extends MarkupNode {
   override mount(parent: MountTarget, after?: Node) {
     if (!this.isMounted()) {
       addChild(parent, this.#root, after);
-
       this.#unsubscribe = subscribe(this.#slot, (content) => {
         scheduleUpdate(() => {
           this.#update(content);

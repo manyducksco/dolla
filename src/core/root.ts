@@ -52,6 +52,8 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   assert(element, "Element cannot be null.");
 
   const context = createContext();
+  context.name = "dolla:root";
+
   const plugins: DollaPlugin[] = [];
   const cleanup: CleanupCallback[] = [];
 

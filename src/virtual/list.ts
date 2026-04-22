@@ -1,7 +1,7 @@
 import { onEffect } from "../core/context.js";
 import { createMarkup } from "../core/markup/utils.js";
 import { when } from "../core/markup/helpers.js";
-import { batch, memo, peek, state, type Accessor, type Getter } from "../core/signals.js";
+import { batch, compose, peek, createAtom, type Setter, type Getter } from "../core/signals.js";
 import { View } from "../types.js";
 
 export interface VirtualListAPI<T> {
@@ -46,8 +46,8 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   const engine = createOffsetEngine(props.estimatedItemHeight ?? 50);
 
   let viewport: HTMLElement | null = null;
-  const scrollTop = state(0);
-  const isAtBottom = state(true);
+  const [scrollTop, setScrollTop] = createAtom(0);
+  const [isAtBottom, setIsAtBottom] = createAtom(true);
   const commandQueue: (() => void)[] = [];
 
   let isSmoothScrolling = false;
@@ -57,10 +57,10 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
     scrollToBottom: (smooth = false) => {
       if (!viewport) return commandQueue.push(() => api.scrollToBottom(smooth));
       if (smooth) isSmoothScrolling = isAutoGliding = true;
-      isAtBottom(true);
+      setIsAtBottom(true);
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: smooth ? "smooth" : "auto" });
       if (!smooth) {
-        scrollTop(viewport.scrollTop);
+        setScrollTop(viewport.scrollTop);
         isAutoGliding = false;
       }
     },
@@ -68,14 +68,14 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       if (!viewport) return commandQueue.push(() => api.scrollToTop(smooth));
       if (smooth) isSmoothScrolling = true;
       isAutoGliding = false;
-      isAtBottom(false);
+      setIsAtBottom(false);
       viewport.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
-      if (!smooth) scrollTop(0);
+      if (!smooth) setScrollTop(0);
     },
     scrollToIndex: (index: number, options = {}) => {
       if (!viewport) return commandQueue.push(() => api.scrollToIndex(index, options));
 
-      isAtBottom(false);
+      setIsAtBottom(false);
       isAutoGliding = false;
 
       const avg = peek(engine.averageHeight);
@@ -91,7 +91,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
       if (options.smooth) isSmoothScrolling = true;
       viewport.scrollTo({ top: target, behavior: options.smooth ? "smooth" : "auto" });
-      if (!options.smooth) scrollTop(target);
+      if (!options.smooth) setScrollTop(target);
     },
     scrollToItem: (item: T, options = {}) => {
       const index = peek(props.items).indexOf(item);
@@ -103,18 +103,23 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   const enteringItems = new Set<T>();
 
   const pool = Array.from({ length: POOL_SIZE }, (_, i) => {
-    const item = state<T | null>(null);
-    const index = state(-1);
-    const offset = state(0);
-    const active = state(false);
-    const isEntering = state(false);
+    const [item, setItem] = createAtom<T | null>(null);
+    const [index, setIndex] = createAtom(-1);
+    const [offset, setOffset] = createAtom(0);
+    const [active, setActive] = createAtom(false);
+    const [entering, setEntering] = createAtom(false);
 
     return {
       item,
+      setItem,
       index,
+      setIndex,
       offset,
+      setOffset,
       active,
-      isEntering,
+      setActive,
+      entering,
+      setEntering,
       node: createMarkup("div", {
         "data-index": index,
         style: {
@@ -125,16 +130,16 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           transform: () => `translateY(${offset()}px)`,
           display: () => (active() ? "block" : "none"),
         },
-        children: props.render(item as Getter<T>, index, { isEntering }),
+        children: props.render(item as Getter<T>, index, { isEntering: entering }),
       }),
     };
   });
 
-  const activeStickyItem = state<T | null>(null);
-  const stickyPushOffset = state(0);
+  const [activeStickyItem, setActiveStickyItem] = createAtom<T | null>(null);
+  const [stickyPushOffset, setStickyPushOffset] = createAtom(0);
   let phantomHeight = 0;
 
-  const stickyIndices = memo(() => {
+  const stickyIndices = compose(() => {
     if (!props.isSticky) return [];
     return props
       .items()
@@ -155,27 +160,27 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       const { activeIdx, nextIdx } = engine.findSticky(currentScroll, indices, currentAvg);
 
       const newActive = activeIdx !== -1 ? data[activeIdx] : null;
-      if (peek(activeStickyItem) !== newActive) activeStickyItem(newActive);
+      if (peek(activeStickyItem) !== newActive) setActiveStickyItem(newActive);
 
       let push = 0;
       if (nextIdx !== -1 && phantomHeight > 0) {
         const distanceToNext = engine.getOffset(nextIdx, currentAvg) - currentScroll;
         if (distanceToNext < phantomHeight) push = distanceToNext - phantomHeight;
       }
-      if (peek(stickyPushOffset) !== push) stickyPushOffset(push);
+      if (peek(stickyPushOffset) !== push) setStickyPushOffset(push);
     }
 
     batch(() => {
-      for (let i = 0; i < POOL_SIZE; i++) pool[i].active(false);
+      for (let i = 0; i < POOL_SIZE; i++) pool[i].setActive(false);
       const endIndex = Math.min(total, startIndex + POOL_SIZE);
       for (let i = startIndex; i < endIndex; i++) {
         const slot = pool[i % POOL_SIZE];
         const currentData = data[i];
-        slot.item(currentData);
-        slot.index(i);
-        slot.offset(engine.getOffset(i, currentAvg));
-        slot.active(true);
-        slot.isEntering(enteringItems.has(currentData));
+        slot.setItem(currentData);
+        slot.setIndex(i);
+        slot.setOffset(engine.getOffset(i, currentAvg));
+        slot.setActive(true);
+        slot.setEntering(enteringItems.has(currentData));
       }
     });
   }
@@ -233,14 +238,14 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
             else {
               viewport.scrollTop = viewport.scrollHeight;
               batch(() => {
-                scrollTop(viewport!.scrollTop);
-                isAtBottom(true);
+                setScrollTop(viewport!.scrollTop);
+                setIsAtBottom(true);
               });
             }
           });
         } else if (shift !== 0 && viewport && currentScroll > 0 && !isSmoothScrolling) {
           viewport.scrollTop += shift;
-          scrollTop(viewport.scrollTop);
+          setScrollTop(viewport.scrollTop);
         }
         updateScrollSlice();
         checkBoundaries(); // Re-evaluate if height changes put us in threshold
@@ -262,7 +267,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       ) {
         if (viewport) {
           viewport.scrollTop += (currentCount - previousCount) * peek(engine.averageHeight);
-          scrollTop(viewport.scrollTop);
+          setScrollTop(viewport.scrollTop);
         }
         engine.clearCache();
         hasReachedStart = false; // Unlock prepends
@@ -302,8 +307,8 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         if (props.bottomUp) {
           el.scrollTop = el.scrollHeight;
           batch(() => {
-            scrollTop(el.scrollTop);
-            isAtBottom(true);
+            setScrollTop(el.scrollTop);
+            setIsAtBottom(true);
           });
         }
 
@@ -321,13 +326,13 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           "scroll",
           () => {
             const st = el.scrollTop;
-            scrollTop(st);
+            setScrollTop(st);
             const distToBottom = el.scrollHeight - st - el.clientHeight;
             const isScrollingUp = st < lastSt;
 
             if (!isSmoothScrolling) {
-              if (isScrollingUp && distToBottom > 15) isAtBottom(false);
-              else if (!isScrollingUp && distToBottom <= 100) isAtBottom(true);
+              if (isScrollingUp && distToBottom > 15) setIsAtBottom(false);
+              else if (!isScrollingUp && distToBottom <= 100) setIsAtBottom(true);
             }
             lastSt = st;
 
@@ -383,7 +388,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
                 transform: () => `translateY(${stickyPushOffset()}px)`,
                 display: () => (activeStickyItem() !== null ? "block" : "none"),
               },
-              children: props.renderSticky(activeStickyItem as Accessor<T>),
+              children: props.renderSticky(activeStickyItem as Getter<T>),
             }),
           }),
         createMarkup("div", {
@@ -402,13 +407,13 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 }
 
 export function createOffsetEngine(defaultAssumption: number) {
-  const measuredCount = state(0);
-  const totalMeasuredHeight = state(0);
+  const [measuredCount, setMeasuredCount] = createAtom(0);
+  const [totalMeasuredHeight, setTotalMeasuredHeight] = createAtom(0);
   const measuredHeights = new Map<number, number>();
   const offsetCache: number[] = [];
   let lastCalculatedIndex = -1;
 
-  const averageHeight = memo(() =>
+  const averageHeight = compose(() =>
     measuredCount() > 0 ? Math.round(totalMeasuredHeight() / measuredCount()) : defaultAssumption,
   );
 
@@ -488,8 +493,8 @@ export function createOffsetEngine(defaultAssumption: number) {
 
     if (needsRecalc) {
       batch(() => {
-        measuredCount(currentCount);
-        totalMeasuredHeight(currentTotal);
+        setMeasuredCount(currentCount);
+        setTotalMeasuredHeight(currentTotal);
       });
       lastCalculatedIndex = -1; // Bust cache
     }

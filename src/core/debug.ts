@@ -18,7 +18,7 @@ export const setLogFilter = (filter: (name: string) => boolean) => {
 
 const c: any = globalThis.console || {};
 
-export function useDebug(context: Context, ...tags: [string, any][]) {
+export function getDebug(context: Context, ...tags: [string, any][]) {
   const name = context.name;
   let args: any[];
 
@@ -61,7 +61,7 @@ export function useDebug(context: Context, ...tags: [string, any][]) {
 export function createDebug(name: string, ...tags: [string, any][]) {
   const context = createContext();
   context.name = name;
-  return useDebug(context, ...tags);
+  return getDebug(context, ...tags);
 }
 
 /**
