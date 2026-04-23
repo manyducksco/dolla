@@ -5,100 +5,118 @@
 
 Dolla is a research framework for trying out ideas. The goal is to create a full-featured framework that, first and foremost, provides the best developer experience possible out of the box. Low resource usage and small code size are secondary objectives. It's more than a toy and less than a production-ready workhorse. It's a labor of love. Use at your own joy and peril.
 
-- ⚡️ [**Signals**](./docs/signals.md) for pinpoint DOM updates.
-- 📦 Two types of [components](./docs/components.md):
-  - 🖥️ [**Views**](./docs/views.md) for reusable UI elements.
-  - 💾 [**Stores**](./docs/stores.md) for sharing common state between many components.
-- 🔀 A client-side [**router**](./docs/router.md) with nested routes, auth guards, async data loading and more.
-- 📍 A simple [**i18n system**](./docs/i18n.md). Just put your translated strings into a JSON file and access them with the `t` function in your views.
-- 🍳 The build step is optional. You can [write JSX](./docs/jsx.md) with a bundler, or use tagged template literals directly in the browser.
+- 🚥 [**Signals**](./docs/reactivity.md) for pinpoint DOM updates.
+- 📦 Reusable components in two types:
+  - 🖥️ **Views** for reusable UI elements.
+  - 💾 **Stores** for sharing state across many views.
+- 🔀 A client-side [**router**](./src/router/README.md) with nested routes, auth guards, async data loading and more.
+- 📍 A simple [**i18n system**](./src/translate/README.md). Put your translated strings in a JSON file and access them with the `t` function in your views.
+- 🍳 The build step is optional. You can use a bundler (like Vite) and [write JSX](./docs/jsx.md), or skip the build step and use `html` tagged templates.
 
-## ...
+## Shut up and show me
 
-Static Execution (Setup Once): Unlike React, a Dolla component is a constructor that runs exactly once. It builds the UI and "wires up" the reactivity, then steps out of the way. This eliminates the overhead of constant re-renders and the "stale closure" bugs common in other frameworks.
-
-- State primitives that work inside and outside of components
-- Context chain behind component tree
-- Direct DOM updates with signals, but with opt-in tracking (reduces accidental subscriptions w/ signals)
-
-### Topics to introduce
-
-- Reactivity
-  - Signals
-  - tracking contexts (memo, effect, attributes and children)
-- Components
-  - basic types overview
-  - lifecycle: `onMount`, `onCleanup`
-  - context
-  - Views
-    - reactive props/attrs
-    - helpers (`repeat`, `when`, `portal`)
-  - Stores (with `provide` and `inject`)
-- mount
-- Extras
-  - Router
-  - Translate
-  - Building with Vite & using JSX
-
-## Example: Counter
+Here's an app that displays "Hello World" or "Goodbye World" and a button to toggle which message is displayed.
 
 ```jsx
-import { state, html, createRoot, onMount, onCleanup, onEffect } from "@manyducks.co/dolla";
+import { html, createAtom, createRoot, compose } from "@manyducks.co/dolla";
 
-function Counter() {
-  const count = state(0);
+function Hello() {
+  const [value, setValue] = createAtom(false);
 
-  onMount(this, () => {
-    console.log("Counter has mounted.");
-  });
-
-  onCleanup(this, () => {
-    console.log("Counter has unmounted.");
-  });
-
-  onEffect(this, () => {
-    console.log({ count: count() });
-  });
+  const word = compose(() => (value() ? "Hello" : "Goodbye"));
 
   return html`
-    <div>
-      <p>Count: ${count}</p>
-      <button onclick=${() => count((c) => c + 1)}>Increment</button>
-    </div>
+    <p>${word} World</p>
+    <button onClick=${() => setValue((current) => !current)}>Toggle</button>
   `;
 }
 
+createRoot(document.body).mount(Hello);
+```
+
+And here's a counter with a lot more going on, plus some comments to explain what's happening.
+
+```jsx
+import { html, createAtom, createRoot, onMount, onCleanup, onEffect, showIf } from "@manyducks.co/dolla";
+
+function Counter() {
+  // An atom is the basic building block of dynamic state.
+  // It consists of a getter function and a setter function, returned as a tuple:
+  const [count, setCount] = createAtom(0);
+
+  // Atoms can be composed to derive state from one or more other states.
+  // Composed states update automatically with the values of any atoms they call.
+  const isALot = compose(() => count() > 100);
+
+  // Composed states are lazy-computed if dependencies have changed.
+  isALot(); // computes the value; returns false
+  isALot(); // returns cached value (count has not changed)
+  isALot(); // returns cached value (count has not changed)
+
+  // Hooks can bind logic to the component lifecycle or store and access data on the context.
+  // They always take the Context object as a first argument by convention.
+  onMount(this, () => {
+    console.log("I'll be called when Counter is on the page");
+
+    // You can call hooks wherever and whenever you want as long as you have a Context object to pass.
+    onCleanup(this, () => {
+      console.log("I'll be called when Counter is no longer on the page");
+    });
+  });
+
+  // Effects run side-effect code in response to state changes.
+  // Just like `compose`, the effect tracks getters called within and re-runs when values change.
+  onEffect(this, () => {
+    console.log("count has changed:", count());
+  });
+
+  // Getters can be dropped into the DOM where dynamic values are needed,
+  // either as children or as HTML attributes. DOM nodes will update in sync with state changes.
+  return html`
+    <div>
+      <p>Count: ${count}</p>
+
+      <button disabled=${isALot} onClick=${() => setCount((current) => current + 1)}>Increment</button>
+
+      ${showIf(isALot, html`<p>That's a lot!</p>`)}
+    </div>
+  `;
+  // ^ You can use view helpers like `showIf`, `hideIf` and `forEach` for control flow in templates.
+}
+
+// A root will create and mount an instance of a view onto a DOM node.
 createRoot(document.body).mount(Counter);
 ```
 
-That will give you a basic counter mounted to the body of your document. Reactivity is fully wired up, so clicking the button will increase the count and cause the `<p>` tag to update.
+A few points to notice:
 
-Components never re-render in Dolla. They are one-shot constructor functions that get called when the component is created. The `state` function creates a reactive value and returns an accessor function. When called with a value it will store that value and update all listeners. When called with no arguments it will return the latest stored value.
+- The component function runs only once when the component is initialized (no re-renders).
+- _All_ changes at runtime are a result of atoms being set.
+- All DOM updates are synchronous with state changes. You can use [`batch`](./docs/reactivity.md) to process several changes as one.
+- Getters are tracked in `compose` and `createEffect`/`onEffect` callbacks. You can use [`peek`](./docs/reactivity.md) to opt-out of tracking.
 
-In the Counter view, we were just passing the getter itself into the `<p>` tag. Getters have a special side-effect that calling them inside specific functions will track them, causing the parent function to re-run when the tracked values are updated. Dolla handles this tracking process automatically when you drop getters into your template as attributes or children.
+## Dependent data flow
 
-Tracking contexts
+Apps are built by composing atoms into ever more complex data structures, eventually attaching the fingers of the monstrosity to some switches and levers that can manipulate DOM nodes.
 
-- memo()
-- HTML element attributes
-- HTML element children
-- NOT event handlers
+Imagine your state as a hamster. Your job is to create a mech suit around the hamster so when he twitches his paw his 10 ton fist takes a chunk out of a mountainside. This is no ordinary hamster; it's your app's state, and the mountainside is the DOM. And the mech suit is your code. Built out of Dolla parts. Yes.
 
-## Example: Temperature Converter
+Now that everything is clear, here's what that looks like in practice. Only a single number changes, but three values are displayed in sync with the original number. A few small state changes cause large changes visible to the user. It's easy to understand what data is important.
 
 ```tsx
-import { state, memo, html, createRoot } from "@manyducks.co/dolla";
+import { html, createRoot, createAtom, compose } from "@manyducks.co/dolla";
 
 function Converter() {
-  const celsius = state(0);
+  // Just one source value that changes.
+  const [celsius, setCelsius] = createAtom(0);
 
   // Depends on `celsius`; updates when `celsius` updates.
-  const fahrenheit = memo(() => {
+  const fahrenheit = compose(() => {
     return (celsius() * 9) / 5 + 32;
   });
 
   // Depends on `fahrenheit`; updates when `fahrenheit` updates.
-  const description = memo(() => {
+  const description = compose(() => {
     const f = fahrenheit();
     if (f <= 32) return "Freezing ❄️";
     if (f >= 90) return "Hot! 🔥";
@@ -111,7 +129,8 @@ function Converter() {
         type="number"
         value=${celsius}
         oninput=${(e) => {
-          celsius(e.target.valueAsNumber);
+          // Set by user input.
+          setCelsius(e.target.valueAsNumber);
         }}
       />
 
@@ -125,20 +144,16 @@ function Converter() {
 createRoot(document.body).mount(Converter);
 ```
 
-The `memo` function creates a read-only signal that derives its state from other signals. Its callback function is called immediately, accessed signals are tracked as dependencies, and then the callback runs again if any of those dependencies change. Calling the memoized signal in the meantime will simply return the last computed value.
+### Stores for shared state
 
-### 2\. Stores: For shared state
-
-Got some state you need to use in a bunch of different places? **Stores** are for that. It's Dolla's built-in way to handle state so you don't have to go install another library.
-
-You work with stores using two functions, `$provide` and `$use`.
+Dolla comes with a really easy way to share state across views in the same subtree.
 
 ```jsx
+// Define a Store function:
 function CounterStore() {
-  // We create an atom which gives us a getter, and a setter which we won't expose.
-  const [value, setValue] = atom(0);
+  const [value, setValue] = createAtom(0);
 
-  // Instead we can define our own functions to control how the state gets changed.
+  // We can define our own functions to control how the state gets changed.
   const increment = () => setValue((current) => current + 1);
   const decrement = () => setValue((current) => current - 1);
 
@@ -147,15 +162,18 @@ function CounterStore() {
 }
 ```
 
-You "provide" a store to a part of your app, and any component inside can now use it.
+You work with stores using the `addStore` and `getStore` hooks. When you add a store to a part of your app, any component inside can now use it.
+
+> Like an umbrella; it provides shade (state) to those under it, but not next to or above it.
 
 ```jsx
 function App() {
-  // Now this component and any components inside it share an instance of CounterStore.
-  const counter = $provide(CounterStore);
+  // Creates one instance of CounterStore and returns it for immediate use.
+  const counter = addStore(this, CounterStore);
 
   return (
     <div>
+      {/* Child views inherit context and therefore access to stores above them in the view tree. */}
       <CounterView />
       <button onClick={counter.increment}>Increment</button>
     </div>
@@ -163,153 +181,24 @@ function App() {
 }
 
 function CounterView() {
-  // Just use the store you need!
-  const counter = $use(CounterStore);
+  // Returns the same instance of CounterStore.
+  const counter = getStore(this, CounterStore);
   return <p>Current value: {counter.value}</p>;
 }
 ```
 
-[More on stores.](./docs/stores.md)
+### What are stores good for?
 
-### 3\. Mixins: Reusable superpowers
+- Authentication state
+- Caching data between router pages
+- Avoiding prop drilling for local state
 
-**Mixins** are a super cool way to add reusable behaviors to your HTML elements. A mixin is just a function you can slap onto any element, and it can have its own state and lifecycle. It's perfect for stuff like logging, animations, or whatever else you can dream up.
+## Extras
 
-```jsx
-function logLifecycle() {
-  // A mixin is just a function...
-  return (element) => {
-    // ...that takes a DOM element and can use hooks inside.
-    const log = $debug();
-    $mount(() => log("element mounted!", element));
-    $unmount(() => log("element unmounted!"));
-  };
-}
+Now that you've seen how to wire up a Dolla app, here are a few things to try:
 
-// Then you can use it in any View.
-function MyComponent() {
-  return (
-    <div>
-      {/* Just call it in the `mixin` prop. */}
-      <h1 mixin={logLifecycle()}>I'll log when I show up and leave.</h1>
-
-      {/* You can even use an array of 'em! */}
-      <p mixin={[logLifecycle(), otherMixin()]}>Me too!</p>
-    </div>
-  );
-}
-```
-
-[More on mixins.](./docs/mixins.md)
-
-## Batteries Included: All The Stuff You Get\! 🧰
-
-Dolla isn't just for rendering. We threw in a bunch of tools so you can stop hunting around on npm.
-
-### A Router that Doesn't Suck
-
-Dolla has a router for making multi-page apps. It just works. Back/forward buttons, bookmarks, all that jazz. It's also smart and always picks the _most specific_ route, so you don't get weird bugs based on the order you write your routes.
-
-#### Route Patterns
-
-- **Static**: `/dashboard/settings`
-- **Number Param** (only matches numbers): `/users/{#id}`
-- **Anything Param**: `/users/{name}`
-- **Wildcard**: `/files/*`
-
-#### Setting it Up
-
-```jsx
-import { dolla } from "@manyducks.co/dolla";
-import { ThingIndex, ThingDetails, ThingEdit } from "./views.js";
-
-const app = dolla({
-  // You can use `/#/hash` routes if you don't have a server configured to handle client route fallback.
-  hash: true,
-
-  // Configure `routes` instead of providing a `view`.
-  routes: [
-    {
-      path: "/things",
-      view: null, // a null view just groups routes
-      routes: [
-        { path: "/", view: ThingIndex }, // matches `/things`
-        { path: "/{#id}", view: ThingDetails }, // matches `/things/123`
-        { path: "/{#id}/edit", view: ThingEdit }, // matches `/things/123/edit`
-      ],
-    },
-    { path: "*", redirect: "/things" }, // catch-all
-  ],
-});
-
-app.mount(document.body);
-```
-
-#### Using It
-
-Just use the `$router()` hook.
-
-```jsx
-import { $effect, $debug, $router } from "@manyducks.co/dolla";
-
-function ThingDetails() {
-  const log = $debug();
-  const router = $router();
-
-  const id = compose(() => router.params().id);
-
-  $effect(() => {
-    log("Current thing ID:", id());
-  });
-
-  function goToNext() {
-    const nextId = id() + 1;
-    router.go(`/things/${nextId}`);
-  }
-
-  return (
-    <div>
-      <p>Viewing thing {id}</p>
-      <button onClick={goToNext}>View Next Thing</button>
-    </div>
-  );
-}
-```
-
-### Internationalization (i18n)
-
-Wanna make your app speak different languages? We got you. Dolla's i18n stuff is super simple.
-
-The best part? `t()` gives you back a **signal**. So if the user switches languages, your whole app just updates. Automatically. It's kinda magic.
-
-```jsx
-import { dolla, $i18n } from "@manyducks.co/dolla";
-
-function CounterView() {
-  const { t, setLocale } = $i18n();
-
-  // setLocale("ja")
-
-  return <button>{t("buttonLabel")}</button>;
-}
-
-const app = dolla({
-  view: CounterView,
-  i18n: {
-    locale: "en",
-    translations: [
-      { locale: "en", strings: { buttonLabel: "Click me!" } },
-      { locale: "ja", strings: { buttonLabel: "押してね！" } },
-    ],
-  },
-});
-
-app.mount(document.body);
-```
-
----
-
-For more detail [check out the Docs](./docs/index.md).
+- Add a [router](./src/router/README.md) to create an SPA
+- Add [language translations](./src/translate/README.md) to go international.
 
 ---
 

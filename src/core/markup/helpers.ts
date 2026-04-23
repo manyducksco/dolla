@@ -12,7 +12,11 @@ import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
  * @param keyFn - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
  * @param renderFn - Takes (item, index) as Reactive values and returns content to display for that item.
  */
-export function each<T>(items: Getter<Iterable<T>> | Iterable<T>, keyFn: KeyFn<T>, renderFn: RenderFn<T>): Renderable {
+export function forEach<T>(
+  items: Getter<Iterable<T>> | Iterable<T>,
+  keyFn: KeyFn<T>,
+  renderFn: RenderFn<T>,
+): Renderable {
   if (isFunction(items)) {
     return createMarkup(RepeatNode<T>, { args: [items, keyFn, renderFn] });
   } else {
@@ -32,7 +36,7 @@ export function each<T>(items: Getter<Iterable<T>> | Iterable<T>, keyFn: KeyFn<T
  * @param whenTruthy - Content to display when condition is truthy.
  * @param whenFalsy - Content to display when condition is falsy.
  */
-export function when(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
+function _conditional(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (isFunction(condition)) {
     return createMarkup(DynamicNode, {
       args: [compose(() => (condition() ? whenTruthy : whenFalsy))],
@@ -44,6 +48,33 @@ export function when(condition: any, whenTruthy?: Renderable, whenFalsy?: Render
   }
 }
 
-export function portal(parent: Element, content: Renderable) {
+/**
+ * Shows content only when `condition` is truthy.
+ * It can be a plain value or a Getter to track dynamically.
+ *
+ * @param condition - Condition to hide or show content on.
+ * @param content - Content to display when condition is truthy.
+ * @param fallback - Content to display when condition is falsy.
+ */
+export function showIf(condition: any, content: Renderable, fallback?: Renderable): Renderable {
+  return _conditional(condition, content, fallback);
+}
+
+/**
+ * Shows content only when `condition` is falsy.
+ * It can be a plain value or a Getter to track dynamically.
+ *
+ * @param condition - Condition to hide or show content on.
+ * @param content - Content to display when condition is falsy.
+ * @param fallback - Content to display when condition is truthy.
+ */
+export function hideIf(condition: any, content: Renderable, fallback?: Renderable): Renderable {
+  return _conditional(condition, fallback, content);
+}
+
+/**
+ * Creates a portal that renders `content` into another element on the page.
+ **/
+export function createPortal(parent: Element, content: Renderable) {
   return createMarkup(PortalNode, { args: [content, parent] });
 }

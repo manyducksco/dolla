@@ -22,7 +22,7 @@ export function getDebug(context: Context, ...tags: [string, any][]) {
   const name = context.name;
   let args: any[];
 
-  const make = (method: string, level: number) => {
+  const make = (method: string, level: number): ((...args: any[]) => void) => {
     if (level < logLevel || !logFilter(name) || !c[method]) return noOp;
 
     // Build and cache the console arguments on the first valid log

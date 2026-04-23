@@ -6,13 +6,13 @@
   <body>
     <div id="counter"></div>
     <script type="module">
-      import { createRoot, state, html, onMount, onCleanup, onEffect, useDebug } from "../dist/index.js";
+      import { createRoot, createAtom, html, onMount, onCleanup, onEffect, getDebug } from "../dist/index.js";
 
       function Counter() {
-        const count = state(0);
+        const [count, setCount] = createAtom(0);
 
         // Debug uses name from context which is the function's name by default.
-        const console = useDebug(this);
+        const console = getDebug(this);
 
         onMount(this, () => {
           console.log("WE ARE MOUNTED", this);
@@ -33,9 +33,9 @@
 
         return html`
           <p>Count: ${count}</p>
-          <button onclick=${() => count((c) => c + 1)}>+1</button>
-          <button onclick=${() => count((c) => c - 1)}>-1</button>
-          <button onclick=${() => count(0)}>Reset</button>
+          <button onclick=${() => setCount((c) => c + 1)}>+1</button>
+          <button onclick=${() => setCount((c) => c - 1)}>-1</button>
+          <button onclick=${() => setCount(0)}>Reset</button>
         `;
       }
 
@@ -44,19 +44,17 @@
 
     <div id="providers"></div>
     <script type="module">
-      import { createRoot, state, html, addStore, useStore, when } from "../dist/index.js";
+      import { createRoot, createAtom, html, addStore, getStore, showIf } from "../dist/index.js";
 
       function Store() {
-        const value = state(0);
-        return { value: () => value(), setValue: value };
+        const [value, setValue] = createAtom(0);
+        return { value, setValue };
       }
 
       function Parent(props, ctx) {
         const { setValue } = addStore(ctx, Store);
 
         setValue(10);
-
-        // return ["div", [Child]];
 
         return html`
           <div>
@@ -66,11 +64,11 @@
       }
 
       function Child() {
-        const { value } = useStore(this, Store);
+        const { value } = getStore(this, Store);
 
         // return ["p", ["@if", () => value() === 10, "We're good", "Something is off"]];
 
-        return html` <p>${when(() => value() === 10, "We're good", "Something is off")}</p> `;
+        return html` <p>${showIf(() => value() === 10, "We're good", "Something is off")}</p> `;
       }
 
       createRoot("#providers").mount(Parent);
@@ -78,14 +76,14 @@
 
     <div id="inherited-state"></div>
     <script type="module">
-      import { createRoot, state, html, onMount } from "../dist/index.js";
+      import { createRoot, createAtom, html, onMount } from "../dist/index.js";
 
       function Parent() {
-        this.count = state(0); // set count on context
+        const [count, setCount] = (this.count = createAtom(0)); // set count on context
 
         onMount(this, () => {
           const interval = setInterval(() => {
-            this.count((current) => current + 1);
+            setCount((current) => current + 1);
           }, 1000);
 
           return () => clearInterval(interval);
@@ -99,12 +97,12 @@
       }
 
       function Child() {
-        const count = this.count; // get count from context
+        const [count, setCount] = this.count; // get count from context
 
         return html`
           <p>Count from context: ${count}</p>
 
-          <button onClick=${() => count(0)}>Reset</button>
+          <button onClick=${() => setCount(0)}>Reset</button>
         `;
       }
 
@@ -113,16 +111,15 @@
 
     <div id="stores-and-injection"></div>
     <script type="module">
-      import { createRoot, state, html, addStore, useStore, onMount, onCleanup } from "../dist/index.js";
+      import { createRoot, createAtom, html, addStore, getStore, onMount, onCleanup } from "../dist/index.js";
 
       function CounterStore() {
-        const count = state(0);
+        const [count, setCount] = createAtom(0);
 
         return {
-          // Read-only count
-          count: () => count(),
-          increment: () => count((c) => c + 1),
-          reset: () => count(0),
+          count,
+          increment: () => setCount((c) => c + 1),
+          reset: () => setCount(0),
         };
       }
 
@@ -145,7 +142,7 @@
       }
 
       function Child() {
-        const { count, reset } = useStore(this, CounterStore);
+        const { count, reset } = getStore(this, CounterStore);
 
         return html`
           <p>Count from CounterStore: ${count}</p>
@@ -157,61 +154,9 @@
       createRoot("#stores-and-injection").mount(Parent);
     </script>
 
-    <div id="web-components">
-      <app-counter id="counter-component" count="12"></app-counter>
-      <button id="randomize-button">Randomize</button>
-    </div>
-    <script type="module">
-      import { html, state, createRoot } from "../dist/index.js";
-
-      // Simple web components usage.
-      class CounterElement extends HTMLElement {
-        static observedAttributes = ["count"];
-
-        count = state(0);
-
-        constructor() {
-          super();
-          this.root = createRoot(this.attachShadow({ mode: "open" }));
-        }
-
-        connectedCallback() {
-          // TODO: Allow mounting an `html` block with multiple root nodes.
-          // I had to wrap them in a div to get them to show up.
-          this.root.mount(html`
-            <div>
-              <p>Element count: ${this.count}</p>
-              <button onclick=${() => this.count((current) => current + 1)}>Increment</button>
-              <button onclick=${() => this.count((current) => current - 1)}>Decrement</button>
-              <button onclick=${() => this.count(0)}>Reset</button>
-            </div>
-          `);
-        }
-
-        disconnectedCallback() {
-          this.root.unmount();
-        }
-
-        attributeChangedCallback(name, oldValue, newValue) {
-          if (name === "count") {
-            const parsed = Number(newValue);
-            if (!isNaN(parsed)) {
-              this.count(parsed);
-            }
-          }
-        }
-      }
-
-      customElements.define("app-counter", CounterElement);
-
-      document.getElementById("randomize-button").addEventListener("click", () => {
-        document.getElementById("counter-component").setAttribute("count", String(Math.round(Math.random() * 500)));
-      });
-    </script>
-
     <div id="sibling-lists"></div>
     <script type="module">
-      import { createRoot, memo, state, html, each, when, onMount, onCleanup } from "../dist/index.js";
+      import { createRoot, compose, createAtom, html, forEach, showIf, onMount, onCleanup } from "../dist/index.js";
 
       function shuffled(source) {
         const array = [...source];
@@ -231,39 +176,39 @@
       }
 
       function List({ color, items }) {
-        const sorted = state([...items]);
+        const [sorted, setSorted] = createAtom([...items]);
 
         function randomize() {
-          sorted(shuffled);
+          setSorted(shuffled);
         }
 
-        const visible = state(false);
+        const [visible, setVisible] = createAtom(false);
 
         onMount(this, () => {
           const interval = setInterval(randomize, 1000 + (Math.random() * 600 - 300));
           onCleanup(this, () => clearInterval(interval));
         });
 
-        return each(
+        return forEach(
           sorted,
           (item) => item,
           (item) => {
             return html`
-              <div style=${{ color: color }}>${item} ${when(visible, html`<input type="text"></input>`)}</div>
+              <div style=${{ color: color }}>${item} ${showIf(visible, html`<input type="text"></input>`)}</div>
             `;
           },
         );
       }
 
       function SiblingLists() {
-        const lists = state([
+        const [lists, setLists] = createAtom([
           html`<${List} color="red" items=${["broccoli", "zucchini", "radish"]} />`,
           html`<${List} color="blue" items=${["salami", "bacon", "turkey"]} />`,
           html`<${List} color="green" items=${["water", "tea", "coffee"]} />`,
         ]);
 
         function randomize() {
-          lists(shuffled);
+          setLists(shuffled);
         }
 
         onMount(this, () => {
@@ -274,7 +219,7 @@
         return html`
           <div>
             ${lists}
-            ${each(
+            ${forEach(
               lists,
               (item) => item.props.color,
               (item) => item,
@@ -362,14 +307,14 @@
     </style>
 
     <script type="module">
-      import { createRoot, state, html, when, onEffect, batch } from "../dist/index.js";
+      import { createRoot, createAtom, html, showIf, hideIf, onEffect, batch } from "../dist/index.js";
       import { createVirtualList } from "../dist/virtual.js";
 
       function ChatWireDemo() {
         let nextId = 0;
 
         // 1. Upgrade data to objects
-        const items = state([
+        const [items, setItems] = createAtom([
           { id: nextId++, type: "header", text: "Today" },
           { id: nextId++, type: "message", text: "Welcome to Chat/Wire!" },
           { id: nextId++, type: "message", text: "Virtual list initialization complete." },
@@ -378,7 +323,7 @@
         let counter = 1;
 
         function addMessage() {
-          items((arr) => {
+          setItems((arr) => {
             const newArr = [...arr];
 
             // Auto-insert a new header every 5 messages to test the push effect
@@ -458,9 +403,8 @@
 
         return html`
           <div style="flex: 1; position: relative; display: flex; flex-direction: column; overflow-y: auto;">
-            ${when(
+            ${hideIf(
               listApi.isAtBottom,
-              null,
               html`
                 <button
                   onclick=${() => listApi.scrollToBottom(true)}

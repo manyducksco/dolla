@@ -1,23 +1,25 @@
 # Reactivity
 
-States, memos and effects.
+- atoms, compose, effects
+- tracking (compose, effect and DOM contexts)
 
 ```js
-const count = state(0);
+const [count, setCount] = createAtom(0);
 
 count(); // get the value
-count(5); // set the value
-count((current) => current + 5); // set the value through a transform function
+setCount(5); // set the value
+setCount(5); // set the value
+(current) => current + 5; // set the value through a transform function
 
-const doubled = memo(() => count() * 2);
+const doubled = compose(() => count() * 2);
 
 doubled(); // get the value
 
-count(25);
+setCount(25);
 doubled(); // returns 50
 
 // Effect functions are invoked immediately and again each time their tracked states are updated.
-const stop = effect(() => {
+const stopEffect = createEffect(() => {
   console.log("count is now", count());
 
   peek(count); // access the value without tracking
@@ -27,5 +29,5 @@ const stop = effect(() => {
   };
 });
 
-stop(); // stop listening for changes
+stopEffect(); // stop listening for changes
 ```

@@ -1,6 +1,6 @@
 {
   "name": "@manyducks.co/dolla",
-  "version": "3.0.0-rc.1",
+  "version": "3.0.0",
   "description": "A fast, batteries-included JavaScript framework with a React-like API and the power of Signals.",
   "main": "dist/index.js",
   "types": "dist/core/index.d.ts",
@@ -21,7 +21,8 @@
     "web app",
     "front end framework",
     "functional",
-    "reactive state"
+    "reactive state",
+    "signals"
   ],
   "author": "tony@manyducks.co",
   "license": "MIT",

@@ -7,7 +7,6 @@
     "module": "es2022",
     "rootDir": "src",
     "moduleResolution": "bundler",
-    // "baseUrl": "./src",
     "emitDeclarationOnly": true,
     "allowJs": true,
     "checkJs": false,

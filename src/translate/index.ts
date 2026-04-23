@@ -78,7 +78,7 @@ export interface Translator {
   format<V, O>(name: string, value: Getter<V> | V, options?: O): Getter<string>;
 }
 
-export interface TranslateOptions {
+export interface TranslatorOptions {
   translations: Record<string, LocalizedStrings | TranslationFetchFn>;
 
   /**
@@ -89,9 +89,9 @@ export interface TranslateOptions {
   formatters?: Record<string, Formatter>;
 }
 
-const TRANSLATE = Symbol("Dolla.Translate");
+const TRANSLATE = Symbol("Dolla.Translator");
 
-export function createTranslatePlugin(options: TranslateOptions): DollaPlugin {
+export function createTranslatePlugin(options: TranslatorOptions): DollaPlugin {
   return async function (context) {
     const translator = createTranslator(options);
     context[TRANSLATE] = translator;
@@ -106,7 +106,7 @@ export function getTranslate(context: Context): Translator {
 
 // ----- Code ----- //
 
-function createTranslator(options: TranslateOptions): Translator {
+function createTranslator(options: TranslatorOptions): Translator {
   const formatters = new Map<string, Formatter>();
 
   formatters.set("number", (locale, value, options) => {
@@ -210,7 +210,7 @@ function createTranslator(options: TranslateOptions): Translator {
 
   return {
     supportedLocales,
-    currentLocale: () => currentLocale(),
+    currentLocale,
     setLocale,
     t,
     format,

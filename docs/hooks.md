@@ -13,13 +13,13 @@ Lifecycle hooks primarily deal with running code based on the lifecycle of a com
 ## Store Hooks
 
 - `addStore(context, store)`
-- `useStore(context, store)`
+- `getStore(context, store)`
 
 ## Debug
 
-- `useDebug(context, ...tagEntries)`
+- `getDebug(context, ...tagEntries)`
 
 ## Plugin Hooks
 
-- `useRouter(context)`
-- `useTranslate(context)`
+- `getRouter(context)`
+- `getTranslate(context)`

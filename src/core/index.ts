@@ -14,7 +14,7 @@ export type { Context } from "./context.js";
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
-export { each, portal, when } from "./markup/helpers.js";
+export { forEach, showIf, hideIf, createPortal } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { ViewNode } from "./markup/nodes/view.js";
 export type { Markup, MarkupNode } from "./markup/types.js";

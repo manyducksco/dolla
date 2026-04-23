@@ -1,7 +1,7 @@
 import { onEffect } from "../core/context.js";
+import { showIf } from "../core/markup/helpers.js";
 import { createMarkup } from "../core/markup/utils.js";
-import { when } from "../core/markup/helpers.js";
-import { batch, compose, peek, createAtom, type Setter, type Getter } from "../core/signals.js";
+import { batch, compose, createAtom, peek, type Getter } from "../core/signals.js";
 import { View } from "../types.js";
 
 export interface VirtualListAPI<T> {
@@ -363,7 +363,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         contain: "content",
       },
       children: [
-        props.renderEmpty && when(() => props.items().length === 0, props.renderEmpty),
+        props.renderEmpty && showIf(() => props.items().length === 0, props.renderEmpty),
         props.renderSticky &&
           createMarkup("div", {
             style: {
