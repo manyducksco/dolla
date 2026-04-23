@@ -1,7 +1,7 @@
 {
   "name": "@manyducks.co/dolla",
   "version": "3.0.0",
-  "description": "A fast, batteries-included JavaScript framework with a React-like API and the power of Signals.",
+  "description": "A fast, batteries-included JavaScript framework with a React-inspired API and the power of signals.",
   "main": "dist/index.js",
   "types": "dist/core/index.d.ts",
   "type": "module",
@@ -57,12 +57,12 @@
     "*.d.ts"
   ],
   "devDependencies": {
-    "@types/node": "^24.12.2",
+    "@types/node": "^25.6.0",
     "csstype": "^3.2.3",
-    "jsdom": "^28.1.0",
-    "prettier": "^3.8.1",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1",
-    "vitest": "^4.0.18"
+    "jsdom": "^29.0.2",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
   }
 }
