@@ -1,11 +1,11 @@
 import { addStore, Context, createContext, onCleanup, onMount } from "../core/context.js";
-import { DollaPlugin, getDebug } from "../core/index.js";
+import { DollaPlugin, getDebug, getRootElement } from "../core/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
 import { addListener, createMarkup } from "../core/markup/utils.js";
 import { batch, peek, createAtom } from "../core/signals.js";
-import { DEBUG, PARENT_ELEMENT } from "../core/symbols.js";
+import { DEBUG } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { assert } from "../utils.js";
 import { RouterStore } from "./store.js";
@@ -289,7 +289,7 @@ export function createRouterPlugin(options: RouterOptions): DollaPlugin {
         }
       });
 
-      const removeClick = catchLinks(context[PARENT_ELEMENT] as Element, api.push);
+      const removeClick = catchLinks(getRootElement(context), api.push);
 
       onCleanup(context, () => {
         removePop();

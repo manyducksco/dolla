@@ -1,6 +1,8 @@
 import type { Store } from "../types.js";
 import { assert } from "../utils.js";
+import { VIEW, ViewNode } from "./markup/nodes/view.js";
 import { createEffect } from "./signals.js";
+import { PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
 
@@ -65,6 +67,24 @@ export function onEffect(context: Context, fn: () => void) {
       onCleanup(context, createEffect(fn));
     });
   }
+}
+
+/*===================================*\
+||          Traversal Hooks          ||
+\*===================================*/
+
+/**
+ * Returns the parent element of the root we're mounted in.
+ */
+export function getRootElement(context: Context): Element {
+  return context[PARENT_ELEMENT];
+}
+
+/**
+ * Returns the ViewNode of the nearest view up the context chain.
+ */
+export function getNearestViewNode<Props = unknown>(context: Context): ViewNode<Props> | undefined {
+  return context[VIEW];
 }
 
 /*===================================*\

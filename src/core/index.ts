@@ -7,14 +7,14 @@ export { batch, compose, createAtom, createEffect, peek, subscribe, unwrap } fro
 export type { Getter, Setter } from "./signals.js";
 
 // Hooks
-export { addStore, getStore, onCleanup, onEffect, onMount } from "./context.js";
+export { addStore, getNearestViewNode, getRootElement, getStore, onCleanup, onEffect, onMount } from "./context.js";
 export type { Context } from "./context.js";
 
 // Debug
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
-export { forEach, showIf, hideIf, createPortal } from "./markup/helpers.js";
+export { createPortal, forEach, hideIf, showIf } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { ViewNode } from "./markup/nodes/view.js";
 export type { Markup, MarkupNode } from "./markup/types.js";

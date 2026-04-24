@@ -1,12 +1,11 @@
 import { isArray, isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
-import { Context, createContext, mountContext, unmountContext } from "../../context.js";
+import { Context, createContext, getNearestViewNode, mountContext, unmountContext } from "../../context.js";
 import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, addListener, toMarkupNodes } from "../utils.js";
-import { VIEW, ViewNode } from "./view.js";
 
 const IS_SVG = Symbol("isSVG");
 
@@ -55,7 +54,7 @@ export class ElementNode extends MarkupNode {
 
     // Add view name as a data attribute debug mode.
     if (this.#context[DEBUG]) {
-      const view = this.#context[VIEW] as ViewNode<any>;
+      const view = getNearestViewNode(this.#context);
       if (view) {
         this.#root.dataset.view = view.context.name;
       }
