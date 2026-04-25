@@ -1,4 +1,4 @@
-import type { Setter, Getter, MarkupNode, Renderable, View } from "../core";
+import type { Setter, Getter, MarkupNode, Renderable, View, MaybeGetter } from "../core";
 import type { Context } from "../core/context";
 import type { Match } from "./utils";
 
@@ -126,8 +126,9 @@ export interface Router {
 
   /**
    * Update query params without changing the route.
+   * Keys with a value of `null` will be deleted.
    */
-  setQuery(params: Record<string, Stringable>): Record<string, string>;
+  setQuery(params: Record<string, string | number | null>): Record<string, string>;
 
   /**
    * Go back in the page history. Equivalent to hitting the back button.
@@ -159,5 +160,5 @@ export interface Router {
   /**
    * Contains `true` when the current route matches `path`.
    */
-  isActive(path: string, exact?: boolean): Getter<boolean>;
+  isActive(path: MaybeGetter<string>, exact?: boolean): Getter<boolean>;
 }

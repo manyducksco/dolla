@@ -1,4 +1,4 @@
-import { compose, getDebug, peek, type Context, type Getter, type Setter } from "../core";
+import { compose, getDebug, peek, unwrap, type Context, type Getter, type MaybeGetter, type Setter } from "../core";
 import type { Router } from "./types";
 import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 
@@ -62,11 +62,12 @@ export function RouterStore(
       return () => guards.delete(guard);
     },
 
-    isActive(path: string, exact = false) {
-      const target = path === "/" ? "/" : path.replace(/\/$/, "");
-      const targetSlash = target === "/" ? "/" : target + "/";
-
+    isActive(path: MaybeGetter<string>, exact = false) {
       return compose(() => {
+        const _path = unwrap(path);
+        const target = _path === "/" ? "/" : _path.replace(/\/$/, "");
+        const targetSlash = target === "/" ? "/" : target + "/";
+
         const current = currentMatch().path;
         const normalized = current === "/" ? "/" : current.replace(/\/$/, "");
 

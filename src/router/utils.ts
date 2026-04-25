@@ -116,7 +116,7 @@ export function parseQueryParams(query: string): Record<string, string> {
 
 export function mergeQueryParams(
   previous: Record<string, string>,
-  current: Record<string, Stringable>,
+  current: Record<string, Stringable | null>,
   preserve?: boolean | string[],
 ) {
   const merged: Record<string, any> = {};
@@ -129,7 +129,14 @@ export function mergeQueryParams(
     }
   }
 
-  Object.assign(merged, current);
+  for (const [key, value] of Object.entries(current)) {
+    if (value === null) {
+      delete merged[key]; // Explicit nulls act as 'delete'
+    } else {
+      merged[key] = value;
+    }
+  }
+
   return new URLSearchParams(merged as Record<string, string>);
 }
 
