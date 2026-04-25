@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext, mountContext, onEffect, unmountContext } from "./context";
-import { batch, compose, createAtom, createEffect, peek, subscribe, type Getter } from "./signals";
+import { batch, compose, createAtom, createEffect, peek, subscribe, createStream, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = createAtom(5);
@@ -247,5 +247,19 @@ describe("subscribe", () => {
     setOther("hello");
     expect(fn).toBeCalledTimes(2); // `other` is not tracked
     unsub();
+  });
+});
+
+describe("streams", () => {
+  test("", () => {
+    const [values, emitValue] = createStream({ initialValue: 5 });
+
+    const sum = values.reduce((sum, number) => sum + number, 0);
+    const doubled = values.map((number) => number * 2);
+
+    expect(sum.latest).toBe(5);
+    expect(doubled.latest).toBe(10);
+
+    const debounced = doubled.delay(200);
   });
 });

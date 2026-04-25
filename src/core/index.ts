@@ -3,7 +3,7 @@ export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
 // Signals
-export { batch, compose, createAtom, createEffect, peek, subscribe, unwrap } from "./signals.js";
+export { batch, compose, createAtom, createEffect, createStream, peek, subscribe, unwrap } from "./signals.js";
 export type { Getter, Setter } from "./signals.js";
 
 // Hooks

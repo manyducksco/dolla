@@ -1,4 +1,5 @@
 import { isFunction } from "../utils.js";
+import { Context, onCleanup } from "./index.js";
 
 interface ReactiveNode {
   _deps?: Link;
@@ -21,6 +22,11 @@ interface ComputedNode<T = any> extends ReactiveNode {
 interface ValueNode<T = any> extends ReactiveNode {
   _currentValue: T;
   _pendingValue: T;
+
+  /**
+   * If true, notify only when value is !== previous.
+   */
+  _skipEqualValues: boolean;
 }
 
 interface Link {
@@ -351,7 +357,8 @@ function updateComputed(c: ComputedNode): boolean {
 
 function updateValue(v: ValueNode): boolean {
   v._flags = ReactiveFlags.Mutable;
-  return v._currentValue !== (v._currentValue = v._pendingValue);
+  const didChange = v._currentValue !== (v._currentValue = v._pendingValue);
+  return v._skipEqualValues ? didChange : true;
 }
 
 function run(e: EffectNode): void {
@@ -473,14 +480,6 @@ function computedSetter(this: ComputedNode, next: SetterAction<any>) {
   return value;
 }
 
-function computedAccessor<T>(this: ComputedNode<T>, ...next: [SetterAction<T>]): T {
-  if (next.length) {
-    return computedSetter.call(this, next[0]) as T;
-  } else {
-    return computedGetter.call(this) as T;
-  }
-}
-
 function valueGetter<T>(this: ValueNode<T>): T {
   if (this._flags & ReactiveFlags.Dirty) {
     if (updateValue(this)) {
@@ -512,14 +511,6 @@ function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): void {
         flush();
       }
     }
-  }
-}
-
-function valueAccessor<T>(this: ValueNode<T>, ...args: [SetterAction<T>]): T | void {
-  if (args.length) {
-    return valueSetter.call(this, args[0]);
-  } else {
-    return valueGetter.call(this) as T;
   }
 }
 
@@ -617,12 +608,17 @@ export function createAtom<T>(value?: T) {
       _subs: undefined,
       _subsTail: undefined,
       _flags: ReactiveFlags.Mutable,
+      _skipEqualValues: true,
     };
     return [valueGetter.bind(node), valueSetter.bind(node)];
   }
 }
 
-export function compose<T>(getter: (previousValue?: T) => Getter<T> | T): Getter<T> {
+export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T)): Getter<T> {
+  if (!isFunction(getter)) {
+    // Creates a getter out of a plain value; reverse unwrap.
+    return () => getter as T;
+  }
   return computedGetter.bind({
     _value: undefined,
     _subs: undefined,
@@ -630,8 +626,8 @@ export function compose<T>(getter: (previousValue?: T) => Getter<T> | T): Getter
     _deps: undefined,
     _depsTail: undefined,
     _flags: ReactiveFlags.None,
-    _getter: getter as (previousValue?: unknown) => unknown,
-  }) as () => T;
+    _getter: getter,
+  });
 }
 
 export function createEffect(fn: () => void): () => void {
@@ -703,4 +699,198 @@ export function subscribe<T>(target: Getter<T>, fn: (value: T) => any): () => vo
     const value = target();
     peek(() => fn(value));
   });
+}
+
+export interface StreamOptions<T> {
+  /**
+   * An initial value for non-nullable streams.
+   */
+  initialValue?: T;
+
+  /**
+   * Cancel pending `next` listeners when this context is unmounted.
+   */
+  context?: Context;
+
+  /**
+   * Number of emitted values to keep. Defaults to 0 (latest value only).
+   */
+  history?: number;
+}
+
+export interface StreamOptionsWithValue<T> extends StreamOptions<T> {
+  initialValue: T;
+}
+
+export interface Stream<T> {
+  readonly latest: T;
+  current: Getter<T>;
+  next(): Promise<T>;
+
+  map<O>(callback: (value: T, previous?: O) => O): Stream<O>;
+  reduce<O>(callback: (reduced: O, value: T) => O, initialValue: O): Stream<O>;
+  filter(callback: (value: T, previous?: T) => boolean, defaultValue: T): Stream<T>;
+  filter(callback: (value: T, previous?: T) => boolean, defaultValue?: T): Stream<T | undefined>;
+
+  throttle(milliseconds: number): Stream<T>;
+  debounce(milliseconds: number): Stream<T>;
+  delay(milliseconds: number, initialValue?: T): Stream<T>;
+}
+
+interface CreateStreamLinkOptions<T> {
+  value: Getter<T>;
+  signal: AbortSignal;
+}
+
+function _createStreamLink<T>({ value, signal }: CreateStreamLinkOptions<T>): Stream<T> {
+  return {
+    get latest() {
+      return peek(value);
+    },
+    current: value,
+    next() {
+      return new Promise((resolve, reject) => {
+        let skippedFirst = false;
+        const stopEffect = createEffect(() => {
+          const latest = value();
+          if (!skippedFirst) {
+            skippedFirst = true;
+          } else {
+            resolve(latest);
+            stopEffect();
+          }
+        });
+        signal.addEventListener("abort", () => {
+          reject(new Error("Aborted by the parent context unmounting."));
+          stopEffect();
+        });
+      });
+    },
+
+    map(callback) {
+      return _createStreamLink({ value: compose((previous) => callback(value(), previous)), signal });
+    },
+    reduce(callback, initialValue) {
+      return _createStreamLink({ value: compose((previous) => callback(previous ?? initialValue, value())), signal });
+    },
+    filter(callback, defaultValue) {
+      return _createStreamLink<T>({
+        value: compose((previous) => {
+          const latest = value();
+          if (callback(latest, previous)) return latest;
+          else return previous ?? defaultValue!;
+        }),
+        signal,
+      });
+    },
+
+    throttle(milliseconds) {
+      // Accepts only one new value per X milliseconds
+      const [current, setCurrent] = createAtom<T>(peek(value));
+      let nextAllowedAt = Date.now() + milliseconds;
+
+      return _createStreamLink({
+        value: compose(() => {
+          const local = current();
+          const latest = value();
+          const now = Date.now();
+
+          if (now >= nextAllowedAt) {
+            nextAllowedAt = now;
+            return setCurrent(latest);
+          }
+
+          return local;
+        }),
+        signal,
+      });
+    },
+    debounce(milliseconds) {
+      // Emits the latest value after no values have been emitted for X milliseconds
+      const [current, setCurrent] = createAtom<T>(peek(value));
+      let isSyncing = false;
+      let latestTimeout: any;
+
+      signal.addEventListener("abort", () => {
+        clearTimeout(latestTimeout);
+      });
+
+      return _createStreamLink({
+        value: compose(() => {
+          const local = current();
+          const latest = value();
+
+          if (!isSyncing) {
+            clearTimeout(latestTimeout);
+            latestTimeout = setTimeout(() => {
+              isSyncing = true;
+              setCurrent(latest);
+              isSyncing = false;
+              latestTimeout = undefined;
+            }, milliseconds);
+          }
+
+          return local;
+        }),
+        signal,
+      });
+    },
+    delay(milliseconds: number, defaultValue?: T) {
+      // Returns a stream that emits the same values X milliseconds later
+      const [current, setCurrent] = createAtom<T>(defaultValue ?? peek(value));
+      let isSyncing = false;
+      let latestTimeout: any;
+
+      signal.addEventListener("abort", () => {
+        clearTimeout(latestTimeout);
+      });
+
+      return _createStreamLink({
+        value: compose(() => {
+          const local = current();
+          const latest = value();
+
+          if (!isSyncing) {
+            latestTimeout = setTimeout(() => {
+              isSyncing = true;
+              setCurrent(latest);
+              isSyncing = false;
+              latestTimeout = undefined;
+            }, milliseconds);
+          }
+
+          return local;
+        }),
+        signal,
+      });
+    },
+  };
+}
+
+export function createStream<T>(options: StreamOptionsWithValue<T>): [Stream<T>, Setter<T>];
+export function createStream<T>(options: StreamOptions<T>): [Stream<T | undefined>, Setter<T | undefined>];
+
+export function createStream<T>(options?: StreamOptions<T>) {
+  const node: ValueNode<T> = {
+    _currentValue: options?.initialValue as T,
+    _pendingValue: options?.initialValue as T,
+    _subs: undefined,
+    _subsTail: undefined,
+    _flags: ReactiveFlags.Mutable,
+    _skipEqualValues: false,
+  };
+
+  const value = valueGetter.bind(node);
+  const setValue = valueSetter.bind(node);
+
+  const abortController = new AbortController();
+  const stream = _createStreamLink({ value, signal: abortController.signal });
+
+  if (options?.context) {
+    onCleanup(options.context, () => {
+      abortController.abort();
+    });
+  }
+
+  return [stream, setValue];
 }
