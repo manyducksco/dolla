@@ -1,6 +1,6 @@
 {
   "name": "@manyducks.co/dolla",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "A fast, batteries-included JavaScript framework with a React-inspired API and the power of signals.",
   "main": "dist/index.js",
   "types": "dist/core/index.d.ts",
