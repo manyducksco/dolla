@@ -514,6 +514,12 @@ function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): void {
   }
 }
 
+function customSetter<T>(this: Getter<T>, callback: (current: T) => T | void, value: SetterAction<T>): T {
+  const next = typeof value === "function" ? (value as (current: T) => T)(peek(this)) : value;
+  const returned = callback(next);
+  return returned ?? next;
+}
+
 function effectCleanup(this: ReactiveNode): void {
   this._depsTail = undefined;
   this._flags = ReactiveFlags.None;
@@ -578,7 +584,26 @@ export function createAtom<T>(): AtomAccessors<T | undefined>;
  * getValue("overwritten");
  * getInputValue(); // "overwritten"
  */
-export function createAtom<T>(compute: Getter<T>): AtomAccessors<T>;
+export function createAtom<T>(initialValue: Getter<T>): AtomAccessors<T>;
+
+/**
+ * Creates a new atom with a value computed from an existing getter.
+ * This is usually used to create a 'settable' getter, in which you can store
+ * a temporary value until it gets overwritten by a _real_ update.
+ *
+ * @example
+ * const [getValue, setValue] = createAtom("");
+ * const [getInputValue, setInputValue] = createAtom(getValue);
+ *
+ * setInputValue("temporary");
+ * getValue("");
+ * getInputValue(); // "temporary"
+ *
+ * setValue("overwritten");
+ * getValue("overwritten");
+ * getInputValue(); // "overwritten"
+ */
+export function createAtom<T>(initialValue: MaybeGetter<T>): AtomAccessors<T>;
 
 /**
  * Creates a new atom with an initial value.
@@ -612,6 +637,13 @@ export function createAtom<T>(value?: T) {
     };
     return [valueGetter.bind(node), valueSetter.bind(node)];
   }
+}
+
+/**
+ * Creates a customsetter with a `getter` as its source.
+ */
+export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T | void): Setter<T> {
+  return customSetter.bind(getter, callback as any) as Setter<T>;
 }
 
 export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T)): Getter<T> {
