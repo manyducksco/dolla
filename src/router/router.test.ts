@@ -4,7 +4,7 @@ import { DollaPlugin, getStore } from "../core/index.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
 
-import { createRouterPlugin, lazy, Outlet, RedirectError } from "./router.js";
+import { createRouter, lazy, Outlet, RedirectError } from "./router.js";
 import { RouterStore } from "./store.js";
 
 async function withRouter(plugin: DollaPlugin, callback: (context: Context) => any) {
@@ -33,7 +33,7 @@ describe("Router Engine", () => {
     const RootView = () => {};
     const ChildView = () => {};
 
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [
         {
           path: "/",
@@ -76,7 +76,7 @@ describe("Router Engine", () => {
     const preloadSpy = vi.fn().mockResolvedValue({ user: "Alice" });
     let capturedProps: any;
 
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [
         {
           path: "/profile",
@@ -102,7 +102,7 @@ describe("Router Engine", () => {
   });
 
   it("handles RedirectError gracefully", async () => {
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [
         { path: "/login", view: () => {} },
         {
@@ -126,7 +126,7 @@ describe("Router Engine", () => {
   });
 
   it("blocks navigation if guard returns false", async () => {
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [
         { path: "/", view: () => {} },
         { path: "/form", view: () => {} },
@@ -159,7 +159,7 @@ describe("Router Engine", () => {
   });
 
   it("updates query parameters reactively without unmounting", async () => {
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [{ path: "/search", view: () => {} }],
     });
 
@@ -188,7 +188,7 @@ describe("Router Engine - Lazy Loading", () => {
     // Simulate `() => import("./View.js")`
     const loaderSpy = vi.fn().mockResolvedValue({ default: MockView });
 
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [{ path: "/async", view: lazy(loaderSpy) }],
     });
 
@@ -208,7 +208,7 @@ describe("Router Engine - Lazy Loading", () => {
     const loaderSpy = vi.fn().mockResolvedValue({ default: MockView });
     const lazyRoute = { path: "/async", view: lazy(loaderSpy) };
 
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [{ path: "/", view: () => {} }, lazyRoute],
     });
 
@@ -242,7 +242,7 @@ describe("Router Engine - Lazy Loading", () => {
     const loaderSpy = vi.fn().mockRejectedValue(new Error("Chunk failed to load"));
     let capturedError: Error | undefined;
 
-    const router = createRouterPlugin({
+    const router = createRouter({
       routes: [
         {
           path: "/async-fail",

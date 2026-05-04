@@ -1,7 +1,7 @@
 import type { Store } from "../types.js";
 import { assert } from "../utils.js";
 import { VIEW, ViewNode } from "./markup/nodes/view.js";
-import { createEffect } from "./signals.js";
+import { createEffect, MaybeGetter, Unwrapped } from "./signals.js";
 import { PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
@@ -59,12 +59,27 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
   else context[CLEANUP_LISTENERS].push(fn);
 }
 
-export function onEffect(context: Context, fn: () => void) {
+/**
+ * Creates an effect with auto-tracking for getters called within its callback.
+ */
+export function onEffect(context: Context, fn: () => void): void;
+
+/**
+ * Creates an effect that tracks getters in its `deps` array.
+ * Unwrapped values from `deps` are passed as arguments to the callback.
+ */
+export function onEffect<const T extends readonly any[]>(
+  context: Context,
+  fn: (...values: Unwrapped<T>) => void,
+  deps: T,
+): void;
+
+export function onEffect(context: Context, fn: () => void, deps?: any[]) {
   if (context.isMounted) {
-    onCleanup(context, createEffect(fn));
+    onCleanup(context, createEffect(fn, deps));
   } else {
     onMount(context, () => {
-      onCleanup(context, createEffect(fn));
+      onCleanup(context, createEffect(fn, deps));
     });
   }
 }

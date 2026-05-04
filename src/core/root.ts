@@ -6,15 +6,12 @@ import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
-export type CleanupCallback = () => void | Promise<void>;
-
 /**
- * Plugins run before the app is mounted. If they return a promise, mounting will be delayed until the promise resolves.
- * If a cleanup function is returned, it will be called before the app is unmounted. The cleanup function's promise will delay unmounting.
- *
- * Hooks can be used inside plugins.
+ * Plugins are simply functions that take a context object.
+ * A plugin can return a Promise to suspend app mounting.
+ * Hooks can be used to attach app lifecycle logic.
  */
-export type DollaPlugin = (context: Context) => Promise<CleanupCallback | void> | CleanupCallback | void;
+export type DollaPlugin = (context: Context) => any;
 
 export interface DollaRootOptions {
   /**
@@ -55,7 +52,6 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   context.name = "dolla:root";
 
   const plugins: DollaPlugin[] = [];
-  const cleanup: CleanupCallback[] = [];
 
   context[PARENT_ELEMENT] = element;
   context[DEBUG] = Boolean(options?.debug);
@@ -72,12 +68,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   async function mount(content: View<{}> | Renderable) {
     if (context.isMounted) return;
 
-    const results = await Promise.all(plugins.map((fn) => fn(context)));
-    for (const result of results) {
-      if (isFunction<CleanupCallback>(result)) {
-        cleanup.push(result);
-      }
-    }
+    await Promise.all(plugins.map((fn) => fn(context)));
 
     rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
     rootNode?.mount(element!);
@@ -92,9 +83,6 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     rootNode = null;
 
     unmountContext(context);
-
-    await Promise.all(cleanup.map((callback) => callback()));
-    cleanup.length = 0;
   }
 
   return self;

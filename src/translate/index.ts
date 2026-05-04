@@ -91,7 +91,7 @@ export interface TranslatorOptions {
 
 const TRANSLATE = Symbol("Dolla.Translator");
 
-export function createTranslatePlugin(options: TranslatorOptions): DollaPlugin {
+export function createTranslate(options: TranslatorOptions): DollaPlugin {
   return async function (context) {
     const translator = createTranslator(options);
     context[TRANSLATE] = translator;

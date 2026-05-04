@@ -662,9 +662,34 @@ export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T)): 
   });
 }
 
-export function createEffect(fn: () => void): () => void {
+function _depsGetter(this: MaybeGetter<any>[], fn: (...values: any[]) => void) {
+  // Trigger getters for all deps.
+  const values = this.map((dep) => unwrap(dep));
+  // Ignore tracking in original getter.
+  return peek(() => fn(...values));
+}
+
+export type Unwrapped<T> = {
+  [K in keyof T]: T[K] extends () => infer R ? R : T[K];
+};
+
+/**
+ * Creates an effect with auto-tracking for getters called within its callback.
+ */
+export function createEffect(fn: () => void): () => void;
+
+/**
+ * Creates an effect that tracks getters in its `deps` array.
+ * Unwrapped values from `deps` are passed as arguments to the callback.
+ */
+export function createEffect<const T extends readonly any[]>(
+  fn: (...values: Unwrapped<T>) => void,
+  deps?: T,
+): () => void;
+
+export function createEffect(fn: (...values: any[]) => void, deps?: any[]): () => void {
   const e: EffectNode = {
-    _fn: fn,
+    _fn: deps ? _depsGetter.bind(deps, fn) : fn,
     _cleanup: undefined,
     _subs: undefined,
     _subsTail: undefined,
@@ -685,6 +710,14 @@ export function createEffect(fn: () => void): () => void {
   }
   return effectCleanup.bind(e);
 }
+
+const [count, setCount] = createAtom(5);
+createEffect(
+  (value, second) => {
+    console.log("count is now", value);
+  },
+  [count, "on"],
+);
 
 /**
  * Unwraps a `MaybeGetter<T>` into a plain `T`.

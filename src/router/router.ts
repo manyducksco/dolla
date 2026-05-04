@@ -4,7 +4,7 @@ import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
 import { addListener, createMarkup } from "../core/markup/utils.js";
-import { batch, peek, createAtom } from "../core/signals.js";
+import { batch, createAtom, peek } from "../core/signals.js";
 import { DEBUG } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { assert } from "../utils.js";
@@ -35,7 +35,7 @@ export function lazy(load: LazyLoader): LazyView {
   return { _lazy: true, load };
 }
 
-export function createRouterPlugin(options: RouterOptions): DollaPlugin {
+export function createRouter(options: RouterOptions): DollaPlugin {
   return function (context) {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
