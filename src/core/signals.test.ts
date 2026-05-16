@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext, mountContext, onEffect, unmountContext } from "./context";
-import { batch, compose, createAtom, createEffect, peek, subscribe, createStream, type Getter } from "./signals";
+import { batch, compose, createAtom, createEffect, createStream, peek, subscribe, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = createAtom(5);

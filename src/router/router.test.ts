@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Context, createContext } from "../core/context.js";
-import { DollaPlugin, getStore } from "../core/index.js";
+import { DollaPlugin } from "../core/index.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
 
 import { createRouter, lazy, Outlet, RedirectError } from "./router.js";
-import { RouterStore } from "./store.js";
+import { getRouter } from "./store.js";
 
 async function withRouter(plugin: DollaPlugin, callback: (context: Context) => any) {
   const context = createContext();
@@ -56,7 +56,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await Promise.resolve();
 
-      const store = getStore(context, RouterStore);
+      const store = getRouter(context);
 
       expect(store.path()).toBe("/dashboard");
       expect(store.meta()).toEqual({
@@ -120,7 +120,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = getStore(context, RouterStore);
+      const store = getRouter(context);
       expect(store.path()).toBe("/login");
     });
   });
@@ -134,7 +134,7 @@ describe("Router Engine", () => {
     });
 
     await withRouter(router, async (context) => {
-      const store = getStore(context, RouterStore);
+      const store = getRouter(context);
 
       store.push("/form");
       await new Promise(process.nextTick);
@@ -168,7 +168,7 @@ describe("Router Engine", () => {
       window.dispatchEvent(new Event("popstate"));
       await new Promise(process.nextTick);
 
-      const store = getStore(context, RouterStore);
+      const store = getRouter(context);
 
       store.setQuery({ q: "potato", sort: "asc" });
 

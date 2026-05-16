@@ -1,7 +1,7 @@
-import type { Store } from "../types.js";
+import { Store } from "../types.js";
 import { assert } from "../utils.js";
 import { VIEW, ViewNode } from "./markup/nodes/view.js";
-import { createEffect, MaybeGetter, Unwrapped } from "./signals.js";
+import { createEffect, Unwrapped } from "./signals.js";
 import { PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
@@ -20,8 +20,8 @@ export type Context<T = Record<string | symbol, any>> = ContextState & T;
 ||              Context              ||
 \*===================================*/
 
-const MOUNT_LISTENERS = Symbol("Context.mountListeners");
-const CLEANUP_LISTENERS = Symbol("Context.cleanupListeners");
+const MOUNT_LISTENERS = Symbol.for("$_CONTEXT_MOUNT_LISTENERS");
+const CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_CLEANUP_LISTENERS");
 
 export function createContext(parent?: Context): Context {
   return Object.assign(Object.create(parent ?? null), { isMounted: false });
@@ -106,7 +106,7 @@ export function getNearestViewNode<Props = unknown>(context: Context): ViewNode<
 ||              Stores               ||
 \*===================================*/
 
-export const STORE_ID = Symbol("Dolla.StoreId");
+export const STORE_ID = Symbol.for("$_STORE_ID");
 
 export function addStore<Props, Returns>(
   context: Context,
@@ -132,4 +132,61 @@ export function getStore<Returns>(context: Context, store: Store<any, Returns> &
   const result = id ? context[id] : undefined;
   assert(result != null, `Store '${store.name}' is not provided by this context.`);
   return result;
+}
+
+type AddStoreHook<Props, Returns> = Props extends undefined
+  ? (context: Context) => Returns
+  : (context: Context, props: Props) => Returns;
+type GetStoreHook<Returns> = (context: Context) => Returns;
+
+type StoreHooks<Props, Returns> = [AddStoreHook<Props, Returns>, GetStoreHook<Returns>];
+
+type StoreConfig<Props, Returns> = {
+  id: symbol;
+  fn: (context: Context, props: Props) => Returns;
+  name?: string;
+};
+
+function _initStore(this: StoreConfig<any, any>, context: Context, props: any) {
+  assert(!Object.hasOwn(context, this.id), "Store was already provided on this context.");
+
+  // Give the store its own context bound to this lifecycle.
+  const storeContext = createContext(context) as Context<ComponentState>;
+  onMount(context, () => mountContext(storeContext));
+  onCleanup(context, () => unmountContext(storeContext));
+  if (this.name) {
+    storeContext.name = this.name;
+  }
+
+  return (context[this.id] = this.fn(storeContext, props));
+}
+
+function _getStore(this: StoreConfig<any, any>, context: Context) {
+  const result = context[this.id];
+  assert(result != null, `Store is not provided by this context.`);
+  return result;
+}
+
+export function createStore<Returns, Props = undefined>(
+  name: string,
+  fn: (context: Context, props: Props) => Returns,
+): StoreHooks<Props, Returns>;
+
+export function createStore<Returns, Props = undefined>(
+  fn: (context: Context, props: Props) => Returns,
+): StoreHooks<Props, Returns>;
+
+export function createStore<Returns, Props = undefined>(...args: any[]): StoreHooks<Props, Returns> {
+  if (args.length === 2) {
+    assert(typeof args[0] === "string", "When 2 args are present the first must be a string");
+    assert(typeof args[1] === "function", "When 2 args are present the second must be a function");
+    args[1][STORE_ID] ??= Symbol(args[0]); // Tag the store function.
+    const config = { id: Symbol(), fn: args[1], name: args[0] };
+    return [_initStore.bind(config), _getStore.bind(config)] as StoreHooks<Props, Returns>;
+  } else {
+    assert(args.length === 1 && typeof args[0] === "function", "Expected one function as an argument");
+    args[0][STORE_ID] ??= Symbol();
+    const config = { id: Symbol(), fn: args[0], name: args[0].name };
+    return [_initStore.bind(config), _getStore.bind(config)] as StoreHooks<Props, Returns>;
+  }
 }

@@ -39,7 +39,7 @@ And here's a counter with a lot more going on, plus some comments to explain wha
 ```jsx
 import { html, createAtom, createRoot, onMount, onCleanup, onEffect, showIf } from "@manyducks.co/dolla";
 
-function Counter() {
+function Counter(props) {
   // An atom is the basic building block of dynamic state.
   // It consists of a getter function and a setter function, returned as a tuple:
   const [count, setCount] = createAtom(0);

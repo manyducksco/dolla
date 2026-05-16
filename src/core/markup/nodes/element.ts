@@ -7,7 +7,7 @@ import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, addListener, toMarkupNodes } from "../utils.js";
 
-const IS_SVG = Symbol("isSVG");
+const IS_SVG = Symbol.for("$_IS_SVG");
 
 // Properties in this list will not be processed by applyProps because they are already handled elsewhere.
 const ignoredProps = ["ref", "children"];

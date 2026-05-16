@@ -1,2 +1,2 @@
-export const PARENT_ELEMENT = Symbol("parentElement");
-export const DEBUG = Symbol("debug");
+export const PARENT_ELEMENT = Symbol.for("$_PARENT_ELEMENT");
+export const DEBUG = Symbol.for("$_DEBUG");

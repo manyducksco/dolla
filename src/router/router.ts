@@ -1,5 +1,5 @@
-import { addStore, Context, createContext, onCleanup, onMount } from "../core/context.js";
-import { DollaPlugin, getDebug, getRootElement } from "../core/index.js";
+import { Context, onCleanup, onMount } from "../core/context.js";
+import { DollaPlugin, createDebug, getRootElement } from "../core/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
@@ -8,19 +8,19 @@ import { batch, createAtom, peek } from "../core/signals.js";
 import { DEBUG } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { assert } from "../utils.js";
-import { RouterStore } from "./store.js";
+import { addRouter } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
 import {
   buildRouteTree,
   catchLinks,
   createHistoryAdapter,
-  type Match,
   mergeQueryParams,
   replaceParams,
   resolveRoute,
+  type Match,
 } from "./utils.js";
 
-const ROUTER_ROOT_SLOT = Symbol();
+const ROUTER_ROOT_SLOT = Symbol.for("$_ROUTER_ROOT_SLOT");
 
 /**
  * Lazy loads a view when its route is first matched.
@@ -58,10 +58,7 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
     const guards = new Set<() => boolean | Promise<boolean>>();
 
-    const routerContext = createContext(context);
-    routerContext.name = "dolla:router";
-
-    const console = getDebug(routerContext);
+    const console = createDebug("dolla:router");
     const [rootSlot, setRootSlot] = createAtom<MarkupNode>();
 
     context[ROUTER_ROOT_SLOT] = rootSlot;
@@ -222,7 +219,7 @@ export function createRouter(options: RouterOptions): DollaPlugin {
       });
     }
 
-    const api = addStore(context, RouterStore, {
+    const api = addRouter(context, {
       currentMatch,
       setCurrentMatch,
       progress,

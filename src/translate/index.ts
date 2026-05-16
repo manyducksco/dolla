@@ -89,7 +89,7 @@ export interface TranslatorOptions {
   formatters?: Record<string, Formatter>;
 }
 
-const TRANSLATE = Symbol("Dolla.Translator");
+const TRANSLATE = Symbol.for("$_DOLLA_TRANSLATE");
 
 export function createTranslate(options: TranslatorOptions): DollaPlugin {
   return async function (context) {

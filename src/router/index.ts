@@ -1,9 +1,3 @@
-import { Context, getStore } from "../core";
-import { RouterStore } from "./store";
-
 export { createRouter, lazy, Outlet, RedirectError } from "./router";
+export { getRouter } from "./store";
 export type { RouterOptions } from "./types";
-
-export function getRouter(context: Context) {
-  return getStore(context, RouterStore);
-}

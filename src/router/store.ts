@@ -1,4 +1,4 @@
-import { compose, getDebug, peek, unwrap, type Context, type Getter, type MaybeGetter, type Setter } from "../core";
+import { compose, createStore, getDebug, peek, unwrap, type Getter, type MaybeGetter, type Setter } from "../core";
 import type { Router } from "./types";
 import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 
@@ -11,19 +11,17 @@ export interface RouterStoreProps {
   guards: Set<() => boolean | Promise<boolean>>;
 }
 
-export function RouterStore(
-  this: Context,
-  { currentMatch, setCurrentMatch, progress, history, updateRoute, guards }: RouterStoreProps,
-): Router {
-  this.name = "dolla:router";
-  const debug = getDebug(this);
+export const [addRouter, getRouter] = createStore<Router, RouterStoreProps>("dolla:router", (c, props) => {
+  const console = getDebug(c);
+
+  const { currentMatch, setCurrentMatch, progress, history, updateRoute, guards } = props;
 
   async function navigate(path: string, replace: boolean) {
     for (const guard of guards) {
       if (await guard()) return;
     }
 
-    debug.info(`🗺️ navigating to '${path}'${replace ? " (replace)" : ""}`);
+    console.info(`🗺️ navigating to '${path}'${replace ? " (replace)" : ""}`);
 
     const resolved = resolvePath(history.getPath(), path);
     replace ? history.replace(resolved) : history.push(resolved);
@@ -78,4 +76,4 @@ export function RouterStore(
       });
     },
   };
-}
+});

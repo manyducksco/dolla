@@ -13,9 +13,9 @@ export type PropsOf<T extends string | View<any> | (new (...args: any[]) => Mark
         ? IntrinsicElements[T]
         : any;
 
-export const IS_MARKUP = Symbol();
-export const IS_MARKUP_NODE = Symbol();
-export const IS_MARKUP_NODE_CLASS = Symbol();
+export const IS_MARKUP = Symbol.for("$_IS_MARKUP");
+export const IS_MARKUP_NODE = Symbol.for("$_IS_MARKUP_NODE");
+export const IS_MARKUP_NODE_CLASS = Symbol.for("$_IS_MARKUP_NODE_CLASS");
 
 /**
  * A set of basic metadata that can be constructed into a `MarkupNode`.

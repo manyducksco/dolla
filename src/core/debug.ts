@@ -1,4 +1,4 @@
-import { Context, createContext } from "./context.js";
+import { Context } from "./context";
 
 export const noOp = () => {};
 
@@ -16,14 +16,17 @@ export const setLogFilter = (filter: (name: string) => boolean) => {
   logFilter = filter;
 };
 
-const c: any = globalThis.console || {};
+const cnsl: any = globalThis.console || {};
 
-export function getDebug(context: Context, ...tags: [string, any][]) {
-  const name = context.name;
+export function getDebug(c: Context, ...tags: [string, any][]) {
+  return createDebug(c.name, ...tags);
+}
+
+export function createDebug(name: string, ...tags: [string, any][]) {
   let args: any[];
 
   const make = (method: string, level: number): ((...args: any[]) => void) => {
-    if (level < logLevel || !logFilter(name) || !c[method]) return noOp;
+    if (level < logLevel || !logFilter(name) || !cnsl[method]) return noOp;
 
     // Build and cache the console arguments on the first valid log
     if (!args) {
@@ -36,7 +39,7 @@ export function getDebug(context: Context, ...tags: [string, any][]) {
       args = [p, ...s];
     }
 
-    return c[method].bind(c, ...args);
+    return cnsl[method].bind(cnsl, ...args);
   };
 
   return {
@@ -58,11 +61,7 @@ export function getDebug(context: Context, ...tags: [string, any][]) {
   };
 }
 
-export function createDebug(name: string, ...tags: [string, any][]) {
-  const context = createContext();
-  context.name = name;
-  return getDebug(context, ...tags);
-}
+/* ----- HELPERS----- */
 
 /**
  * Takes any string and returns an OKLCH color.
