@@ -39,7 +39,8 @@ And here's a counter with a lot more going on, plus some comments to explain wha
 ```jsx
 import { html, createAtom, createRoot, onMount, onCleanup, onEffect, showIf } from "@manyducks.co/dolla";
 
-function Counter(props) {
+// Views take props and a context object as arguments.
+function Counter(props, c) {
   // An atom is the basic building block of dynamic state.
   // It consists of a getter function and a setter function, returned as a tuple:
   const [count, setCount] = createAtom(0);
@@ -55,18 +56,18 @@ function Counter(props) {
 
   // Hooks can bind logic to the component lifecycle or store and access data on the context.
   // They always take the Context object as a first argument by convention.
-  onMount(this, () => {
+  onMount(c, () => {
     console.log("I'll be called when Counter is on the page");
 
     // You can call hooks wherever and whenever you want as long as you have a Context object to pass.
-    onCleanup(this, () => {
+    onCleanup(c, () => {
       console.log("I'll be called when Counter is no longer on the page");
     });
   });
 
   // Effects run side-effect code in response to state changes.
   // Just like `compose`, the effect tracks getters called within and re-runs when values change.
-  onEffect(this, () => {
+  onEffect(c, () => {
     console.log("count has changed:", count());
   });
 

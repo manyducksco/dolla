@@ -60,8 +60,8 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
   const self: DollaRoot = { plugin, mount, unmount };
 
-  function plugin(plugin: DollaPlugin) {
-    plugins.push(plugin);
+  function plugin(fn: DollaPlugin) {
+    plugins.push(fn);
     return self;
   }
 

@@ -12,11 +12,13 @@ const IS_SVG = Symbol.for("$_IS_SVG");
 // Properties in this list will not be processed by applyProps because they are already handled elsewhere.
 const ignoredProps = ["ref", "children"];
 
+type ElementRoot = HTMLElement | SVGElement;
+
 /**
  * Renders an HTML or SVG element.
  */
 export class ElementNode extends MarkupNode {
-  #root: HTMLElement | SVGElement;
+  #root: ElementRoot;
 
   readonly #props: Record<string, any>;
 
@@ -61,7 +63,7 @@ export class ElementNode extends MarkupNode {
     }
   }
 
-  override getRoot() {
+  override getRoot(): ElementRoot {
     return this.#root;
   }
 

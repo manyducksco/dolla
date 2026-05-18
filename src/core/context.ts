@@ -6,15 +6,14 @@ import { PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
 
-type ContextState = {
+export type ContextState = {
   isMounted: boolean;
-};
-
-export type ComponentState = ContextState & {
   name: string;
 };
 
-export type Context<T = Record<string | symbol, any>> = ContextState & T;
+export type GenericState = Record<string | symbol, any>;
+
+export type Context<T = GenericState> = ContextState & T;
 
 /*===================================*\
 ||              Context              ||
@@ -60,13 +59,14 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 }
 
 /**
- * Creates an effect with auto-tracking for getters called within its callback.
+ * Creates an effect that auto-tracks getters called within its callback.
  */
 export function onEffect(context: Context, fn: () => void): void;
 
 /**
  * Creates an effect that tracks getters in its `deps` array.
  * Unwrapped values from `deps` are passed as arguments to the callback.
+ * Getters called inside the callback are not tracked.
  */
 export function onEffect<const T extends readonly any[]>(
   context: Context,
@@ -119,7 +119,7 @@ export function addStore<Props, Returns>(
   assert(!Object.hasOwn(context, store[STORE_ID]), "Store was already provided on this context.");
 
   // Give the store its own context bound to this lifecycle.
-  const storeContext = createContext(context) as Context<ComponentState>;
+  const storeContext = createContext(context);
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => unmountContext(storeContext));
   storeContext.name = store.name;
@@ -151,7 +151,7 @@ function _initStore(this: StoreConfig<any, any>, context: Context, props: any) {
   assert(!Object.hasOwn(context, this.id), "Store was already provided on this context.");
 
   // Give the store its own context bound to this lifecycle.
-  const storeContext = createContext(context) as Context<ComponentState>;
+  const storeContext = createContext(context);
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => unmountContext(storeContext));
   if (this.name) {

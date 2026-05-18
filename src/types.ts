@@ -1,5 +1,5 @@
 import type * as CSS from "csstype";
-import type { ComponentState, Context } from "./core/context.js";
+import type { Context, GenericState } from "./core/context.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { Getter } from "./core/signals.js";
 
@@ -26,16 +26,16 @@ export interface BaseProps {
   children?: Renderable;
 }
 
-export type View<Props = {}, State = Record<string | symbol, any>> = (
-  this: Context<ComponentState & State>,
+export type View<Props = {}, State = GenericState> = (
+  this: Context<State>,
   props: Props,
-  context: Context<ComponentState & State>,
+  context: Context<State>,
 ) => Renderable;
 
 export type Store<Props, Value, State = Record<string | symbol, any>> = (
-  this: Context<ComponentState & State>,
+  this: Context<State>,
   props: Props,
-  context: Context<ComponentState & State>,
+  context: Context<State>,
 ) => Value;
 
 export type MaybeGetter<T> = Getter<T> | T;

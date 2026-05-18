@@ -711,14 +711,6 @@ export function createEffect(fn: (...values: any[]) => void, deps?: any[]): () =
   return effectCleanup.bind(e);
 }
 
-const [count, setCount] = createAtom(5);
-createEffect(
-  (value, second) => {
-    console.log("count is now", value);
-  },
-  [count, "on"],
-);
-
 /**
  * Unwraps a `MaybeGetter<T>` into a plain `T`.
  * Tracks the value if it is a getter.
@@ -852,7 +844,7 @@ function _createStreamLink<T>({ value, signal }: CreateStreamLinkOptions<T>): St
     throttle(milliseconds) {
       // Accepts only one new value per X milliseconds
       const [current, setCurrent] = createAtom<T>(peek(value));
-      let nextAllowedAt = Date.now() + milliseconds;
+      let nextAllowedAt = Date.now();
 
       return _createStreamLink({
         value: compose(() => {
@@ -861,7 +853,7 @@ function _createStreamLink<T>({ value, signal }: CreateStreamLinkOptions<T>): St
           const now = Date.now();
 
           if (now >= nextAllowedAt) {
-            nextAllowedAt = now;
+            nextAllowedAt = now + milliseconds;
             return setCurrent(latest);
           }
 
@@ -951,11 +943,13 @@ export function createStream<T>(options?: StreamOptions<T>) {
   const abortController = new AbortController();
   const stream = _createStreamLink({ value, signal: abortController.signal });
 
+  const cleanup = () => {
+    abortController.abort();
+  };
+
   if (options?.context) {
-    onCleanup(options.context, () => {
-      abortController.abort();
-    });
+    onCleanup(options.context, cleanup);
   }
 
-  return [stream, setValue];
+  return [stream, setValue, cleanup];
 }

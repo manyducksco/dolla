@@ -185,7 +185,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
     });
   }
 
-  const VirtualListView: View = (_, ctx) => {
+  const VirtualListView: View = (_, c) => {
     let hasReachedStart = false;
     let hasReachedEnd = false;
 
@@ -255,7 +255,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
     let previousCount = peek(props.items).length;
     let previousFirstKey: string | number | null = previousCount > 0 ? props.keyFn(peek(props.items)[0]) : null;
 
-    onEffect(ctx, () => {
+    onEffect(c, () => {
       const currentItems = props.items();
       const currentCount = currentItems.length;
       const currentFirstKey = currentCount > 0 ? props.keyFn(currentItems[0]) : null;

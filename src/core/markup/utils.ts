@@ -21,15 +21,15 @@ export function createMarkup<Type extends string | View<any> | (new (...args: an
 export function isMarkup<T extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   value: any,
 ): value is Markup<T> {
-  return value && value[IS_MARKUP];
+  return value?.[IS_MARKUP] ?? false;
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {
-  return value && value[IS_MARKUP_NODE];
+  return value?.[IS_MARKUP_NODE] ?? false;
 }
 
 export function isMarkupNodeClass(value: any): value is new (...args: any[]) => MarkupNode {
-  return value && value[IS_MARKUP_NODE_CLASS];
+  return value?.[IS_MARKUP_NODE_CLASS] ?? false;
 }
 
 /**

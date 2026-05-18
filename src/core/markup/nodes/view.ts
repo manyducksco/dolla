@@ -1,6 +1,6 @@
 import type { Renderable, View } from "../../../types.js";
 import { assert } from "../../../utils.js";
-import { ComponentState, Context, createContext, mountContext, unmountContext } from "../../context.js";
+import { Context, createContext, mountContext, unmountContext } from "../../context.js";
 import { peek } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { createTextNode, render } from "../utils.js";
@@ -16,11 +16,11 @@ export class ViewNode<P> extends MarkupNode {
   readonly #view: View<P>;
   #node?: MarkupNode;
 
-  readonly context: Context<ComponentState & Record<string | symbol, any>>;
+  readonly context: Context;
 
   constructor(context: Context, view: View<P>, props: P) {
     super();
-    this.context = createContext(context) as Context<ComponentState>;
+    this.context = createContext(context);
     this.context[VIEW] = this;
     this.context.name = view.name;
     this.#props = props;
@@ -90,10 +90,10 @@ export function createView<Props = GenericProps>(...args: any[]): View<Props> {
     callback = args[0];
   }
 
-  return function (props) {
+  return function (props, c) {
     if (name) {
-      this.name = name;
+      c.name = name;
     }
-    return callback(this, props);
+    return callback(c, props);
   };
 }
