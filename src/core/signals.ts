@@ -500,7 +500,7 @@ function valueGetter<T>(this: ValueNode<T>): T {
   return this._currentValue;
 }
 
-function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): void {
+function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): T {
   const value = resolveValue(next, this._pendingValue);
   if (this._pendingValue !== (this._pendingValue = value)) {
     this._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
@@ -512,6 +512,7 @@ function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): void {
       }
     }
   }
+  return value;
 }
 
 function customSetter<T>(this: Getter<T>, callback: (current: T) => T | void, value: SetterAction<T>): T {

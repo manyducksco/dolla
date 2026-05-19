@@ -1,4 +1,15 @@
-import { compose, createStore, getDebug, peek, unwrap, type Getter, type MaybeGetter, type Setter } from "../core";
+import {
+  addStore,
+  compose,
+  Context,
+  getDebug,
+  getStore,
+  peek,
+  unwrap,
+  type Getter,
+  type MaybeGetter,
+  type Setter,
+} from "../core";
 import type { Router } from "./types";
 import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 
@@ -11,7 +22,7 @@ export interface RouterStoreProps {
   guards: Set<() => boolean | Promise<boolean>>;
 }
 
-export const [addRouter, getRouter] = createStore<Router, RouterStoreProps>("dolla:router", (c, props) => {
+export function RouterStore(props: RouterStoreProps, c: Context): Router {
   const console = getDebug(c);
 
   const { currentMatch, setCurrentMatch, progress, history, updateRoute, guards } = props;
@@ -76,4 +87,8 @@ export const [addRouter, getRouter] = createStore<Router, RouterStoreProps>("dol
       });
     },
   };
-});
+}
+
+export function getRouter(c: Context) {
+  return getStore(c, RouterStore);
+}

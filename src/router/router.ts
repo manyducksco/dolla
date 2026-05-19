@@ -1,5 +1,5 @@
 import { Context, onCleanup, onMount } from "../core/context.js";
-import { DollaPlugin, createDebug, getRootElement } from "../core/index.js";
+import { DollaPlugin, addStore, createDebug, getRootElement } from "../core/index.js";
 import { DynamicNode } from "../core/markup/nodes/dynamic.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import type { MarkupNode } from "../core/markup/types.js";
@@ -8,7 +8,7 @@ import { batch, createAtom, peek } from "../core/signals.js";
 import { DEBUG } from "../core/symbols.js";
 import type { View } from "../types.js";
 import { assert } from "../utils.js";
-import { addRouter } from "./store.js";
+import { RouterStore } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
 import {
   buildRouteTree,
@@ -219,7 +219,7 @@ export function createRouter(options: RouterOptions): DollaPlugin {
       });
     }
 
-    const api = addRouter(context, {
+    const api = addStore(context, RouterStore, {
       currentMatch,
       setCurrentMatch,
       progress,

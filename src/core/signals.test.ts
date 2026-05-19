@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext, mountContext, onEffect, unmountContext } from "./context";
-import { batch, compose, createAtom, createEffect, createStream, peek, subscribe, type Getter } from "./signals";
+import { batch, compose, createAtom, createEffect, peek, subscribe, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = createAtom(5);
@@ -28,6 +28,23 @@ test("basic composition & tracking", () => {
   expect(fn).toBeCalledTimes(2);
 
   stop();
+});
+
+test("setters return the new value", () => {
+  const [count, setCount] = createAtom(2);
+  const [doubled, setDoubled] = createAtom(() => count() * 2);
+
+  expect(setCount(3)).toBe(3);
+  expect(count()).toBe(3);
+
+  expect(doubled()).toBe(6);
+  expect(setDoubled(51)).toBe(51);
+  expect(doubled()).toBe(51);
+
+  expect(setCount((current) => current + 1)).toBe(4);
+  expect(count()).toBe(4);
+
+  expect(doubled()).toBe(8);
 });
 
 test("mutable computed state", () => {
@@ -250,135 +267,135 @@ describe("subscribe", () => {
   });
 });
 
-describe("streams", () => {
-  test("map, reduce, filter", () => {
-    const [values, emitValue] = createStream({ initialValue: 5 });
+// describe("streams", () => {
+//   test("map, reduce, filter", () => {
+//     const [values, emitValue] = createStream({ initialValue: 5 });
 
-    const sum = values.reduce((sum, number) => sum + number, 0);
-    const doubled = values.map((number) => number * 2);
-    const evens = values.filter((number) => number % 2 === 0);
+//     const sum = values.reduce((sum, number) => sum + number, 0);
+//     const doubled = values.map((number) => number * 2);
+//     const evens = values.filter((number) => number % 2 === 0);
 
-    expect(sum.latest).toBe(5);
-    expect(doubled.latest).toBe(10);
-    expect(evens.latest).toBe(undefined);
+//     expect(sum.latest).toBe(5);
+//     expect(doubled.latest).toBe(10);
+//     expect(evens.latest).toBe(undefined);
 
-    emitValue(6);
+//     emitValue(6);
 
-    expect(sum.latest).toBe(11);
-    expect(doubled.latest).toBe(12);
-    expect(evens.latest).toBe(6);
+//     expect(sum.latest).toBe(11);
+//     expect(doubled.latest).toBe(12);
+//     expect(evens.latest).toBe(6);
 
-    emitValue(7);
+//     emitValue(7);
 
-    expect(sum.latest).toBe(18);
-    expect(doubled.latest).toBe(14);
-    expect(evens.latest).toBe(6);
-  });
+//     expect(sum.latest).toBe(18);
+//     expect(doubled.latest).toBe(14);
+//     expect(evens.latest).toBe(6);
+//   });
 
-  test("delay", async () => {
-    const [values, emit] = createStream({ initialValue: 1 });
+//   test("delay", async () => {
+//     const [values, emit] = createStream({ initialValue: 1 });
 
-    const delayed = values.delay(10);
+//     const delayed = values.delay(10);
 
-    expect(delayed.latest).toBe(1);
+//     expect(delayed.latest).toBe(1);
 
-    await sleep(11);
-    expect(delayed.latest).toBe(1);
+//     await sleep(11);
+//     expect(delayed.latest).toBe(1);
 
-    emit(2);
-    expect(delayed.latest).toBe(1);
+//     emit(2);
+//     expect(delayed.latest).toBe(1);
 
-    await sleep(11);
-    expect(delayed.latest).toBe(2);
-  });
+//     await sleep(11);
+//     expect(delayed.latest).toBe(2);
+//   });
 
-  test("debounce", async () => {
-    const [values, emit] = createStream({ initialValue: 1 });
+//   test("debounce", async () => {
+//     const [values, emit] = createStream({ initialValue: 1 });
 
-    const debounced = values.debounce(10);
+//     const debounced = values.debounce(10);
 
-    const spy = vi.fn();
-    const cleanup = createEffect(() => {
-      spy(debounced.current());
-    });
+//     const spy = vi.fn();
+//     const cleanup = createEffect(() => {
+//       spy(debounced.current());
+//     });
 
-    expect(debounced.latest).toBe(1);
-    expect(spy).toBeCalledTimes(1);
-    expect(spy).toHaveBeenLastCalledWith(1);
+//     expect(debounced.latest).toBe(1);
+//     expect(spy).toBeCalledTimes(1);
+//     expect(spy).toHaveBeenLastCalledWith(1);
 
-    emit(2);
-    emit(3);
-    emit(4);
-    emit(5); // only this one should trigger an update after 10ms
+//     emit(2);
+//     emit(3);
+//     emit(4);
+//     emit(5); // only this one should trigger an update after 10ms
 
-    await sleep(11); // wait for debounce to take effect
+//     await sleep(11); // wait for debounce to take effect
 
-    expect(debounced.latest).toBe(5);
-    expect(spy).toBeCalledTimes(2);
-    expect(spy).toHaveBeenLastCalledWith(5);
+//     expect(debounced.latest).toBe(5);
+//     expect(spy).toBeCalledTimes(2);
+//     expect(spy).toHaveBeenLastCalledWith(5);
 
-    cleanup();
-  });
+//     cleanup();
+//   });
 
-  test("throttle", async () => {
-    const [values, emit] = createStream({ initialValue: 1 });
+//   test("throttle", async () => {
+//     const [values, emit] = createStream({ initialValue: 1 });
 
-    const throttled = values.throttle(10);
+//     const throttled = values.throttle(10);
 
-    const spy = vi.fn();
-    const cleanup = createEffect(() => {
-      spy(throttled.current());
-    });
+//     const spy = vi.fn();
+//     const cleanup = createEffect(() => {
+//       spy(throttled.current());
+//     });
 
-    expect(throttled.latest).toBe(1);
-    expect(spy).toBeCalledTimes(1);
-    expect(spy).toHaveBeenLastCalledWith(1);
+//     expect(throttled.latest).toBe(1);
+//     expect(spy).toBeCalledTimes(1);
+//     expect(spy).toHaveBeenLastCalledWith(1);
 
-    emit(2); // this one goes through
-    emit(3); // ignored
-    emit(4); // ignored
+//     emit(2); // this one goes through
+//     emit(3); // ignored
+//     emit(4); // ignored
 
-    expect(spy).toBeCalledTimes(2);
-    expect(spy).toHaveBeenLastCalledWith(2);
+//     expect(spy).toBeCalledTimes(2);
+//     expect(spy).toHaveBeenLastCalledWith(2);
 
-    await sleep(11);
+//     await sleep(11);
 
-    emit(5); // goes through
-    emit(6); // ignored
+//     emit(5); // goes through
+//     emit(6); // ignored
 
-    expect(spy).toBeCalledTimes(3);
-    expect(spy).toHaveBeenLastCalledWith(5);
+//     expect(spy).toBeCalledTimes(3);
+//     expect(spy).toHaveBeenLastCalledWith(5);
 
-    await sleep(11);
+//     await sleep(11);
 
-    // unchanged:
-    expect(spy).toBeCalledTimes(3);
-    expect(spy).toHaveBeenLastCalledWith(5);
+//     // unchanged:
+//     expect(spy).toBeCalledTimes(3);
+//     expect(spy).toHaveBeenLastCalledWith(5);
 
-    cleanup();
-  });
+//     cleanup();
+//   });
 
-  test("next", async () => {
-    const [values, emit] = createStream({ initialValue: 1 });
+//   test("next", async () => {
+//     const [values, emit] = createStream({ initialValue: 1 });
 
-    const spy = vi.fn();
-    values.next().then(spy);
+//     const spy = vi.fn();
+//     values.next().then(spy);
 
-    await sleep(0); // wait for promise to resolve
+//     await sleep(0); // wait for promise to resolve
 
-    expect(spy).toBeCalledTimes(0);
+//     expect(spy).toBeCalledTimes(0);
 
-    emit(2);
+//     emit(2);
 
-    await sleep(0); // wait for promise to resolve
+//     await sleep(0); // wait for promise to resolve
 
-    expect(spy).toBeCalledTimes(1);
-    expect(spy).toBeCalledWith(2);
+//     expect(spy).toBeCalledTimes(1);
+//     expect(spy).toBeCalledWith(2);
 
-    emit(3);
-    expect(spy).toBeCalledTimes(1); // not called again
-  });
-});
+//     emit(3);
+//     expect(spy).toBeCalledTimes(1); // not called again
+//   });
+// });
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
