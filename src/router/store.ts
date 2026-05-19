@@ -1,5 +1,4 @@
 import {
-  addStore,
   compose,
   Context,
   getDebug,
@@ -23,6 +22,8 @@ export interface RouterStoreProps {
 }
 
 export function RouterStore(props: RouterStoreProps, c: Context): Router {
+  c.name = "dolla:router";
+
   const console = getDebug(c);
 
   const { currentMatch, setCurrentMatch, progress, history, updateRoute, guards } = props;

@@ -35,15 +35,20 @@ export class ElementNode extends MarkupNode {
     this.#props = props;
     this.#context = context;
 
+    if (props) {
+      const classes = props.class ?? props.className;
+      if (classes && isString(classes) && classes.trim() === "") {
+        throw new Error(`Empty class string will cause a DOMException.`);
+      }
+    }
+
     if (tag === "svg") {
       // This and all nested views will be created as SVG elements.
-      this.#context = createContext(context);
-      this.#context[IS_SVG] = true;
+      this.#context = createContext(context, { [IS_SVG]: true });
       this.#ownContext = true;
     } else if (this.#context[IS_SVG] && tag === "foreignObject") {
       // No longer in SVG.
-      this.#context = createContext(context);
-      this.#context[IS_SVG] = false;
+      this.#context = createContext(context, { [IS_SVG]: false });
       this.#ownContext = false;
     }
 

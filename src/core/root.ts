@@ -29,7 +29,7 @@ export interface DollaRoot {
   /**
    * Mounts a `view` to this root.
    */
-  mount(view: View<{}>): Promise<void>;
+  mount(view: View): Promise<void>;
 
   /**
    * Mounts any renderable content to this root.
@@ -48,8 +48,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   const element = isString(target) ? document.querySelector(target) : target;
   assert(element, "Element cannot be null.");
 
-  const context = createContext();
-  context.name = "dolla:root";
+  const context = createContext(null, { name: "dolla:root" });
 
   const plugins: DollaPlugin[] = [];
 

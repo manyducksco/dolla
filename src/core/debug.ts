@@ -1,4 +1,5 @@
 import { Context } from "./context";
+import { MaybeGetter, peek } from "./signals";
 
 export const noOp = () => {};
 
@@ -19,19 +20,20 @@ export const setLogFilter = (filter: (name: string) => boolean) => {
 const cnsl: any = globalThis.console || {};
 
 export function getDebug(c: Context, ...tags: [string, any][]) {
-  return createDebug(c.name, ...tags);
+  return createDebug(() => c.name, ...tags);
 }
 
-export function createDebug(name: string, ...tags: [string, any][]) {
+export function createDebug(name: MaybeGetter<string>, ...tags: [string, any][]) {
   let args: any[];
 
   const make = (method: string, level: number): ((...args: any[]) => void) => {
-    if (level < logLevel || !logFilter(name) || !cnsl[method]) return noOp;
+    const _name = peek(name);
+    if (level < logLevel || !logFilter(_name) || !cnsl[method]) return noOp;
 
     // Build and cache the console arguments on the first valid log
     if (!args) {
-      let p = "%c" + name;
-      let s = [`color:${okhash(name)};font-weight:bold`];
+      let p = "%c" + _name;
+      let s = [`color:${okhash(_name)};font-weight:bold`];
       for (const [k, v] of tags) {
         p += `%c[${k}: %c${v}%c]`;
         s.push("color:#777", "color:#aaa", "color:#777");

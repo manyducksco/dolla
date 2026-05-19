@@ -8,9 +8,10 @@ import { createRouter, lazy, Outlet, RedirectError } from "./router.js";
 import { getRouter } from "./store.js";
 
 async function withRouter(plugin: DollaPlugin, callback: (context: Context) => any) {
-  const context = createContext();
-  context.name = "test-router";
-  context[PARENT_ELEMENT] = document.body;
+  const context = createContext(null, {
+    name: "test-router",
+    [PARENT_ELEMENT]: document.body,
+  });
 
   await plugin(context);
 

@@ -22,8 +22,8 @@ export type Context<T = GenericState> = ContextState & T;
 const MOUNT_LISTENERS = Symbol.for("$_CONTEXT_MOUNT_LISTENERS");
 const CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_CLEANUP_LISTENERS");
 
-export function createContext(parent?: Context): Context {
-  return Object.assign(Object.create(parent ?? null), { isMounted: false });
+export function createContext<State extends GenericState>(parent?: Context | null, values?: Partial<State>): Context {
+  return Object.assign(Object.create(parent ?? null), { isMounted: false, ...values });
 }
 
 export function mountContext(context: Context) {
@@ -108,6 +108,10 @@ export function getNearestViewNode<Props = unknown>(context: Context): ViewNode<
 
 export const STORE_ID = Symbol.for("$_STORE_ID");
 
+/**
+ * Creates a new store instance and attaches it to `context`. Returns the new store.
+ * Children of this context can retrieve the nearest store instance from up the chain with `getStore(context)`.
+ */
 export function addStore<Props, Returns>(
   context: Context,
   store: Store<Props, Returns> & { [STORE_ID]?: symbol },
@@ -119,14 +123,16 @@ export function addStore<Props, Returns>(
   assert(!Object.hasOwn(context, store[STORE_ID]), "Store was already provided on this context.");
 
   // Give the store its own context bound to this lifecycle.
-  const storeContext = createContext(context);
+  const storeContext = createContext(context, { name: store.name });
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => unmountContext(storeContext));
-  storeContext.name = store.name;
 
   return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Props, storeContext));
 }
 
+/**
+ * Gets the nearest instance of a store from up this context chain.
+ */
 export function getStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
   const id = store[STORE_ID];
   const result = id ? context[id] : undefined;
@@ -134,59 +140,20 @@ export function getStore<Returns>(context: Context, store: Store<any, Returns> &
   return result;
 }
 
-type AddStoreHook<Props, Returns> = Props extends undefined
-  ? (context: Context) => Returns
-  : (context: Context, props: Props) => Returns;
-type GetStoreHook<Returns> = (context: Context) => Returns;
-
-type StoreHooks<Props, Returns> = [AddStoreHook<Props, Returns>, GetStoreHook<Returns>];
-
-type StoreConfig<Props, Returns> = {
-  id: symbol;
-  fn: (context: Context, props: Props) => Returns;
-  name?: string;
-};
-
-function _initStore(this: StoreConfig<any, any>, context: Context, props: any) {
-  assert(!Object.hasOwn(context, this.id), "Store was already provided on this context.");
-
-  // Give the store its own context bound to this lifecycle.
-  const storeContext = createContext(context);
-  onMount(context, () => mountContext(storeContext));
-  onCleanup(context, () => unmountContext(storeContext));
-  if (this.name) {
-    storeContext.name = this.name;
-  }
-
-  return (context[this.id] = this.fn(storeContext, props));
+/**
+ * Determines if an instance of a store is available on this context or up the context chain.
+ */
+export function hasStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
+  const id = store[STORE_ID];
+  if (!id) return false;
+  return context[id] != null;
 }
 
-function _getStore(this: StoreConfig<any, any>, context: Context) {
-  const result = context[this.id];
-  assert(result != null, `Store is not provided by this context.`);
-  return result;
-}
-
-export function createStore<Returns, Props = undefined>(
-  name: string,
-  fn: (context: Context, props: Props) => Returns,
-): StoreHooks<Props, Returns>;
-
-export function createStore<Returns, Props = undefined>(
-  fn: (context: Context, props: Props) => Returns,
-): StoreHooks<Props, Returns>;
-
-export function createStore<Returns, Props = undefined>(...args: any[]): StoreHooks<Props, Returns> {
-  if (args.length === 2) {
-    assert(typeof args[0] === "string", "When 2 args are present the first must be a string");
-    assert(typeof args[1] === "function", "When 2 args are present the second must be a function");
-    args[1][STORE_ID] ??= Symbol(args[0]); // Tag the store function.
-    const config = { id: Symbol(), fn: args[1], name: args[0] };
-    return [_initStore.bind(config), _getStore.bind(config)] as StoreHooks<Props, Returns>;
-  } else {
-    assert(args.length === 1 && typeof args[0] === "function", "Expected one function as an argument");
-    args[0][STORE_ID] ??= Symbol();
-    const config = { id: Symbol(), fn: args[0], name: args[0].name };
-    return [_initStore.bind(config), _getStore.bind(config)] as StoreHooks<Props, Returns>;
-  }
+/**
+ * Determines if an instance of a store is stored directly on this context.
+ */
+export function hasOwnStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
+  const id = store[STORE_ID];
+  if (!id) return false;
+  return Object.hasOwn(context, id);
 }
