@@ -16,7 +16,7 @@ export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 // Markup
 export { createPortal, forEach, hideIf, showIf } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
-export type { ViewNode } from "./markup/nodes/view.js";
+export { ViewNode } from "./markup/nodes/view.js";
 export type { Markup, MarkupNode } from "./markup/types.js";
 export { createMarkup, render } from "./markup/utils.js";
 
