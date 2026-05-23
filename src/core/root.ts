@@ -1,6 +1,6 @@
 import type { Renderable, View } from "../types.js";
 import { assert, isFunction, isString } from "../utils.js";
-import { type Context, createContext, mountContext, unmountContext } from "./context.js";
+import { type Context, createContext, GenericState, mountContext, cleanupContext } from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
@@ -48,7 +48,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   const element = isString(target) ? document.querySelector(target) : target;
   assert(element, "Element cannot be null.");
 
-  const context = createContext(null, { name: "dolla:root" });
+  const context = createContext<GenericState>(null, { name: "dolla:root" });
 
   const plugins: DollaPlugin[] = [];
 
@@ -81,7 +81,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     rootNode?.unmount(false);
     rootNode = null;
 
-    unmountContext(context);
+    cleanupContext(context);
   }
 
   return self;

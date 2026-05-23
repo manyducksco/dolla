@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { sleep } from "../../utils";
 import { debounce } from "./debounce";
-import { createContext, mountContext, unmountContext } from "../context";
+import { createContext, mountContext, cleanupContext } from "../context";
 
 const WAIT_MS = 1;
 
@@ -153,7 +153,7 @@ test("signal cancellation", async () => {
 });
 
 test("context cleanup cancellation", async () => {
-  const context = createContext();
+  const context = createContext(null);
   mountContext(context);
 
   let value = 0;
@@ -166,7 +166,7 @@ test("context cleanup cancellation", async () => {
   increment.call(update);
   expect(value).toBe(0);
 
-  unmountContext(context);
+  cleanupContext(context);
   expect(value).toBe(0);
 
   await sleep(WAIT_MS + 1);

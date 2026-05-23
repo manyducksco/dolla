@@ -1,4 +1,4 @@
-import { createMarkup, Renderable } from "..";
+import { createMarkup, MaybeGetter, Renderable } from "..";
 import { isFunction } from "../../utils";
 import { type Getter, compose } from "../signals";
 import { DynamicNode } from "./nodes/dynamic";
@@ -49,27 +49,55 @@ function _conditional(condition: any, whenTruthy?: Renderable, whenFalsy?: Rende
 }
 
 /**
- * Shows content only when `condition` is truthy.
- * It can be a plain value or a Getter to track dynamically.
+ * Shows content if `condition` is **truthy**. Otherwise shows `fallback` content.
+ *
+ * @alias hideUnless
  *
  * @param condition - Condition to hide or show content on.
  * @param content - Content to display when condition is truthy.
  * @param fallback - Content to display when condition is falsy.
  */
-export function showIf(condition: any, content: Renderable, fallback?: Renderable): Renderable {
+export function showIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
   return _conditional(condition, content, fallback);
 }
 
 /**
- * Shows content only when `condition` is falsy.
- * It can be a plain value or a Getter to track dynamically.
+ * Shows content if `condition` is **falsy**. Otherwise shows `fallback` content.
+ *
+ * @alias hideIf
  *
  * @param condition - Condition to hide or show content on.
- * @param content - Content to display when condition is falsy.
- * @param fallback - Content to display when condition is truthy.
+ * @param content - Content if condition is falsy.
+ * @param fallback - Content if condition is truthy.
  */
-export function hideIf(condition: any, content: Renderable, fallback?: Renderable): Renderable {
+export function showUnless(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
   return _conditional(condition, fallback, content);
+}
+
+/**
+ * Shows content if `condition` is **falsy**. Otherwise shows `fallback` content.
+ *
+ * @alias showUnless
+ *
+ * @param condition - Condition to hide or show content on.
+ * @param content - Content if condition is falsy.
+ * @param fallback - Content if condition is truthy.
+ */
+export function hideIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
+  return _conditional(condition, fallback, content);
+}
+
+/**
+ * Shows content if `condition` is **truthy**. Otherwise shows `fallback` content.
+ *
+ * @alias showIf
+ *
+ * @param condition - Condition to hide or show content on.
+ * @param content - Content if condition is truthy.
+ * @param fallback - Content if condition is falsy.
+ */
+export function hideUnless(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
+  return _conditional(condition, content, fallback);
 }
 
 /**

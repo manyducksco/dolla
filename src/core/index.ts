@@ -8,6 +8,7 @@ export type { Getter, Setter } from "./signals.js";
 
 // Hooks
 export { addStore, getNearestViewNode, getRootElement, getStore, onCleanup, onEffect, onMount } from "./context.js";
+export { createContext, mountContext, cleanupContext } from "./context.js";
 export type { Context } from "./context.js";
 
 // Debug
@@ -27,6 +28,9 @@ export type { Ref } from "./ref.js";
 // Temporal helpers
 export { debounce } from "./temporal/debounce.js";
 export { throttle } from "./temporal/throttle.js";
+
+// Type Helpers
+export { createView, createStore } from "./helpers.js";
 
 // Other types
 export type { CSSProperties, Env, InputType, MaybeGetter, Renderable, Store, View } from "../types.js";

@@ -1,5 +1,5 @@
 import type { View } from "../../../types.js";
-import { Context, createContext, mountContext, unmountContext } from "../../context.js";
+import { Context, createContext, mountContext, cleanupContext } from "../../context.js";
 import { peek } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { createTextNode, render } from "../utils.js";
@@ -55,7 +55,7 @@ export class ViewNode<P> extends MarkupNode {
 
   unmount(skipDOM = false) {
     this.#node?.unmount(skipDOM);
-    unmountContext(this.context);
+    cleanupContext(this.context);
   }
 
   move(parent: Element, after?: Node) {

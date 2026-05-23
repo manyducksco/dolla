@@ -1,5 +1,5 @@
 import { isArray, isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
-import { Context, createContext, getNearestViewNode, mountContext, unmountContext } from "../../context.js";
+import { Context, createContext, getNearestViewNode, mountContext, cleanupContext } from "../../context.js";
 import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
@@ -120,7 +120,7 @@ export class ElementNode extends MarkupNode {
     this.#unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.#unsubscribers.clear();
 
-    if (this.#ownContext) unmountContext(this.#context);
+    if (this.#ownContext) cleanupContext(this.#context);
 
     // Clear ref
     if (this.#refCleanup) {

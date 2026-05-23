@@ -17,7 +17,7 @@ describe("type checking", () => {
   });
 
   test("isMarkupNode", () => {
-    const context = createContext();
+    const context = createContext(null);
     const view = () => "hello";
     const one = new ViewNode(context, view, {});
     const two = new DynamicNode(context, () => "hello");
@@ -33,7 +33,7 @@ describe("type checking", () => {
 test("toMarkupNodes", () => {
   const [count] = createAtom(5);
 
-  const context = createContext();
+  const context = createContext(null);
   const nodes = toMarkupNodes(
     context,
     "one",

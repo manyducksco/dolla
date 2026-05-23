@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createContext, mountContext, onEffect, unmountContext } from "./context";
+import { createContext, mountContext, onEffect, cleanupContext } from "./context";
 import { batch, compose, createAtom, createEffect, peek, subscribe, type Getter } from "./signals";
 
 test("basic composition & tracking", () => {
@@ -124,7 +124,7 @@ test("effects bind to the given context", () => {
 
   const spy = vi.fn();
 
-  const context = createContext();
+  const context = createContext(null);
   onEffect(context, () => {
     spy(count());
   });
@@ -153,7 +153,7 @@ test("effects bind to the given context", () => {
 
   // expect(spy).toBeCalledTimes(3); // called again when resumed
 
-  unmountContext(context);
+  cleanupContext(context);
 
   setCount((c) => c + 1);
   expect(spy).toBeCalledTimes(2);

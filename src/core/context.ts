@@ -22,8 +22,11 @@ export type Context<T = GenericState> = ContextState & T;
 const MOUNT_LISTENERS = Symbol.for("$_CONTEXT_MOUNT_LISTENERS");
 const CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_CLEANUP_LISTENERS");
 
-export function createContext<State extends GenericState>(parent?: Context | null, values?: Partial<State>): Context {
-  return Object.assign(Object.create(parent ?? null), { isMounted: false, ...values });
+export function createContext<State extends GenericState>(
+  parent: Context | null,
+  values?: Partial<State>,
+): Context<State> {
+  return Object.assign(Object.create(parent), { isMounted: false, ...values });
 }
 
 export function mountContext(context: Context) {
@@ -32,7 +35,7 @@ export function mountContext(context: Context) {
   _callListeners(context, MOUNT_LISTENERS);
 }
 
-export function unmountContext(context: Context) {
+export function cleanupContext(context: Context) {
   if (!context.isMounted) return;
   context.isMounted = false;
   _callListeners(context, CLEANUP_LISTENERS);
@@ -125,7 +128,7 @@ export function addStore<Props, Returns>(
   // Give the store its own context bound to this lifecycle.
   const storeContext = createContext(context, { name: store.name });
   onMount(context, () => mountContext(storeContext));
-  onCleanup(context, () => unmountContext(storeContext));
+  onCleanup(context, () => cleanupContext(storeContext));
 
   return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Props, storeContext));
 }
