@@ -1,6 +1,7 @@
 import type { Renderable, View } from "../../types.js";
-import { isArray, isFunction, isNumber, isString } from "../../utils.js";
+import { isArray, isFunction, isNumber, isObject, isString } from "../../utils.js";
 import { Context, createContext } from "../context.js";
+import { getDebug } from "../debug.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
@@ -21,7 +22,7 @@ export function createMarkup<Type extends string | View<any> | (new (...args: an
 export function isMarkup<T extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   value: any,
 ): value is Markup<T> {
-  return value?.[IS_MARKUP] ?? false;
+  return (value?.[IS_MARKUP] || (isObject(value) && (isString(value.type) || isFunction(value.type)))) ?? false;
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {
@@ -76,6 +77,9 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
       nodes.push(new DOMNode(context, item));
     } else if (isFunction(item)) {
       nodes.push(new DynamicNode(context, item));
+    } else {
+      getDebug(context).warn(`Unknown item type passed to render: ${typeof item}`, item);
+      nodes.push(new DOMNode(context, createTextNode(JSON.stringify(item))));
     }
   }
 

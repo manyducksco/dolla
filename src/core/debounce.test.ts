@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
-import { sleep } from "../../utils";
+import { sleep } from "../utils";
 import { debounce } from "./debounce";
-import { createContext, mountContext, cleanupContext } from "../context";
+import { createContext, mountContext, cleanupContext } from "./context";
 
 const WAIT_MS = 1;
 

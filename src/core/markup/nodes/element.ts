@@ -1,8 +1,9 @@
 import { isArray, isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
-import { Context, createContext, getNearestViewNode, mountContext, cleanupContext } from "../../context.js";
+import { cleanupContext, Context, createContext, getNearestViewNode, mountContext } from "../../context.js";
 import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
+import { isCSSTemplate } from "../css.js";
 import { scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, addListener, toMarkupNodes } from "../utils.js";
@@ -23,9 +24,10 @@ export class ElementNode extends MarkupNode {
   readonly #props: Record<string, any>;
 
   #context: Context;
-  #ownContext = false;
   #childNodes: MarkupNode[] = [];
   #unsubscribers = new Set<() => void>();
+
+  #styleClasses: string[] | undefined;
 
   #refCleanup?: () => void;
 
@@ -33,7 +35,7 @@ export class ElementNode extends MarkupNode {
     super();
 
     this.#props = props;
-    this.#context = context;
+    this.#context = createContext(context);
 
     if (props) {
       const classes = props.class ?? props.className;
@@ -44,12 +46,10 @@ export class ElementNode extends MarkupNode {
 
     if (tag === "svg") {
       // This and all nested views will be created as SVG elements.
-      this.#context = createContext(context, { [IS_SVG]: true });
-      this.#ownContext = true;
+      this.#context[IS_SVG] = true;
     } else if (this.#context[IS_SVG] && tag === "foreignObject") {
       // No longer in SVG.
-      this.#context = createContext(context, { [IS_SVG]: false });
-      this.#ownContext = false;
+      this.#context[IS_SVG] = false;
     }
 
     // Create node with the appropriate constructor.
@@ -103,7 +103,7 @@ export class ElementNode extends MarkupNode {
         }
       }
 
-      if (this.#ownContext) mountContext(this.#context);
+      mountContext(this.#context);
     }
   }
 
@@ -120,7 +120,7 @@ export class ElementNode extends MarkupNode {
     this.#unsubscribers.forEach((unsubscribe) => unsubscribe());
     this.#unsubscribers.clear();
 
-    if (this.#ownContext) cleanupContext(this.#context);
+    cleanupContext(this.#context);
 
     // Clear ref
     if (this.#refCleanup) {
@@ -216,6 +216,11 @@ export class ElementNode extends MarkupNode {
   }
 
   #applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
+    if (isCSSTemplate(styles)) {
+      styles.attach(this.#context, element);
+      return; // TODO: Support template in an array with object, string, etc?
+    }
+
     const localUnsubs = new Set<() => void>();
 
     const apply = (current: unknown) => {
@@ -230,13 +235,13 @@ export class ElementNode extends MarkupNode {
       for (const [name, { value, priority }] of Object.entries(mapped)) {
         if (isFunction(value)) {
           const unsub = subscribe(value, (v) => {
-            if (v) element.style.setProperty(name, asPixelsIfNumber(v), priority);
+            if (v) element.style.setProperty(name, formatValue(name, v), priority);
             else element.style.removeProperty(name);
           });
           this.#unsubscribers.add(unsub);
           localUnsubs.add(unsub);
         } else if (value != null) {
-          element.style.setProperty(name, asPixelsIfNumber(value), priority);
+          element.style.setProperty(name, formatValue(name, value), priority);
         }
       }
     };
@@ -258,16 +263,20 @@ export class ElementNode extends MarkupNode {
         this.#unsubscribers.delete(unsub);
       });
       localUnsubs.clear();
-      setAttribute(element, "class", null);
 
       const mapped = getClassMap(current);
+
       for (const [name, value] of Object.entries(mapped)) {
         if (name === "undefined") continue;
 
         if (isFunction(value)) {
           const unsub = subscribe(value, (isActive) => element.classList.toggle(name, !!isActive));
           this.#unsubscribers.add(unsub);
-          localUnsubs.add(unsub);
+          localUnsubs.add(() => {
+            // Remove self when locally unsubbed.
+            element.classList.remove(name);
+            unsub();
+          });
         } else if (value) {
           element.classList.add(name);
         }
@@ -329,11 +338,55 @@ function camelToKebab(value: string): string {
   return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
 }
 
-function asPixelsIfNumber(value: any): string {
-  if (isNumber(value)) {
+const acceptsUnitless = new Set<string>([
+  "animation-iteration-count",
+  "border-image-outset",
+  "border-image-slice",
+  "border-image-width",
+  "box-flex",
+  "box-flex-group",
+  "box-ordinal-group",
+  "column-count",
+  "columns",
+  "flex",
+  "flex-grow",
+  "flex-positive",
+  "flex-shrink",
+  "flex-negative",
+  "flex-order",
+  "grid-row",
+  "grid-row-end",
+  "grid-row-span",
+  "grid-row-start",
+  "grid-column",
+  "grid-column-end",
+  "grid-column-span",
+  "grid-column-start",
+  "font-weight",
+  "line-clamp",
+  "line-height",
+  "opacity",
+  "order",
+  "orphans",
+  "tab-size",
+  "widows",
+  "z-index",
+  "zoom",
+  // SVG attributes
+  "fill-opacity",
+  "flood-opacity",
+  "stop-opacity",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-miterlimit",
+  "stroke-opacity",
+  "stroke-width",
+]);
+function formatValue(name: string, value: any): string {
+  if (isNumber(value) && value !== 0 && !acceptsUnitless.has(name)) {
     return `${value}px`;
   } else {
-    return value;
+    return String(value);
   }
 }
 

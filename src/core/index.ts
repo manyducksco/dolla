@@ -15,19 +15,25 @@ export type { Context } from "./context.js";
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
+export type { Markup, MarkupNode } from "./markup/types.js";
 export { createPortal, forEach, hideIf, showIf } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
-export { ViewNode } from "./markup/nodes/view.js";
-export type { Markup, MarkupNode } from "./markup/types.js";
+export { css } from "./markup/css.js";
 export { createMarkup, render } from "./markup/utils.js";
+export { DOMNode } from "./markup/nodes/dom.js";
+export { DynamicNode } from "./markup/nodes/dynamic.js";
+export { ElementNode } from "./markup/nodes/element.js";
+export { PortalNode } from "./markup/nodes/portal.js";
+export { RepeatNode } from "./markup/nodes/repeat.js";
+export { ViewNode } from "./markup/nodes/view.js";
 
 // Ref
 export { createRef } from "./ref.js";
 export type { Ref } from "./ref.js";
 
-// Temporal helpers
-export { debounce } from "./temporal/debounce.js";
-export { throttle } from "./temporal/throttle.js";
+// Temporal Control Flow
+export { debounce } from "./debounce.js";
+export { throttle } from "./throttle.js";
 
 // Type Helpers
 export { createView, createStore } from "./helpers.js";

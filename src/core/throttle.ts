@@ -1,4 +1,4 @@
-import { isFunction } from "../../utils";
+import { isFunction } from "../utils";
 
 export type Throttle = {
   call(fn: (...args: any[]) => any): boolean;

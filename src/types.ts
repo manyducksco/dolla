@@ -2,6 +2,7 @@ import type * as CSS from "csstype";
 import type { Context, GenericState } from "./core/context.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { Getter } from "./core/signals.js";
+import { CSSTemplate } from "./core/markup/css.js";
 
 export type Env = "production" | "development";
 
@@ -201,14 +202,11 @@ export interface ElementProps {
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/style
    */
   style?:
-    | string
-    | CSSProperties
-    | Getter<string>
-    | Getter<CSSProperties>
-    | Getter<string | CSSProperties>
-    | Getter<string | undefined>
-    | Getter<CSSProperties | undefined>
-    | Getter<string | CSSProperties | undefined>;
+    | MaybeGetter<string>
+    | MaybeGetter<string | undefined>
+    | MaybeGetter<CSSProperties>
+    | MaybeGetter<CSSProperties | undefined>
+    | CSSTemplate;
 
   /*=================================*\
   ||              Events             ||

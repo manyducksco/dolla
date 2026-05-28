@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { sleep } from "../../utils";
+import { sleep } from "../utils";
 import { throttle } from "./throttle";
 
 const WAIT_MS = 1;

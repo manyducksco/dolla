@@ -9,6 +9,9 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - 📦 Reusable components in two types:
   - 🖥️ **Views** for reusable UI elements.
   - 💾 **Stores** for sharing state across many views.
+- Flexible context inheritance system
+- Debug logging system with log levels and component names
+- Temporal control flow helpers (throttle & debounce)
 - 🔀 A client-side [**router**](./src/router/README.md) with nested routes, auth guards, async data loading and more.
 - 📍 A simple [**i18n system**](./src/translate/README.md). Put your translated strings in a JSON file and access them with the `t` function in your views.
 - 🍳 The build step is optional. You can use a bundler (like Vite) and [write JSX](./docs/jsx.md), or skip the build step and use `html` tagged templates.
