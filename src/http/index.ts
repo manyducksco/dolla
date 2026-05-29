@@ -132,11 +132,11 @@ export class HTTP {
       const mw = this.#middleware[i];
       if (mw) {
         let res: HTTPResponse<any> | undefined;
-        await mw(req, async () => {
+        const mwResult = await mw(req, async () => {
           res = await dispatch(i + 1);
           return res;
         });
-        return res!;
+        return mwResult !== undefined ? mwResult : res!;
       }
 
       // Terminal Request Handler

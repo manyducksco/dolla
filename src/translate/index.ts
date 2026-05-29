@@ -283,9 +283,15 @@ export function compile(strings: { [key: string]: any }, path: string[] = []): [
       case "string":
         entries.push([[...path, key].join("."), parseTemplate(strings[key])]);
         break;
-      case "object":
+      case "object": {
+        if (strings[key] === null || Array.isArray(strings[key])) {
+          throw new Error(
+            `Expected to find a string or object at ${[...path, key].join(".")}. Got: ${typeof strings[key]}`,
+          );
+        }
         entries.push(...compile(strings[key], [...path, key]));
         break;
+      }
       default:
         throw new Error(
           `Expected to find a string or object at ${[...path, key].join(".")}. Got: ${typeof strings[key]}`,

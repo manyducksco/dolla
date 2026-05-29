@@ -167,17 +167,17 @@ export class ElementNode extends MarkupNode {
         this.#attach(value, (current) => {
           element.htmlFor = current;
         });
-      } else if (key[0] === "." || key.startsWith("prop:")) {
-        // Keys starting with `.` or `prop:` are set as props.
+      } else if (key.startsWith("prop:") || key[0] === ".") {
+        // Keys starting with `prop:` or `.` are set as props.
 
-        const _key = key.substring(5);
+        const _key = key.startsWith("prop:") ? key.substring(5) : key.substring(1);
         this.#attach(value, (current) => {
           element[_key] = current;
         });
-      } else if (key[0] === ":" || key.startsWith("attr:")) {
-        // Keys starting with `:` or `attr:` are set as attributes.
+      } else if (key.startsWith("attr:") || key[0] === ":") {
+        // Keys starting with `attr:` or `:` are set as attributes.
 
-        const _key = key.substring(5).toLowerCase();
+        const _key = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
         this.#attach(value, (current) => {
           setAttribute(element, _key, current);
         });
@@ -255,6 +255,7 @@ export class ElementNode extends MarkupNode {
 
   #applyClasses(element: HTMLElement | SVGElement, classes: unknown) {
     const localUnsubs = new Set<() => void>();
+    const staticClasses = new Set<string>();
 
     const apply = (current: unknown) => {
       // Clean up nested subscriptions if the top-level signal emits a new object
@@ -264,6 +265,12 @@ export class ElementNode extends MarkupNode {
       });
       localUnsubs.clear();
 
+      // Remove previously applied static classes before re-evaluating
+      for (const name of staticClasses) {
+        element.classList.remove(name);
+      }
+      staticClasses.clear();
+
       const mapped = getClassMap(current);
 
       for (const [name, value] of Object.entries(mapped)) {
@@ -271,14 +278,15 @@ export class ElementNode extends MarkupNode {
 
         if (isFunction(value)) {
           const unsub = subscribe(value, (isActive) => element.classList.toggle(name, !!isActive));
-          this.#unsubscribers.add(unsub);
-          localUnsubs.add(() => {
-            // Remove self when locally unsubbed.
+          const wrapper = () => {
             element.classList.remove(name);
             unsub();
-          });
+          };
+          this.#unsubscribers.add(wrapper);
+          localUnsubs.add(wrapper);
         } else if (value) {
           element.classList.add(name);
+          staticClasses.add(name);
         }
       }
     };

@@ -437,6 +437,7 @@ export function createOffsetEngine(defaultAssumption: number) {
   }
 
   function findIndexAtScroll(scrollPos: number, totalItems: number, avg: number): number {
+    if (totalItems <= 0) return 0;
     let low = 0,
       high = totalItems - 1,
       foundIndex = 0;
