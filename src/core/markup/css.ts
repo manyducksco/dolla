@@ -144,25 +144,22 @@ const registry = new StyleRegistry();
 \*============================*/
 
 export function css(strings: TemplateStringsArray, ...interpolations: any[]): CSSTemplate {
-  // Use as template tag in your views, gets automatically registered, deduped, converted to classes.
-
   const className = `css-${hashTemplate(strings, interpolations)}`;
-  const children: [CSSTemplate, MaybeGetter<any>][] = [];
 
-  return {
+  const template: CSSTemplate = {
     [IS_CSS_TEMPLATE]: true,
 
     className,
-    children,
+    children: [],
 
     toString() {
-      return className;
+      return this.className;
     },
 
     attach(c, element, condition = true) {
       const bindings: CSSTemplateBinding[] = [];
 
-      if (!attachClass(c, className, element, condition)) return;
+      if (!attachClass(c, this.className, element, condition)) return;
 
       let styles = "";
       strings.forEach((str, i) => {
@@ -172,7 +169,6 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
           let expr = interpolations[i];
 
           if (isCSSTemplate(expr)) {
-            // Include nested style references
             styles += `.${expr.className}`;
             return;
           }
@@ -185,8 +181,7 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
           }
 
           if (typeof expr === "function") {
-            // Namespace the variable to prevent global @property collisions
-            const varName = `--${className}-${i}`;
+            const varName = `--${this.className}-${i}`;
 
             if (initialValue != null) {
               styles += `var(${varName}, ${initialValue})`;
@@ -199,13 +194,12 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
 
             bindings.push({ varName, getter: expr, initialValue });
           } else {
-            // Direct injection for static strings/numbers
             styles += expr;
           }
         }
       });
 
-      registry.insertClass(className, styles);
+      registry.insertClass(this.className, styles);
 
       if (bindings.length > 0) {
         const instanceClassName = `css-instance-${uniqueId()}`;
@@ -218,7 +212,6 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
           bindings.forEach(({ varName, getter, initialValue }) => {
             const val = getter();
 
-            // Strip empty values (fall back to defaults)
             if (val === null || val === undefined || val === initialValue) {
               styleRef.removeProperty(varName);
             } else {
@@ -230,15 +223,15 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
         onCleanup(c, cleanupStyleRef);
       }
 
-      // Attach children based on their own conditions.
-      children.forEach(([template, condition]) => {
-        template.attach(c, element, condition);
+      this.children.forEach(([childTemplate, childCondition]) => {
+        childTemplate.attach(c, element, childCondition);
       });
     },
 
-    with(template, condition = true) {
-      children.push([template, condition]);
-      return this;
+    with(template: CSSTemplate, condition = true): CSSTemplate {
+      return { ...this, children: [...this.children, [template, condition]] };
     },
   };
+
+  return template;
 }

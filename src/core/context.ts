@@ -51,11 +51,17 @@ function _callListeners(context: Context, key: symbol) {
 ||          Lifecycle Hooks          ||
 \*===================================*/
 
+/**
+ * Registers a callback to run when the component is mounted into the DOM.
+ */
 export function onMount(context: Context, fn: LifecycleListener) {
   if (!Object.hasOwn(context, MOUNT_LISTENERS)) context[MOUNT_LISTENERS] = [fn];
   else context[MOUNT_LISTENERS].push(fn);
 }
 
+/**
+ * Registers a callback to run when the component is removed from the DOM.
+ */
 export function onCleanup(context: Context, fn: LifecycleListener) {
   if (!Object.hasOwn(context, CLEANUP_LISTENERS)) context[CLEANUP_LISTENERS] = [fn];
   else context[CLEANUP_LISTENERS].push(fn);

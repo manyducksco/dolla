@@ -6,14 +6,11 @@ describe("HTTP client", () => {
   let originalFetch: typeof globalThis.fetch;
 
   function mockResponse(body: any, options: Partial<ResponseInit> = {}) {
-    return new Response(
-      typeof body === "string" ? body : JSON.stringify(body),
-      {
-        status: 200,
-        headers: { "content-type": "application/json" },
-        ...options,
-      },
-    );
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+      ...options,
+    });
   }
 
   beforeAll(() => {
@@ -22,7 +19,7 @@ describe("HTTP client", () => {
 
   beforeEach(() => {
     mockFetch = vi.fn();
-    window.fetch = mockFetch;
+    window.fetch = mockFetch as typeof globalThis.fetch;
   });
 
   afterAll(() => {
@@ -111,24 +108,26 @@ describe("HTTP client", () => {
   });
 
   test("HTTP error throws HTTPResponseError", async () => {
-    mockFetch.mockImplementation(async () =>
-      new Response(JSON.stringify({ error: "Not found" }), {
-        status: 404,
-        statusText: "Not Found",
-        headers: { "content-type": "application/json" },
-      }),
+    mockFetch.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: "Not found" }), {
+          status: 404,
+          statusText: "Not Found",
+          headers: { "content-type": "application/json" },
+        }),
     );
     const client = new HTTP();
     await expect(client.get("/api/missing")).rejects.toThrow(HTTPResponseError);
   });
 
   test("HTTPResponseError has response property", async () => {
-    mockFetch.mockImplementation(async () =>
-      new Response("{}", {
-        status: 500,
-        statusText: "Internal Server Error",
-        headers: { "content-type": "application/json" },
-      }),
+    mockFetch.mockImplementation(
+      async () =>
+        new Response("{}", {
+          status: 500,
+          statusText: "Internal Server Error",
+          headers: { "content-type": "application/json" },
+        }),
     );
     const client = new HTTP();
     try {
@@ -141,8 +140,8 @@ describe("HTTP client", () => {
   });
 
   test("custom parse function", async () => {
-    mockFetch.mockImplementation(async () =>
-      new Response("raw text", { status: 200, headers: { "content-type": "text/plain" } }),
+    mockFetch.mockImplementation(
+      async () => new Response("raw text", { status: 200, headers: { "content-type": "text/plain" } }),
     );
     const client = new HTTP();
     const res = await client.get("/api/text", {
@@ -191,7 +190,14 @@ describe("HTTP client", () => {
     const client = new HTTP();
     client.use(async (req, next) => {
       await next();
-      return { method: "GET", url: new URL("http://localhost/api"), headers: new Headers(), status: 200, statusText: "OK", body: { replaced: true } };
+      return {
+        method: "GET",
+        url: new URL("http://localhost/api"),
+        headers: new Headers(),
+        status: 200,
+        statusText: "OK",
+        body: { replaced: true },
+      };
     });
     const res = await client.get("/api/data");
     expect(res.body).toEqual({ replaced: true });

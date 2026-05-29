@@ -12,12 +12,20 @@ export type BoundThrottle<T extends (...args: any[]) => any> = {
 
 export type ThrottleOptions = {};
 
+/**
+ * Creates a throttler with a bound function.
+ * The throttled function can only fire once every `ms` milliseconds.
+ */
 export function throttle<Fn extends (...args: any[]) => any>(
   ms: number,
   fn: Fn,
   options?: ThrottleOptions,
 ): BoundThrottle<Fn>;
 
+/**
+ * Creates an unbound throttler that can be called with any function.
+ * Returns `true` if the function was called, `false` if it was throttled.
+ */
 export function throttle(ms: number, options?: ThrottleOptions): Throttle;
 
 export function throttle<Fn extends (...args: any[]) => any>(

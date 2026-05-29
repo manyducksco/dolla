@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createContext, mountContext, onCleanup, onMount } from "../../context.js";
 import { createMarkup } from "../utils.js";
 import { ViewNode, VIEW } from "./view.js";
+import { View } from "../../index.js";
 
 describe("ViewNode", () => {
   const noopView = vi.fn(function (this: ReturnType<typeof createContext>, _props: {}) {
@@ -94,7 +95,7 @@ describe("ViewNode", () => {
 
     test("mount renders empty text for false view result", () => {
       const { context, container } = setup();
-      const falseView = vi.fn(() => false);
+      const falseView = vi.fn(() => false) as View;
       const node = new ViewNode(context, falseView, {});
       node.mount(container);
       expect(container.firstChild).toBeInstanceOf(Text);

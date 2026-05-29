@@ -84,17 +84,18 @@ describe("css tagged template", () => {
     expect(el.classList.contains(tpl.className)).toBe(true);
   });
 
-  test("with composes child templates", () => {
+  test("with returns a new template with the child appended", () => {
     const parent = css`
       color: red;
     `;
     const child = css`
       font-weight: bold;
     `;
-    parent.with(child);
-    expect(parent.children.length).toBe(1);
-    expect(parent.children[0][0]).toBe(child);
-    expect(parent.children[0][1]).toBe(true);
+    const combined = parent.with(child);
+    expect(parent.children).toEqual([]);
+    expect(combined.children.length).toBe(1);
+    expect(combined.children[0][0]).toBe(child);
+    expect(combined.children[0][1]).toBe(true);
   });
 
   test("with composes with condition", () => {
@@ -104,11 +105,55 @@ describe("css tagged template", () => {
     const child = css`
       font-weight: bold;
     `;
-    parent.with(child, false);
-    expect(parent.children[0][1]).toBe(false);
+    const combined = parent.with(child, false);
+    expect(combined.children[0][1]).toBe(false);
   });
 
-  test("attaching parent also attaches children", () => {
+  test("with does not mutate the original template", () => {
+    const parent = css`
+      color: red;
+    `;
+    const child = css`
+      font-weight: bold;
+    `;
+    const combined = parent.with(child);
+    expect(combined).not.toBe(parent);
+    expect(parent.children).toEqual([]);
+    expect(combined.className).toBe(parent.className);
+  });
+
+  test("chained with calls accumulate children", () => {
+    const parent = css`
+      color: red;
+    `;
+    const a = css`
+      font-weight: bold;
+    `;
+    const b = css`
+      color: blue;
+    `;
+    const combined = parent.with(a).with(b);
+    expect(combined.children.length).toBe(2);
+    expect(combined.children[0][0]).toBe(a);
+    expect(combined.children[1][0]).toBe(b);
+  });
+
+  test("attaching combined template also attaches children", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const parent = css`
+      color: red;
+    `;
+    const child = css`
+      font-weight: bold;
+    `;
+    const combined = parent.with(child);
+    combined.attach(ctx, el);
+    expect(el.classList.contains(combined.className)).toBe(true);
+    expect(el.classList.contains(child.className)).toBe(true);
+  });
+
+  test("attaching parent without with() does not attach unrelated children", () => {
     const ctx = createContext(null);
     const el = document.createElement("div");
     const parent = css`
@@ -120,10 +165,10 @@ describe("css tagged template", () => {
     parent.with(child);
     parent.attach(ctx, el);
     expect(el.classList.contains(parent.className)).toBe(true);
-    expect(el.classList.contains(child.className)).toBe(true);
+    expect(el.classList.contains(child.className)).toBe(false);
   });
 
-  test("attaching parent with conditional child", () => {
+  test("attaching combined template with conditional child", () => {
     const ctx = createContext(null);
     const el = document.createElement("div");
     const parent = css`
@@ -132,8 +177,8 @@ describe("css tagged template", () => {
     const child = css`
       font-weight: bold;
     `;
-    parent.with(child, false);
-    parent.attach(ctx, el);
+    const combined = parent.with(child, false);
+    combined.attach(ctx, el);
     expect(el.classList.contains(child.className)).toBe(false);
   });
 

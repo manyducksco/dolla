@@ -125,7 +125,7 @@ describe("DynamicNode", () => {
 
     test("updates from number to string (primitive fast path)", () => {
       const { context, container } = setup();
-      const [content, setContent] = createAtom(100);
+      const [content, setContent] = createAtom<number | string>(100);
       const node = new DynamicNode(context, content);
       node.mount(container);
       expect(container.textContent).toBe("100");
@@ -175,9 +175,7 @@ describe("DynamicNode", () => {
 
     test("updates from element to element (replaces content)", () => {
       const { context, container } = setup();
-      const [content, setContent] = createAtom<any>(
-        createMarkup("span", { children: "first" }),
-      );
+      const [content, setContent] = createAtom<any>(createMarkup("span", { children: "first" }));
       const node = new DynamicNode(context, content);
       node.mount(container);
       expect(container.querySelector("span")!.textContent).toBe("first");
@@ -189,7 +187,10 @@ describe("DynamicNode", () => {
 
     test("updates from array to single element", () => {
       const { context, container } = setup();
-      const [content, setContent] = createAtom<any>([createMarkup("span", { children: "a" }), createMarkup("span", { children: "b" })]);
+      const [content, setContent] = createAtom<any>([
+        createMarkup("span", { children: "a" }),
+        createMarkup("span", { children: "b" }),
+      ]);
       const node = new DynamicNode(context, content);
       node.mount(container);
       expect(container.querySelectorAll("span").length).toBe(2);

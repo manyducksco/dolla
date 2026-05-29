@@ -173,9 +173,7 @@ describe("RepeatNode", () => {
     test("reuses nodes for items with same key (keyed reconciliation)", () => {
       const { context, container } = setup();
       const renderSpy = vi.fn(renderFn);
-      const [items, setItems] = createAtom<Item[]>([
-        { id: 1, text: "one" },
-      ]);
+      const [items, setItems] = createAtom<Item[]>([{ id: 1, text: "one" }]);
       const node = new RepeatNode(context, items, keyFn, renderSpy);
       node.mount(container);
       expect(renderSpy).toHaveBeenCalledTimes(1);
@@ -296,7 +294,7 @@ describe("RepeatNode", () => {
       const [items] = createAtom<Item[]>([{ id: 1, text: "one" }]);
       const node = new RepeatNode(context, items, keyFn, renderFn);
       node.mount(container);
-      expect(() => node.move(container, null)).not.toThrow();
+      expect(() => node.move(container)).not.toThrow();
     });
   });
 

@@ -641,12 +641,18 @@ export function createAtom<T>(value?: T) {
 }
 
 /**
- * Creates a customsetter with a `getter` as its source.
+ * Creates a custom setter for an existing getter.
+ * The callback receives the current value and should return the new value.
  */
 export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T | void): Setter<T> {
   return customSetter.bind(getter, callback as any) as Setter<T>;
 }
 
+/**
+ * Creates a derived/computed signal from a function that tracks dependencies.
+ * Returns a lazy getter that only recomputes when a dependency changes.
+ * Also accepts a plain value to create a constant getter (reverse unwrap).
+ */
 export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T)): Getter<T> {
   if (!isFunction(getter)) {
     // Creates a getter out of a plain value; reverse unwrap.
@@ -752,6 +758,10 @@ export function batch(callback: () => void): void {
   }
 }
 
+/**
+ * Subscribes to a getter and runs the callback whenever its value changes.
+ * Returns an unsubscribe function.
+ */
 export function subscribe<T>(target: Getter<T>, fn: (value: T) => any): () => void {
   return createEffect(() => {
     const value = target();
