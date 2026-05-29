@@ -4,6 +4,7 @@ import { peek } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";
+import { registerViewInstance, unregisterViewInstance } from "../../hmr.js";
 
 export const VIEW = Symbol.for("$_VIEW_NODE");
 
@@ -12,7 +13,7 @@ export const VIEW = Symbol.for("$_VIEW_NODE");
  */
 export class ViewNode<P> extends MarkupNode {
   readonly #props: P;
-  readonly #view: View<P>;
+  #view: View<P>;
   #node?: MarkupNode;
 
   readonly context: Context;
@@ -46,6 +47,8 @@ export class ViewNode<P> extends MarkupNode {
       } else {
         this.#node = new DOMNode(this.context, createTextNode(""));
       }
+
+      registerViewInstance(this.#view, this);
     }
 
     this.#node!.mount(parent, after);
@@ -56,9 +59,46 @@ export class ViewNode<P> extends MarkupNode {
   unmount(skipDOM = false) {
     this.#node?.unmount(skipDOM);
     cleanupContext(this.context);
+    unregisterViewInstance(this.#view, this);
   }
 
   move(parent: Element, after?: Node) {
     this.#node?.move(parent, after);
+  }
+
+  replaceView(newView: View<P>) {
+    const wasMounted = this.isMounted();
+    if (!wasMounted) {
+      unregisterViewInstance(this.#view, this);
+      this.#view = newView;
+      this.context.name = newView.name;
+      registerViewInstance(this.#view, this);
+      return;
+    }
+
+    const oldRoot = this.#node?.getRoot();
+    const parent = oldRoot?.parentElement;
+    const after = oldRoot?.previousSibling ?? undefined;
+
+    this.#node?.unmount();
+    cleanupContext(this.context);
+    unregisterViewInstance(this.#view, this);
+
+    this.#view = newView;
+    this.context.name = newView.name;
+
+    const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
+    this.#node =
+      viewContent != null && viewContent !== false
+        ? render(viewContent, this.context)
+        : new DOMNode(this.context, createTextNode(""));
+
+    registerViewInstance(this.#view, this);
+
+    if (parent) {
+      this.#node.mount(parent, after);
+    }
+
+    mountContext(this.context);
   }
 }

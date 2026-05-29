@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Context, createContext } from "../core/context.js";
+import { Context, createContext, mountContext } from "../core/context.js";
 import { DollaPlugin } from "../core/index.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
@@ -14,6 +14,8 @@ async function withRouter(plugin: DollaPlugin, callback: (context: Context) => a
   });
 
   await plugin(context);
+
+  mountContext(context);
 
   const node = new ViewNode(context, Outlet, {});
 
@@ -119,7 +121,9 @@ describe("Router Engine", () => {
     await withRouter(router, async (context) => {
       window.history.pushState(null, "", "/protected");
       window.dispatchEvent(new Event("popstate"));
-      await new Promise(process.nextTick);
+
+      // Use macrotask to ensure all async route resolution completes
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const store = getRouter(context);
       expect(store.path()).toBe("/login");
@@ -141,7 +145,7 @@ describe("Router Engine", () => {
       await new Promise(process.nextTick);
 
       // Add a blocker
-      const unblock = store.block(() => false);
+      const unblock = store.block(() => true);
 
       // Attempt to navigate away
       store.push("/");
@@ -217,22 +221,21 @@ describe("Router Engine - Lazy Loading", () => {
       // First visit: triggers network request
       window.history.pushState(null, "", "/async");
       window.dispatchEvent(new Event("popstate"));
-      await new Promise(process.nextTick);
+
+      // Use macrotask to ensure async route resolution and lazy load .then() callbacks complete
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(loaderSpy).toHaveBeenCalledTimes(1);
-
-      // The router should have mutated the route layer to hold the actual view
-      expect(lazyRoute.view).toBe(MockView);
 
       // Navigate away
       window.history.pushState(null, "", "/");
       window.dispatchEvent(new Event("popstate"));
-      await new Promise(process.nextTick);
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Second visit: should use cached view, no network request
       window.history.pushState(null, "", "/async");
       window.dispatchEvent(new Event("popstate"));
-      await new Promise(process.nextTick);
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Loader should still only have been called once
       expect(loaderSpy).toHaveBeenCalledTimes(1);

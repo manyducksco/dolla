@@ -50,17 +50,25 @@
     "./jsx-dev-runtime": {
       "import": "./dist/jsx-dev-runtime.js",
       "types": "./jsx-dev-runtime.d.ts"
+    },
+    "./hmr": {
+      "import": "./dist/hmr.js",
+      "types": "./dist/core/hmr.d.ts"
+    },
+    "./vite-plugin": {
+      "import": "./vite-plugin.js"
     }
   },
   "files": [
     "dist",
-    "*.d.ts"
+    "*.d.ts",
+    "vite-plugin.js"
   ],
   "devDependencies": {
     "@types/node": "^25.6.0",
     "@types/stylis": "^4.2.7",
     "csstype": "^3.2.3",
-    "jsdom": "^29.0.2",
+    "happy-dom": "^20.9.0",
     "prettier": "^3.8.3",
     "stylis": "^4.4.0",
     "typescript": "^6.0.3",

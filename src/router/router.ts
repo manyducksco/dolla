@@ -95,7 +95,13 @@ export function createRouter(options: RouterOptions): DollaPlugin {
         }
       }
 
-      if (!match) throw new Error(`Failed to match route '${path}'`);
+      if (!match) {
+        if (context[DEBUG]) {
+          console.info(`💀 Failed to match route '${path}'`);
+        }
+        setProgress(0);
+        return;
+      }
 
       const { layers, params } = match;
       const targetKeys: string[] = [];
@@ -115,9 +121,10 @@ export function createRouter(options: RouterOptions): DollaPlugin {
       for (let i = branchIndex; i < layers.length; i++) {
         const layer = layers[i];
 
-        if (layer.preload) {
+        const preload = layer.preload;
+        if (preload) {
           tasks.push(
-            Promise.resolve(layer.preload(match)).then((data) => {
+            Promise.resolve().then(() => preload(match)).then((data) => {
               preloadedData[i - branchIndex] = data;
             }),
           );

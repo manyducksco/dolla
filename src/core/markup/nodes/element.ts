@@ -92,7 +92,7 @@ export class ElementNode extends MarkupNode {
 
     const targetSibling = after?.nextSibling ?? null;
     if (this.#root.parentNode !== parent || this.#root.nextSibling !== targetSibling) {
-      addChild(parent, this.#root, targetSibling);
+      addChild(parent, this.#root, after);
     }
 
     if (!wasMounted) {

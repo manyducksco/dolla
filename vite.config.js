@@ -18,12 +18,13 @@ export default defineConfig({
         // virtual: resolve(__dirname, "src/virtual/index.ts"),
         "jsx-runtime": resolve(__dirname, "src/jsx-runtime.js"),
         "jsx-dev-runtime": resolve(__dirname, "src/jsx-dev-runtime.js"),
+        hmr: resolve(__dirname, "src/core/hmr.ts"),
       },
       name: "Dolla",
       formats: ["es"],
     },
   },
   test: {
-    environment: "jsdom",
+    environment: "happy-dom",
   },
 });
