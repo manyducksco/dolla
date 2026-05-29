@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext } from "../../context.js";
 import { createAtom } from "../../signals.js";
+import { flushPendingUpdates } from "../scheduler.js";
 import { createMarkup } from "../utils.js";
 import { DynamicNode } from "./dynamic.js";
 import { DOMNode } from "./dom.js";
@@ -118,6 +119,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.textContent).toBe("initial");
       setContent("updated");
+      flushPendingUpdates();
       expect(container.textContent).toBe("updated");
     });
 
@@ -128,6 +130,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.textContent).toBe("100");
       setContent("text");
+      flushPendingUpdates();
       expect(container.textContent).toBe("text");
     });
 
@@ -140,6 +143,7 @@ describe("DynamicNode", () => {
       expect(container.querySelector("span")).toBeNull();
 
       setContent(createMarkup("span", { children: "element" }));
+      flushPendingUpdates();
       const span = container.querySelector("span")!;
       expect(span).not.toBeNull();
       expect(span.textContent).toBe("element");
@@ -152,6 +156,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.querySelector("span")).not.toBeNull();
       setContent(null);
+      flushPendingUpdates();
       expect(container.querySelector("span")).toBeNull();
       expect(container.childNodes.length).toBe(1); // only anchor
     });
@@ -163,6 +168,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.childNodes.length).toBe(1);
       setContent(createMarkup("span", { children: "new" }));
+      flushPendingUpdates();
       const span = container.querySelector("span")!;
       expect(span.textContent).toBe("new");
     });
@@ -176,6 +182,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.querySelector("span")!.textContent).toBe("first");
       setContent(createMarkup("div", { children: "second" }));
+      flushPendingUpdates();
       expect(container.querySelector("span")).toBeNull();
       expect(container.querySelector("div")!.textContent).toBe("second");
     });
@@ -187,6 +194,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.querySelectorAll("span").length).toBe(2);
       setContent(createMarkup("span", { children: "c" }));
+      flushPendingUpdates();
       expect(container.querySelectorAll("span").length).toBe(1);
       expect(container.textContent).toBe("c");
     });
@@ -275,6 +283,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.textContent).toBe("hello");
       setContent("");
+      flushPendingUpdates();
       expect(container.textContent).toBe("");
     });
 
@@ -285,6 +294,7 @@ describe("DynamicNode", () => {
       node.mount(container);
       expect(container.textContent).toBe("1");
       setContent(0);
+      flushPendingUpdates();
       expect(container.textContent).toBe("0");
     });
 
@@ -298,6 +308,7 @@ describe("DynamicNode", () => {
       setContent("d");
       setContent(null);
       setContent(createMarkup("div", { children: "e" }));
+      flushPendingUpdates();
       expect(container.textContent).toBe("e");
     });
   });

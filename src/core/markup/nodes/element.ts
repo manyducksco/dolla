@@ -4,7 +4,7 @@ import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
 import { isCSSTemplate } from "../css.js";
-import { scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, addListener, toMarkupNodes } from "../utils.js";
 
@@ -104,6 +104,7 @@ export class ElementNode extends MarkupNode {
       }
 
       mountContext(this.#context);
+      flushPendingUpdates();
     }
   }
 
@@ -235,8 +236,10 @@ export class ElementNode extends MarkupNode {
       for (const [name, { value, priority }] of Object.entries(mapped)) {
         if (isFunction(value)) {
           const unsub = subscribe(value, (v) => {
-            if (v) element.style.setProperty(name, formatValue(name, v), priority);
-            else element.style.removeProperty(name);
+            scheduleUpdate(() => {
+              if (v) element.style.setProperty(name, formatValue(name, v), priority);
+              else element.style.removeProperty(name);
+            });
           });
           this.#unsubscribers.add(unsub);
           localUnsubs.add(unsub);
@@ -247,7 +250,7 @@ export class ElementNode extends MarkupNode {
     };
 
     if (isFunction(styles)) {
-      this.#unsubscribers.add(subscribe(styles, apply));
+      this.#unsubscribers.add(subscribe(styles, (current) => scheduleUpdate(() => apply(current))));
     } else {
       apply(styles);
     }
@@ -277,7 +280,9 @@ export class ElementNode extends MarkupNode {
         if (name === "undefined") continue;
 
         if (isFunction(value)) {
-          const unsub = subscribe(value, (isActive) => element.classList.toggle(name, !!isActive));
+          const unsub = subscribe(value, (isActive) => {
+            scheduleUpdate(() => element.classList.toggle(name, !!isActive));
+          });
           const wrapper = () => {
             element.classList.remove(name);
             unsub();
@@ -292,7 +297,7 @@ export class ElementNode extends MarkupNode {
     };
 
     if (isFunction(classes)) {
-      this.#unsubscribers.add(subscribe(classes, apply));
+      this.#unsubscribers.add(subscribe(classes, (current) => scheduleUpdate(() => apply(current))));
     } else {
       apply(classes);
     }

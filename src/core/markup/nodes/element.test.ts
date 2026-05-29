@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext } from "../../context.js";
 import { createAtom } from "../../signals.js";
+import { flushPendingUpdates } from "../scheduler.js";
 import { ElementNode } from "./element.js";
 import { createMarkup } from "../utils.js";
 
@@ -215,6 +216,7 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLAnchorElement;
       expect(el.getAttribute("href")).toBe("/initial");
       setHref("/updated");
+      flushPendingUpdates();
       expect(el.getAttribute("href")).toBe("/updated");
     });
 
@@ -226,6 +228,7 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLElement;
       expect(el.hasAttribute("data-test")).toBe(true);
       setVal("");
+      flushPendingUpdates();
       expect(el.hasAttribute("data-test")).toBe(false);
     });
   });
@@ -281,6 +284,7 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLElement;
       expect(el.classList.contains("active")).toBe(true);
       setIsActive(false);
+      flushPendingUpdates();
       expect(el.classList.contains("active")).toBe(false);
     });
 
@@ -293,6 +297,7 @@ describe("ElementNode", () => {
       expect(el.classList.contains("foo")).toBe(true);
       expect(el.classList.contains("bar")).toBe(false);
       setClasses({ foo: false, bar: true });
+      flushPendingUpdates();
       expect(el.classList.contains("foo")).toBe(false);
       expect(el.classList.contains("bar")).toBe(true);
     });
@@ -340,6 +345,7 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLElement;
       expect(el.style.color).toBe("red");
       setColor("green");
+      flushPendingUpdates();
       expect(el.style.color).toBe("green");
     });
 
@@ -352,6 +358,7 @@ describe("ElementNode", () => {
       expect(el.style.color).toBe("red");
       expect(el.style.fontSize).toBe("12px");
       setStyles({ color: "blue", fontSize: "16px" });
+      flushPendingUpdates();
       expect(el.style.color).toBe("blue");
       expect(el.style.fontSize).toBe("16px");
     });

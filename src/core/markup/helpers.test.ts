@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext } from "../context.js";
 import { createAtom } from "../signals.js";
+import { flushPendingUpdates } from "./scheduler.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { PortalNode } from "./nodes/portal.js";
 import { RepeatNode } from "./nodes/repeat.js";
@@ -60,6 +61,7 @@ describe("forEach", () => {
     node.mount(container);
     expect(container.querySelectorAll("span").length).toBe(1);
     setItems([1, 2]);
+    flushPendingUpdates();
     expect(container.querySelectorAll("span").length).toBe(2);
   });
 });
@@ -113,6 +115,7 @@ describe("showIf / hideIf / showUnless / hideUnless", () => {
       node.mount(container);
       expect(container.textContent).toBe("now you see me");
       setCond(false);
+      flushPendingUpdates();
       expect(container.textContent).toBe("now you don't");
     });
 
@@ -124,6 +127,7 @@ describe("showIf / hideIf / showUnless / hideUnless", () => {
       node.mount(container);
       expect(container.textContent).toBe("disappears");
       setCond(true);
+      flushPendingUpdates();
       expect(container.textContent).toBe("appears");
     });
   });
@@ -145,6 +149,7 @@ describe("showIf / hideIf / showUnless / hideUnless", () => {
       node.mount(container);
       expect(container.textContent).toBe("fallback");
       setCond(false);
+      flushPendingUpdates();
       expect(container.textContent).toBe("content");
     });
   });
@@ -166,6 +171,7 @@ describe("showIf / hideIf / showUnless / hideUnless", () => {
       node.mount(container);
       expect(container.textContent).toBe("fallback");
       setCond(false);
+      flushPendingUpdates();
       expect(container.textContent).toBe("content");
     });
   });

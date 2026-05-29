@@ -1,7 +1,7 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
-import { scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode } from "../types.js";
 import { addChild, createTextNode, render } from "../utils.js";
 
@@ -64,6 +64,7 @@ export class RepeatNode<T> extends MarkupNode {
           this._update(Array.from(items));
         });
       });
+      flushPendingUpdates();
     }
   }
 

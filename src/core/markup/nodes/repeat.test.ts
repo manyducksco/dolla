@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext } from "../../context.js";
 import { createAtom } from "../../signals.js";
+import { flushPendingUpdates } from "../scheduler.js";
 import { createMarkup } from "../utils.js";
 import { RepeatNode } from "./repeat.js";
 
@@ -83,6 +84,7 @@ describe("RepeatNode", () => {
         { id: 1, text: "one" },
         { id: 2, text: "two" },
       ]);
+      flushPendingUpdates();
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBe(2);
       expect(spans[0].textContent).toBe("one:0");
@@ -100,6 +102,7 @@ describe("RepeatNode", () => {
         { id: 1, text: "one" },
         { id: 2, text: "two" },
       ]);
+      flushPendingUpdates();
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBe(2);
       expect(spans[0].textContent).toBe("one:0");
@@ -121,6 +124,7 @@ describe("RepeatNode", () => {
         { id: 1, text: "one" },
         { id: 3, text: "three" },
       ]);
+      flushPendingUpdates();
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBe(2);
       expect(spans[0].textContent).toBe("one:0");
@@ -138,6 +142,7 @@ describe("RepeatNode", () => {
       expect(container.querySelectorAll("span").length).toBe(2);
 
       setItems([]);
+      flushPendingUpdates();
       expect(container.querySelectorAll("span").length).toBe(0);
     });
 
@@ -157,6 +162,7 @@ describe("RepeatNode", () => {
         { id: 1, text: "one" },
         { id: 2, text: "two" },
       ]);
+      flushPendingUpdates();
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBe(3);
       expect(spans[0].textContent).toBe("three:0");
@@ -177,6 +183,7 @@ describe("RepeatNode", () => {
 
       // Update item with same key, different data
       setItems([{ id: 1, text: "updated" }]);
+      flushPendingUpdates();
       // Should NOT call renderSpy again (node is reused, just setItem/setIndex)
       expect(renderSpy).toHaveBeenCalledTimes(1);
       expect(container.querySelector("span")!.textContent).toBe("updated:0");
@@ -197,6 +204,7 @@ describe("RepeatNode", () => {
         { id: 2, text: "two" },
         { id: 3, text: "three" },
       ]);
+      flushPendingUpdates();
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBe(3);
       expect(spans[0].textContent).toBe("one:0");
@@ -219,6 +227,7 @@ describe("RepeatNode", () => {
       expect(container.querySelector("span")!.textContent).toBe("init");
 
       setItems([{ id: 1, text: "changed" }]);
+      flushPendingUpdates();
       expect(container.querySelector("span")!.textContent).toBe("changed");
     });
 
@@ -240,6 +249,7 @@ describe("RepeatNode", () => {
 
       // Remove first item - second item's index should change from 1 to 0
       setItems([{ id: 2, text: "b" }]);
+      flushPendingUpdates();
       const spans = container.querySelectorAll("span");
       expect(spans.length).toBe(1);
       expect(spans[0].textContent).toBe("b:0");

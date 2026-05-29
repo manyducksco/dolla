@@ -1,6 +1,6 @@
 import type { Context } from "../../context.js";
 import { subscribe, type Getter } from "../../signals.js";
-import { scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, createTextNode, toMarkupNodes } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -39,6 +39,7 @@ export class DynamicNode extends MarkupNode {
           this.#update(content);
         });
       });
+      flushPendingUpdates();
     }
   }
 
