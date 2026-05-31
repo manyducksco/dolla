@@ -221,3 +221,103 @@ describe("css tagged template", () => {
     expect(el.classList.contains(tpl.className)).toBe(true);
   });
 });
+
+describe("css.as()", () => {
+  test("css.as('name') produces className matching the given prefix", () => {
+    const tpl = css.as("sidebar")`
+      color: red;
+    `;
+    expect(tpl.className).toMatch(/^sidebar-/);
+  });
+
+  test("css.as('name') preserves the same hash as css for identical content", () => {
+    const plain = css`
+      color: red;
+    `;
+    const named = css.as("sidebar")`
+      color: red;
+    `;
+    const hash = plain.className.replace(/^css-/, "");
+    expect(named.className).toBe(`sidebar-${hash}`);
+  });
+
+  test("different prefixes produce classNames that differ only by prefix", () => {
+    const tpl1 = css.as("foo")`
+      color: red;
+    `;
+    const tpl2 = css.as("bar")`
+      color: red;
+    `;
+    const hash = tpl1.className.replace(/^foo-/, "");
+    expect(tpl2.className).toBe(`bar-${hash}`);
+  });
+
+  test("instance .as('name') changes the prefix", () => {
+    const tpl = css`
+      color: red;
+    `.as("header");
+    expect(tpl.className).toMatch(/^header-/);
+  });
+
+  test("instance .as() does not mutate the original template", () => {
+    const original = css`
+      color: red;
+    `;
+    const renamed = original.as("header");
+    expect(original.className).toMatch(/^css-/);
+    expect(renamed.className).toMatch(/^header-/);
+    expect(renamed).not.toBe(original);
+  });
+
+  test("instance .as() preserves the hash", () => {
+    const tpl = css`
+      color: red;
+    `;
+    const hash = tpl.className.replace(/^css-/, "");
+    expect(tpl.as("nav").className).toBe(`nav-${hash}`);
+  });
+
+  test("toString returns the renamed className", () => {
+    const tpl = css`
+      color: red;
+    `.as("widget");
+    expect(String(tpl)).toBe(tpl.className);
+    expect(`${tpl}`).toBe(tpl.className);
+  });
+
+  test("instance .as() followed by .with() attaches correctly", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const child = css`
+      font-weight: bold;
+    `.as("child");
+    const parent = css`
+      color: red;
+    `.as("parent");
+    const combined = parent.with(child);
+    combined.attach(ctx, el);
+    expect(el.classList.contains(combined.className)).toBe(true);
+    expect(el.classList.contains(child.className)).toBe(true);
+  });
+
+  test("css.as() sanitizes spaces in the name", () => {
+    const tpl = css.as("some name")`
+      color: red;
+    `;
+    expect(tpl.className).toMatch(/^some-name-/);
+  });
+
+  test("css.as() sanitizes special characters in the name", () => {
+    const tpl = css.as("my@#$class")`
+      color: red;
+    `;
+    expect(tpl.className).toMatch(/^my-class-/);
+  });
+
+  test("css.as() falls back to css- when the sanitized name is empty", () => {
+    const tpl = css.as("@#$")`
+      color: red;
+    `;
+    expect(tpl.className).toMatch(/^css-/);
+  });
+});

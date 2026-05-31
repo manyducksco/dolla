@@ -20,6 +20,7 @@ export { createPortal, forEach, hideIf, hideUnless, showIf, showUnless } from ".
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
 export { createMarkup, render } from "./markup/utils.js";
+export { transition } from "./markup/transition.js";
 export { DOMNode } from "./markup/nodes/dom.js";
 export { DynamicNode } from "./markup/nodes/dynamic.js";
 export { ElementNode } from "./markup/nodes/element.js";

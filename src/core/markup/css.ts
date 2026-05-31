@@ -25,6 +25,7 @@ export type CSSTemplate = {
   [IS_CSS_TEMPLATE]: true;
   className: string;
 
+  as(name: string): CSSTemplate;
   attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): void;
 
   with(template: CSSTemplate, condition?: MaybeGetter<any>): CSSTemplate;
@@ -139,12 +140,21 @@ class StyleRegistry {
 
 const registry = new StyleRegistry();
 
+/**
+ * Sanitizes a string so it can be used as a CSS class name prefix.
+ * Replaces invalid characters with hyphens, collapses runs, and
+ * strips leading/trailing hyphens.
+ */
+function sanitizeIdentifier(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "css";
+}
+
 /*============================*\
-||         css helper         ||
+||     Template builder       ||
 \*============================*/
 
-export function css(strings: TemplateStringsArray, ...interpolations: any[]): CSSTemplate {
-  const className = `css-${hashTemplate(strings, interpolations)}`;
+function createTemplate(prefix: string, strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
+  const className = `${prefix}-${hashTemplate(strings, interpolations)}`;
 
   const template: CSSTemplate = {
     [IS_CSS_TEMPLATE]: true,
@@ -154,6 +164,12 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
 
     toString() {
       return this.className;
+    },
+
+    as(name: string): CSSTemplate {
+      const safe = sanitizeIdentifier(name);
+      const hash = this.className.slice(this.className.indexOf("-") + 1);
+      return { ...this, className: `${safe}-${hash}` };
     },
 
     attach(c, element, condition = true) {
@@ -234,4 +250,19 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
   };
 
   return template;
+}
+
+/*============================*\
+||         css helper         ||
+\*============================*/
+
+export function css(strings: TemplateStringsArray, ...interpolations: any[]): CSSTemplate {
+  return createTemplate("css", strings, interpolations);
+}
+
+export namespace css {
+  export function as(name: string): (strings: TemplateStringsArray, ...interpolations: any[]) => CSSTemplate {
+    const safe = sanitizeIdentifier(name);
+    return (strings, ...interpolations) => createTemplate(safe, strings, interpolations);
+  }
 }
