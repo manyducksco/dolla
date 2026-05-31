@@ -6,7 +6,7 @@ import { DEBUG } from "../../symbols.js";
 import { isCSSTemplate } from "../css.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
-import { addChild, addListener, toMarkupNodes } from "../utils.js";
+import { addChild, toMarkupNodes } from "../utils.js";
 
 const IS_SVG = Symbol.for("$_IS_SVG");
 
@@ -156,6 +156,19 @@ export class ElementNode extends MarkupNode {
     }
   }
 
+  #attachListener(element: Element, eventName: string, value: unknown) {
+    const listener = isFunction(value) ? value : (value as any)?.handleEvent;
+    if (!isFunction(listener)) return;
+
+    const options: AddEventListenerOptions | undefined =
+      value && !isFunction(value)
+        ? { capture: (value as any).capture, once: (value as any).once, passive: (value as any).passive }
+        : undefined;
+
+    element.addEventListener(eventName, listener, options);
+    this.#unsubscribers.add(() => element.removeEventListener(eventName, listener, options));
+  }
+
   #applyProps(element: any, props: Record<string, unknown>) {
     for (const key in props) {
       const value = props[key];
@@ -182,16 +195,24 @@ export class ElementNode extends MarkupNode {
         this.#attach(value, (current) => {
           setAttribute(element, _key, current);
         });
-      } else if (key[0] === "@" && isFunction(value)) {
-        // Anything that's a function starting with `@` is an event listener.
+      } else if (key.startsWith("on:")) {
+        // on:click → addEventListener("click")
+
+        const eventName = key.substring(3);
+        this.#attachListener(element, eventName, value);
+      } else if (key[0] === "@") {
+        // @click → addEventListener("click")
 
         const eventName = key.substring(1);
-        this.#unsubscribers.add(addListener(element, eventName, value));
+        this.#attachListener(element, eventName, value);
       } else if (key.startsWith("on") && isFunction(value)) {
-        // Anything that's a function starting with `on` is an event listener.
+        // onClick, onclick → element.onclick = handler (property assignment)
 
-        const eventName = key.toLowerCase().slice(2);
-        this.#unsubscribers.add(addListener(element, eventName, value));
+        const eventName = "on" + key.slice(2).toLowerCase();
+        element[eventName] = value;
+        this.#unsubscribers.add(() => {
+          element[eventName] = null;
+        });
       } else if (key in element && !this.#context[IS_SVG]) {
         // Set as property if the element has one.
 

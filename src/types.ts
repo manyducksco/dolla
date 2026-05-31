@@ -56,6 +56,255 @@ type EnterKeyHintValues = "enter" | "done" | "go" | "next" | "previous" | "searc
 type HiddenValues = true | false | "until-found";
 type InputModeValues = "decimal" | "email" | "none" | "numeric" | "search" | "tel" | "text" | "url";
 
+type TargetEvent<T extends Event, E extends EventTarget> = T & { readonly currentTarget: E };
+
+type OnEventProps<E extends EventTarget, M> = {
+  [K in keyof M & string]?: EventHandler<TargetEvent<M[K] & Event, E>>;
+} & {
+  [K in keyof M & string as K extends `on${infer Rest}`
+    ? `on${Lowercase<Rest>}`
+    : never]?: EventHandler<TargetEvent<M[K] & Event, E>>;
+} & {
+  [K in keyof M & string as K extends `on${infer Rest}`
+    ? `on:${Lowercase<Rest>}`
+    : never]?: EventHandler<TargetEvent<M[K] & Event, E>> | {
+      handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
+      capture?: boolean;
+      once?: boolean;
+      passive?: boolean;
+    };
+} & {
+  [K in keyof M & string as K extends `on${infer Rest}`
+    ? `@${Lowercase<Rest>}`
+    : never]?: EventHandler<TargetEvent<M[K] & Event, E>> | {
+      handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
+      capture?: boolean;
+      once?: boolean;
+      passive?: boolean;
+    };
+};
+
+/*====================================*\
+||          Event Maps               ||
+\*====================================*/
+
+interface ElementEventMap {
+  /** Fired when a CSS animation is unexpectedly aborted. */
+  onAnimationCancel: AnimationEvent;
+  /** Fired when a CSS animation reaches the end of its active period. */
+  onAnimationEnd: AnimationEvent;
+  /** Fired when one iteration of a CSS animation ends and another begins. */
+  onAnimationIteration: AnimationEvent;
+  /** Fired when a CSS animation starts. */
+  onAnimationStart: AnimationEvent;
+  /** Fired when a non-primary pointing device button is pressed on an element. */
+  onAuxClick: MouseEvent;
+  /** Fired when an element has lost focus. */
+  onBlur: FocusEvent;
+  /** Fired when a pointing device button is pressed and released on an element. */
+  onClick: MouseEvent;
+  /** Fired when a text composition system completes composition. */
+  onCompositionEnd: CompositionEvent;
+  /** Fired when a text composition system starts composition. */
+  onCompositionStart: CompositionEvent;
+  /** Fired when a character is added to a composition session. */
+  onCompositionUpdate: CompositionEvent;
+  /** Fired when the right button of the mouse is clicked on an element. */
+  onContextMenu: PointerEvent;
+  /** Fired when a pointing device button is clicked twice on an element. */
+  onDblClick: MouseEvent;
+  /** Fired when an element has received focus. */
+  onFocus: FocusEvent;
+  /** Fired when an element is about to receive focus. */
+  onFocusIn: FocusEvent;
+  /** Fired when an element is about to lose focus. */
+  onFocusOut: FocusEvent;
+  /** Fired when an element transitions to or from fullscreen mode. */
+  onFullscreenChange: Event;
+  /** Fired when an element cannot be switched to fullscreen mode. */
+  onFullscreenError: Event;
+  /** Fired when a key is pressed. */
+  onKeyDown: KeyboardEvent;
+  /** Fired when a key is released. */
+  onKeyUp: KeyboardEvent;
+  /** Fired when a pointing device button is pressed on an element. */
+  onMouseDown: MouseEvent;
+  /** Fired when a pointing device is moved onto an element. */
+  onMouseEnter: MouseEvent;
+  /** Fired when a pointing device is moved off of an element. */
+  onMouseLeave: MouseEvent;
+  /** Fired when a pointing device is moved over an element. */
+  onMouseMove: MouseEvent;
+  /** Fired when a pointing device is moved off of an element or one of its children. */
+  onMouseOut: MouseEvent;
+  /** Fired when a pointing device is moved onto an element or one of its children. */
+  onMouseOver: MouseEvent;
+  /** Fired when a pointing device button is released on an element. */
+  onMouseUp: MouseEvent;
+  /** Fired when a pointer event is cancelled. */
+  onPointerCancel: PointerEvent;
+  /** Fired when a pointer becomes active. */
+  onPointerDown: PointerEvent;
+  /** Fired when a pointer is moved onto an element. */
+  onPointerEnter: PointerEvent;
+  /** Fired when a pointer is moved out of an element. */
+  onPointerLeave: PointerEvent;
+  /** Fired when a pointer changes coordinates. */
+  onPointerMove: PointerEvent;
+  /** Fired when a pointer is moved out of the hit-testing boundaries of an element. */
+  onPointerOut: PointerEvent;
+  /** Fired when a pointer is moved onto the hit-testing boundaries of an element. */
+  onPointerOver: PointerEvent;
+  /** Fired when a pointer button is released. */
+  onPointerUp: PointerEvent;
+  /** Fired when the document view or an element has been scrolled. */
+  onScroll: Event;
+  /** Fired when the document view or an element has completed scrolling. */
+  onScrollEnd: Event;
+  /** Fired when a touch point has been disrupted. */
+  onTouchCancel: TouchEvent;
+  /** Fired when a touch point is removed from the touch surface. */
+  onTouchEnd: TouchEvent;
+  /** Fired when a touch point is moved along the touch surface. */
+  onTouchMove: TouchEvent;
+  /** Fired when a touch point is placed on the touch surface. */
+  onTouchStart: TouchEvent;
+  /** Fired when a CSS transition is cancelled. */
+  onTransitionCancel: TransitionEvent;
+  /** Fired when a CSS transition has completed. */
+  onTransitionEnd: TransitionEvent;
+  /** Fired when a CSS transition is first created (before any delay begins). */
+  onTransitionRun: TransitionEvent;
+  /** Fired when a CSS transition has actually started (after any delay has ended). */
+  onTransitionStart: TransitionEvent;
+  /** Fired when the user rotates a wheel button on a pointing device. */
+  onWheel: WheelEvent;
+}
+
+interface HTMLElementEventMap {
+  /** Fired when the value of an input element is about to be modified. */
+  onBeforeInput: InputEvent;
+  /** Fired when the value of an input element has been modified. */
+  onChange: Event;
+  /** Fired when the user copies content to the clipboard. */
+  onCopy: ClipboardEvent;
+  /** Fired when the user cuts content to the clipboard. */
+  onCut: ClipboardEvent;
+  /** Fired when an element or text selection is being dragged. */
+  onDrag: DragEvent;
+  /** Fired when a drag operation ends. */
+  onDragEnd: DragEvent;
+  /** Fired when a dragged element or selection enters a valid drop target. */
+  onDragEnter: DragEvent;
+  /** Fired when a dragged element or selection leaves a valid drop target. */
+  onDragLeave: DragEvent;
+  /** Fired when an element or text selection is being dragged over a valid drop target. */
+  onDragOver: DragEvent;
+  /** Fired when the user starts dragging an element or text selection. */
+  onDragStart: DragEvent;
+  /** Fired when an element or text selection is dropped on a valid drop target. */
+  onDrop: DragEvent;
+  /** Fired when a resource failed to load, or couldn't be used. */
+  onError: UIEvent | Event;
+  /** Fired when the value of an input element changes. */
+  onInput: InputEvent;
+  /** Fired when a submittable element has been checked for validity. */
+  onInvalid: Event;
+  /** Fired when a resource has finished loading. */
+  onLoad: Event;
+  /** Fired when the user pastes content from the clipboard. */
+  onPaste: ClipboardEvent;
+  /** Fired when text has been selected in an input element. */
+  onSelect: Event;
+  /** Fired when a details element is toggled open or closed. */
+  onToggle: Event;
+}
+
+interface DialogSpecificEventMap {
+  /** Fired when the user cancels the dialog (e.g. presses Escape). */
+  onCancel: Event;
+  /** Fired when the dialog is closed. */
+  onClose: Event;
+}
+
+interface FormSpecificEventMap {
+  /** Fired after the entry list representing the form's data is constructed. */
+  onFormData: FormDataEvent;
+  /** Fired when a form is reset. */
+  onReset: Event;
+  /** Fired when a form is submitted. */
+  onSubmit: SubmitEvent;
+}
+
+interface MediaSpecificEventMap {
+  /** Fired when a resource has been fully loaded but cannot be used. */
+  onAbort: Event;
+  /** Fired when the user agent can play media (estimates not enough data loaded). */
+  onCanPlay: Event;
+  /** Fired when the user agent can play through to end without stopping. */
+  onCanPlayThrough: Event;
+  /** Fired when the duration attribute has been updated. */
+  onDurationChange: Event;
+  /** Fired when the media has become empty. */
+  onEmptied: Event;
+  /** Fired when the media encounters initialization data indicating it is encrypted. */
+  onEncrypted: MediaEncryptedEvent;
+  /** Fired when playback or streaming has stopped because the end was reached. */
+  onEnded: Event;
+  /** Fired when the frame at the current playback position has finished loading. */
+  onLoadedData: Event;
+  /** Fired when metadata has been loaded. */
+  onLoadedMetadata: Event;
+  /** Fired when the browser has started to load a resource. */
+  onLoadStart: Event;
+  /** Fired when media playback is paused. */
+  onPause: Event;
+  /** Fired when media playback resumes. */
+  onPlay: Event;
+  /** Fired after playback is first started or restarted. */
+  onPlaying: Event;
+  /** Fired periodically as the browser loads a resource. */
+  onProgress: Event;
+  /** Fired when the playback rate has changed. */
+  onRateChange: Event;
+  /** Fired when a seek operation completed and the seeking attribute changes to false. */
+  onSeeked: Event;
+  /** Fired when a seek operation starts. */
+  onSeeking: Event;
+  /** Fired when media data is unexpectedly not forthcoming. */
+  onStalled: Event;
+  /** Fired when media data loading has been suspended. */
+  onSuspend: Event;
+  /** Fired when the time indicated by currentTime has been updated. */
+  onTimeUpdate: Event;
+  /** Fired when the volume has changed. */
+  onVolumeChange: Event;
+  /** Fired when playback has stopped due to temporary lack of data. */
+  onWaiting: Event;
+}
+
+interface VideoSpecificEventMap {
+  /** Fired when the video enters picture-in-picture mode. */
+  onEnterPictureInPicture: PictureInPictureEvent;
+  /** Fired when the video leaves picture-in-picture mode. */
+  onLeavePictureInPicture: PictureInPictureEvent;
+  /** Fired when the intrinsic size of the video changes. */
+  onResize: Event;
+}
+
+interface CustomEventMap {
+  onClickOutside: MouseEvent;
+}
+
+type EventsFor<E extends EventTarget> =
+  OnEventProps<E, ElementEventMap> &
+  (E extends HTMLElement ? OnEventProps<E, HTMLElementEventMap> : {}) &
+  (E extends HTMLFormElement ? OnEventProps<E, FormSpecificEventMap> : {}) &
+  (E extends HTMLMediaElement ? OnEventProps<E, MediaSpecificEventMap> : {}) &
+  (E extends HTMLVideoElement ? OnEventProps<E, VideoSpecificEventMap> : {}) &
+  (E extends HTMLDialogElement ? OnEventProps<E, DialogSpecificEventMap> : {}) &
+  OnEventProps<E, CustomEventMap>;
+
 /**
  * Properties common to all Elements.
  */
@@ -73,7 +322,9 @@ export interface ElementProps {
   /**
    * Attaches an event listener to the element (with `addEventListener`).
    */
-  [key: `on:${string}`]: OptionalProperty<EventHandler<Event>>;
+  [key: `on:${string}`]: any;
+
+  [key: `@${string}`]: any;
 
   /**
    * CSS classes to be applied to this element. In addition to the standard space-separated list of class names,
@@ -208,667 +459,6 @@ export interface ElementProps {
     | MaybeGetter<CSSProperties | undefined>
     | CSSTemplate;
 
-  /*=================================*\
-  ||              Events             ||
-  \*=================================*/
-
-  /**
-   * Fired when a CSS animation unexpectedly aborts.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationcancel_event
-   */
-  onAnimationCancel?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when a CSS animation completes.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationend_event
-   */
-  onAnimationEnd?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when an iteration of a CSS animation completes.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationiteration_event
-   */
-  onAnimationIteration?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when a CSS animation starts.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationstart_event
-   */
-  onAnimationStart?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when a pointing device's non-primary button is pressed and released while the pointer is inside the element.
-   * With a mouse, this would typically be any button other than left click.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event
-   */
-  onAuxClick?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when the element has lost focus. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
-   */
-  onBlur?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when a pointing device is pressed and released while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
-   */
-  onClick?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device is pressed and released while the pointer is outside the element.
-   *
-   * NOTE: This is a custom event that isn't supported natively by browsers.
-   */
-  onClickOutside?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a text composition system (such as a Chinese/Japanese IME) completes or cancels the current composition session.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event
-   */
-  onCompositionEnd?: OptionalProperty<EventHandler<CompositionEvent>>;
-
-  /**
-   * Fired when a text composition system (such as a Chinese/Japanese IME) starts a new composition session.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionstart_event
-   */
-  onCompositionStart?: OptionalProperty<EventHandler<CompositionEvent>>;
-
-  /**
-   * Fired when a new character is received from a session in a text composition system (such as a Chinese/Japanese IME).
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionupdate_event
-   */
-  onCompositionUpdate?: OptionalProperty<EventHandler<CompositionEvent>>;
-
-  /**
-   * Fired when the user attempts to open a context menu. Typically triggered by clicking the right mouse button.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/contextmenu_event
-   */
-  onContextMenu?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  // onContextMenu: Deliberately unimplemented due to lack of support in iOS Safari and by extension all iOS webviews.
-
-  /**
-   * Fired when a pointing device button is rapidly clicked twice while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event
-   */
-  onDblClick?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when the element has received focus. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event
-   */
-  onFocus?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when an element has received focus. Fired after `onFocus`. Unlike `onFocus`, this event does bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
-   */
-  onFocusIn?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when an element has lost focus. Fired after `onBlur`. Unlike `onBlur`, this event does bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
-   */
-  onFocusOut?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when an element enters or exits fullscreen mode.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/fullscreenchange_event
-   */
-  onFullscreenChange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the browser can't switch to fullscreen mode.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/fullscreenerror_event
-   */
-  onFullscreenError?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a key on the keyboard is pressed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
-   */
-  onKeyDown?: OptionalProperty<EventHandler<KeyboardEvent>>;
-
-  /**
-   * Fired when a key on the keyboard is released.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-   */
-  onKeyUp?: OptionalProperty<EventHandler<KeyboardEvent>>;
-
-  /**
-   * Fired when a pointing device button is pressed while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mousedown_event
-   */
-  onMouseDown?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device enters the bounds of an element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseenter_event
-   */
-  onMouseEnter?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device leaves the bounds of an element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseleave_event
-   */
-  onMouseLeave?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device is moved while inside the bounds of an element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mousemove_event
-   */
-  onMouseMove?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device leaves the bounds of an element or one of its children. Unlike `onMouseLeave`, this event does bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseout_event
-   */
-  onMouseOut?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device enters the bounds of an element or one of its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseover_event
-   */
-  onMouseOver?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device button is released while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseup_event
-   */
-  onMouseUp?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when the browser determines there are unlikely to be any more pointer events.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointercancel_event
-   */
-  onPointerCancel?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer becomes active inside the bounds of an element.
-   * For a mouse, this is when a button is pressed. For a touchscreen, this is when a finger makes contact.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerdown_event
-   */
-  onPointerDown?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is moved into the boundary of an element or one of its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerenter_event
-   */
-  onPointerEnter?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is moved outside the boundary of an element or one of its children.
-   * For a mouse, this is when a button is released. For a touchscreen, this is when a finger leaves the screen.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerleave_event
-   */
-  onPointerLeave?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer changes coordinates inside the bounds of an element or one of its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointermove_event
-   */
-  onPointerMove?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is no longer in contact with an element or its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerout_event
-   */
-  onPointerOut?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is moved into the boundary of an element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerover_event
-   */
-  onPointerOver?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is no longer active.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerup_event
-   */
-  onPointerUp?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when an element has been scrolled.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/scroll_event
-   */
-  onScroll?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when scrolling has completed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollend_event
-   */
-  onScrollEnd?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when one or more touch points have been disrupted.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchcancel_event
-   */
-  onTouchCancel?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when one or more touch points are removed from the touch surface.
-   * NOTE: This does not mean all touches are finished in the case of a multitouch gesture.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchend_event
-   */
-  onTouchEnd?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when one or more touch points are moved along the touch surface.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchmove_event
-   */
-  onTouchMove?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when one or more touch points are placed on the touch surface.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchstart_event
-   */
-  onTouchStart?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when a CSS transition is cancelled.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitioncancel_event
-   */
-  onTransitionCancel?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a CSS transition has completed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionend_event
-   */
-  onTransitionEnd?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a CSS transition is first created.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionrun_event
-   */
-  onTransitionRun?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a CSS transition starts playing (after any `transition-delay` has elapsed).
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionstart_event
-   */
-  onTransitionStart?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a wheel button on a pointing device is rotated.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/wheel_event
-   */
-  onWheel?: OptionalProperty<EventHandler<WheelEvent>>;
-
-  /*=================================*\
-  ||         Event Properties        ||
-  \*=================================*/
-
-  /**
-   * Fired when a CSS animation unexpectedly aborts.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationcancel_event
-   */
-  onanimationcancel?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when a CSS animation completes.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationend_event
-   */
-  onanimationend?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when an iteration of a CSS animation completes.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationiteration_event
-   */
-  onanimationiteration?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when a CSS animation starts.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/animationstart_event
-   */
-  onanimationstart?: OptionalProperty<EventHandler<AnimationEvent>>;
-
-  /**
-   * Fired when a pointing device's non-primary button is pressed and released while the pointer is inside the element.
-   * With a mouse, this would typically be any button other than left click.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event
-   */
-  onauxclick?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when the element has lost focus. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
-   */
-  onblur?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when a pointing device is pressed and released while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
-   */
-  onclick?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device is pressed and released while the pointer is outside the element.
-   *
-   * NOTE: This is a custom event that isn't supported natively by browsers.
-   */
-  onclickoutside?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a text composition system (such as a Chinese/Japanese IME) completes or cancels the current composition session.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionend_event
-   */
-  oncompositionend?: OptionalProperty<EventHandler<CompositionEvent>>;
-
-  /**
-   * Fired when a text composition system (such as a Chinese/Japanese IME) starts a new composition session.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionstart_event
-   */
-  oncompositionstart?: OptionalProperty<EventHandler<CompositionEvent>>;
-
-  /**
-   * Fired when a new character is received from a session in a text composition system (such as a Chinese/Japanese IME).
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/compositionupdate_event
-   */
-  oncompositionupdate?: OptionalProperty<EventHandler<CompositionEvent>>;
-
-  /**
-   * Fired when the user attempts to open a context menu. Typically triggered by clicking the right mouse button.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/contextmenu_event
-   */
-  oncontextmenu?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointing device button is rapidly clicked twice while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event
-   */
-  ondblclick?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when the element has received focus. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event
-   */
-  onfocus?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when an element has received focus. Fired after `onFocus`. Unlike `onFocus`, this event does bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
-   */
-  onfocusin?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when an element has lost focus. Fired after `onBlur`. Unlike `onBlur`, this event does bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
-   */
-  onfocusout?: OptionalProperty<EventHandler<FocusEvent>>;
-
-  /**
-   * Fired when an element enters or exits fullscreen mode.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/fullscreenchange_event
-   */
-  onfullscreenchange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the browser can't switch to fullscreen mode.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/fullscreenerror_event
-   */
-  onfullscreenerror?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a key on the keyboard is pressed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
-   */
-  onkeydown?: OptionalProperty<EventHandler<KeyboardEvent>>;
-
-  /**
-   * Fired when a key on the keyboard is released.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-   */
-  onkeyup?: OptionalProperty<EventHandler<KeyboardEvent>>;
-
-  /**
-   * Fired when a pointing device button is pressed while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mousedown_event
-   */
-  onmousedown?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device enters the bounds of an element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseenter_event
-   */
-  onmouseenter?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device leaves the bounds of an element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseleave_event
-   */
-  onmouseleave?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device is moved while inside the bounds of an element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mousemove_event
-   */
-  onmousemove?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device leaves the bounds of an element or one of its children. Unlike `onMouseLeave`, this event does bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseout_event
-   */
-  onmouseout?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device enters the bounds of an element or one of its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseover_event
-   */
-  onmouseover?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when a pointing device button is released while the pointer is inside the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseup_event
-   */
-  onmouseup?: OptionalProperty<EventHandler<MouseEvent>>;
-
-  /**
-   * Fired when the browser determines there are unlikely to be any more pointer events.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointercancel_event
-   */
-  onpointercancel?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer becomes active inside the bounds of an element.
-   * For a mouse, this is when a button is pressed. For a touchscreen, this is when a finger makes contact.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerdown_event
-   */
-  onpointerdown?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is moved into the boundary of an element or one of its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerenter_event
-   */
-  onpointerenter?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is moved outside the boundary of an element or one of its children.
-   * For a mouse, this is when a button is released. For a touchscreen, this is when a finger leaves the screen.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerleave_event
-   */
-  onpointerleave?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer changes coordinates inside the bounds of an element or one of its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointermove_event
-   */
-  onpointermove?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is no longer in contact with an element or its children.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerout_event
-   */
-  onpointerout?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is moved into the boundary of an element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerover_event
-   */
-  onpointerover?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when a pointer is no longer active.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerup_event
-   */
-  onpointerup?: OptionalProperty<EventHandler<PointerEvent>>;
-
-  /**
-   * Fired when an element has been scrolled.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/scroll_event
-   */
-  onscroll?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when scrolling has completed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollend_event
-   */
-  onscrollend?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when one or more touch points have been disrupted.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchcancel_event
-   */
-  ontouchcancel?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when one or more touch points are removed from the touch surface.
-   * NOTE: This does not mean all touches are finished in the case of a multitouch gesture.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchend_event
-   */
-  ontouchend?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when one or more touch points are moved along the touch surface.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchmove_event
-   */
-  ontouchmove?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when one or more touch points are placed on the touch surface.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/touchstart_event
-   */
-  ontouchstart?: OptionalProperty<EventHandler<TouchEvent>>;
-
-  /**
-   * Fired when a CSS transition is cancelled.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitioncancel_event
-   */
-  ontransitioncancel?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a CSS transition has completed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionend_event
-   */
-  ontransitionend?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a CSS transition is first created.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionrun_event
-   */
-  ontransitionrun?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a CSS transition starts playing (after any `transition-delay` has elapsed).
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionstart_event
-   */
-  ontransitionstart?: OptionalProperty<EventHandler<TransitionEvent>>;
-
-  /**
-   * Fired when a wheel button on a pointing device is rotated.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/Element/wheel_event
-   */
-  onwheel?: OptionalProperty<EventHandler<WheelEvent>>;
 }
 
 export interface HTMLElementProps extends ElementProps {
@@ -993,344 +583,9 @@ export interface HTMLElementProps extends ElementProps {
 
   // TODO: `item*` microdata attributes
 
-  /*=================================*\
-  ||              Events             ||
-  \*=================================*/
-
-  /**
-   * Fired when the value of an `<input>` or `<textarea>` element (or any element with `contentEditable` enabled) is about to be modified.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/beforeinput_event
-   */
-  onBeforeInput?: OptionalProperty<EventHandler<InputEvent>>;
-
-  /**
-   * Fired when the user modifies the value of an `<input>`, `<textarea>` or `<select>` element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-   */
-  onChange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user copies some content to the clipboard.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/copy_event
-   */
-  onCopy?: OptionalProperty<EventHandler<ClipboardEvent>>;
-
-  /**
-   * Fired when the user cuts some content to the clipboard.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/cut_event
-   */
-  onCut?: OptionalProperty<EventHandler<ClipboardEvent>>;
-
-  /**
-   * Fired periodically as the user is dragging in the context of a drag and drop operation.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/drag_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDrag?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a drag operation ends.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragend_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDragEnd?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a dragged element or content enters a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragenter_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDragEnter?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a dragged element or content leaves a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragleave_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDragLeave?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired periodically as the user is dragging an element or content over a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragover_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDragOver?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a user begins dragging an element or content.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragstart_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDragStart?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a dragged element or content is dropped onto a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/drop_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  onDrop?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a resource failed to load, for example, if the `src` can't be resolved on an `<image>` element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/error_event
-   */
-  onError?: OptionalProperty<EventHandler<UIEvent | Event>>;
-
-  /**
-   * Fired when a resource failed to load, for example, if the `src` can't be resolved on an `<image>` element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-   */
-  onInput?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a resource was successfully loaded, for example, when the `src` is loaded for an `<image>` element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/load_event
-   */
-  onLoad?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user pastes some content from the clipboard.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/paste_event
-   */
-  onPaste?: OptionalProperty<EventHandler<ClipboardEvent>>;
-
-  /*=================================*\
-  ||        Event Properties         ||
-  \*=================================*/
-
-  /**
-   * Fired when the value of an `<input>` or `<textarea>` element (or any element with `contentEditable` enabled) is about to be modified.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/beforeinput_event
-   */
-  onbeforeinput?: OptionalProperty<EventHandler<InputEvent>>;
-
-  /**
-   * Fired when the user modifies the value of an `<input>`, `<textarea>` or `<select>` element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-   */
-  onchange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user copies some content to the clipboard.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/copy_event
-   */
-  oncopy?: OptionalProperty<EventHandler<ClipboardEvent>>;
-
-  /**
-   * Fired when the user cuts some content to the clipboard.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/cut_event
-   */
-  oncut?: OptionalProperty<EventHandler<ClipboardEvent>>;
-
-  /**
-   * Fired periodically as the user is dragging in the context of a drag and drop operation.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/drag_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondrag?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a drag operation ends.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragend_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondragend?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a dragged element or content enters a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragenter_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondragenter?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a dragged element or content leaves a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragleave_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondragleave?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired periodically as the user is dragging an element or content over a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragover_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondragover?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a user begins dragging an element or content.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragstart_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondragstart?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a dragged element or content is dropped onto a drop target.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/drop_event
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API
-   */
-  ondrop?: OptionalProperty<EventHandler<DragEvent>>;
-
-  /**
-   * Fired when a resource failed to load, for example, if the `src` can't be resolved on an `<image>` element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/error_event
-   */
-  onerror?: OptionalProperty<EventHandler<UIEvent | Event>>;
-
-  /**
-   * Fired when a resource failed to load, for example, if the `src` can't be resolved on an `<image>` element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-   */
-  oninput?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a resource was successfully loaded, for example, when the `src` is loaded for an `<image>` element. This event does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/load_event
-   */
-  onload?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user pastes some content from the clipboard.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/paste_event
-   */
-  onpaste?: OptionalProperty<EventHandler<ClipboardEvent>>;
 }
 
-/**
- * Mapping of event props to event names.
- */
-export const eventPropsToEventNames = {
-  // ----- Element events ----- //
 
-  onAnimationCancel: "animationcancel",
-  onAnimationEnd: "animationend",
-  onAnimationIteration: "animationiteration",
-  onAnimationStart: "animationstart",
-  onAuxClick: "auxclick",
-  onBlur: "blur",
-  onClick: "click",
-  onCompositionEnd: "compositionend",
-  onCompositionStart: "compositionstart",
-  onCompositionUpdate: "compositionupdate",
-  onDoubleClick: "dblclick",
-  onFocus: "focus",
-  onFocusIn: "focusin",
-  onFocusOut: "focusout",
-  onFullscreenChange: "fullscreenchange",
-  onFullscreenError: "fullscreenerror",
-  onKeyDown: "keydown",
-  onKeyUp: "keyup",
-  onMouseDown: "mousedown",
-  onMouseEnter: "mouseenter",
-  onMouseLeave: "mouseleave",
-  onMouseMove: "mousemove",
-  onMouseOut: "mouseout",
-  onMouseOver: "mouseover",
-  onMouseUp: "mouseup",
-  onPointerCancel: "pointercancel",
-  onPointerDown: "pointerdown",
-  onPointerEnter: "pointerenter",
-  onPointerLeave: "pointerleave",
-  onPointerMove: "pointermove",
-  onPointerOut: "pointerout",
-  onPointerOver: "pointerover",
-  onPointerUp: "pointerup",
-  onScroll: "scroll",
-  onScrollEnd: "scrollend",
-  onTouchCancel: "touchcancel",
-  onTouchEnd: "touchend",
-  onTouchMove: "touchmove",
-  onTouchStart: "touchstart",
-  onTransitionCancel: "transitioncancel",
-  onTransitionEnd: "transitionend",
-  onTransitionRun: "transitionrun",
-  onTransitionStart: "transitionstart",
-  onWheel: "wheel",
-
-  // ----- HTMLElement events ----- //
-
-  onBeforeInput: "beforeinput",
-  onChange: "change",
-  onCopy: "copy",
-  onCut: "cut",
-  onDrag: "drag",
-  onDragEnd: "dragend",
-  onDragEnter: "dragenter",
-  onDragLeave: "dragleave",
-  onDragOver: "dragover",
-  onDragStart: "dragstart",
-  onDrop: "drop",
-  onError: "error",
-  onInput: "input",
-  onLoad: "load",
-  onPaste: "paste",
-
-  // ----- HTMLMediaElement events ----- //
-
-  onAbort: "abort",
-  onCanPlay: "canplay",
-  onCanPlayThrough: "canplaythrough",
-  onDurationChange: "durationchange",
-  onEmptied: "emptied",
-  onEncrypted: "encrypted",
-  onEnded: "ended",
-  onLoadedData: "loadeddata",
-  onLoadedMetadata: "loadedmetadata",
-  onLoadStart: "loadstart",
-  onPause: "pause",
-  onPlay: "play",
-  onPlaying: "playing",
-  onProgress: "progress",
-  onRateChange: "ratechange",
-  onSeeked: "seeked",
-  onSeeking: "seeking",
-  onStalled: "stalled",
-  onSuspend: "suspend",
-  onTimeUpdate: "timeupdate",
-  onVolumeChange: "volumechange",
-  onWaiting: "waiting",
-
-  // ----- HTMLFormElement events ----- //
-
-  onFormData: "formdata",
-  onReset: "reset",
-  onSubmit: "submit",
-
-  // ----- HTMLInputElement events ----- //
-
-  onInvalid: "invalid",
-  onSelect: "select",
-};
 
 /**
  * The set of HTML attributes supported by all HTML elements.
@@ -1544,7 +799,7 @@ export interface ClassMap {
 
 export type EventHandler<E> = (event: E) => void;
 
-export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
+export type PropertiesOf<E extends HTMLElement> = HTMLElementProps & EventsFor<E> & {
   /**
    * For TypeScript support; child elements passed through JSX.
    */
@@ -1559,7 +814,7 @@ export interface PropertiesOf<E extends HTMLElement> extends HTMLElementProps {
     | ((value: HTMLElement) => () => void)
     | ((value: Element) => () => void)
     | ((value: Node) => () => void);
-}
+};
 
 /**
  * The following elements are defined based on the WHATWG HTML spec:
@@ -2490,7 +1745,7 @@ export interface IntrinsicElements {
   area: HTMLAreaElementProps;
 }
 
-interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementProps, PropertiesOf<T> {
+type HTMLMediaElementProps<T extends HTMLMediaElement> = HTMLElementProps & PropertiesOf<T> & {
   /**
    * Play the media automatically when it loads.
    *
@@ -2590,398 +1845,6 @@ interface HTMLMediaElementProps<T extends HTMLMediaElement> extends HTMLElementP
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volume
    */
   volume?: OptionalProperty<number>;
-
-  /*=================================*\
-  ||              Events             ||
-  \*=================================*/
-
-  /**
-   * Fired when the resource was not fully loaded, but not as the result of an error.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/abort_event
-   */
-  onAbort?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user agent can play the media, but estimates that not enough data has been loaded
-   * to play the media up to its end without having to stop for further buffering of content.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/canplay_event
-   */
-  onCanPlay?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user agent can play the media, and estimates that enough data has been loaded
-   * to play the media up to its end without having to stop for further buffering of content.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/canplaythrough_event
-   */
-  onCanPlayThrough?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the duration attribute has been updated.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/durationchange_event
-   */
-  onDurationChange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the media has become empty; for example, this event is sent if the media has already been loaded
-   * (or partially loaded), and the `load()` method is called to reload it.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/emptied_event
-   */
-  onEmptied?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the media encounters some initialization data indicating it is encrypted.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/encrypted_event
-   */
-  onEncrypted?: OptionalProperty<EventHandler<MediaEncryptedEvent>>;
-
-  /**
-   * Fired when playback or streaming has stopped because the end of the media was reached or because no further data is available.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/ended_event
-   */
-  onEnded?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the frame at the current playback position of the media has finished loading.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loadeddata_event
-   */
-  onLoadedData?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when metadata has been loaded.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loadedmetadata_event
-   */
-  onLoadedMetadata?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the browser has started to load a resource.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loadstart_event
-   */
-  onLoadStart?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when media is paused.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/pause_event
-   */
-  onPause?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when `paused` changes to false and media playback resumes.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/play_event
-   */
-  onPlay?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired after playback is first started, and whenever it is restarted.
-   * For example, it is fired when playback resumes after having been paused or delayed due to lack of data.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/playing_event
-   */
-  onPlaying?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired periodically as the browser loads a resource.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/progress_event
-   */
-  onProgress?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the playback rate has changed.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/ratechange_event
-   */
-  onRateChange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a seek operation completed, the current playback position has changed, and the Boolean `seeking` attribute is changed to `false`.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seeked_event
-   */
-  onSeeked?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a seek operation starts, meaning the Boolean `seeking` attribute has changed to `true` and the media is seeking a new position.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seeking_event
-   */
-  onSeeking?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user agent is trying to fetch media data, but data is unexpectedly not forthcoming.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/stalled_event
-   */
-  onStalled?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when media data loading has been suspended.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/suspend_event
-   */
-  onSuspend?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the time indicated by the `currentTime` attribute has been updated.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/timeupdate_event
-   */
-  onTimeUpdate?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the volume has changed.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volumechange_event
-   */
-  onVolumeChange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when playback has stopped because of a temporary lack of data.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/waiting_event
-   */
-  onWaiting?: OptionalProperty<EventHandler<Event>>;
-
-  /*=================================*\
-  ||         Event Properties        ||
-  \*=================================*/
-
-  /**
-   * Fired when the resource was not fully loaded, but not as the result of an error.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/abort_event
-   */
-  onabort?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user agent can play the media, but estimates that not enough data has been loaded
-   * to play the media up to its end without having to stop for further buffering of content.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/canplay_event
-   */
-  oncanplay?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user agent can play the media, and estimates that enough data has been loaded
-   * to play the media up to its end without having to stop for further buffering of content.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/canplaythrough_event
-   */
-  oncanplaythrough?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the duration attribute has been updated.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/durationchange_event
-   */
-  ondurationchange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the media has become empty; for example, this event is sent if the media has already been loaded
-   * (or partially loaded), and the `load()` method is called to reload it.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/emptied_event
-   */
-  onemptied?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the media encounters some initialization data indicating it is encrypted.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/encrypted_event
-   */
-  onencrypted?: OptionalProperty<EventHandler<MediaEncryptedEvent>>;
-
-  /**
-   * Fired when playback or streaming has stopped because the end of the media was reached or because no further data is available.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/ended_event
-   */
-  onended?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the frame at the current playback position of the media has finished loading.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loadeddata_event
-   */
-  onloadeddata?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when metadata has been loaded.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loadedmetadata_event
-   */
-  onloadedmetadata?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the browser has started to load a resource.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loadstart_event
-   */
-  onloadstart?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when media is paused.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/pause_event
-   */
-  onpause?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when `paused` changes to false and media playback resumes.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/play_event
-   */
-  onplay?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired after playback is first started, and whenever it is restarted.
-   * For example, it is fired when playback resumes after having been paused or delayed due to lack of data.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/playing_event
-   */
-  onplaying?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired periodically as the browser loads a resource.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/progress_event
-   */
-  onprogress?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the playback rate has changed.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/ratechange_event
-   */
-  onratechange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a seek operation completed, the current playback position has changed, and the Boolean `seeking` attribute is changed to `false`.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seeked_event
-   */
-  onseeked?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when a seek operation starts, meaning the Boolean `seeking` attribute has changed to `true` and the media is seeking a new position.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seeking_event
-   */
-  onseeking?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the user agent is trying to fetch media data, but data is unexpectedly not forthcoming.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/stalled_event
-   */
-  onstalled?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when media data loading has been suspended.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/suspend_event
-   */
-  onsuspend?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the time indicated by the `currentTime` attribute has been updated.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/timeupdate_event
-   */
-  ontimeupdate?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when the volume has changed.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volumechange_event
-   */
-  onvolumechange?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when playback has stopped because of a temporary lack of data.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/waiting_event
-   */
-  onwaiting?: OptionalProperty<EventHandler<Event>>;
 }
 
 interface HTMLVideoElementProps extends HTMLMediaElementProps<HTMLVideoElement> {
@@ -3731,59 +2594,7 @@ interface FormElementProps extends PropertiesOf<HTMLFormElement> {
    */
   target?: OptionalProperty<"_self" | "_blank" | "_parent" | "_top" | string>;
 
-  /*====================================*\
-  || Events                             ||
-  \*====================================*/
 
-  /**
-   * Fires after the entry list representing the form's data is constructed.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/formdata_event
-   */
-  onFormData?: OptionalProperty<EventHandler<FormDataEvent>>;
-
-  /**
-   * Fires when a `<form>` is reset.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/reset_event
-   */
-  onReset?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fires when a `<form>` is submitted.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
-   */
-  onSubmit?: OptionalProperty<EventHandler<SubmitEvent>>;
-
-  /*====================================*\
-  || Event Properties                   ||
-  \*====================================*/
-
-  /**
-   * Fires after the entry list representing the form's data is constructed.
-   *
-   * This event is not cancelable and does not bubble.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/formdata_event
-   */
-  onformdata?: OptionalProperty<EventHandler<FormDataEvent>>;
-
-  /**
-   * Fires when a `<form>` is reset.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/reset_event
-   */
-  onreset?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fires when a `<form>` is submitted.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
-   */
-  onsubmit?: OptionalProperty<EventHandler<SubmitEvent>>;
 }
 
 interface HTMLLabelElementProps extends PropertiesOf<HTMLLabelElement> {
@@ -3862,43 +2673,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
   title?: OptionalProperty<string>;
 
-  /*====================================*\
-  || Events                             ||
-  \*====================================*/
 
-  /**
-   * Fired when a submittable element has been checked for validity and doesn't satisfy its constraints.
-   * When a form is submitted, `invalid` events are fired at each form control that is invalid.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/invalid_event
-   */
-  onInvalid?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when text has been selected.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/select_event
-   */
-  onSelect?: OptionalProperty<EventHandler<Event>>;
-
-  /*====================================*\
-  || Event Properties                   ||
-  \*====================================*/
-
-  /**
-   * Fired when a submittable element has been checked for validity and doesn't satisfy its constraints.
-   * When a form is submitted, `invalid` events are fired at each form control that is invalid.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/invalid_event
-   */
-  oninvalid?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * Fired when text has been selected.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/select_event
-   */
-  onselect?: OptionalProperty<EventHandler<Event>>;
 }
 
 export type ButtonTypeValues = "submit" | "reset" | "button";
@@ -4067,20 +2842,6 @@ interface HTMLDetailsElementProps extends PropertiesOf<HTMLDetailsElement> {
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details
    */
   open?: OptionalProperty<boolean>;
-
-  /**
-   * The `toggle` event is fired when the `open`/`closed` state of a `<details>` element is toggled.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLDetailsElement/toggle_event
-   */
-  ontoggle?: OptionalProperty<EventHandler<Event>>;
-
-  /**
-   * The `toggle` event is fired when the `open`/`closed` state of a `<details>` element is toggled.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLDetailsElement/toggle_event
-   */
-  onToggle?: OptionalProperty<EventHandler<Event>>;
 }
 
 interface HTMLDialogElementProps extends PropertiesOf<HTMLDialogElement> {

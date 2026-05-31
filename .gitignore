@@ -6,3 +6,4 @@ coverage/
 .nova/
 tsconfig.tsbuildinfo
 esbuild-meta.json
+*.code-workspace
