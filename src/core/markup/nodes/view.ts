@@ -1,6 +1,6 @@
 import type { View } from "../../../types.js";
 import { Context, createContext, mountContext, cleanupContext } from "../../context.js";
-import { peek } from "../../signals.js";
+import { peek, pushComponentName, popComponentName } from "../../signals.js";
 import { MarkupNode } from "../types.js";
 import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -40,7 +40,9 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
+      pushComponentName(this.context.name);
       const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
+      popComponentName();
 
       if (viewContent != null && viewContent !== false) {
         this.#node = render(viewContent, this.context);
@@ -87,7 +89,9 @@ export class ViewNode<P> extends MarkupNode {
     this.#view = newView;
     this.context.name = newView.name;
 
+    pushComponentName(this.context.name);
     const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
+    popComponentName();
     this.#node =
       viewContent != null && viewContent !== false
         ? render(viewContent, this.context)

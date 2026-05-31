@@ -1,7 +1,7 @@
 import { Store } from "../types.js";
 import { assert } from "../utils.js";
 import { VIEW, ViewNode } from "./markup/nodes/view.js";
-import { createEffect, Unwrapped } from "./signals.js";
+import { createEffect, pushComponentName, popComponentName, Unwrapped } from "./signals.js";
 import { PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
@@ -70,25 +70,39 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 /**
  * Creates an effect that auto-tracks getters called within its callback.
  */
-export function onEffect(context: Context, fn: () => void): void;
+export function onEffect(context: Context, fn: () => void, options?: { name?: string }): void;
 
 /**
  * Creates an effect that tracks getters in its `deps` array.
  * Unwrapped values from `deps` are passed as arguments to the callback.
  * Getters called inside the callback are not tracked.
+ * For backwards compatibility, `options` can also be a bare deps array.
  */
 export function onEffect<const T extends readonly any[]>(
   context: Context,
   fn: (...values: Unwrapped<T>) => void,
-  deps: T,
+  options?: T | { deps?: T; name?: string },
 ): void;
 
-export function onEffect(context: Context, fn: () => void, deps?: any[]) {
+export function onEffect(
+  context: Context,
+  fn: () => void,
+  options?: any[] | { deps?: any[]; name?: string },
+) {
+  if (Array.isArray(options)) options = { deps: options };
+
+  const runEffect = () => {
+    pushComponentName(context.name);
+    const cleanup = createEffect(fn, options);
+    popComponentName();
+    return cleanup;
+  };
+
   if (context.isMounted) {
-    onCleanup(context, createEffect(fn, deps));
+    onCleanup(context, runEffect());
   } else {
     onMount(context, () => {
-      onCleanup(context, createEffect(fn, deps));
+      onCleanup(context, runEffect());
     });
   }
 }

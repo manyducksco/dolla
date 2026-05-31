@@ -3,7 +3,24 @@
 ![bundle size](https://img.shields.io/bundlephobia/min/@manyducks.co/dolla)
 ![bundle size](https://img.shields.io/bundlephobia/minzip/@manyducks.co/dolla)
 
-Dolla is a research framework for trying out ideas. The goal is to create a full-featured framework that, first and foremost, provides the **best developer experience possible** out of the box. Low resource usage and small code size are secondary objectives. It's more than a toy and less than a production-ready workhorse. It's a labor of love. Use at your own joy and peril.
+Dolla is a research framework for trying out ideas. The goal is to create a full-featured framework that, first and foremost, provides the **best developer experience possible** out of the box. Low resource usage and small code size are secondary objectives.
+
+Dolla is based on experience working with React, Angular, Vue, Svelte and Flutter, and is an amalgamation of all the things I liked and ways I wish things worked, all rolled into a single framework for making web-based SPAs. It's more than a toy and less than a production-ready workhorse. It's a labor of love. Use at your own joy and peril.
+
+## Features
+
+- 🚥 **Signals** — pinpoint reactive updates with no virtual DOM
+- 📦 **Views** — reusable UI components that run once and update via signals
+- 💾 **Stores** — share state across components via the context tree
+- 🧩 **Context inheritance** — prototypal context chain for stores, debug, and arbitrary data
+- 🎨 **CSS-in-JS** — scoped class names, reactive CSS variables, template composition
+- 🔀 **Router** — nested routes, lazy loading, guards, preload, error views
+- 🌍 **i18n** — pluralization, formatting, async translation loading
+- 📡 **HTTP client** — middleware pipeline, typed responses
+- 📜 **Virtual list** — recycled DOM pool, infinite scroll, sticky headers
+- ⏱ **Temporal helpers** — `debounce` and `throttle`
+- 🐛 **Debug logging** — colored, taggable, filterable
+- 🔥 **HMR** — hot module replacement via Vite plugin
 
 ## Installation
 
@@ -66,21 +83,6 @@ Dolla is modular. Import only what you need:
 | `@manyducks.co/dolla/translate` | +~1.2 KB       | i18n translation system                                       |
 | `@manyducks.co/dolla/http`      | +~1.2 KB       | Middleware-based HTTP client                                  |
 | `@manyducks.co/dolla/virtual`   | +~0 KB (lazy)  | Virtual scrolling list                                        |
-
-## Features
-
-- 🚥 **Signals** — pinpoint reactive updates with no virtual DOM
-- 📦 **Views** — reusable UI components that run once and update via signals
-- 💾 **Stores** — share state across components via the context tree
-- 🧩 **Context inheritance** — prototypal context chain for stores, debug, and arbitrary data
-- 🎨 **CSS-in-JS** — scoped class names, reactive CSS variables, template composition
-- 🔀 **Router** — nested routes, lazy loading, guards, preload, error views
-- 🌍 **i18n** — pluralization, formatting, async translation loading
-- 📡 **HTTP client** — middleware pipeline, typed responses
-- 📜 **Virtual list** — recycled DOM pool, infinite scroll, sticky headers
-- ⏱ **Temporal helpers** — `debounce` and `throttle`
-- 🐛 **Debug logging** — colored, taggable, filterable
-- 🔥 **HMR** — hot module replacement via Vite plugin
 
 ## Stores
 

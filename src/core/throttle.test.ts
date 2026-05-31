@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { sleep } from "../utils";
 import { throttle } from "./throttle";
 
-const WAIT_MS = 1;
+const WAIT_MS = 20;
 
 test("with function", async () => {
   let value = 0;
@@ -18,7 +18,7 @@ test("with function", async () => {
   expect(value).toBe(1);
   expect(update).toHaveBeenCalledTimes(1);
 
-  await sleep(WAIT_MS + 1);
+  await sleep(WAIT_MS + 5);
   throttled.call(4);
   throttled.call(5);
 
@@ -47,7 +47,7 @@ test("freeform", async () => {
   expect(value).toBe(1);
   expect(update).toHaveBeenCalledTimes(1);
 
-  await sleep(WAIT_MS + 1);
+  await sleep(WAIT_MS + 5);
   throttled.call(() => update(4));
   throttled.call(() => update(5));
 

@@ -66,6 +66,109 @@ let activeSub: ReactiveNode | undefined;
 
 const queued: (EffectNode | undefined)[] = [];
 
+/*==================================*\
+||         Debugging Helpers        ||
+\*==================================*/
+
+interface ReactiveNodeDebug {
+  type: "composed" | "effect";
+  name: string;
+  creationStack?: string;
+}
+
+const componentNameStack: string[] = [];
+const reactiveScopeStack: ReactiveNode[] = [];
+const nodeDebug = new WeakMap<ReactiveNode, ReactiveNodeDebug>();
+
+/**
+ * Pushes the current component name so compose/createEffect can pick it up.
+ */
+export function pushComponentName(name: string): void {
+  componentNameStack.push(name);
+}
+
+/**
+ * Restores the previous component name after a view function finishes.
+ */
+export function popComponentName(): void {
+  componentNameStack.pop();
+}
+
+function setNodeDebug(
+  node: ReactiveNode,
+  type: ReactiveNodeDebug["type"],
+  fn: Function,
+  nameOverride?: string,
+): void {
+  const componentName =
+    componentNameStack.length > 0 ? componentNameStack[componentNameStack.length - 1] : undefined;
+  const fnName = nameOverride || fn.name || "(anonymous)";
+  nodeDebug.set(node, {
+    type,
+    name: componentName ? `${componentName} → ${fnName}` : fnName,
+    creationStack: new Error().stack,
+  });
+}
+
+function enhanceError(error: unknown): unknown {
+  if (!(error instanceof Error)) return error;
+  if ((error as any)._dollaEnhanced) return error;
+
+  const scopes = reactiveScopeStack.slice();
+  if (scopes.length === 0) return error;
+
+  const lines: string[] = ["", "--- Reactive context ---"];
+  const total = scopes.length;
+  const showAll = total <= 6;
+  const headCount = showAll ? total : 3;
+  const tailCount = showAll ? 0 : 3;
+
+  for (let i = 0; i < headCount; i++) {
+    appendScopeLine(lines, i + 1, scopes[i]);
+  }
+
+  if (!showAll) {
+    const hidden = total - headCount - tailCount;
+    lines.push(`  ... (${hidden} more)`);
+
+    for (let i = total - tailCount; i < total; i++) {
+      appendScopeLine(lines, i + 1, scopes[i]);
+    }
+  }
+
+  const originalMessage = error.message;
+  const originalStack = error.stack;
+  (error as any)._dollaEnhanced = true;
+  error.message += "\n" + lines.join("\n");
+  if (!error.cause) {
+    const cause = new Error(originalMessage);
+    cause.stack = originalStack;
+    error.cause = cause;
+  }
+  return error;
+}
+
+function getCreationFrame(stack?: string): string {
+  if (!stack) return "";
+  const entries = stack.split("\n");
+  for (let i = 2; i < entries.length; i++) {
+    const line = entries[i].trim();
+    if (line.startsWith("at ") && !line.includes("signals.ts")) {
+      return line.replace(/^at /, "");
+    }
+  }
+  return "";
+}
+
+function appendScopeLine(lines: string[], number: number, node: ReactiveNode): void {
+  const info = nodeDebug.get(node);
+  if (info) {
+    const frame = getCreationFrame(info.creationStack);
+    const suffix = frame ? ` created at ${frame}` : "";
+    lines.push(`  ${number} → ${info.type} "${info.name}"${suffix}`);
+  }
+}
+
 function link(dep: ReactiveNode, sub: ReactiveNode, version: number): void {
   const prevDep = sub._depsTail;
   if (prevDep !== undefined && prevDep._dep === dep) {
@@ -110,7 +213,7 @@ function link(dep: ReactiveNode, sub: ReactiveNode, version: number): void {
 
 function unwatched(node: ReactiveNode): void {
   if (!(node._flags & ReactiveFlags.Mutable)) {
-    effectCleanup.call(node);
+    effectCleanup(node);
   } else if (node._depsTail !== undefined) {
     node._depsTail = undefined;
     node._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
@@ -345,13 +448,18 @@ function updateComputed(c: ComputedNode): boolean {
   c._depsTail = undefined;
   c._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
   const prevSub = setActiveSub(c);
+  const scopeLen = reactiveScopeStack.length;
+  reactiveScopeStack.push(c);
   try {
     const oldValue = c._value;
     return oldValue !== (c._value = c._getter(oldValue));
+  } catch (error) {
+    throw enhanceError(error);
   } finally {
     activeSub = prevSub;
     c._flags &= ~ReactiveFlags.RecursedCheck;
     purgeDeps(c);
+    reactiveScopeStack.length = scopeLen;
   }
 }
 
@@ -362,24 +470,32 @@ function updateValue(v: ValueNode): boolean {
 }
 
 function run(e: EffectNode): void {
-  const flags = e._flags;
-  if (flags & ReactiveFlags.Dirty || (flags & ReactiveFlags.Pending && checkDirty(e._deps!, e))) {
-    ++cycle;
-    e._depsTail = undefined;
-    e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
-    const prevSub = setActiveSub(e);
-    try {
-      e._cleanup?.();
-      e._cleanup = undefined;
-      const result = e._fn();
-      if (isFunction(result)) e._cleanup = result;
-    } finally {
-      activeSub = prevSub;
-      e._flags &= ~ReactiveFlags.RecursedCheck;
-      purgeDeps(e);
+  const scopeLen = reactiveScopeStack.length;
+  reactiveScopeStack.push(e);
+  try {
+    const flags = e._flags;
+    if (flags & ReactiveFlags.Dirty || (flags & ReactiveFlags.Pending && checkDirty(e._deps!, e))) {
+      ++cycle;
+      e._depsTail = undefined;
+      e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
+      const prevSub = setActiveSub(e);
+      try {
+        e._cleanup?.();
+        e._cleanup = undefined;
+        const result = e._fn();
+        if (isFunction(result)) e._cleanup = result;
+      } catch (error) {
+        throw enhanceError(error);
+      } finally {
+        activeSub = prevSub;
+        e._flags &= ~ReactiveFlags.RecursedCheck;
+        purgeDeps(e);
+      }
+    } else {
+      e._flags = ReactiveFlags.Watching;
     }
-  } else {
-    e._flags = ReactiveFlags.Watching;
+  } finally {
+    reactiveScopeStack.length = scopeLen;
   }
 }
 
@@ -418,53 +534,54 @@ function resolveValue<T>(next: SetterAction<T>, current: T): T {
   return next as T;
 }
 
-function computedGetter(this: ComputedNode) {
-  const flags = this._flags;
+function computedGetter(node: ComputedNode) {
+  const flags = node._flags;
   if (
     flags & ReactiveFlags.Dirty ||
     (flags & ReactiveFlags.Pending &&
-      (checkDirty(this._deps!, this) || ((this._flags = flags & ~ReactiveFlags.Pending), false)))
+      (checkDirty(node._deps!, node) || ((node._flags = flags & ~ReactiveFlags.Pending), false)))
   ) {
-    if (updateComputed(this)) {
-      const subs = this._subs;
+    if (updateComputed(node)) {
+      const subs = node._subs;
       if (subs !== undefined) {
         shallowPropagate(subs);
       }
     }
   } else if (!flags) {
-    this._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
-    const prevSub = setActiveSub(this);
+    node._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
+    const prevSub = setActiveSub(node);
+    const scopeLen = reactiveScopeStack.length;
+    reactiveScopeStack.push(node);
     try {
-      this._value = unwrap(this._getter());
+      node._value = unwrap(node._getter());
+    } catch (error) {
+      throw enhanceError(error);
     } finally {
       activeSub = prevSub;
-      this._flags &= ~ReactiveFlags.RecursedCheck;
+      node._flags &= ~ReactiveFlags.RecursedCheck;
+      reactiveScopeStack.length = scopeLen;
     }
   }
   const sub = activeSub;
   if (sub !== undefined) {
-    link(this, sub, cycle);
+    link(node, sub, cycle);
   }
-  return this._value!;
+  return node._value!;
 }
 
-function computedSetter(this: ComputedNode, next: SetterAction<any>) {
-  const value = resolveValue(next, this._value);
-  if (this._value !== value) {
-    this._value = value;
+function computedSetter(node: ComputedNode, next: SetterAction<any>) {
+  const value = resolveValue(next, node._value);
+  if (node._value !== value) {
+    node._value = value;
 
-    // Clear Dirty and Pending so _computedGetter skips updateComputed
-    this._flags &= ~(ReactiveFlags.Dirty | ReactiveFlags.Pending);
+    node._flags &= ~(ReactiveFlags.Dirty | ReactiveFlags.Pending);
 
-    // Manually push the Dirty flag to all subscribers
-    let link = this._subs;
+    let link = node._subs;
     while (link !== undefined) {
       const sub = link._sub;
       const subFlags = sub._flags;
 
-      // Only modify and notify if it isn't already queued for an update
       if ((subFlags & (ReactiveFlags.Dirty | ReactiveFlags.Pending)) === 0) {
-        // Force the node to be Dirty so it bypasses checkDirty() upon flush
         sub._flags = subFlags | ReactiveFlags.Dirty;
         notify(sub as EffectNode);
       }
@@ -472,7 +589,6 @@ function computedSetter(this: ComputedNode, next: SetterAction<any>) {
       link = link._nextSub;
     }
 
-    // Trigger queued effects
     if (!batchDepth) {
       flush();
     }
@@ -480,10 +596,10 @@ function computedSetter(this: ComputedNode, next: SetterAction<any>) {
   return value;
 }
 
-function valueGetter<T>(this: ValueNode<T>): T {
-  if (this._flags & ReactiveFlags.Dirty) {
-    if (updateValue(this)) {
-      const subs = this._subs;
+function valueGetter<T>(node: ValueNode<T>): T {
+  if (node._flags & ReactiveFlags.Dirty) {
+    if (updateValue(node)) {
+      const subs = node._subs;
       if (subs !== undefined) {
         shallowPropagate(subs);
       }
@@ -492,19 +608,19 @@ function valueGetter<T>(this: ValueNode<T>): T {
   let sub = activeSub;
   while (sub !== undefined) {
     if (sub._flags & (ReactiveFlags.Mutable | ReactiveFlags.Watching)) {
-      link(this, sub, cycle);
+      link(node, sub, cycle);
       break;
     }
     sub = sub._subs?._sub;
   }
-  return this._currentValue;
+  return node._currentValue;
 }
 
-function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): T {
-  const value = resolveValue(next, this._pendingValue);
-  if (this._pendingValue !== (this._pendingValue = value)) {
-    this._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
-    const subs = this._subs;
+function valueSetter<T>(node: ValueNode<T>, next: SetterAction<T>): T {
+  const value = resolveValue(next, node._pendingValue);
+  if (node._pendingValue !== (node._pendingValue = value)) {
+    node._flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
+    const subs = node._subs;
     if (subs !== undefined) {
       propagate(subs);
       if (!batchDepth) {
@@ -515,22 +631,22 @@ function valueSetter<T>(this: ValueNode<T>, next: SetterAction<T>): T {
   return value;
 }
 
-function customSetter<T>(this: Getter<T>, callback: (current: T) => T | void, value: SetterAction<T>): T {
-  const next = typeof value === "function" ? (value as (current: T) => T)(peek(this)) : value;
+function customSetter<T>(getter: Getter<T>, callback: (current: T) => T | void, value: SetterAction<T>): T {
+  const next = typeof value === "function" ? (value as (current: T) => T)(peek(getter)) : value;
   const returned = callback(next);
   return returned ?? next;
 }
 
-function effectCleanup(this: ReactiveNode): void {
-  this._depsTail = undefined;
-  this._flags = ReactiveFlags.None;
-  purgeDeps(this);
-  const sub = this._subs;
+function effectCleanup(node: ReactiveNode): void {
+  node._depsTail = undefined;
+  node._flags = ReactiveFlags.None;
+  purgeDeps(node);
+  const sub = node._subs;
   if (sub !== undefined) {
     unlink(sub);
   }
-  (this as EffectNode)._cleanup?.();
-  (this as EffectNode)._cleanup = undefined;
+  (node as EffectNode)._cleanup?.();
+  (node as EffectNode)._cleanup = undefined;
 }
 
 /*==================================*\
@@ -585,7 +701,7 @@ export function createAtom<T>(): AtomAccessors<T | undefined>;
  * getValue("overwritten");
  * getInputValue(); // "overwritten"
  */
-export function createAtom<T>(initialValue: Getter<T>): AtomAccessors<T>;
+export function createAtom<T>(initialValue: Getter<T>, options?: { name?: string }): AtomAccessors<T>;
 
 /**
  * Creates a new atom with a value computed from an existing getter.
@@ -604,7 +720,7 @@ export function createAtom<T>(initialValue: Getter<T>): AtomAccessors<T>;
  * getValue("overwritten");
  * getInputValue(); // "overwritten"
  */
-export function createAtom<T>(initialValue: MaybeGetter<T>): AtomAccessors<T>;
+export function createAtom<T>(initialValue: MaybeGetter<T>, options?: { name?: string }): AtomAccessors<T>;
 
 /**
  * Creates a new atom with an initial value.
@@ -613,9 +729,9 @@ export function createAtom<T>(initialValue: MaybeGetter<T>): AtomAccessors<T>;
  * @example
  * const [getCount, setCount] = createAtom(5);
  */
-export function createAtom<T>(initialValue: T): AtomAccessors<T>;
+export function createAtom<T>(initialValue: T, options?: { name?: string }): AtomAccessors<T>;
 
-export function createAtom<T>(value?: T) {
+export function createAtom<T>(value?: T, options?: { name?: string }) {
   if (isFunction<Getter<T>>(value)) {
     const node: ComputedNode<T> = {
       _value: undefined,
@@ -626,7 +742,8 @@ export function createAtom<T>(value?: T) {
       _flags: ReactiveFlags.None,
       _getter: value as (previousValue?: T | undefined) => T,
     };
-    return [computedGetter.bind(node), computedSetter.bind(node)];
+    setNodeDebug(node, "composed", value, options?.name);
+    return [() => computedGetter(node), (next: T) => computedSetter(node, next)];
   } else {
     const node: ValueNode<T> = {
       _currentValue: value as T,
@@ -636,7 +753,7 @@ export function createAtom<T>(value?: T) {
       _flags: ReactiveFlags.Mutable,
       _skipEqualValues: true,
     };
-    return [valueGetter.bind(node), valueSetter.bind(node)];
+    return [() => valueGetter(node), (next: T) => valueSetter(node, next)];
   }
 }
 
@@ -645,7 +762,7 @@ export function createAtom<T>(value?: T) {
  * The callback receives the current value and should return the new value.
  */
 export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T | void): Setter<T> {
-  return customSetter.bind(getter, callback as any) as Setter<T>;
+  return (value: SetterAction<T>) => customSetter(getter, callback as any, value);
 }
 
 /**
@@ -653,12 +770,12 @@ export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T |
  * Returns a lazy getter that only recomputes when a dependency changes.
  * Also accepts a plain value to create a constant getter (reverse unwrap).
  */
-export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T)): Getter<T> {
+export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T), options?: { name?: string }): Getter<T> {
   if (!isFunction(getter)) {
     // Creates a getter out of a plain value; reverse unwrap.
     return () => getter as T;
   }
-  return computedGetter.bind({
+  const node: ComputedNode = {
     _value: undefined,
     _subs: undefined,
     _subsTail: undefined,
@@ -666,13 +783,13 @@ export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T)): 
     _depsTail: undefined,
     _flags: ReactiveFlags.None,
     _getter: getter,
-  });
+  };
+  setNodeDebug(node, "composed", getter, options?.name);
+  return () => computedGetter(node);
 }
 
-function _depsGetter(this: MaybeGetter<any>[], fn: (...values: any[]) => void) {
-  // Trigger getters for all deps.
-  const values = this.map((dep) => unwrap(dep));
-  // Ignore tracking in original getter.
+function _depsGetter(deps: MaybeGetter<any>[], fn: (...values: any[]) => void) {
+  const values = deps.map((dep) => unwrap(dep));
   return peek(() => fn(...values));
 }
 
@@ -683,20 +800,28 @@ export type Unwrapped<T> = {
 /**
  * Creates an effect with auto-tracking for getters called within its callback.
  */
-export function createEffect(fn: () => void): () => void;
+export function createEffect(fn: () => void, options?: { name?: string }): () => void;
 
 /**
  * Creates an effect that tracks getters in its `deps` array.
  * Unwrapped values from `deps` are passed as arguments to the callback.
+ * For backwards compatibility, `options` can also be a bare deps array.
  */
 export function createEffect<const T extends readonly any[]>(
   fn: (...values: Unwrapped<T>) => void,
-  deps?: T,
+  options?: T | { deps?: T; name?: string },
 ): () => void;
 
-export function createEffect(fn: (...values: any[]) => void, deps?: any[]): () => void {
+export function createEffect(
+  fn: (...values: any[]) => void,
+  options?: any[] | { deps?: any[]; name?: string },
+): () => void {
+  if (Array.isArray(options)) options = { deps: options };
+  const deps = options?.deps;
+  const optsName = options?.name;
+
   const e: EffectNode = {
-    _fn: deps ? _depsGetter.bind(deps, fn) : fn,
+    _fn: deps ? () => _depsGetter(deps, fn) : fn,
     _cleanup: undefined,
     _subs: undefined,
     _subsTail: undefined,
@@ -704,18 +829,24 @@ export function createEffect(fn: (...values: any[]) => void, deps?: any[]): () =
     _depsTail: undefined,
     _flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
   };
+  setNodeDebug(e, "effect", fn, optsName);
   const prevSub = setActiveSub(e);
   if (prevSub !== undefined) {
     link(e, prevSub, 0);
   }
+  const scopeLen = reactiveScopeStack.length;
+  reactiveScopeStack.push(e);
   try {
     const result = e._fn();
     if (isFunction(result)) e._cleanup = result;
+  } catch (error) {
+    throw enhanceError(error);
   } finally {
     activeSub = prevSub;
     e._flags &= ~ReactiveFlags.RecursedCheck;
+    reactiveScopeStack.length = scopeLen;
   }
-  return effectCleanup.bind(e);
+  return () => effectCleanup(e);
 }
 
 /**
@@ -738,6 +869,8 @@ export function peek<T>(value: T | Getter<T>): T {
   const prevSub = setActiveSub(undefined);
   try {
     return unwrap(value);
+  } catch (error) {
+    throw enhanceError(error);
   } finally {
     setActiveSub(prevSub);
   }

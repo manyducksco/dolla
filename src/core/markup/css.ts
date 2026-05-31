@@ -1,4 +1,3 @@
-import { compile, middleware, prefixer, serialize, stringify } from "stylis";
 import { MaybeGetter, onCleanup } from "..";
 import { isFunction, uniqueId } from "../../utils";
 import { Context, onEffect } from "../context";
@@ -81,6 +80,78 @@ function attachClass(c: Context, className: string, element: HTMLElement | SVGEl
   }
 }
 
+const nonNestableAtRules = new Set([
+  "keyframes",
+  "font-face",
+  "property",
+  "counter-style",
+  "page",
+  "font-feature-values",
+]);
+
+/**
+ * Scans CSS and extracts at-rules that cannot be nested inside a style rule
+ * (@keyframes, @font-face, @property, @counter-style, @page, @font-feature-values).
+ * These are returned separately so they can be inserted as top-level rules,
+ * while the remaining CSS is wrapped in the class selector and inserted
+ * as a single style rule (relying on native CSS Nesting for @media etc.).
+ */
+function extractNonNestableAtRules(css: string): { cleanCss: string; extracted: string[] } {
+  const extracted: string[] = [];
+
+  let result = "";
+  let i = 0;
+
+  while (i < css.length) {
+    if (css[i] === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      result += css.slice(i, end !== -1 ? end + 2 : css.length);
+      i = end !== -1 ? end + 2 : css.length;
+      continue;
+    }
+
+    if (css[i] === "@") {
+      const start = i;
+      i++;
+
+      let name = "";
+      while (i < css.length && /[a-z-]/i.test(css[i])) name += css[i++];
+
+      if (nonNestableAtRules.has(name)) {
+        while (i < css.length && css[i] !== "{") i++;
+
+        if (i < css.length) {
+          const atRuleStart = start;
+          let depth = 0;
+          while (i < css.length) {
+            if (css[i] === "/" && css[i + 1] === "*") {
+              const end = css.indexOf("*/", i + 2);
+              i = end !== -1 ? end + 2 : css.length;
+              continue;
+            }
+            if (css[i] === "{") depth++;
+            else if (css[i] === "}") {
+              depth--;
+              if (depth === 0) {
+                i++;
+                extracted.push(css.slice(atRuleStart, i));
+                break;
+              }
+            }
+            i++;
+          }
+        }
+      } else {
+        result += css.slice(start, i);
+      }
+    } else {
+      result += css[i++];
+    }
+  }
+
+  return { cleanCss: result, extracted };
+}
+
 /*============================*\
 ||          Registry          ||
 \*============================*/
@@ -96,16 +167,21 @@ class StyleRegistry {
 
   insertClass(className: string, rawCss: string): void {
     if (this.classes.has(className)) return;
-    const compiled = serialize(compile(`.${className}{${rawCss}}`), middleware([prefixer, stringify]));
-    const rules = compiled
-      .split(/(?<=\})\s*(?=[.#@a-zA-Z:\*])/g)
-      .map((r) => r.trim())
-      .filter(Boolean);
-    for (const rule of rules) {
+
+    const { cleanCss, extracted } = extractNonNestableAtRules(rawCss);
+
+    for (const rule of extracted) {
       try {
         this.sheet.insertRule(rule, this.sheet.cssRules.length);
       } catch (e) {}
     }
+
+    if (cleanCss.trim()) {
+      try {
+        this.sheet.insertRule(`.${className}{${cleanCss}}`, this.sheet.cssRules.length);
+      } catch (e) {}
+    }
+
     this.classes.add(className);
   }
 
@@ -146,7 +222,12 @@ const registry = new StyleRegistry();
  * strips leading/trailing hyphens.
  */
 function sanitizeIdentifier(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "css";
+  return (
+    name
+      .replace(/[^a-zA-Z0-9_-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "css"
+  );
 }
 
 /*============================*\
