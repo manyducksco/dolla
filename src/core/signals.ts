@@ -662,7 +662,7 @@ export type Getter<T> = () => T;
  * A value that may be a static value or a getter function.
  * Can be converted to a plain value with `unwrap`.
  */
-export type MaybeGetter<T> = T | Getter<T>;
+export type MaybeGetter<T> = Getter<T> | T;
 
 /**
  * Updates the value of an atom. Takes a new plain value, or an update function to compute one.

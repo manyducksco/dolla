@@ -57,23 +57,6 @@ export function isArray(value: unknown): value is Array<unknown> {
 }
 
 /**
- * Returns true when `value` is an array and `check` returns true for every item.
- *
- * @param check - Function to check items against.
- * @param value - A possible array.
- */
-export function isArrayOf<T>(check: (item: unknown) => boolean, value: unknown): value is T[];
-export function isArrayOf<T>(check: (item: unknown) => boolean): (value: unknown) => value is T[];
-
-export function isArrayOf<T>(check: (item: unknown) => boolean, value?: unknown) {
-  if (value) {
-    return isArray(value) && value.every((item) => check(item));
-  } else {
-    return (value: unknown) => isArrayOf<T>(check, value);
-  }
-}
-
-/**
  * Returns true if `value` is a string.
  */
 export function isString(value: unknown): value is string {
@@ -96,23 +79,6 @@ export function isClass(value: unknown) {
  */
 export function isNumber(value: unknown): value is number {
   return typeof value === "number" && !isNaN(value);
-}
-
-/**
- * Returns `true` if `value` is an instance of `constructor`.
- *
- * @param constructor - The constructor `value` must be an instance of.
- * @param value - A value that may be an instance of `constructor`.
- */
-export function isInstanceOf<T extends Function>(constructor: T, value: unknown): value is T;
-export function isInstanceOf<T extends Function>(constructor: T): (value: unknown) => value is T;
-
-export function isInstanceOf<T extends Function>(constructor: T, value?: unknown) {
-  if (value) {
-    return value instanceof constructor;
-  } else {
-    return (value: unknown) => isInstanceOf(constructor, value);
-  }
 }
 
 /**

@@ -11,6 +11,10 @@ export interface LazyView<Props = any> {
   load: LazyLoader<Props>;
 }
 
+export function isLazyView(view: unknown): view is LazyView {
+  return (view as any)?._lazy === true;
+}
+
 export interface Route<Data = any> {
   /**
    * The path or path fragment to match.

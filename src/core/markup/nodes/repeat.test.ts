@@ -209,6 +209,155 @@ describe("RepeatNode", () => {
       expect(spans[1].textContent).toBe("two:1");
       expect(spans[2].textContent).toBe("three:2");
     });
+
+    test("reverses item order", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+      ]);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+
+      setItems([
+        { id: 3, text: "c" },
+        { id: 2, text: "b" },
+        { id: 1, text: "a" },
+      ]);
+      flushPendingUpdates();
+      const spans = container.querySelectorAll("span");
+      expect(spans[0].textContent).toBe("c:0");
+      expect(spans[1].textContent).toBe("b:1");
+      expect(spans[2].textContent).toBe("a:2");
+    });
+
+    test("moves first item to the end", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+      ]);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+
+      setItems([
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+        { id: 1, text: "a" },
+      ]);
+      flushPendingUpdates();
+      const spans = container.querySelectorAll("span");
+      expect(spans[0].textContent).toBe("b:0");
+      expect(spans[1].textContent).toBe("c:1");
+      expect(spans[2].textContent).toBe("a:2");
+    });
+
+    test("shuffles items arbitrarily", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+        { id: 4, text: "d" },
+      ]);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+
+      setItems([
+        { id: 4, text: "d" },
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+        { id: 1, text: "a" },
+      ]);
+      flushPendingUpdates();
+      const spans = container.querySelectorAll("span");
+      expect(spans[0].textContent).toBe("d:0");
+      expect(spans[1].textContent).toBe("b:1");
+      expect(spans[2].textContent).toBe("c:2");
+      expect(spans[3].textContent).toBe("a:3");
+    });
+
+    test("complex update with insert, delete, and reorder simultaneously", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+        { id: 4, text: "d" },
+      ]);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+
+      setItems([
+        { id: 4, text: "d" },
+        { id: 5, text: "e" },
+        { id: 2, text: "b" },
+      ]);
+      flushPendingUpdates();
+      const spans = container.querySelectorAll("span");
+      expect(spans.length).toBe(3);
+      expect(spans[0].textContent).toBe("d:0");
+      expect(spans[1].textContent).toBe("e:1");
+      expect(spans[2].textContent).toBe("b:2");
+    });
+
+    test("reuses DOM nodes when reordering (keyed reconciliation)", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+        { id: 3, text: "c" },
+      ]);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+
+      const spansBefore = Array.from(container.querySelectorAll("span"));
+
+      setItems([
+        { id: 3, text: "c" },
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+      ]);
+      flushPendingUpdates();
+
+      const spansAfter = Array.from(container.querySelectorAll("span"));
+      expect(spansAfter.length).toBe(3);
+      expect(spansAfter[0]).toBe(spansBefore[2]); // key 3 moved to front
+      expect(spansAfter[1]).toBe(spansBefore[0]); // key 1 moved to middle
+      expect(spansAfter[2]).toBe(spansBefore[1]); // key 2 moved to end
+    });
+
+    test("handles multiple rapid signal updates before flush", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 2, text: "b" },
+      ]);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+
+      setItems([
+        { id: 2, text: "b" },
+        { id: 1, text: "a" },
+      ]); // reorder
+      setItems([
+        { id: 2, text: "b" },
+        { id: 1, text: "a" },
+        { id: 3, text: "c" },
+      ]); // append
+      setItems([
+        { id: 3, text: "c" },
+        { id: 2, text: "b" },
+      ]); // remove + reorder
+      flushPendingUpdates();
+
+      const spans = container.querySelectorAll("span");
+      expect(spans.length).toBe(2);
+      expect(spans[0].textContent).toBe("c:0");
+      expect(spans[1].textContent).toBe("b:1");
+    });
   });
 
   describe("render function gets correct values", () => {
@@ -288,12 +437,50 @@ describe("RepeatNode", () => {
     });
   });
 
-  describe("move (not implemented)", () => {
-    test("move delegates to mount", () => {
+  describe("move", () => {
+    test("repositions the anchor text node after the target", () => {
+      const { context, container } = setup();
+      const [items] = createAtom<Item[]>([{ id: 1, text: "one" }]);
+      const before = document.createElement("div");
+      const after = document.createElement("div");
+      container.append(before, after);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container, before);
+
+      const childIdx = (n: Node | null) => Array.prototype.indexOf.call(container.childNodes, n!);
+
+      // Anchor is between `before` and `after`, item spans sit after the anchor
+      expect(childIdx(node.getRoot())).toBeGreaterThan(childIdx(before));
+      expect(childIdx(node.getRoot())).toBeLessThan(childIdx(after));
+
+      node.move(container, after);
+
+      // Anchor is now after `after`
+      expect(childIdx(node.getRoot())).toBeGreaterThan(childIdx(after));
+    });
+
+    test("move preserves rendered content", () => {
+      const { context, container } = setup();
+      const [items] = createAtom<Item[]>([
+        { id: 1, text: "one" },
+        { id: 2, text: "two" },
+      ]);
+      const before = document.createElement("div");
+      const after = document.createElement("div");
+      container.append(before, after);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container, before);
+
+      node.move(container, after);
+      const spans = container.querySelectorAll("span");
+      expect(spans[0].textContent).toBe("one:0");
+      expect(spans[1].textContent).toBe("two:1");
+    });
+
+    test("does not throw when called on unmounted node", () => {
       const { context, container } = setup();
       const [items] = createAtom<Item[]>([{ id: 1, text: "one" }]);
       const node = new RepeatNode(context, items, keyFn, renderFn);
-      node.mount(container);
       expect(() => node.move(container)).not.toThrow();
     });
   });

@@ -82,8 +82,31 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   override move(parent: Element, after?: Node) {
-    // TODO: Implement move
-    return this.mount(parent, after);
+    let referenceNode: Node | null = after?.nextSibling ?? null;
+
+    if (parent.moveBefore) {
+      try {
+        parent.moveBefore(this.#root, referenceNode);
+        referenceNode = this.#root.nextSibling;
+
+        for (const connected of this.#connectedItems.values()) {
+          const childRoot = connected._node.getRoot();
+          if (childRoot) {
+            (parent as any).moveBefore(childRoot, referenceNode);
+          }
+        }
+        return;
+      } catch {}
+    }
+
+    parent.insertBefore(this.#root, referenceNode);
+    referenceNode = this.#root.nextSibling;
+
+    for (const connected of this.#connectedItems.values()) {
+      connected._node.move(parent, referenceNode ?? undefined);
+      const childRoot = connected._node.getRoot();
+      if (childRoot) referenceNode = childRoot;
+    }
   }
 
   private _cleanup(skipDOM: boolean) {
@@ -103,24 +126,13 @@ export class RepeatNode<T> extends MarkupNode {
     const nextItems = new Map<Key, ConnectedItem<T>>();
 
     batch(() => {
-      // Track keys for the incoming list
-      const nextKeys = new Set(value.map((item, index) => this.#key(item, index)));
-
-      // Unmount deleted items immediately.
-      // This collapses the DOM tree so surviving items sit adjacent to each other.
-      for (const [key, connected] of this.#connectedItems.entries()) {
-        if (!nextKeys.has(key)) {
-          connected._node.unmount(false);
-        }
-      }
-
       // Prepare state and allocate new nodes.
       for (let i = 0; i < value.length; i++) {
         const itemVal = value[i];
         const key = this.#key(itemVal, i);
         let connected = this.#connectedItems.get(key);
 
-        if (connected && nextKeys.has(key)) {
+        if (connected) {
           connected._setItem(itemVal);
           connected._setIndex(i);
         } else {
@@ -144,6 +156,13 @@ export class RepeatNode<T> extends MarkupNode {
         }
         nextItems.set(key, connected);
       }
+
+      // Unmount deleted items using the new key map for O(1) lookup.
+      for (const [key, connected] of this.#connectedItems.entries()) {
+        if (!nextItems.has(key)) {
+          connected._node.unmount(false);
+        }
+      }
     });
 
     this.#connectedItems = nextItems;
@@ -156,14 +175,11 @@ export class RepeatNode<T> extends MarkupNode {
       const expectedNext = referenceNode.nextSibling;
 
       if (!connected._node.isMounted()) {
-        // Node is new. Mount it exactly at the current cursor.
         connected._node.mount(parent, referenceNode);
       } else if (connected._node.getRoot() !== expectedNext) {
-        // Node is out of order. Move it.
         connected._node.move(parent, referenceNode);
       }
 
-      // Advance the cursor.
       referenceNode = connected._node.getRoot()!;
     }
   }

@@ -10,6 +10,7 @@ import type { View } from "../types.js";
 import { assert } from "../utils.js";
 import { RouterStore } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
+import { isLazyView } from "./types.js";
 import {
   buildRouteTree,
   catchLinks,
@@ -130,8 +131,8 @@ export function createRouter(options: RouterOptions): DollaPlugin {
           );
         }
 
-        const view = layer.view as LazyView;
-        if (view._lazy) {
+        const view = layer.view;
+        if (isLazyView(view)) {
           tasks.push(
             view.load().then((mod) => {
               layer.view = (mod as any).default ?? mod; // Overwrite with loaded module

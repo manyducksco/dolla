@@ -6,7 +6,7 @@ import { DEBUG } from "../../symbols.js";
 import { isCSSTemplate } from "../css.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
-import { addChild, toMarkupNodes } from "../utils.js";
+import { addChild, camelToKebab, moveAfter, toMarkupNodes } from "../utils.js";
 
 const IS_SVG = Symbol.for("$_IS_SVG");
 
@@ -134,13 +134,7 @@ export class ElementNode extends MarkupNode {
   }
 
   override move(parent: MountTarget, after?: Node) {
-    if (parent.moveBefore) {
-      try {
-        parent.moveBefore(this.#root, after?.nextSibling ?? null);
-        return;
-      } catch {}
-    }
-    this.mount(parent, after);
+    moveAfter(parent, this.#root, after);
   }
 
   #attach<T>(value: Getter<T> | T, callback: (value: T) => void) {
@@ -363,13 +357,6 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
     );
   }
   return {};
-}
-
-/**
- * Converts a camelCase string to kebab-case.
- */
-function camelToKebab(value: string): string {
-  return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
 }
 
 const acceptsUnitless = new Set<string>([

@@ -25,6 +25,13 @@ export function isMarkup<T extends string | View<any> | (new (...args: any[]) =>
   return value?.[IS_MARKUP] ?? false;
 }
 
+/**
+ * Converts a camelCase string to kebab-case.
+ */
+export function camelToKebab(value: string): string {
+  return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
+}
+
 export function isMarkupNode(value: any): value is MarkupNode {
   return value?.[IS_MARKUP_NODE] ?? false;
 }

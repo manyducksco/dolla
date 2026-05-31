@@ -48,6 +48,18 @@ export type MaybeGetter<T> = Getter<T> | T;
 type RequiredProperty<T> = Getter<T> | T;
 type OptionalProperty<T> = Getter<T> | Getter<T | undefined> | T;
 
+type ReferrerPolicy =
+  | "no-referrer"
+  | "no-referrer-when-downgrade"
+  | "origin"
+  | "origin-when-cross-origin"
+  | "same-origin"
+  | "strict-origin"
+  | "strict-origin-when-cross-origin"
+  | "unsafe-url";
+
+type SizeProperty = OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+
 type AutocapitalizeValues = "off" | "on" | "none" | "sentences" | "words" | "characters";
 type ContentEditableValues = true | false | "true" | "false" | "plaintext-only" | "inherit";
 type ClassListValues = string | ClassMap | Array<string | ClassMap | (string | ClassMap)[]>;
@@ -1430,16 +1442,7 @@ interface HTMLAnchorElementProps extends PropertiesOf<HTMLAnchorElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#attr-referrerpolicy
    */
-  referrerPolicy?: OptionalProperty<
-    | "no-referrer"
-    | "no-referrer-when-downgrade"
-    | "origin"
-    | "origin-when-cross-origin"
-    | "same-origin"
-    | "strict-origin"
-    | "strict-origin-when-cross-origin"
-    | "unsafe-url"
-  >;
+  referrerPolicy?: OptionalProperty<ReferrerPolicy>;
 }
 
 interface HTMLAbbrElementProps extends PropertiesOf<HTMLElement> {
@@ -1853,14 +1856,14 @@ interface HTMLVideoElementProps extends HTMLMediaElementProps<HTMLVideoElement> 
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement
    */
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
 
   /**
    * The width of the video's display area in CSS pixels. This must be an absolute value; percentages are not allowed.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement
    */
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
 
   /**
    * A URL for an image to show while video data is loading. If this attribute isn't specified, nothing is
@@ -1927,7 +1930,7 @@ interface HTMLSourceElementProps extends PropertiesOf<HTMLSourceElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/source#attr-height
    */
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
 
   /**
    * The width of the image in pixels. Must be an integer without a unit.
@@ -1936,7 +1939,7 @@ interface HTMLSourceElementProps extends PropertiesOf<HTMLSourceElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/source#attr-width
    */
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
 }
 
 interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
@@ -1979,14 +1982,14 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/height
    */
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
 
   /**
    * The width of the image in CSS pixels. Must be an integer without a unit.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/width
    */
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
 
   /**
    * Indicates that the image is part of a [server-side map](https://en.wikipedia.org/wiki/Image_map#Server-side).
@@ -2013,16 +2016,7 @@ interface HTMLImageElementProps extends PropertiesOf<HTMLImageElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/referrerPolicy
    */
-  referrerPolicy?: OptionalProperty<
-    | "no-referrer"
-    | "no-referrer-when-downgrade"
-    | "origin"
-    | "origin-when-cross-origin"
-    | "same-origin"
-    | "strict-origin"
-    | "strict-origin-when-cross-origin"
-    | "unsafe-url"
-  >;
+  referrerPolicy?: OptionalProperty<ReferrerPolicy>;
 
   /**
    * One or more strings separated by commas, indicating a set of source sizes.
@@ -2072,12 +2066,12 @@ interface HTMLIFrameElementProps extends PropertiesOf<HTMLIFrameElement> {
   /**
    * The height of the frame in CSS pixels.
    */
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
 
   /**
    * The width of the frame in CSS pixels.
    */
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
 
   /**
    * Indicates how the browser should load the iframe.
@@ -2106,16 +2100,7 @@ interface HTMLIFrameElementProps extends PropertiesOf<HTMLIFrameElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLIFrameElement/referrerPolicy
    */
-  referrerPolicy?: OptionalProperty<
-    | "no-referrer"
-    | "no-referrer-when-downgrade"
-    | "origin"
-    | "origin-when-cross-origin"
-    | "same-origin"
-    | "strict-origin"
-    | "strict-origin-when-cross-origin"
-    | "unsafe-url"
-  >;
+  referrerPolicy?: OptionalProperty<ReferrerPolicy>;
 
   /**
    * The URL of the page to embed.
@@ -2159,12 +2144,12 @@ interface HTMLObjectElementProps extends PropertiesOf<HTMLObjectElement> {
   /**
    * The displayed height of the resource, in CSS pixels. This must be an absolute value; percentages are not allowed.
    */
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
 
   /**
    * The displayed width of the resource, in CSS pixels. This must be an absolute value; percentages are not allowed.
    */
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
 
   /**
    * The address of the resource as a valid URL. At least one of `data` and `type` must be defined.
@@ -2283,16 +2268,7 @@ interface HTMLAreaElementProps extends PropertiesOf<HTMLAreaElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/area#attr-referrerpolicy
    */
-  referrerPolicy?: OptionalProperty<
-    | "no-referrer"
-    | "no-referrer-when-downgrade"
-    | "origin"
-    | "origin-when-cross-origin"
-    | "same-origin"
-    | "strict-origin"
-    | "strict-origin-when-cross-origin"
-    | "unsafe-url"
-  >;
+  referrerPolicy?: OptionalProperty<ReferrerPolicy>;
 
   /**
    * For anchors containing the `href` attribute, this attribute specifies the relationship of the target object
@@ -2651,11 +2627,11 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   formMethod?: OptionalProperty<string>;
   formNoValidate?: OptionalProperty<boolean>;
   formTarget?: OptionalProperty<string>;
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
   list?: OptionalProperty<string>;
-  max?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  max?: SizeProperty;
   maxLength?: OptionalProperty<number>;
-  min?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  min?: SizeProperty;
   minLength?: OptionalProperty<number>;
   multiple?: OptionalProperty<boolean>;
   name?: OptionalProperty<string>;
@@ -2670,7 +2646,7 @@ interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
   step?: OptionalProperty<number>;
   type?: OptionalProperty<InputType>;
   value?: OptionalProperty<string>;
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
   title?: OptionalProperty<string>;
 
 
@@ -2880,14 +2856,14 @@ interface HTMLCanvasElementProps extends PropertiesOf<HTMLCanvasElement> {
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas#attributes
    */
-  width?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  width?: SizeProperty;
 
   /**
    * The height of the coordinate space in CSS pixels. Defaults to 150.
    *
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas#attributes
    */
-  height?: OptionalProperty<string | number> | OptionalProperty<string> | OptionalProperty<number>;
+  height?: SizeProperty;
 }
 
 /*====================================*\
