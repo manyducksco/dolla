@@ -53,10 +53,12 @@ type RouteMatchOptions = {
  * @returns an array of fragments (e.g. `["api", "users", "5"]`)
  */
 function splitPath(path: string): string[] {
-  return path
-    .split("/")
-    .map((f) => f.trim())
-    .filter(Boolean);
+  const result: string[] = [];
+  for (const segment of path.split("/")) {
+    const trimmed = segment.trim();
+    if (trimmed) result.push(trimmed);
+  }
+  return result;
 }
 
 /**

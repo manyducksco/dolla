@@ -424,6 +424,7 @@ function flush(): void {
     }
     notifyIndex = 0;
     queuedLength = 0;
+    queued.length = 0;
   }
 }
 

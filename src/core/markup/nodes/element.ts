@@ -334,9 +334,7 @@ export class ElementNode extends MarkupNode {
     const apply = (current: unknown) => {
       this.#clearLocalSubs(localUnsubs);
 
-      for (const name of staticClasses) {
-        element.classList.remove(name);
-      }
+      const prevStaticClasses = new Set(staticClasses);
       staticClasses.clear();
 
       const { templates: currentTemplates, remaining: processedValue } =
@@ -353,6 +351,7 @@ export class ElementNode extends MarkupNode {
         if (name === "undefined") continue;
 
         if (isFunction(value)) {
+          prevStaticClasses.delete(name);
           const unsub = subscribe(value, (isActive) => {
             scheduleUpdate(() => element.classList.toggle(name, !!isActive));
           });
@@ -366,6 +365,10 @@ export class ElementNode extends MarkupNode {
           element.classList.add(name);
           staticClasses.add(name);
         }
+      }
+
+      for (const name of prevStaticClasses) {
+        element.classList.remove(name);
       }
     };
 
@@ -525,9 +528,9 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
       const key = line.substring(0, colonIdx).trim();
       let rawVal = line.substring(colonIdx + 1).trim();
       let priority = "";
-      const importantMatch = rawVal.match(/\s*!important\s*$/i);
-      if (importantMatch) {
-        rawVal = rawVal.slice(0, importantMatch.index).trimEnd();
+      const importantIdx = rawVal.toLowerCase().lastIndexOf("!important");
+      if (importantIdx !== -1 && rawVal.slice(importantIdx + 10).trimEnd() === "") {
+        rawVal = rawVal.slice(0, importantIdx).trimEnd();
         priority = "important";
       }
       entries.push([camelToKebab(key), { value: rawVal, priority }]);
