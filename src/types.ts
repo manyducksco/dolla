@@ -73,27 +73,27 @@ type TargetEvent<T extends Event, E extends EventTarget> = T & { readonly curren
 type OnEventProps<E extends EventTarget, M> = {
   [K in keyof M & string]?: EventHandler<TargetEvent<M[K] & Event, E>>;
 } & {
-  [K in keyof M & string as K extends `on${infer Rest}`
-    ? `on${Lowercase<Rest>}`
-    : never]?: EventHandler<TargetEvent<M[K] & Event, E>>;
+  [K in keyof M & string as K extends `on${infer Rest}` ? `on${Lowercase<Rest>}` : never]?: EventHandler<
+    TargetEvent<M[K] & Event, E>
+  >;
 } & {
-  [K in keyof M & string as K extends `on${infer Rest}`
-    ? `on:${Lowercase<Rest>}`
-    : never]?: EventHandler<TargetEvent<M[K] & Event, E>> | {
-      handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
-      capture?: boolean;
-      once?: boolean;
-      passive?: boolean;
-    };
+  [K in keyof M & string as K extends `on${infer Rest}` ? `on:${Lowercase<Rest>}` : never]?:
+    | EventHandler<TargetEvent<M[K] & Event, E>>
+    | {
+        handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
+        capture?: boolean;
+        once?: boolean;
+        passive?: boolean;
+      };
 } & {
-  [K in keyof M & string as K extends `on${infer Rest}`
-    ? `@${Lowercase<Rest>}`
-    : never]?: EventHandler<TargetEvent<M[K] & Event, E>> | {
-      handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
-      capture?: boolean;
-      once?: boolean;
-      passive?: boolean;
-    };
+  [K in keyof M & string as K extends `on${infer Rest}` ? `@${Lowercase<Rest>}` : never]?:
+    | EventHandler<TargetEvent<M[K] & Event, E>>
+    | {
+        handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
+        capture?: boolean;
+        once?: boolean;
+        passive?: boolean;
+      };
 };
 
 /*====================================*\
@@ -308,8 +308,7 @@ interface CustomEventMap {
   onClickOutside: MouseEvent;
 }
 
-type EventsFor<E extends EventTarget> =
-  OnEventProps<E, ElementEventMap> &
+type EventsFor<E extends EventTarget> = OnEventProps<E, ElementEventMap> &
   (E extends HTMLElement ? OnEventProps<E, HTMLElementEventMap> : {}) &
   (E extends HTMLFormElement ? OnEventProps<E, FormSpecificEventMap> : {}) &
   (E extends HTMLMediaElement ? OnEventProps<E, MediaSpecificEventMap> : {}) &
@@ -470,7 +469,6 @@ export interface ElementProps {
     | MaybeGetter<CSSProperties>
     | MaybeGetter<CSSProperties | undefined>
     | CSSTemplate;
-
 }
 
 export interface HTMLElementProps extends ElementProps {
@@ -562,13 +560,13 @@ export interface HTMLElementProps extends ElementProps {
    */
   lang?: OptionalProperty<string>;
 
-  // TODO: Allow nonce? This seems to be primarily used to inject scripts, which generally isn't done done in an SPA.
-  // nonce?: string | Readable<string> | Readable<string | undefined>;
-
   /**
-   * TODO: Add support. Currently experimental.
+   * A cryptographic nonce (number used once) that can be used by Content Security Policy
+   * to determine whether a given fetch will be allowed to proceed.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/nonce
    */
-  // popover?: never;
+  nonce?: OptionalProperty<string>;
 
   /**
    * This element's position in the tab order, or the order this element will be focused as the user cycles through elements with the tab key.
@@ -591,13 +589,48 @@ export interface HTMLElementProps extends ElementProps {
   /* This section includes props that don't truly exist as props on DOM nodes, but instead map to HTML attributes.
      These attributes can be set through props on Markup elements. */
 
-  // TODO: `is` (https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/is)
+  /**
+   * Allows you to specify that a standard HTML element should behave like a registered custom element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/is
+   */
+  is?: OptionalProperty<string>;
 
-  // TODO: `item*` microdata attributes
+  /**
+   * The microdata `itemid` attribute, the unique ID of an item.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemid
+   */
+  itemId?: OptionalProperty<string>;
 
+  /**
+   * The microdata `itemprop` attribute, the property name of an item.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemprop
+   */
+  itemProp?: OptionalProperty<string>;
+
+  /**
+   * The microdata `itemref` attribute, IDs of other elements that provide additional properties.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemref
+   */
+  itemRef?: OptionalProperty<string>;
+
+  /**
+   * The microdata `itemscope` attribute, which creates an item.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemscope
+   */
+  itemScope?: OptionalProperty<boolean>;
+
+  /**
+   * The microdata `itemtype` attribute, the URL of the vocabulary that defines the item's properties.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/itemtype
+   */
+  itemType?: OptionalProperty<string>;
 }
-
-
 
 /**
  * The set of HTML attributes supported by all HTML elements.
@@ -811,27 +844,209 @@ export interface ClassMap {
 
 export type EventHandler<E> = (event: E) => void;
 
-export type PropertiesOf<E extends HTMLElement> = HTMLElementProps & EventsFor<E> & {
-  /**
-   * For TypeScript support; child elements passed through JSX.
-   */
-  children?: any;
+export type PropertiesOf<E extends HTMLElement> = HTMLElementProps &
+  EventsFor<E> & {
+    /**
+     * For TypeScript support; child elements passed through JSX.
+     */
+    children?: any;
 
-  /**
-   * Receives a reference to the DOM node when rendered.
-   * Returns a cleanup function that is called when the node is removed.
-   */
-  ref?:
-    | ((value: E) => () => void)
-    | ((value: HTMLElement) => () => void)
-    | ((value: Element) => () => void)
-    | ((value: Node) => () => void);
-};
+    /**
+     * Receives a reference to the DOM node when rendered.
+     * Returns a cleanup function that is called when the node is removed.
+     */
+    ref?:
+      | ((value: E) => () => void)
+      | ((value: HTMLElement) => () => void)
+      | ((value: Element) => () => void)
+      | ((value: Node) => () => void);
+  };
 
 /**
  * The following elements are defined based on the WHATWG HTML spec:
  * https://html.spec.whatwg.org/multipage/#toc-semantics
  **/
+
+/*====================================*\
+|| 4.2        Document metadata       ||
+\*====================================*/
+
+export interface IntrinsicElements {
+  /**
+   * The _External Resource Link_ element.
+   *
+   * Specifies relationships between the current document and an external resource.
+   * Commonly used to link stylesheets, icons, preload assets, and more.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
+   */
+  link: HTMLLinkElementProps;
+
+  /**
+   * The _Metadata_ element.
+   *
+   * Represents metadata that cannot be represented by other HTML meta-related elements,
+   * such as `<base>`, `<link>`, `<script>`, `<style>`, or `<title>`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta
+   */
+  meta: HTMLMetaElementProps;
+
+  /**
+   * The _Style Information_ element.
+   *
+   * Contains style information for a document, or part of a document.
+   * It contains CSS, which is applied to the contents of the document containing the element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/style
+   */
+  style: HTMLStyleElementProps;
+}
+
+interface HTMLLinkElementProps extends PropertiesOf<HTMLLinkElement> {
+  /**
+   * The URL of the linked resource.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-href
+   */
+  href?: OptionalProperty<string>;
+
+  /**
+   * The relationship of the linked document to the current document.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-rel
+   */
+  rel?: OptionalProperty<string>;
+
+  /**
+   * The type of content to preload when `rel="preload"` or `rel="prefetch"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-as
+   */
+  as?: OptionalProperty<
+    | "audio"
+    | "document"
+    | "embed"
+    | "fetch"
+    | "font"
+    | "image"
+    | "object"
+    | "script"
+    | "style"
+    | "track"
+    | "video"
+    | "worker"
+  >;
+
+  /**
+   * The MIME type of the linked resource.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-type
+   */
+  type?: OptionalProperty<string>;
+
+  /**
+   * The sizes of the icons for visual media.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-sizes
+   */
+  sizes?: OptionalProperty<string>;
+
+  /**
+   * Whether to use CORS when fetching the resource.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/crossorigin
+   */
+  crossOrigin?: OptionalProperty<"anonymous" | "use-credentials">;
+
+  /**
+   * The media that the linked resource applies to.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-media
+   */
+  media?: OptionalProperty<string>;
+
+  /**
+   * Subresource integrity hash for the linked resource.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-integrity
+   */
+  integrity?: OptionalProperty<string>;
+
+  /**
+   * Which referrer to use when fetching the resource.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-referrerpolicy
+   */
+  referrerPolicy?: OptionalProperty<ReferrerPolicy>;
+
+  /**
+   * The language of the linked resource.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-hreflang
+   */
+  hreflang?: OptionalProperty<string>;
+
+  /**
+   * Whether the linked stylesheet is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link#attr-disabled
+   */
+  disabled?: OptionalProperty<boolean>;
+}
+
+interface HTMLMetaElementProps extends PropertiesOf<HTMLMetaElement> {
+  /**
+   * The name of the metadata property.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#attr-name
+   */
+  name?: OptionalProperty<string>;
+
+  /**
+   * The value of the metadata property.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#attr-content
+   */
+  content?: OptionalProperty<string>;
+
+  /**
+   * Defines a pragma directive.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#attr-http-equiv
+   */
+  httpEquiv?: OptionalProperty<string>;
+
+  /**
+   * Declares the character encoding of the document.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#attr-charset
+   */
+  charset?: OptionalProperty<string>;
+
+  /**
+   * The media that the metadata applies to.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta#attr-media
+   */
+  media?: OptionalProperty<string>;
+}
+
+interface HTMLStyleElementProps extends PropertiesOf<HTMLStyleElement> {
+  /**
+   * The media for which the style information applies.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/style#attr-media
+   */
+  media?: OptionalProperty<string>;
+
+  /**
+   * Whether the style is blocked from applying.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/style#attr-blocking
+   */
+  blocking?: OptionalProperty<"render">;
+}
 
 /*====================================*\
 || 4.3                       Sections ||
@@ -964,6 +1179,16 @@ export interface IntrinsicElements {
    * @see https://html.spec.whatwg.org/multipage/sections.html#the-address-element
    */
   address: PropertiesOf<HTMLElement>;
+
+  /**
+   * The _Search_ element.
+   *
+   * Represents a section of the document whose contents are intended to enable the user to search or filter
+   * the document or site. This can include search results, search suggestions, or a search input.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/search
+   */
+  search: PropertiesOf<HTMLElement>;
 }
 
 /*====================================*\
@@ -1748,107 +1973,108 @@ export interface IntrinsicElements {
   area: HTMLAreaElementProps;
 }
 
-type HTMLMediaElementProps<T extends HTMLMediaElement> = HTMLElementProps & PropertiesOf<T> & {
-  /**
-   * Play the media automatically when it loads.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/autoplay
-   */
-  autoplay?: OptionalProperty<boolean>;
+type HTMLMediaElementProps<T extends HTMLMediaElement> = HTMLElementProps &
+  PropertiesOf<T> & {
+    /**
+     * Play the media automatically when it loads.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/autoplay
+     */
+    autoplay?: OptionalProperty<boolean>;
 
-  /**
-   * Display playback controls.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/controls
-   */
-  controls?: OptionalProperty<boolean>;
+    /**
+     * Display playback controls.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/controls
+     */
+    controls?: OptionalProperty<boolean>;
 
-  /**
-   * Indicates whether to use CORS to fetch the media. If not present the media is fetched without a CORS request.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/crossOrigin
-   */
-  crossOrigin?: OptionalProperty<"anonymous" | "use-credentials">;
+    /**
+     * Indicates whether to use CORS to fetch the media. If not present the media is fetched without a CORS request.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/crossOrigin
+     */
+    crossOrigin?: OptionalProperty<"anonymous" | "use-credentials">;
 
-  /**
-   * Indicates whether the media will start over automatically once the end is reached.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loop
-   */
-  loop?: OptionalProperty<boolean>;
+    /**
+     * Indicates whether the media will start over automatically once the end is reached.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/loop
+     */
+    loop?: OptionalProperty<boolean>;
 
-  /**
-   * Indicates whether the media element will play audio. A value of `true` will prevent audio playback.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/muted
-   */
-  muted?: OptionalProperty<boolean>;
+    /**
+     * Indicates whether the media element will play audio. A value of `true` will prevent audio playback.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/muted
+     */
+    muted?: OptionalProperty<boolean>;
 
-  /**
-   * Indicates whether the media element is paused.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/paused
-   */
-  paused?: OptionalProperty<boolean>;
+    /**
+     * Indicates whether the media element is paused.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/paused
+     */
+    paused?: OptionalProperty<boolean>;
 
-  /**
-   * Controls the rate at which the media is played back. 1.0 is normal speed, 0.5 is half speed and 2.0 is double speed, though any value is allowed.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/playbackRate
-   */
-  playbackRate?: OptionalProperty<number>;
+    /**
+     * Controls the rate at which the media is played back. 1.0 is normal speed, 0.5 is half speed and 2.0 is double speed, though any value is allowed.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/playbackRate
+     */
+    playbackRate?: OptionalProperty<number>;
 
-  /**
-   * When `true` the pitch is adjusted to compensate for changes in `playbackRate`. Defaults to `true`.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/preservesPitch
-   */
-  preservesPitch?: OptionalProperty<boolean>;
+    /**
+     * When `true` the pitch is adjusted to compensate for changes in `playbackRate`. Defaults to `true`.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/preservesPitch
+     */
+    preservesPitch?: OptionalProperty<boolean>;
 
-  /**
-   * Tells the browser what to preload before the user begins playing the media.
-   *
-   * - `none` will preload nothing.
-   * - `metadata` will preload only metadata such as length.
-   * - `auto` or `""` will allow preloading of the entire file before playback begins.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video#attr-preload
-   */
-  preload?: OptionalProperty<"none" | "metadata" | "auto" | "">;
+    /**
+     * Tells the browser what to preload before the user begins playing the media.
+     *
+     * - `none` will preload nothing.
+     * - `metadata` will preload only metadata such as length.
+     * - `auto` or `""` will allow preloading of the entire file before playback begins.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video#attr-preload
+     */
+    preload?: OptionalProperty<"none" | "metadata" | "auto" | "">;
 
-  /**
-   * The URL of a media resource to use in the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/src
-   */
-  src?: OptionalProperty<string>;
+    /**
+     * The URL of a media resource to use in the element.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/src
+     */
+    src?: OptionalProperty<string>;
 
-  /**
-   * An object containing a media resource to use in the element.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/srcObject
-   */
-  srcObject?:
-    | MediaStream
-    | MediaSource
-    | Blob
-    | File
-    | Getter<MediaStream>
-    | Getter<MediaStream | undefined>
-    | Getter<MediaSource>
-    | Getter<MediaSource | undefined>
-    | Getter<Blob>
-    | Getter<Blob | undefined>
-    | Getter<File>
-    | Getter<File | undefined>;
+    /**
+     * An object containing a media resource to use in the element.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/srcObject
+     */
+    srcObject?:
+      | MediaStream
+      | MediaSource
+      | Blob
+      | File
+      | Getter<MediaStream>
+      | Getter<MediaStream | undefined>
+      | Getter<MediaSource>
+      | Getter<MediaSource | undefined>
+      | Getter<Blob>
+      | Getter<Blob | undefined>
+      | Getter<File>
+      | Getter<File | undefined>;
 
-  /**
-   * The current audio volume of the media element. Must be a number between 0 and 1.
-   *
-   * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volume
-   */
-  volume?: OptionalProperty<number>;
-}
+    /**
+     * The current audio volume of the media element. Must be a number between 0 and 1.
+     *
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/volume
+     */
+    volume?: OptionalProperty<number>;
+  };
 
 interface HTMLVideoElementProps extends HTMLMediaElementProps<HTMLVideoElement> {
   /**
@@ -2569,8 +2795,6 @@ interface FormElementProps extends PropertiesOf<HTMLFormElement> {
    * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form#attr-target
    */
   target?: OptionalProperty<"_self" | "_blank" | "_parent" | "_top" | string>;
-
-
 }
 
 interface HTMLLabelElementProps extends PropertiesOf<HTMLLabelElement> {
@@ -2613,110 +2837,543 @@ export type InputType =
   | "reset"
   | "button";
 
-// TODO: Add complete doc comments
 interface HTMLInputElementProps extends PropertiesOf<HTMLInputElement> {
+  /**
+   * File types you can submit, when `type` is `"file"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-accept
+   */
   accept?: OptionalProperty<string>;
+
+  /**
+   * Text to display in the browser when the image `type` is `"image"` and the image doesn't load.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-alt
+   */
   alt?: OptionalProperty<string>;
+
+  /**
+   * Hint for form autofill.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-autocomplete
+   */
   autocomplete?: OptionalProperty<AutocompleteValues>;
+
+  /**
+   * Whether the checkbox or radio is checked, when `type` is `"checkbox"` or `"radio"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-checked
+   */
   checked?: OptionalProperty<boolean>;
+
+  /**
+   * The directionality of the form control when the form is submitted.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-dirname
+   */
   dirName?: OptionalProperty<string>;
+
+  /**
+   * Whether the input is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-disabled
+   */
   disabled?: OptionalProperty<boolean>;
+
+  /**
+   * The ID of the associated form element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-form
+   */
   form?: OptionalProperty<string>;
+
+  /**
+   * The URL to submit the form data to, overriding the form's `action`, when `type` is `"submit"` or `"image"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-formaction
+   */
   formAction?: OptionalProperty<string>;
+
+  /**
+   * The encoding type to use when submitting the form, overriding the form's `enctype`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-formenctype
+   */
   formEnctype?: OptionalProperty<string>;
+
+  /**
+   * The HTTP method to use when submitting the form, overriding the form's `method`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-formmethod
+   */
   formMethod?: OptionalProperty<string>;
+
+  /**
+   * Whether to skip validation when submitting the form, overriding the form's `novalidate`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-formnovalidate
+   */
   formNoValidate?: OptionalProperty<boolean>;
+
+  /**
+   * The target window for the form submission response, overriding the form's `target`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-formtarget
+   */
   formTarget?: OptionalProperty<string>;
+
+  /**
+   * The height of the image button in pixels, when `type` is `"image"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-height
+   */
   height?: SizeProperty;
+
+  /**
+   * The ID of a `<datalist>` element that provides autocomplete suggestions.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-list
+   */
   list?: OptionalProperty<string>;
+
+  /**
+   * The maximum value allowed.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-max
+   */
   max?: SizeProperty;
+
+  /**
+   * The maximum number of characters allowed in the value.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-maxlength
+   */
   maxLength?: OptionalProperty<number>;
+
+  /**
+   * The minimum value allowed.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-min
+   */
   min?: SizeProperty;
+
+  /**
+   * The minimum number of characters required in the value.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-minlength
+   */
   minLength?: OptionalProperty<number>;
+
+  /**
+   * Whether multiple values are allowed, when `type` is `"email"` or `"file"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-multiple
+   */
   multiple?: OptionalProperty<boolean>;
+
+  /**
+   * The name of the form control, submitted with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-name
+   */
   name?: OptionalProperty<string>;
+
+  /**
+   * A regular expression the value must match.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-pattern
+   */
   pattern?: OptionalProperty<string | RegExp> | OptionalProperty<string> | OptionalProperty<RegExp>;
+
+  /**
+   * Text shown in the input when it is empty.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-placeholder
+   */
   placeholder?: OptionalProperty<string>;
+
+  /**
+   * The ID of the element to associate the popover with.
+   */
   popoverTarget?: OptionalProperty<string>;
+
+  /**
+   * The action to perform on the popover target.
+   */
   popoverTargetAction?: OptionalProperty<"toggle" | "show" | "hide">;
+
+  /**
+   * Whether the input is read-only.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-readonly
+   */
   readOnly?: OptionalProperty<boolean>;
+
+  /**
+   * Whether the input is required before form submission.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-required
+   */
   required?: OptionalProperty<boolean>;
+
+  /**
+   * The width of the input in characters, when `type` is `"text"`, `"search"`, `"tel"`, `"url"`, `"email"`, or `"password"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-size
+   */
   size?: OptionalProperty<number | string>;
+
+  /**
+   * The URL of the image to display, when `type` is `"image"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-src
+   */
   src?: OptionalProperty<string>;
+
+  /**
+   * The stepping interval for numeric and date/time inputs.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-step
+   */
   step?: OptionalProperty<number>;
+
+  /**
+   * The type of form control to render.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-type
+   */
   type?: OptionalProperty<InputType>;
+
+  /**
+   * The value of the form control.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
+   */
   value?: OptionalProperty<string>;
+
+  /**
+   * The width of the image button in pixels, when `type` is `"image"`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-width
+   */
   width?: SizeProperty;
+
+  /**
+   * A hint about the input, displayed in a tooltip.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/title
+   */
   title?: OptionalProperty<string>;
-
-
 }
 
 export type ButtonTypeValues = "submit" | "reset" | "button";
 
 interface ButtonElementProps extends PropertiesOf<HTMLButtonElement> {
+  /**
+   * Whether the button is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-disabled
+   */
   disabled?: OptionalProperty<boolean>;
+
+  /**
+   * The ID of the associated form element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-form
+   */
   form?: OptionalProperty<string>;
+
+  /**
+   * The URL to submit the form data to, overriding the form's `action`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-formaction
+   */
   formAction?: OptionalProperty<string>;
+
+  /**
+   * The encoding type to use, overriding the form's `enctype`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-formenctype
+   */
   formEnctype?: OptionalProperty<string>;
+
+  /**
+   * The HTTP method to use, overriding the form's `method`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-formmethod
+   */
   formMethod?: OptionalProperty<string>;
+
+  /**
+   * Whether to skip validation, overriding the form's `novalidate`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-formnovalidate
+   */
   formNoValidate?: OptionalProperty<boolean>;
+
+  /**
+   * The target window for the response, overriding the form's `target`.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-formtarget
+   */
   formTarget?: OptionalProperty<string>;
+
+  /**
+   * The name of the button, submitted with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-name
+   */
   name?: OptionalProperty<string>;
+
+  /**
+   * The ID of the element to associate the popover with.
+   */
   popoverTarget?: OptionalProperty<string>;
+
+  /**
+   * The action to perform on the popover target.
+   */
   popoverTargetAction?: OptionalProperty<"toggle" | "show" | "hide">;
+
+  /**
+   * The behavior of the button.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-type
+   */
   type?: OptionalProperty<ButtonTypeValues>;
+
+  /**
+   * The initial value of the button, submitted with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#attr-value
+   */
   value?: OptionalProperty<string>;
 }
 
-// TODO: Add complete doc comments
 interface HTMLSelectElementProps extends PropertiesOf<HTMLSelectElement> {
+  /**
+   * Hint for form autofill.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-autocomplete
+   */
   autocomplete?: OptionalProperty<AutocompleteValues>;
+
+  /**
+   * Whether the select is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-disabled
+   */
   disabled?: OptionalProperty<boolean>;
+
+  /**
+   * The ID of the associated form element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-form
+   */
   form?: OptionalProperty<string>;
+
+  /**
+   * Whether multiple options can be selected.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-multiple
+   */
   multiple?: OptionalProperty<boolean>;
+
+  /**
+   * The name of the form control, submitted with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-name
+   */
   name?: OptionalProperty<string>;
+
+  /**
+   * Whether the select is required before form submission.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-required
+   */
   required?: OptionalProperty<boolean>;
+
+  /**
+   * The number of visible rows in the list.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-size
+   */
   size?: OptionalProperty<number | string>;
+
+  /**
+   * The value of the form control.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select#attr-value
+   */
   value?: OptionalProperty<string>;
 }
 
-// TODO: Add complete doc comments
 interface HTMLOptGroupElementProps extends PropertiesOf<HTMLOptGroupElement> {
+  /**
+   * Whether the group of options is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/optgroup#attr-disabled
+   */
   disabled?: OptionalProperty<boolean>;
+
+  /**
+   * The label for the group of options.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/optgroup#attr-label
+   */
   label?: OptionalProperty<string>;
 }
 
-// TODO: Add complete doc comments
 interface HTMLOptionElementProps extends PropertiesOf<HTMLOptionElement> {
+  /**
+   * Whether the option is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option#attr-disabled
+   */
   disabled?: OptionalProperty<boolean>;
+
+  /**
+   * The label for the option.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option#attr-label
+   */
   label?: OptionalProperty<string>;
+
+  /**
+   * Whether the option is selected.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option#attr-selected
+   */
   selected?: OptionalProperty<boolean>;
+
+  /**
+   * The value to submit with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option#attr-value
+   */
   value?: OptionalProperty<string>;
 }
 
-// TODO: Add complete doc comments
 interface HTMLTextAreaElementProps extends PropertiesOf<HTMLTextAreaElement> {
+  /**
+   * Hint for form autofill.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-autocomplete
+   */
   autocomplete?: OptionalProperty<AutocompleteValues>;
+
+  /**
+   * The visible width of the text control, in average character widths.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-cols
+   */
   cols?: OptionalProperty<number>;
+
+  /**
+   * The directionality of the form control when the form is submitted.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-dirname
+   */
   dirname?: OptionalProperty<string>;
+
+  /**
+   * Whether the textarea is disabled.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-disabled
+   */
   disabled?: OptionalProperty<boolean>;
+
+  /**
+   * The ID of the associated form element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-form
+   */
   form?: OptionalProperty<string>;
+
+  /**
+   * The maximum number of characters allowed.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-maxlength
+   */
   maxLength?: OptionalProperty<number>;
+
+  /**
+   * The minimum number of characters required.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-minlength
+   */
   minLength?: OptionalProperty<number>;
+
+  /**
+   * The name of the form control, submitted with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-name
+   */
   name?: OptionalProperty<string>;
+
+  /**
+   * Text shown in the textarea when it is empty.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-placeholder
+   */
   placeholder?: OptionalProperty<string>;
+
+  /**
+   * Whether the textarea is read-only.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-readonly
+   */
   readOnly?: OptionalProperty<boolean>;
+
+  /**
+   * Whether the textarea is required before form submission.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-required
+   */
   required?: OptionalProperty<boolean>;
+
+  /**
+   * The number of visible text lines.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-rows
+   */
   rows?: OptionalProperty<number>;
+
+  /**
+   * How the value should be wrapped when submitting the form.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-wrap
+   */
   wrap?: OptionalProperty<"soft" | "hard">;
+
+  /**
+   * The value of the form control.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea#attr-value
+   */
   value?: OptionalProperty<string>;
 }
 
-// TODO: Add complete doc comments
 interface HTMLOutputElementProps extends PropertiesOf<HTMLOutputElement> {
+  /**
+   * A space-separated list of other elements' IDs that contributed to the calculation.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/output#attr-for
+   */
   for?: OptionalProperty<string>;
+
+  /**
+   * The ID of the associated form element.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/output#attr-form
+   */
   form?: OptionalProperty<string>;
+
+  /**
+   * The name of the form control, submitted with the form data.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/output#attr-name
+   */
   name?: OptionalProperty<string>;
 }
 
@@ -2774,10 +3431,6 @@ interface HTMLFieldSetElementProps extends PropertiesOf<HTMLFieldSetElement> {
 /*====================================*\
 || 4.11          Interactive elements ||
 \*====================================*/
-
-// details
-// summary
-// dialog
 
 export interface IntrinsicElements {
   /**
@@ -2870,6 +3523,1477 @@ interface HTMLCanvasElementProps extends PropertiesOf<HTMLCanvasElement> {
 || ****                           SVG ||
 \*====================================*/
 
-interface SVGElementProps {}
+/**
+ * Converts a kebab-case string literal to camelCase at the type level.
+ */
+type CamelCase<S extends string> = S extends `${infer P}-${infer Q}`
+  ? `${P}${Capitalize<CamelCase<Q>>}`
+  : S;
 
-export interface IntrinsicElements {}
+/**
+ * SVG presentation attributes defined in their native kebab-case form (SVG spec naming).
+ *
+ * Both kebab-case (e.g. `fill-opacity`) and camelCase (e.g. `fillOpacity`) are accepted
+ * in JSX. The camelCase variants are auto-generated from this base via mapped type.
+ *
+ * @see https://www.w3.org/TR/SVG2/painting.html
+ */
+type SVGPresentationAttrsBase = {
+  /** Fill color. */
+  fill?: OptionalProperty<string>;
+  /** Fill opacity. */
+  "fill-opacity"?: OptionalProperty<number | string>;
+  /** Fill rule for shapes. */
+  "fill-rule"?: OptionalProperty<"nonzero" | "evenodd">;
+  /** Stroke color. */
+  stroke?: OptionalProperty<string>;
+  /** Stroke width. */
+  "stroke-width"?: OptionalProperty<number | string>;
+  /** Stroke opacity. */
+  "stroke-opacity"?: OptionalProperty<number | string>;
+  /** Stroke linecap style. */
+  "stroke-linecap"?: OptionalProperty<"butt" | "round" | "square">;
+  /** Stroke linejoin style. */
+  "stroke-linejoin"?: OptionalProperty<"arcs" | "bevel" | "miter" | "miter-clip" | "round">;
+  /** Stroke dash array. */
+  "stroke-dasharray"?: OptionalProperty<string>;
+  /** Stroke dash offset. */
+  "stroke-dashoffset"?: OptionalProperty<number | string>;
+  /** Stroke miter limit. */
+  "stroke-miterlimit"?: OptionalProperty<number>;
+  /** Element opacity. */
+  opacity?: OptionalProperty<number | string>;
+  /** Transformation to apply. */
+  transform?: OptionalProperty<string>;
+  /** Transform origin point. */
+  "transform-origin"?: OptionalProperty<string>;
+  /** Clipping path reference. */
+  "clip-path"?: OptionalProperty<string>;
+  /** Clipping rule. */
+  "clip-rule"?: OptionalProperty<"nonzero" | "evenodd">;
+  /** Text color. */
+  color?: OptionalProperty<string>;
+  /** Color interpolation mode. */
+  "color-interpolation"?: OptionalProperty<"auto" | "sRGB" | "linearRGB">;
+  /** Color interpolation mode for filters. */
+  "color-interpolation-filters"?: OptionalProperty<"auto" | "sRGB" | "linearRGB">;
+  /** Color rendering quality. */
+  "color-rendering"?: OptionalProperty<"auto" | "optimizeSpeed" | "optimizeQuality">;
+  /** Cursor appearance. */
+  cursor?: OptionalProperty<string>;
+  /** Text direction. */
+  direction?: OptionalProperty<"ltr" | "rtl">;
+  /** Display behavior. */
+  display?: OptionalProperty<string>;
+  /** Dominant baseline alignment. */
+  "dominant-baseline"?: OptionalProperty<string>;
+  /** Filter effect reference. */
+  filter?: OptionalProperty<string>;
+  /** Font family. */
+  "font-family"?: OptionalProperty<string>;
+  /** Font size. */
+  "font-size"?: OptionalProperty<number | string>;
+  /** Font size adjustment. */
+  "font-size-adjust"?: OptionalProperty<number | string>;
+  /** Font stretch. */
+  "font-stretch"?: OptionalProperty<string>;
+  /** Font style. */
+  "font-style"?: OptionalProperty<"normal" | "italic" | "oblique">;
+  /** Font variant. */
+  "font-variant"?: OptionalProperty<string>;
+  /** Font weight. */
+  "font-weight"?: OptionalProperty<number | string>;
+  /** Image rendering quality. */
+  "image-rendering"?: OptionalProperty<"auto" | "optimizeSpeed" | "optimizeQuality">;
+  /** Letter spacing. */
+  "letter-spacing"?: OptionalProperty<number | string>;
+  /** Lighting color for filter primitives. */
+  "lighting-color"?: OptionalProperty<string>;
+  /** Marker reference (all vertices). */
+  marker?: OptionalProperty<string>;
+  /** Marker reference (end vertex). */
+  "marker-end"?: OptionalProperty<string>;
+  /** Marker reference (mid vertices). */
+  "marker-mid"?: OptionalProperty<string>;
+  /** Marker reference (start vertex). */
+  "marker-start"?: OptionalProperty<string>;
+  /** Mask reference. */
+  mask?: OptionalProperty<string>;
+  /** Mask type. */
+  "mask-type"?: OptionalProperty<"luminance" | "alpha">;
+  /** Overflow behavior. */
+  overflow?: OptionalProperty<"visible" | "hidden">;
+  /** Paint order. */
+  "paint-order"?: OptionalProperty<string>;
+  /** Pointer event behavior. */
+  "pointer-events"?: OptionalProperty<string>;
+  /** Shape rendering quality. */
+  "shape-rendering"?: OptionalProperty<"auto" | "optimizeSpeed" | "crispEdges" | "geometricPrecision">;
+  /** Stop color for gradients. */
+  "stop-color"?: OptionalProperty<string>;
+  /** Stop opacity for gradients. */
+  "stop-opacity"?: OptionalProperty<number | string>;
+  /** Text anchor alignment. */
+  "text-anchor"?: OptionalProperty<"start" | "middle" | "end">;
+  /** Text decoration. */
+  "text-decoration"?: OptionalProperty<string>;
+  /** Text overflow behavior. */
+  "text-overflow"?: OptionalProperty<string>;
+  /** Text rendering quality. */
+  "text-rendering"?: OptionalProperty<"auto" | "optimizeSpeed" | "optimizeLegibility" | "geometricPrecision">;
+  /** Unicode bidirectional behavior. */
+  "unicode-bidi"?: OptionalProperty<string>;
+  /** Vector effect. */
+  "vector-effect"?: OptionalProperty<"none" | "non-scaling-stroke">;
+  /** Visibility. */
+  visibility?: OptionalProperty<"visible" | "hidden" | "collapse">;
+  /** White space handling. */
+  "white-space"?: OptionalProperty<string>;
+  /** Word spacing. */
+  "word-spacing"?: OptionalProperty<number | string>;
+  /** Writing mode. */
+  "writing-mode"?: OptionalProperty<string>;
+};
+
+/**
+ * Auto-generated camelCase aliases for all kebab-case SVG presentation attributes.
+ * Enables JSX usage like `fillOpacity` alongside the standard SVG `fill-opacity`.
+ */
+type SVGPresentationAttrsCamel = {
+  [K in keyof SVGPresentationAttrsBase & string as CamelCase<K>]?: SVGPresentationAttrsBase[K];
+};
+
+/**
+ * SVG presentation attributes — accepts both kebab-case and camelCase.
+ */
+type SVGPresentationAttributes = SVGPresentationAttrsBase & SVGPresentationAttrsCamel;
+
+/**
+ * Base props for all SVG elements.
+ *
+ * SVG elements support `id`, `lang`, `tabIndex`, `class`/`className`, and `style`
+ * as attribute-based props, plus all SVG presentation attributes and DOM events.
+ *
+ * HTML-only attributes (`popover`, `slot`, `exportParts`, etc.) are intentionally excluded.
+ */
+export type SVGElementProps = {
+  [key: `attr:${string}`]: OptionalProperty<any>;
+  [key: `on:${string}`]: any;
+  [key: `@${string}`]: any;
+
+  /** Element unique identifier. */
+  id?: OptionalProperty<string>;
+  /** Element language code. */
+  lang?: OptionalProperty<string>;
+  /** Tab order. */
+  tabIndex?: OptionalProperty<number>;
+  /** CSS class name. */
+  class?: OptionalProperty<ClassListValues>;
+  /** CSS class name (alias for `class`). */
+  className?: OptionalProperty<ClassListValues>;
+  /** Inline styles. */
+  style?:
+    | MaybeGetter<string>
+    | MaybeGetter<string | undefined>
+    | MaybeGetter<CSSProperties>
+    | MaybeGetter<CSSProperties | undefined>
+    | CSSTemplate;
+
+  /** Child elements. */
+  children?: any;
+  /** Element ref callback. */
+  ref?:
+    | ((value: SVGElement) => () => void)
+    | ((value: Element) => () => void)
+    | ((value: Node) => () => void);
+} & SVGPresentationAttributes & EventsFor<SVGElement>;
+
+// --- SVG container / structural elements ---
+
+/**
+ * The `<svg>` element — the SVG document root.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/svg
+ */
+interface SVGSVGElementProps extends SVGElementProps {
+  /** Viewport bounding box. */
+  viewBox?: OptionalProperty<string>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+  /** The SVG namespace declaration. */
+  xmlns?: OptionalProperty<string>;
+  /** SVG version. */
+  version?: OptionalProperty<string>;
+  /** Base profile. */
+  baseProfile?: OptionalProperty<string>;
+}
+
+/**
+ * The `<symbol>` element — used to define graphical template objects which can be instantiated
+ * by the `<use>` element. Symbols are not rendered directly.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/symbol
+ */
+interface SVGSymbolElementProps extends SVGElementProps {
+  /** Viewport bounding box. */
+  viewBox?: OptionalProperty<string>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** X-axis reference point. */
+  refX?: OptionalProperty<string | number>;
+  /** Y-axis reference point. */
+  refY?: OptionalProperty<string | number>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+}
+
+/**
+ * The `<use>` element — takes nodes from within the SVG document and duplicates them elsewhere.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/use
+ */
+interface SVGUseElementProps extends SVGElementProps {
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+}
+
+// --- Shape elements ---
+
+/**
+ * The `<circle>` element — draws a circle centered at `cx`,`cy` with radius `r`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/circle
+ */
+interface SVGCircleElementProps extends SVGElementProps {
+  /** X-axis center coordinate. */
+  cx?: OptionalProperty<string | number>;
+  /** Y-axis center coordinate. */
+  cy?: OptionalProperty<string | number>;
+  /** Radius of the circle. */
+  r?: OptionalProperty<string | number>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+/**
+ * The `<ellipse>` element — draws an ellipse centered at `cx`,`cy` with radii `rx`,`ry`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/ellipse
+ */
+interface SVGEllipseElementProps extends SVGElementProps {
+  /** X-axis center coordinate. */
+  cx?: OptionalProperty<string | number>;
+  /** Y-axis center coordinate. */
+  cy?: OptionalProperty<string | number>;
+  /** X-axis radius. */
+  rx?: OptionalProperty<string | number>;
+  /** Y-axis radius. */
+  ry?: OptionalProperty<string | number>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+/**
+ * The `<line>` element — draws a straight line between two points.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/line
+ */
+interface SVGLineElementProps extends SVGElementProps {
+  /** X-axis coordinate of the start point. */
+  x1?: OptionalProperty<string | number>;
+  /** Y-axis coordinate of the start point. */
+  y1?: OptionalProperty<string | number>;
+  /** X-axis coordinate of the end point. */
+  x2?: OptionalProperty<string | number>;
+  /** Y-axis coordinate of the end point. */
+  y2?: OptionalProperty<string | number>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+/**
+ * The `<rect>` element — draws a rectangle with optional rounded corners.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/rect
+ */
+interface SVGRectElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** X-axis corner radius. */
+  rx?: OptionalProperty<string | number>;
+  /** Y-axis corner radius. */
+  ry?: OptionalProperty<string | number>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+/**
+ * The `<path>` element — defines a shape using path data (a sequence of commands like M, L, C, Z, etc.).
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/path
+ */
+interface SVGPathElementProps extends SVGElementProps {
+  /** The path data (a string of path commands like `M10 10 L 20 20`) */
+  d?: OptionalProperty<string>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+/**
+ * The `<polygon>` element — draws a closed shape consisting of connected straight line segments.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/polygon
+ */
+interface SVGPolygonElementProps extends SVGElementProps {
+  /** A string of coordinate pairs defining the polygon's vertices */
+  points?: OptionalProperty<string>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+/**
+ * The `<polyline>` element — draws a series of connected straight line segments (open shape).
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/polyline
+ */
+interface SVGPolylineElementProps extends SVGElementProps {
+  /** A string of coordinate pairs defining the polyline's vertices */
+  points?: OptionalProperty<string>;
+  /** Explicit path length. */
+  pathLength?: OptionalProperty<number>;
+}
+
+// --- Text elements ---
+
+/**
+ * The `<text>` element — renders a text string at the given coordinates.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/text
+ */
+interface SVGTextElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** X-axis offset. */
+  dx?: OptionalProperty<string | number | Array<string | number>>;
+  /** Y-axis offset. */
+  dy?: OptionalProperty<string | number | Array<string | number>>;
+  /** Rotation angle. */
+  rotate?: OptionalProperty<string | number | Array<string | number>>;
+  /** Length adjustment mode. */
+  lengthAdjust?: OptionalProperty<string>;
+  /** Computed text length. */
+  textLength?: OptionalProperty<string | number>;
+}
+
+/**
+ * The `<tspan>` element — a sub-element of `<text>` for adjusting glyph positioning
+ * and applying formatting to a span of text. Accepts per-character coordinate arrays.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/tspan
+ */
+interface SVGTSpanElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number | string[] | number[]>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number | string[] | number[]>;
+  /** X-axis offset. */
+  dx?: OptionalProperty<string | number | string[] | number[]>;
+  /** Y-axis offset. */
+  dy?: OptionalProperty<string | number | string[] | number[]>;
+  /** Computed text length. */
+  textLength?: OptionalProperty<string | number>;
+  /** Length adjustment mode. */
+  lengthAdjust?: OptionalProperty<"spacing" | "spacingAndGlyphs">;
+  /** Rotation angle. */
+  rotate?: OptionalProperty<number | number[]>;
+}
+
+/**
+ * The `<textPath>` element — renders text along the shape of a referenced `<path>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/textPath
+ */
+interface SVGTextPathElementProps extends SVGElementProps {
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+  /** Offset from the start of the path. */
+  startOffset?: OptionalProperty<string | number>;
+  /** Rendering method. */
+  method?: OptionalProperty<"align" | "stretch">;
+  /** Spacing mode. */
+  spacing?: OptionalProperty<"auto" | "exact">;
+}
+
+// --- Image element ---
+
+/**
+ * The `<image>` element — embeds an external raster or vector image inside the SVG.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/image
+ */
+interface SVGImageElementProps extends SVGElementProps {
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+  /** CORS policy. */
+  crossOrigin?: OptionalProperty<"anonymous" | "use-credentials">;
+}
+
+// --- Gradient elements ---
+
+/**
+ * The `<linearGradient>` element — defines a linear gradient to fill or stroke shapes.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/linearGradient
+ */
+interface SVGLinearGradientElementProps extends SVGElementProps {
+  /** X-axis coordinate of the start point. */
+  x1?: OptionalProperty<string | number>;
+  /** Y-axis coordinate of the start point. */
+  y1?: OptionalProperty<string | number>;
+  /** X-axis coordinate of the end point. */
+  x2?: OptionalProperty<string | number>;
+  /** Y-axis coordinate of the end point. */
+  y2?: OptionalProperty<string | number>;
+  /** Coordinate system for gradient. */
+  gradientUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Gradient transformation. */
+  gradientTransform?: OptionalProperty<string>;
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+}
+
+/**
+ * The `<radialGradient>` element — defines a radial gradient to fill or stroke shapes.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/radialGradient
+ */
+interface SVGRadialGradientElementProps extends SVGElementProps {
+  /** X-axis center coordinate. */
+  cx?: OptionalProperty<string | number>;
+  /** Y-axis center coordinate. */
+  cy?: OptionalProperty<string | number>;
+  /** Radius of the gradient. */
+  r?: OptionalProperty<string | number>;
+  /** X-axis focal point. */
+  fx?: OptionalProperty<string | number>;
+  /** Y-axis focal point. */
+  fy?: OptionalProperty<string | number>;
+  /** Focal radius. */
+  fr?: OptionalProperty<string | number>;
+  /** Coordinate system for gradient. */
+  gradientUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Gradient transformation. */
+  gradientTransform?: OptionalProperty<string>;
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+}
+
+/**
+ * The `<stop>` element — defines a color stop used by gradient elements.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/stop
+ */
+interface SVGStopElementProps extends SVGElementProps {
+  /** Gradient stop offset. */
+  offset?: OptionalProperty<string | number>;
+}
+
+// --- Clipping / masking elements ---
+
+/**
+ * The `<clipPath>` element — defines a clipping path used to restrict rendering
+ * to a specific region.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/clipPath
+ */
+interface SVGClipPathElementProps extends SVGElementProps {
+  /** Coordinate system for clipping. */
+  clipPathUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+}
+
+/**
+ * The `<mask>` element — defines an alpha mask used to control the visibility
+ * of overlapping graphics.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/mask
+ */
+interface SVGMaskElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** Coordinate system for mask. */
+  maskUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Coordinate system for mask content. */
+  maskContentUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+}
+
+// --- Pattern / Marker elements ---
+
+/**
+ * The `<pattern>` element — defines a tileable pattern used to fill or stroke shapes.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/pattern
+ */
+interface SVGPatternElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** Coordinate system for pattern. */
+  patternUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Coordinate system for pattern content. */
+  patternContentUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Pattern transformation. */
+  patternTransform?: OptionalProperty<string>;
+  /** Viewport bounding box. */
+  viewBox?: OptionalProperty<string>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+}
+
+/**
+ * The `<marker>` element — defines a graphic (e.g. arrowhead) placed at the vertices
+ * of lines, paths, and polygons.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/marker
+ */
+interface SVGMarkerElementProps extends SVGElementProps {
+  /** Marker viewport width. */
+  markerWidth?: OptionalProperty<string | number>;
+  /** Marker viewport height. */
+  markerHeight?: OptionalProperty<string | number>;
+  /** X-axis reference point. */
+  refX?: OptionalProperty<string | number>;
+  /** Y-axis reference point. */
+  refY?: OptionalProperty<string | number>;
+  /** Orientation of the marker. */
+  orient?: OptionalProperty<string | number>;
+  /** Coordinate system for marker. */
+  markerUnits?: OptionalProperty<"userSpaceOnUse" | "strokeWidth">;
+  /** Viewport bounding box. */
+  viewBox?: OptionalProperty<string>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+}
+
+// --- Filter elements ---
+
+/**
+ * The `<filter>` element — defines a filter effect composed of one or more
+ * filter primitives (child FE elements).
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/filter
+ */
+interface SVGFilterElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+  /** Coordinate system for filter. */
+  filterUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Coordinate system for filter primitives. */
+  primitiveUnits?: OptionalProperty<"userSpaceOnUse" | "objectBoundingBox">;
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feGaussianBlur>` element — applies a Gaussian blur to the input image.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feGaussianBlur
+ */
+interface SVGFEGaussianBlurElementProps extends SVGElementProps {
+  /** Standard deviation of the blur. */
+  stdDeviation?: OptionalProperty<string | number>;
+  /** Edge mode for the blur. */
+  edgeMode?: OptionalProperty<"duplicate" | "wrap" | "none">;
+  /** The SVG `in` attribute — names the input (use the string `"in"`, not the JS keyword) */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feOffset>` element — offsets the input image by `dx` and `dy`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feOffset
+ */
+interface SVGFEOffsetElementProps extends SVGElementProps {
+  /** X-axis offset. */
+  dx?: OptionalProperty<string | number>;
+  /** Y-axis offset. */
+  dy?: OptionalProperty<string | number>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feMerge>` element — stacks filter primitives on top of one another.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feMerge
+ */
+interface SVGFEMergeElementProps extends SVGElementProps {
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feMergeNode>` element — references one input for `<feMerge>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feMergeNode
+ */
+interface SVGFEMergeNodeElementProps extends SVGElementProps {
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feColorMatrix>` element — transforms color values via a matrix, saturation,
+ * hue rotation, or luminance-to-alpha conversion.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feColorMatrix
+ */
+interface SVGFEColorMatrixElementProps extends SVGElementProps {
+  /** Type of color transformation. */
+  type?: OptionalProperty<"matrix" | "saturate" | "hueRotate" | "luminanceToAlpha">;
+  /** Matrix or color values. */
+  values?: OptionalProperty<string>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feComposite>` element — performs pixel-wise compositing of two input images.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feComposite
+ */
+interface SVGFECompositeElementProps extends SVGElementProps {
+  /** Compositing operator. */
+  operator?: OptionalProperty<"over" | "in" | "out" | "atop" | "xor" | "arithmetic">;
+  /** Constant multiplier k1. */
+  k1?: OptionalProperty<number>;
+  /** Constant multiplier k2. */
+  k2?: OptionalProperty<number>;
+  /** Constant multiplier k3. */
+  k3?: OptionalProperty<number>;
+  /** Constant multiplier k4. */
+  k4?: OptionalProperty<number>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Second input to this filter primitive. */
+  in2?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feBlend>` element — blends two input images using a blend mode.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feBlend
+ */
+interface SVGFEBlendElementProps extends SVGElementProps {
+  /** Blend mode. */
+  mode?: OptionalProperty<"normal" | "multiply" | "screen" | "darken" | "lighten">;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Second input to this filter primitive. */
+  in2?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feFlood>` element — fills the filter region with a solid color.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feFlood
+ */
+interface SVGFEFloodElementProps extends SVGElementProps {
+  /** Flood color. */
+  floodColor?: OptionalProperty<string>;
+  /** Flood opacity. */
+  floodOpacity?: OptionalProperty<number | string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feDropShadow>` element — creates a drop-shadow effect on the input.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feDropShadow
+ */
+interface SVGFEDropShadowElementProps extends SVGElementProps {
+  /** X-axis offset of the shadow. */
+  dx?: OptionalProperty<string | number>;
+  /** Y-axis offset of the shadow. */
+  dy?: OptionalProperty<string | number>;
+  /** Standard deviation of the shadow blur. */
+  stdDeviation?: OptionalProperty<string | number>;
+  /** Shadow flood color. */
+  floodColor?: OptionalProperty<string>;
+  /** Shadow flood opacity. */
+  floodOpacity?: OptionalProperty<number | string>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feDisplacementMap>` element — displaces pixel positions using a
+ * color-channel map from a second input.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feDisplacementMap
+ */
+interface SVGFEDisplacementMapElementProps extends SVGElementProps {
+  /** Displacement scale factor. */
+  scale?: OptionalProperty<number>;
+  /** Color channel used for X displacement. */
+  xChannelSelector?: OptionalProperty<"R" | "G" | "B" | "A">;
+  /** Color channel used for Y displacement. */
+  yChannelSelector?: OptionalProperty<"R" | "G" | "B" | "A">;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Second input to this filter primitive. */
+  in2?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feMorphology>` element — thins (erode) or thickens (dilate) the input graphic.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feMorphology
+ */
+interface SVGFEMorphologyElementProps extends SVGElementProps {
+  /** Morphology operator. */
+  operator?: OptionalProperty<"dilate" | "erode">;
+  /** Radius of the morphology operation. */
+  radius?: OptionalProperty<string | number>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feTile>` element — fills a rectangle with a tiled pattern of the input.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feTile
+ */
+interface SVGFETileElementProps extends SVGElementProps {
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feTurbulence>` element — generates Perlin noise for use as a texture.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feTurbulence
+ */
+interface SVGFETurbulenceElementProps extends SVGElementProps {
+  /** Type of noise. */
+  type?: OptionalProperty<"fractalNoise" | "turbulence">;
+  /** Base frequency of the noise. */
+  baseFrequency?: OptionalProperty<string | number>;
+  /** Number of octaves. */
+  numOctaves?: OptionalProperty<number>;
+  /** Random seed. */
+  seed?: OptionalProperty<number>;
+  /** Stitch tiles mode. */
+  stitchTiles?: OptionalProperty<"stitch" | "noStitch">;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feComponentTransfer>` element — performs per-channel color remapping
+ * using child `<feFuncR>`, `<feFuncG>`, `<feFuncB>`, `<feFuncA>` elements.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feComponentTransfer
+ */
+interface SVGFEComponentTransferElementProps extends SVGElementProps {
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feFuncR>` element — defines the red-channel transfer function for
+ * `<feComponentTransfer>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feFuncR
+ */
+interface SVGFEFuncRElementProps extends SVGElementProps {
+  /** Type of transfer function. */
+  type?: OptionalProperty<"identity" | "table" | "discrete" | "linear" | "gamma">;
+  /** Table values for the transfer function. */
+  tableValues?: OptionalProperty<string>;
+  /** Slope of the linear function. */
+  slope?: OptionalProperty<number>;
+  /** Intercept of the linear function. */
+  intercept?: OptionalProperty<number>;
+  /** Amplitude of the gamma function. */
+  amplitude?: OptionalProperty<number>;
+  /** Exponent of the gamma function. */
+  exponent?: OptionalProperty<number>;
+  /** Offset of the transfer function. */
+  offset?: OptionalProperty<number>;
+}
+
+/**
+ * The `<feFuncG>` element — defines the green-channel transfer function for
+ * `<feComponentTransfer>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feFuncG
+ */
+interface SVGFEFuncGElementProps extends SVGElementProps {
+  /** Type of transfer function. */
+  type?: OptionalProperty<"identity" | "table" | "discrete" | "linear" | "gamma">;
+  /** Table values for the transfer function. */
+  tableValues?: OptionalProperty<string>;
+  /** Slope of the linear function. */
+  slope?: OptionalProperty<number>;
+  /** Intercept of the linear function. */
+  intercept?: OptionalProperty<number>;
+  /** Amplitude of the gamma function. */
+  amplitude?: OptionalProperty<number>;
+  /** Exponent of the gamma function. */
+  exponent?: OptionalProperty<number>;
+  /** Offset of the transfer function. */
+  offset?: OptionalProperty<number>;
+}
+
+/**
+ * The `<feFuncB>` element — defines the blue-channel transfer function for
+ * `<feComponentTransfer>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feFuncB
+ */
+interface SVGFEFuncBElementProps extends SVGElementProps {
+  /** Type of transfer function. */
+  type?: OptionalProperty<"identity" | "table" | "discrete" | "linear" | "gamma">;
+  /** Table values for the transfer function. */
+  tableValues?: OptionalProperty<string>;
+  /** Slope of the linear function. */
+  slope?: OptionalProperty<number>;
+  /** Intercept of the linear function. */
+  intercept?: OptionalProperty<number>;
+  /** Amplitude of the gamma function. */
+  amplitude?: OptionalProperty<number>;
+  /** Exponent of the gamma function. */
+  exponent?: OptionalProperty<number>;
+  /** Offset of the transfer function. */
+  offset?: OptionalProperty<number>;
+}
+
+/**
+ * The `<feFuncA>` element — defines the alpha-channel transfer function for
+ * `<feComponentTransfer>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feFuncA
+ */
+interface SVGFEFuncAElementProps extends SVGElementProps {
+  /** Type of transfer function. */
+  type?: OptionalProperty<"identity" | "table" | "discrete" | "linear" | "gamma">;
+  /** Table values for the transfer function. */
+  tableValues?: OptionalProperty<string>;
+  /** Slope of the linear function. */
+  slope?: OptionalProperty<number>;
+  /** Intercept of the linear function. */
+  intercept?: OptionalProperty<number>;
+  /** Amplitude of the gamma function. */
+  amplitude?: OptionalProperty<number>;
+  /** Exponent of the gamma function. */
+  exponent?: OptionalProperty<number>;
+  /** Offset of the transfer function. */
+  offset?: OptionalProperty<number>;
+}
+
+/**
+ * The `<feConvolveMatrix>` element — applies a matrix convolution filter effect.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feConvolveMatrix
+ */
+interface SVGFEConvolveMatrixElementProps extends SVGElementProps {
+  /** Size of the convolution matrix. */
+  order?: OptionalProperty<number | string>;
+  /** Convolution kernel values. */
+  kernelMatrix?: OptionalProperty<string>;
+  /** Divisor for the kernel. */
+  divisor?: OptionalProperty<number>;
+  /** Bias added to the result. */
+  bias?: OptionalProperty<number>;
+  /** X-axis target pixel. */
+  targetX?: OptionalProperty<number>;
+  /** Y-axis target pixel. */
+  targetY?: OptionalProperty<number>;
+  /** Edge mode for the convolution. */
+  edgeMode?: OptionalProperty<"duplicate" | "wrap" | "none">;
+  /** Kernel unit length. */
+  kernelUnitLength?: OptionalProperty<number | string>;
+  /** Whether to preserve the alpha channel. */
+  preserveAlpha?: OptionalProperty<boolean>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feDiffuseLighting>` element — lights an image using the diffuse
+ * reflection component of the Phong lighting model.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feDiffuseLighting
+ */
+interface SVGFEDiffuseLightingElementProps extends SVGElementProps {
+  /** Surface scale for lighting. */
+  surfaceScale?: OptionalProperty<number>;
+  /** Diffuse reflection constant. */
+  diffuseConstant?: OptionalProperty<number>;
+  /** Lighting color. */
+  lightingColor?: OptionalProperty<string>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feSpecularLighting>` element — lights an image using the specular
+ * reflection component of the Phong lighting model.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feSpecularLighting
+ */
+interface SVGFESpecularLightingElementProps extends SVGElementProps {
+  /** Surface scale for lighting. */
+  surfaceScale?: OptionalProperty<number>;
+  /** Specular reflection constant. */
+  specularConstant?: OptionalProperty<number>;
+  /** Specular reflection exponent. */
+  specularExponent?: OptionalProperty<number>;
+  /** Lighting color. */
+  lightingColor?: OptionalProperty<string>;
+  /** Input to this filter primitive. */
+  "in"?: OptionalProperty<string>;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+/**
+ * The `<feDistantLight>` element — defines a distant light source for
+ * `<feDiffuseLighting>` or `<feSpecularLighting>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feDistantLight
+ */
+interface SVGFEDistantLightElementProps extends SVGElementProps {
+  /** Azimuth of the light source. */
+  azimuth?: OptionalProperty<number>;
+  /** Elevation of the light source. */
+  elevation?: OptionalProperty<number>;
+}
+
+/**
+ * The `<fePointLight>` element — defines a point light source for
+ * `<feDiffuseLighting>` or `<feSpecularLighting>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/fePointLight
+ */
+interface SVGFEPointLightElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<number>;
+  /** Z-axis coordinate. */
+  z?: OptionalProperty<number>;
+}
+
+/**
+ * The `<feSpotLight>` element — defines a spot light source for
+ * `<feDiffuseLighting>` or `<feSpecularLighting>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feSpotLight
+ */
+interface SVGFESpotLightElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<number>;
+  /** Z-axis coordinate. */
+  z?: OptionalProperty<number>;
+  /** X-axis point-at target. */
+  pointsAtX?: OptionalProperty<number>;
+  /** Y-axis point-at target. */
+  pointsAtY?: OptionalProperty<number>;
+  /** Z-axis point-at target. */
+  pointsAtZ?: OptionalProperty<number>;
+  /** Specular reflection exponent. */
+  specularExponent?: OptionalProperty<number>;
+  /** Limiting cone angle. */
+  limitingConeAngle?: OptionalProperty<number>;
+}
+
+/**
+ * The `<feImage>` element — fetches an external image for use as a filter input.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/feImage
+ */
+interface SVGFEImageElementProps extends SVGElementProps {
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+  /** CORS policy. */
+  crossOrigin?: OptionalProperty<"anonymous" | "use-credentials">;
+  /** Name for this filter primitive output. */
+  result?: OptionalProperty<string>;
+}
+
+// --- Animation elements ---
+
+/**
+ * The `<animate>` element — animates a single attribute over time.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/animate
+ */
+interface SVGAnimateElementProps extends SVGElementProps {
+  /** Name of the attribute to animate. */
+  attributeName?: OptionalProperty<string>;
+  /** Type of attribute. */
+  attributeType?: OptionalProperty<"CSS" | "XML" | "auto">;
+  /** Starting value. */
+  from?: OptionalProperty<string>;
+  /** Ending value. */
+  to?: OptionalProperty<string>;
+  /** Duration of the animation. */
+  dur?: OptionalProperty<string>;
+  /** Number of repetitions. */
+  repeatCount?: OptionalProperty<string | number>;
+  /** Fill behavior after animation ends. */
+  fill?: OptionalProperty<"freeze" | "remove">;
+  /** Calculation mode for interpolation. */
+  calcMode?: OptionalProperty<"discrete" | "linear" | "paced" | "spline">;
+  /** Values for the animation. */
+  values?: OptionalProperty<string>;
+  /** Key times for the animation. */
+  keyTimes?: OptionalProperty<string>;
+  /** Key splines for the animation. */
+  keySplines?: OptionalProperty<string>;
+  /** When the animation begins. */
+  begin?: OptionalProperty<string>;
+  /** When the animation ends. */
+  end?: OptionalProperty<string>;
+  /** Minimum duration. */
+  min?: OptionalProperty<string>;
+  /** Maximum duration. */
+  max?: OptionalProperty<string>;
+  /** Restart behavior. */
+  restart?: OptionalProperty<"always" | "whenNotActive" | "never">;
+  /** Repeat duration. */
+  repeatDur?: OptionalProperty<string>;
+  /** Accumulation behavior. */
+  accumulate?: OptionalProperty<"none" | "sum">;
+  /** Additive behavior. */
+  additive?: OptionalProperty<"replace" | "sum">;
+}
+
+/**
+ * The `<animateMotion>` element — moves an element along a motion path.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/animateMotion
+ */
+interface SVGAnimateMotionElementProps extends SVGElementProps {
+  /** Motion path data. */
+  path?: OptionalProperty<string>;
+  /** Key points along the path. */
+  keyPoints?: OptionalProperty<string>;
+  /** Rotation behavior. */
+  rotate?: OptionalProperty<string | number>;
+  /** Calculation mode for interpolation. */
+  calcMode?: OptionalProperty<"discrete" | "linear" | "paced" | "spline">;
+  /** Values for the animation. */
+  values?: OptionalProperty<string>;
+  /** Key times for the animation. */
+  keyTimes?: OptionalProperty<string>;
+  /** Key splines for the animation. */
+  keySplines?: OptionalProperty<string>;
+  /** When the animation begins. */
+  begin?: OptionalProperty<string>;
+  /** Duration of the animation. */
+  dur?: OptionalProperty<string>;
+  /** Number of repetitions. */
+  repeatCount?: OptionalProperty<string | number>;
+  /** Fill behavior after animation ends. */
+  fill?: OptionalProperty<"freeze" | "remove">;
+  /** Origin of motion. */
+  origin?: OptionalProperty<"default">;
+}
+
+/**
+ * The `<animateTransform>` element — animates a transformation attribute
+ * (e.g. `transform`).
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/animateTransform
+ */
+interface SVGAnimateTransformElementProps extends SVGElementProps {
+  /** Name of the attribute to animate. */
+  attributeName?: OptionalProperty<string>;
+  /** Type of transform animation. */
+  type?: OptionalProperty<"translate" | "scale" | "rotate" | "skewX" | "skewY">;
+  /** Starting value. */
+  from?: OptionalProperty<string>;
+  /** Ending value. */
+  to?: OptionalProperty<string>;
+  /** Duration of the animation. */
+  dur?: OptionalProperty<string>;
+  /** Number of repetitions. */
+  repeatCount?: OptionalProperty<string | number>;
+  /** Fill behavior after animation ends. */
+  fill?: OptionalProperty<"freeze" | "remove">;
+  /** Calculation mode for interpolation. */
+  calcMode?: OptionalProperty<"discrete" | "linear" | "paced" | "spline">;
+  /** Values for the animation. */
+  values?: OptionalProperty<string>;
+  /** Key times for the animation. */
+  keyTimes?: OptionalProperty<string>;
+  /** Key splines for the animation. */
+  keySplines?: OptionalProperty<string>;
+  /** When the animation begins. */
+  begin?: OptionalProperty<string>;
+  /** When the animation ends. */
+  end?: OptionalProperty<string>;
+}
+
+/**
+ * The `<set>` element — sets an attribute value for a specified duration.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/set
+ */
+interface SVGSetElementProps extends SVGElementProps {
+  /** Name of the attribute to animate. */
+  attributeName?: OptionalProperty<string>;
+  /** Ending value. */
+  to?: OptionalProperty<string>;
+  /** When the animation begins. */
+  begin?: OptionalProperty<string>;
+  /** Duration of the animation. */
+  dur?: OptionalProperty<string>;
+}
+
+/**
+ * The `<mpath>` element — references a `<path>` for use by `<animateMotion>`.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/mpath
+ */
+interface SVGMPathElementProps extends SVGElementProps {
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+}
+
+// --- Hyperlink element ---
+
+/**
+ * The `<a>` element (SVG) — creates a hyperlink out of SVG graphical content.
+ *
+ * Note: The HTML `<a>` type (`HTMLAnchorElementProps`) is already mapped in
+ * the HTML section. This type is **not** added to IntrinsicElements to avoid
+ * ambiguity — use `HTMLAnchorElementProps` for `<a>` in both HTML and SVG
+ * contexts.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/a
+ */
+interface SVGAElementProps extends SVGElementProps {
+  /** Reference URL. */
+  href?: OptionalProperty<string>;
+  /** Browsing context for the link. */
+  target?: OptionalProperty<string>;
+  /** Relationship of the linked document. */
+  rel?: OptionalProperty<string>;
+  /** Prompts the user to download the URL. */
+  download?: OptionalProperty<string>;
+  /** Ping URLs for the link. */
+  ping?: OptionalProperty<string>;
+  /** Language of the linked document. */
+  hreflang?: OptionalProperty<string>;
+  /** MIME type of the linked document. */
+  type?: OptionalProperty<string>;
+  /** Referrer policy for the link. */
+  referrerPolicy?: OptionalProperty<ReferrerPolicy>;
+}
+
+// --- Foreign object ---
+
+/**
+ * The `<foreignObject>` element — embeds non-SVG content (typically HTML)
+ * inside SVG. Child elements exit SVG attribute context and use HTML types.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/foreignObject
+ */
+interface SVGForeignObjectElementProps extends SVGElementProps {
+  /** X-axis coordinate. */
+  x?: OptionalProperty<string | number>;
+  /** Y-axis coordinate. */
+  y?: OptionalProperty<string | number>;
+  /** Width of the element. */
+  width?: OptionalProperty<string | number>;
+  /** Height of the element. */
+  height?: OptionalProperty<string | number>;
+}
+
+/**
+ * The `<view>` element — defines a named viewport for zooming and panning.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/view
+ */
+interface SVGViewElementProps extends SVGElementProps {
+  /** Viewport bounding box. */
+  viewBox?: OptionalProperty<string>;
+  /** Aspect ratio preservation strategy. */
+  preserveAspectRatio?: OptionalProperty<string>;
+  /** Zoom and pan behavior. */
+  zoomAndPan?: OptionalProperty<"disable" | "magnify">;
+}
+
+// --- View element ---
+
+/**
+ * The `<view>` element — defines a named viewport for zooming and panning.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/SVG/Element/view
+ */
+interface SVGViewElementProps extends SVGElementProps {
+  viewBox?: OptionalProperty<string>;
+  preserveAspectRatio?: OptionalProperty<string>;
+  zoomAndPan?: OptionalProperty<"disable" | "magnify">;
+}
+
+/**
+ * JSX intrinsic element types for SVG.
+ *
+ * The following SVG elements are intentionally excluded because their HTML
+ * equivalents are already typed elsewhere:
+ *   - `style`   → `HTMLStyleElementProps` (Section 4.2)
+ *   - `script`  → UNSUPPORTED (Section 4.12)
+ *   - `canvas`  → `HTMLCanvasElementProps` (Section 4.12)
+ *
+ * @see https://www.w3.org/TR/SVG2/eltindex.html
+ */
+export interface IntrinsicElements {
+  // ── Container / structural ─────────────────────────────────────────────
+
+  /** The `<svg>` element — SVG document root. */
+  svg: SVGSVGElementProps;
+  /** The `<g>` element — grouping container. */
+  g: SVGElementProps;
+  /** The `<defs>` element — container for definitions (not rendered directly). */
+  defs: SVGElementProps;
+  /** The `<symbol>` element — reusable graphical template. */
+  symbol: SVGSymbolElementProps;
+  /** The `<use>` element — instantiates a referenced element. */
+  use: SVGUseElementProps;
+
+  // ── Shapes ─────────────────────────────────────────────────────────────
+
+  /** The `<circle>` element. */
+  circle: SVGCircleElementProps;
+  /** The `<ellipse>` element. */
+  ellipse: SVGEllipseElementProps;
+  /** The `<line>` element. */
+  line: SVGLineElementProps;
+  /** The `<path>` element. */
+  path: SVGPathElementProps;
+  /** The `<polygon>` element — closed shape from connected line segments. */
+  polygon: SVGPolygonElementProps;
+  /** The `<polyline>` element — open shape from connected line segments. */
+  polyline: SVGPolylineElementProps;
+  /** The `<rect>` element. */
+  rect: SVGRectElementProps;
+
+  // ── Text ───────────────────────────────────────────────────────────────
+
+  /** The `<text>` element. */
+  text: SVGTextElementProps;
+  /** The `<tspan>` element — span of text within `<text>`. */
+  tspan: SVGTSpanElementProps;
+  /** The `<textPath>` element — text along a path. */
+  textPath: SVGTextPathElementProps;
+
+  // ── Image ──────────────────────────────────────────────────────────────
+
+  /** The `<image>` element — embeds an external image. */
+  image: SVGImageElementProps;
+
+  // ── Clipping / masking ─────────────────────────────────────────────────
+
+  /** The `<clipPath>` element — clipping path. */
+  clipPath: SVGClipPathElementProps;
+  /** The `<mask>` element — alpha mask. */
+  mask: SVGMaskElementProps;
+
+  // ── Gradients ──────────────────────────────────────────────────────────
+
+  /** The `<linearGradient>` element. */
+  linearGradient: SVGLinearGradientElementProps;
+  /** The `<radialGradient>` element. */
+  radialGradient: SVGRadialGradientElementProps;
+  /** The `<stop>` element — gradient color stop. */
+  stop: SVGStopElementProps;
+
+  // ── Pattern / Marker ───────────────────────────────────────────────────
+
+  /** The `<pattern>` element — tileable fill/stroke pattern. */
+  pattern: SVGPatternElementProps;
+  /** The `<marker>` element — arrowhead / vertex marker graphic. */
+  marker: SVGMarkerElementProps;
+
+  // ── Filters ────────────────────────────────────────────────────────────
+
+  /** The `<filter>` element — filter effect container. */
+  filter: SVGFilterElementProps;
+  /** The `<feBlend>` element — blends two filter inputs. */
+  feBlend: SVGFEBlendElementProps;
+  /** The `<feColorMatrix>` element — color transformation. */
+  feColorMatrix: SVGFEColorMatrixElementProps;
+  /** The `<feComponentTransfer>` element — per-channel color remapping. */
+  feComponentTransfer: SVGFEComponentTransferElementProps;
+  /** The `<feComposite>` element — pixel-wise compositing. */
+  feComposite: SVGFECompositeElementProps;
+  /** The `<feConvolveMatrix>` element — matrix convolution. */
+  feConvolveMatrix: SVGFEConvolveMatrixElementProps;
+  /** The `<feDiffuseLighting>` element — diffuse Phong lighting. */
+  feDiffuseLighting: SVGFEDiffuseLightingElementProps;
+  /** The `<feDisplacementMap>` element — pixel displacement. */
+  feDisplacementMap: SVGFEDisplacementMapElementProps;
+  /** The `<feDistantLight>` element — distant light source. */
+  feDistantLight: SVGFEDistantLightElementProps;
+  /** The `<feDropShadow>` element — drop shadow effect. */
+  feDropShadow: SVGFEDropShadowElementProps;
+  /** The `<feFlood>` element — solid-color fill. */
+  feFlood: SVGFEFloodElementProps;
+  /** The `<feFuncA>` element — alpha transfer function. */
+  feFuncA: SVGFEFuncAElementProps;
+  /** The `<feFuncB>` element — blue transfer function. */
+  feFuncB: SVGFEFuncBElementProps;
+  /** The `<feFuncG>` element — green transfer function. */
+  feFuncG: SVGFEFuncGElementProps;
+  /** The `<feFuncR>` element — red transfer function. */
+  feFuncR: SVGFEFuncRElementProps;
+  /** The `<feGaussianBlur>` element — Gaussian blur. */
+  feGaussianBlur: SVGFEGaussianBlurElementProps;
+  /** The `<feImage>` element — external image input. */
+  feImage: SVGFEImageElementProps;
+  /** The `<feMerge>` element — stacks filter primitives. */
+  feMerge: SVGFEMergeElementProps;
+  /** The `<feMergeNode>` element — references a merge input. */
+  feMergeNode: SVGFEMergeNodeElementProps;
+  /** The `<feMorphology>` element — erode or dilate. */
+  feMorphology: SVGFEMorphologyElementProps;
+  /** The `<feOffset>` element — offsets the input. */
+  feOffset: SVGFEOffsetElementProps;
+  /** The `<fePointLight>` element — point light source. */
+  fePointLight: SVGFEPointLightElementProps;
+  /** The `<feSpecularLighting>` element — specular Phong lighting. */
+  feSpecularLighting: SVGFESpecularLightingElementProps;
+  /** The `<feSpotLight>` element — spot light source. */
+  feSpotLight: SVGFESpotLightElementProps;
+  /** The `<feTile>` element — tiles the input. */
+  feTile: SVGFETileElementProps;
+  /** The `<feTurbulence>` element — Perlin noise. */
+  feTurbulence: SVGFETurbulenceElementProps;
+
+  // ── Animation ──────────────────────────────────────────────────────────
+
+  /** The `<animate>` element — animates an attribute. */
+  animate: SVGAnimateElementProps;
+  /** The `<animateMotion>` element — motion along a path. */
+  animateMotion: SVGAnimateMotionElementProps;
+  /** The `<animateTransform>` element — animates a transform attribute. */
+  animateTransform: SVGAnimateTransformElementProps;
+  /** The `<mpath>` element — motion path reference. */
+  mpath: SVGMPathElementProps;
+  /** The `<set>` element — sets an attribute for a duration. */
+  set: SVGSetElementProps;
+
+  // ── Foreign object ─────────────────────────────────────────────────────
+
+  /** The `<foreignObject>` element — embeds non-SVG content. */
+  foreignObject: SVGForeignObjectElementProps;
+
+  // ── View ───────────────────────────────────────────────────────────────
+
+  /** The `<view>` element — named viewport. */
+  view: SVGViewElementProps;
+
+  // ── Descriptive / metadata / conditional ───────────────────────────────
+
+  /** The `<desc>` element — description (a11y). */
+  desc: SVGElementProps;
+  /** The `<metadata>` element — structured metadata. */
+  metadata: SVGElementProps;
+  /** The `<title>` element (SVG) — accessible name (distinct from HTML `<title>`). */
+  title: SVGElementProps;
+  /** The `<switch>` element — conditional rendering. */
+  switch: SVGElementProps;
+
+  // ── SVG 2 ──────────────────────────────────────────────────────────────
+
+  /** The `<discard>` element — disposes of element resources. */
+  discard: SVGElementProps;
+}

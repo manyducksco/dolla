@@ -1,6 +1,7 @@
 import type { View } from "../../../types.js";
 import { Context, createContext, mountContext, cleanupContext } from "../../context.js";
-import { peek, pushComponentName, popComponentName } from "../../signals.js";
+import { peek } from "../../signals.js";
+import { pushComponentName, popComponentName } from "../../signal-debug.js";
 import { MarkupNode } from "../types.js";
 import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";

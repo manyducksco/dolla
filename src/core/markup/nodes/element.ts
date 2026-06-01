@@ -13,6 +13,57 @@ const IS_SVG = Symbol.for("$_IS_SVG");
 // Properties in this list will not be processed by applyProps because they are already handled elsewhere.
 const ignoredProps = ["ref", "children"];
 
+// SVG presentation attributes that must use kebab-case as attribute names.
+// When a matching camelCase key is encountered (e.g. `fillOpacity`), it is
+// converted to its kebab-case equivalent (`fill-opacity`) before setAttribute.
+const SVG_PRESENTATION_ATTRS = new Set([
+  "clipPath",
+  "clipRule",
+  "colorInterpolation",
+  "colorInterpolationFilters",
+  "colorRendering",
+  "dominantBaseline",
+  "fillOpacity",
+  "fillRule",
+  "floodColor",
+  "floodOpacity",
+  "fontFamily",
+  "fontSize",
+  "fontSizeAdjust",
+  "fontStretch",
+  "fontStyle",
+  "fontVariant",
+  "fontWeight",
+  "imageRendering",
+  "letterSpacing",
+  "lightingColor",
+  "markerEnd",
+  "markerMid",
+  "markerStart",
+  "maskType",
+  "paintOrder",
+  "pointerEvents",
+  "shapeRendering",
+  "stopColor",
+  "stopOpacity",
+  "strokeDasharray",
+  "strokeDashoffset",
+  "strokeLinecap",
+  "strokeLinejoin",
+  "strokeMiterlimit",
+  "strokeOpacity",
+  "strokeWidth",
+  "textAnchor",
+  "textDecoration",
+  "textOverflow",
+  "textRendering",
+  "transformOrigin",
+  "unicodeBidi",
+  "vectorEffect",
+  "wordSpacing",
+  "writingMode",
+]);
+
 type ElementRoot = HTMLElement | SVGElement;
 
 /**
@@ -223,9 +274,13 @@ export class ElementNode extends MarkupNode {
         }
       } else {
         // Fall back to attributes.
+        // SVG presentation attributes must use kebab-case (e.g. `fill-opacity`)
+        // while JSX conventionally uses camelCase (`fillOpacity`). Convert here
+        // so both forms work.  `camelToKebab` is a no-op for already-kebab keys.
+        const attrName = SVG_PRESENTATION_ATTRS.has(key) ? camelToKebab(key) : key;
 
         this.#attach(value, (current) => {
-          setAttribute(element, key, current);
+          setAttribute(element, attrName, current);
         });
       }
     }

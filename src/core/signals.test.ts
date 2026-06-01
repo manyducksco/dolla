@@ -6,11 +6,10 @@ import {
   createAtom,
   createEffect,
   peek,
-  pushComponentName,
-  popComponentName,
   subscribe,
   type Getter,
 } from "./signals";
+import { pushComponentName, popComponentName } from "./signal-debug";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = createAtom(5);

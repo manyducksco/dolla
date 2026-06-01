@@ -1,7 +1,8 @@
 import { Store } from "../types.js";
 import { assert } from "../utils.js";
 import { VIEW, ViewNode } from "./markup/nodes/view.js";
-import { createEffect, pushComponentName, popComponentName, Unwrapped } from "./signals.js";
+import { createEffect, Unwrapped } from "./signals.js";
+import { pushComponentName, popComponentName } from "./signal-debug.js";
 import { PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
