@@ -241,21 +241,12 @@ export class ElementNode extends MarkupNode {
           setAttribute(element, _key, current);
         });
       } else if (key.startsWith("on:")) {
-        // on:click → addEventListener("click")
-
-        const eventName = key.substring(3);
-        this.#attachListener(element, eventName, value);
+        this.#attachListener(element, key.substring(3), value);
       } else if (key[0] === "@") {
-        // @click → addEventListener("click")
-
-        const eventName = key.substring(1);
-        this.#attachListener(element, eventName, value);
+        this.#attachListener(element, key.substring(1), value);
       } else if (key.startsWith("on")) {
-        // onClick → addEventListener("click")
-
         const eventName = key.slice(2).toLowerCase();
-        if (!eventName) continue;
-        this.#attachListener(element, eventName, value);
+        if (eventName) this.#attachListener(element, eventName, value);
       } else if (key in element && !this.#context[IS_SVG]) {
         // Set as property if the element has one.
 
