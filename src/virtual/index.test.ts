@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createOffsetEngine } from "./list.js";
+import { createOffsetEngine } from "./index.js";
 
 describe("createOffsetEngine", () => {
   describe("getOffset", () => {
@@ -15,7 +15,13 @@ describe("createOffsetEngine", () => {
 
     test("uses measured heights when available", () => {
       const engine = createOffsetEngine(50);
-      engine.updateHeights([{ index: 0, height: 100 }, { index: 1, height: 80 }], 50);
+      engine.updateHeights(
+        [
+          { index: 0, height: 100 },
+          { index: 1, height: 80 },
+        ],
+        50,
+      );
       // item 0 = 100, item 1 = 80
       expect(engine.getOffset(0, 50)).toBe(0);
       expect(engine.getOffset(1, 50)).toBe(100);
@@ -24,7 +30,13 @@ describe("createOffsetEngine", () => {
 
     test("uses avg for unmeasured items between measured ones", () => {
       const engine = createOffsetEngine(50);
-      engine.updateHeights([{ index: 0, height: 100 }, { index: 3, height: 200 }], 50);
+      engine.updateHeights(
+        [
+          { index: 0, height: 100 },
+          { index: 3, height: 200 },
+        ],
+        50,
+      );
       // index 1 and 2 use avg(50)
       expect(engine.getOffset(0, 50)).toBe(0);
       expect(engine.getOffset(1, 50)).toBe(100);
@@ -48,7 +60,13 @@ describe("createOffsetEngine", () => {
 
     test("uses measured heights for known items", () => {
       const engine = createOffsetEngine(50);
-      engine.updateHeights([{ index: 0, height: 200 }, { index: 1, height: 150 }], 50);
+      engine.updateHeights(
+        [
+          { index: 0, height: 200 },
+          { index: 1, height: 150 },
+        ],
+        50,
+      );
       // measured: 200 + 150 = 350, avg = 175
       // unmeasured: (10 - 2) * 175 = 1400
       expect(engine.getTotalHeight(10)).toBe(1750);
@@ -81,7 +99,13 @@ describe("createOffsetEngine", () => {
 
     test("works with measured variable heights", () => {
       const engine = createOffsetEngine(50);
-      engine.updateHeights([{ index: 0, height: 200 }, { index: 1, height: 30 }], 50);
+      engine.updateHeights(
+        [
+          { index: 0, height: 200 },
+          { index: 1, height: 30 },
+        ],
+        50,
+      );
       // offsets: 0=0, 1=200, 2=230, 3=280, 4=330
       // findIndexAtScroll uses strict < comparison, so at exact boundaries stays at prev
       expect(engine.findIndexAtScroll(0, 5, 50)).toBe(0);

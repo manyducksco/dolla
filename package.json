@@ -43,6 +43,10 @@
       "import": "./dist/http.js",
       "types": "./dist/http/index.d.ts"
     },
+    "./virtual": {
+      "import": "./dist/virtual.js",
+      "types": "./dist/virtual/index.d.ts"
+    },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",
       "types": "./jsx-runtime.d.ts"
