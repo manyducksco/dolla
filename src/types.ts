@@ -68,32 +68,31 @@ type EnterKeyHintValues = "enter" | "done" | "go" | "next" | "previous" | "searc
 type HiddenValues = true | false | "until-found";
 type InputModeValues = "decimal" | "email" | "none" | "numeric" | "search" | "tel" | "text" | "url";
 
+type EventHandlerObject<E extends Event> = {
+  handleEvent: EventHandler<E>;
+  capture?: boolean;
+  once?: boolean;
+  passive?: boolean;
+};
+
 type TargetEvent<T extends Event, E extends EventTarget> = T & { readonly currentTarget: E };
 
 type OnEventProps<E extends EventTarget, M> = {
-  [K in keyof M & string]?: EventHandler<TargetEvent<M[K] & Event, E>>;
+  [K in keyof M & string]?:
+    | EventHandler<TargetEvent<M[K] & Event, E>>
+    | EventHandlerObject<TargetEvent<M[K] & Event, E>>;
 } & {
-  [K in keyof M & string as K extends `on${infer Rest}` ? `on${Lowercase<Rest>}` : never]?: EventHandler<
-    TargetEvent<M[K] & Event, E>
-  >;
+  [K in keyof M & string as K extends `on${infer Rest}` ? `on${Lowercase<Rest>}` : never]?:
+    | EventHandler<TargetEvent<M[K] & Event, E>>
+    | EventHandlerObject<TargetEvent<M[K] & Event, E>>;
 } & {
   [K in keyof M & string as K extends `on${infer Rest}` ? `on:${Lowercase<Rest>}` : never]?:
     | EventHandler<TargetEvent<M[K] & Event, E>>
-    | {
-        handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
-        capture?: boolean;
-        once?: boolean;
-        passive?: boolean;
-      };
+    | EventHandlerObject<TargetEvent<M[K] & Event, E>>;
 } & {
   [K in keyof M & string as K extends `on${infer Rest}` ? `@${Lowercase<Rest>}` : never]?:
     | EventHandler<TargetEvent<M[K] & Event, E>>
-    | {
-        handleEvent: EventHandler<TargetEvent<M[K] & Event, E>>;
-        capture?: boolean;
-        once?: boolean;
-        passive?: boolean;
-      };
+    | EventHandlerObject<TargetEvent<M[K] & Event, E>>;
 };
 
 /*====================================*\
