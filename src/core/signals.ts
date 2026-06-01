@@ -342,24 +342,35 @@ function setActiveSub(sub?: ReactiveNode) {
   return prevSub;
 }
 
+function withReactiveScope<T>(
+  node: ReactiveNode,
+  prevSub: ReactiveNode | undefined,
+  fn: () => T,
+  withPurge?: boolean,
+): T {
+  const scopeLen = reactiveScopeStack.length;
+  reactiveScopeStack.push(node);
+  try {
+    return fn();
+  } catch (error) {
+    throw enhanceError(error);
+  } finally {
+    activeSub = prevSub;
+    node._flags &= ~ReactiveFlags.RecursedCheck;
+    if (withPurge) purgeDeps(node);
+    reactiveScopeStack.length = scopeLen;
+  }
+}
+
 function updateComputed(c: ComputedNode): boolean {
   ++cycle;
   c._depsTail = undefined;
   c._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
   const prevSub = setActiveSub(c);
-  const scopeLen = reactiveScopeStack.length;
-  reactiveScopeStack.push(c);
-  try {
+  return withReactiveScope(c, prevSub, () => {
     const oldValue = c._value;
     return oldValue !== (c._value = c._getter(oldValue));
-  } catch (error) {
-    throw enhanceError(error);
-  } finally {
-    activeSub = prevSub;
-    c._flags &= ~ReactiveFlags.RecursedCheck;
-    purgeDeps(c);
-    reactiveScopeStack.length = scopeLen;
-  }
+  }, true);
 }
 
 function updateValue(v: ValueNode): boolean {
@@ -449,17 +460,9 @@ function computedGetter(node: ComputedNode) {
   } else if (!flags) {
     node._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
     const prevSub = setActiveSub(node);
-    const scopeLen = reactiveScopeStack.length;
-    reactiveScopeStack.push(node);
-    try {
+    withReactiveScope(node, prevSub, () => {
       node._value = unwrap(node._getter());
-    } catch (error) {
-      throw enhanceError(error);
-    } finally {
-      activeSub = prevSub;
-      node._flags &= ~ReactiveFlags.RecursedCheck;
-      reactiveScopeStack.length = scopeLen;
-    }
+    });
   }
   const sub = activeSub;
   if (sub !== undefined) {
@@ -733,18 +736,10 @@ export function createEffect(
   if (prevSub !== undefined) {
     link(e, prevSub, 0);
   }
-  const scopeLen = reactiveScopeStack.length;
-  reactiveScopeStack.push(e);
-  try {
+  withReactiveScope(e, prevSub, () => {
     const result = e._fn();
     if (isFunction(result)) e._cleanup = result;
-  } catch (error) {
-    throw enhanceError(error);
-  } finally {
-    activeSub = prevSub;
-    e._flags &= ~ReactiveFlags.RecursedCheck;
-    reactiveScopeStack.length = scopeLen;
-  }
+  });
   return () => effectCleanup(e);
 }
 

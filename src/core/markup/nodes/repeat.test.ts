@@ -24,9 +24,10 @@ function renderFn(item: ReturnType<typeof createAtom<Item>>[0], index: ReturnTyp
 describe("RepeatNode", () => {
   describe("creation and lifecycle", () => {
     test("getRoot returns a text node anchor", () => {
-      const { context } = setup();
+      const { context, container } = setup();
       const [items] = createAtom<Item[]>([]);
       const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
       expect(node.getRoot()).toBeInstanceOf(Text);
     });
 
@@ -450,13 +451,13 @@ describe("RepeatNode", () => {
       const childIdx = (n: Node | null) => Array.prototype.indexOf.call(container.childNodes, n!);
 
       // Anchor is between `before` and `after`, item spans sit after the anchor
-      expect(childIdx(node.getRoot())).toBeGreaterThan(childIdx(before));
-      expect(childIdx(node.getRoot())).toBeLessThan(childIdx(after));
+      expect(childIdx(node.getRoot()!)).toBeGreaterThan(childIdx(before));
+      expect(childIdx(node.getRoot()!)).toBeLessThan(childIdx(after));
 
       node.move(container, after);
 
       // Anchor is now after `after`
-      expect(childIdx(node.getRoot())).toBeGreaterThan(childIdx(after));
+      expect(childIdx(node.getRoot()!)).toBeGreaterThan(childIdx(after));
     });
 
     test("move preserves rendered content", () => {

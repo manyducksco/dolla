@@ -15,6 +15,7 @@ describe("PortalNode", () => {
     test("getRoot returns an anchor text node", () => {
       const { context, logicalParent, portalTarget } = setup();
       const node = new PortalNode(context, "hello", portalTarget);
+      node.mount(logicalParent);
       expect(node.getRoot()).toBeInstanceOf(Text);
     });
 
@@ -30,7 +31,7 @@ describe("PortalNode", () => {
       const { context, logicalParent, portalTarget } = setup();
       const node = new PortalNode(context, "hello", portalTarget);
       node.mount(logicalParent);
-      expect(logicalParent.contains(node.getRoot())).toBe(true);
+      expect(logicalParent.contains(node.getRoot()!)).toBe(true);
     });
 
     test("renders content in portal target", () => {

@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createContext } from "../../context.js";
 import { createAtom } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
+import { css } from "../css.js";
 import { ElementNode } from "./element.js";
 import { createMarkup } from "../utils.js";
 
@@ -195,15 +196,57 @@ describe("ElementNode", () => {
       expect(el.innerHTML).toBe("<span>hello</span>");
     });
 
-    test("removes attribute when value is falsy", () => {
+    test("removes attribute when value is null or undefined", () => {
       const { context, container } = setup();
-      const node = new ElementNode(context, "div", { "data-test": "visible" });
+      const node = new ElementNode(context, "div", { "data-test": null });
       node.mount(container);
-      expect(container.children[0].hasAttribute("data-test")).toBe(true);
-      const node2 = new ElementNode(context, "div", { "data-test": "" });
+      expect(container.children[0].hasAttribute("data-test")).toBe(false);
+      const node2 = new ElementNode(context, "div", { "data-test": undefined });
       const c2 = document.createElement("div");
       node2.mount(c2);
       expect(c2.children[0].hasAttribute("data-test")).toBe(false);
+    });
+
+    test("sets attribute to string value for falsy but non-null values", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { tabindex: 0 });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("tabindex")).toBe("0");
+    });
+
+    test("sets attribute to empty string for title=\"\"", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { title: "" });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("title")).toBe("");
+    });
+
+    test("sets aria-hidden to \"false\" string when passed false", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { "aria-hidden": false });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-hidden")).toBe("false");
+    });
+
+    test("boolean property disabled={false} removes the disabled attribute", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "button", { disabled: false });
+      node.mount(container);
+      const el = container.children[0] as HTMLButtonElement;
+      expect(el.disabled).toBe(false);
+      expect(el.hasAttribute("disabled")).toBe(false);
+    });
+
+    test("boolean property disabled={true} sets the disabled attribute", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "button", { disabled: true });
+      node.mount(container);
+      const el = container.children[0] as HTMLButtonElement;
+      expect(el.disabled).toBe(true);
+      expect(el.hasAttribute("disabled")).toBe(true);
     });
   });
 
@@ -220,16 +263,38 @@ describe("ElementNode", () => {
       expect(el.getAttribute("href")).toBe("/updated");
     });
 
-    test("removes attribute when signal becomes empty", () => {
+    test("removes attribute when signal becomes null", () => {
       const { context, container } = setup();
-      const [val, setVal] = createAtom("hello");
+      const [val, setVal] = createAtom<string | null>("hello");
       const node = new ElementNode(context, "div", { "data-test": val });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       expect(el.hasAttribute("data-test")).toBe(true);
-      setVal("");
+      setVal(null);
       flushPendingUpdates();
       expect(el.hasAttribute("data-test")).toBe(false);
+    });
+
+    test("sets attribute to \"0\" when signal becomes 0", () => {
+      const { context, container } = setup();
+      const [val, setVal] = createAtom<string | number>("text");
+      const node = new ElementNode(context, "div", { "data-test": val });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      setVal(0);
+      flushPendingUpdates();
+      expect(el.getAttribute("data-test")).toBe("0");
+    });
+
+    test("sets attribute to \"\" when signal becomes empty string", () => {
+      const { context, container } = setup();
+      const [val, setVal] = createAtom("text");
+      const node = new ElementNode(context, "div", { "data-test": val });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      setVal("");
+      flushPendingUpdates();
+      expect(el.getAttribute("data-test")).toBe("");
     });
   });
 
@@ -300,6 +365,130 @@ describe("ElementNode", () => {
       flushPendingUpdates();
       expect(el.classList.contains("foo")).toBe(false);
       expect(el.classList.contains("bar")).toBe(true);
+    });
+
+    test("sets classes via CSSTemplate alone", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { class: tpl });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+    });
+
+    test("sets classes via array of CSSTemplate and object", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", {
+        class: [tpl, { foo: true, bar: false }],
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+      expect(el.classList.contains("foo")).toBe(true);
+      expect(el.classList.contains("bar")).toBe(false);
+    });
+
+    test("sets classes via array of multiple CSSTemplates", () => {
+      const { context, container } = setup();
+      const a = css`
+        color: red;
+      `;
+      const b = css`
+        font-size: 16px;
+      `;
+      const node = new ElementNode(context, "div", { class: [a, b] });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(a.className)).toBe(true);
+      expect(el.classList.contains(b.className)).toBe(true);
+    });
+
+    test("conditionally applies class via .when(true)", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { class: tpl.when(true) });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+    });
+
+    test("conditionally applies class via .when(false)", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { class: tpl.when(false) });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(false);
+    });
+
+    test("reactively toggles class via .when(getter)", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { class: tpl.when(isActive) });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(false);
+      setIsActive(true);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(true);
+      setIsActive(false);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(false);
+    });
+
+    test("mixes .when() with other class values in array", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", {
+        class: ["base", tpl.when(isActive)],
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains("base")).toBe(true);
+      expect(el.classList.contains(tpl.className)).toBe(false);
+      setIsActive(true);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(true);
+    });
+
+    test("detaches template when swapped out via signal", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const a = css`
+        color: red;
+      `;
+      const b = css`
+        color: blue;
+      `;
+      const node = new ElementNode(context, "div", {
+        class: () => (isActive() ? [a, b] : [a]),
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(a.className)).toBe(true);
+      expect(el.classList.contains(b.className)).toBe(false);
+      setIsActive(true);
+      flushPendingUpdates();
+      expect(el.classList.contains(b.className)).toBe(true);
+      setIsActive(false);
+      flushPendingUpdates();
+      expect(el.classList.contains(b.className)).toBe(false);
+      expect(el.classList.contains(a.className)).toBe(true);
     });
   });
 
@@ -413,6 +602,86 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLElement;
       expect(el.style.color).toBe("red");
     });
+
+    test("sets styles via CSSTemplate alone", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { style: tpl });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+    });
+
+    test("sets styles via array of CSSTemplate and object", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", {
+        style: [tpl, { background: "blue" }],
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+      expect(el.style.background).toBe("blue");
+    });
+
+    test("sets styles via array of multiple CSSTemplates", () => {
+      const { context, container } = setup();
+      const a = css`
+        color: red;
+      `;
+      const b = css`
+        font-size: 16px;
+      `;
+      const node = new ElementNode(context, "div", { style: [a, b] });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(a.className)).toBe(true);
+      expect(el.classList.contains(b.className)).toBe(true);
+    });
+
+    test("conditionally applies style via .when(true)", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { style: tpl.when(true) });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+    });
+
+    test("conditionally applies style via .when(false)", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { style: tpl.when(false) });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(false);
+    });
+
+    test("reactively toggles style via .when(getter)", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { style: tpl.when(isActive) });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(false);
+      setIsActive(true);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(true);
+      setIsActive(false);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(false);
+    });
   });
 
   describe("events", () => {
@@ -426,13 +695,83 @@ describe("ElementNode", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    test("handles @event convention (@click)", () => {
+    test("handles camelCase event names (onMouseEnter)", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", { onMouseEnter: handler });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("handles on: convention (on:click)", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", { "on:click": handler });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("handles @ convention (@click)", () => {
       const { context, container } = setup();
       const handler = vi.fn();
       const node = new ElementNode(context, "button", { "@click": handler });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("on:click with handler object (handleEvent)", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", {
+        "on:click": { handleEvent: handler },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("@click with handler object (handleEvent)", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", {
+        "@click": { handleEvent: handler },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("on:click with handler object and options", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", {
+        "on:click": { handleEvent: handler, once: true },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1); // once=true, called only once
+    });
+
+    test("on:click with custom event type", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "div", {
+        "on:mycustomevent": handler,
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.dispatchEvent(new CustomEvent("mycustomevent"));
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
@@ -447,6 +786,62 @@ describe("ElementNode", () => {
       node.unmount();
       el.click();
       expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("unsubscribes on: listeners on unmount", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", { "on:click": handler });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+      node.unmount();
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("unsubscribes @ listeners on unmount", () => {
+      const { context, container } = setup();
+      const handler = vi.fn();
+      const node = new ElementNode(context, "button", { "@click": handler });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+      node.unmount();
+      el.click();
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    test("passing a getter to onClick is not unwrapped", () => {
+      const { context, container } = setup();
+      const realHandler = vi.fn();
+      const getter = () => realHandler;
+      const node = new ElementNode(context, "button", { onClick: getter });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      el.click();
+      // getter itself is registered as the listener; the handler it returns
+      // is never called by the browser
+      expect(realHandler).toHaveBeenCalledTimes(0);
+    });
+
+    test("passing a signal to onClick does not crash", () => {
+      const { context, container } = setup();
+      const [val] = createAtom("hello");
+      const node = new ElementNode(context, "button", { onClick: val });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(() => el.click()).not.toThrow();
+    });
+
+    test("non-function value does not throw", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "button", { onClick: 42 as any });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(() => el.click()).not.toThrow();
     });
   });
 

@@ -1,7 +1,6 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { cleanupContext, createContext, mountContext } from "../context.js";
-import { createAtom } from "../signals.js";
-import { css, isCSSTemplate } from "./css.js";
+import { css, isConditionalTemplate, isCSSTemplate } from "./css.js";
 
 describe("css tagged template", () => {
   test("returns a CSSTemplate", () => {
@@ -47,13 +46,6 @@ describe("css tagged template", () => {
     expect(`${tpl}`).toBe(tpl.className);
   });
 
-  test("children array is empty by default", () => {
-    const tpl = css`
-      padding: 0;
-    `;
-    expect(tpl.children).toEqual([]);
-  });
-
   test("attach adds className to element", () => {
     const ctx = createContext(null);
     const el = document.createElement("div");
@@ -82,104 +74,6 @@ describe("css tagged template", () => {
     `;
     tpl.attach(ctx, el, true);
     expect(el.classList.contains(tpl.className)).toBe(true);
-  });
-
-  test("with returns a new template with the child appended", () => {
-    const parent = css`
-      color: red;
-    `;
-    const child = css`
-      font-weight: bold;
-    `;
-    const combined = parent.with(child);
-    expect(parent.children).toEqual([]);
-    expect(combined.children.length).toBe(1);
-    expect(combined.children[0][0]).toBe(child);
-    expect(combined.children[0][1]).toBe(true);
-  });
-
-  test("with composes with condition", () => {
-    const parent = css`
-      color: red;
-    `;
-    const child = css`
-      font-weight: bold;
-    `;
-    const combined = parent.with(child, false);
-    expect(combined.children[0][1]).toBe(false);
-  });
-
-  test("with does not mutate the original template", () => {
-    const parent = css`
-      color: red;
-    `;
-    const child = css`
-      font-weight: bold;
-    `;
-    const combined = parent.with(child);
-    expect(combined).not.toBe(parent);
-    expect(parent.children).toEqual([]);
-    expect(combined.className).toBe(parent.className);
-  });
-
-  test("chained with calls accumulate children", () => {
-    const parent = css`
-      color: red;
-    `;
-    const a = css`
-      font-weight: bold;
-    `;
-    const b = css`
-      color: blue;
-    `;
-    const combined = parent.with(a).with(b);
-    expect(combined.children.length).toBe(2);
-    expect(combined.children[0][0]).toBe(a);
-    expect(combined.children[1][0]).toBe(b);
-  });
-
-  test("attaching combined template also attaches children", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const parent = css`
-      color: red;
-    `;
-    const child = css`
-      font-weight: bold;
-    `;
-    const combined = parent.with(child);
-    combined.attach(ctx, el);
-    expect(el.classList.contains(combined.className)).toBe(true);
-    expect(el.classList.contains(child.className)).toBe(true);
-  });
-
-  test("attaching parent without with() does not attach unrelated children", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const parent = css`
-      color: red;
-    `;
-    const child = css`
-      font-weight: bold;
-    `;
-    parent.with(child);
-    parent.attach(ctx, el);
-    expect(el.classList.contains(parent.className)).toBe(true);
-    expect(el.classList.contains(child.className)).toBe(false);
-  });
-
-  test("attaching combined template with conditional child", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const parent = css`
-      color: red;
-    `;
-    const child = css`
-      font-weight: bold;
-    `;
-    const combined = parent.with(child, false);
-    combined.attach(ctx, el);
-    expect(el.classList.contains(child.className)).toBe(false);
   });
 
   test("static interpolation is included", () => {
@@ -285,21 +179,6 @@ describe("css.as()", () => {
     expect(`${tpl}`).toBe(tpl.className);
   });
 
-  test("instance .as() followed by .with() attaches correctly", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const child = css`
-      font-weight: bold;
-    `.as("child");
-    const parent = css`
-      color: red;
-    `.as("parent");
-    const combined = parent.with(child);
-    combined.attach(ctx, el);
-    expect(el.classList.contains(combined.className)).toBe(true);
-    expect(el.classList.contains(child.className)).toBe(true);
-  });
-
   test("css.as() sanitizes spaces in the name", () => {
     const tpl = css.as("some name")`
       color: red;
@@ -339,8 +218,8 @@ describe("instance rule cleanup", () => {
 
     expect(sheet.cssRules.length).toBe(beforeLength + 2);
 
-    const instanceRules = Array.from(sheet.cssRules).filter(
-      (r) => (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
+    const instanceRules = Array.from(sheet.cssRules).filter((r) =>
+      (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
     );
     expect(instanceRules.length).toBe(1);
 
@@ -349,8 +228,8 @@ describe("instance rule cleanup", () => {
 
     expect(sheet.cssRules.length).toBe(beforeLength + 1);
 
-    const remaining = Array.from(sheet.cssRules).filter(
-      (r) => (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
+    const remaining = Array.from(sheet.cssRules).filter((r) =>
+      (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
     );
     expect(remaining.length).toBe(0);
   });
@@ -370,18 +249,14 @@ describe("instance rule cleanup", () => {
 
     // Static rule exists before cleanup
     const staticSelector = `.${tpl.className}`;
-    const ruleBefore = Array.from(sheet.cssRules).find(
-      (r) => (r as CSSStyleRule).selectorText === staticSelector,
-    );
+    const ruleBefore = Array.from(sheet.cssRules).find((r) => (r as CSSStyleRule).selectorText === staticSelector);
     expect(ruleBefore).toBeTruthy();
 
     mountContext(ctx);
     cleanupContext(ctx);
 
     // Static rule still exists after cleanup
-    const ruleAfter = Array.from(sheet.cssRules).find(
-      (r) => (r as CSSStyleRule).selectorText === staticSelector,
-    );
+    const ruleAfter = Array.from(sheet.cssRules).find((r) => (r as CSSStyleRule).selectorText === staticSelector);
     expect(ruleAfter).toBeTruthy();
   });
 
@@ -399,5 +274,38 @@ describe("instance rule cleanup", () => {
     const ctx2 = createContext(null);
     const el2 = document.createElement("div");
     expect(() => tpl.attach(ctx2, el2)).not.toThrow();
+  });
+});
+
+describe("css.when()", () => {
+  test("returns a ConditionalTemplate", () => {
+    const tpl = css`
+      color: red;
+    `;
+    const result = tpl.when(true);
+    expect(isConditionalTemplate(result)).toBe(true);
+    expect(result.template).toBe(tpl);
+    expect(result.condition).toBe(true);
+  });
+
+  test("attaches template when condition is true", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const tpl = css`
+      color: red;
+    `;
+    tpl.when(true).template.attach(ctx, el, true);
+    expect(el.classList.contains(tpl.className)).toBe(true);
+  });
+
+  test("does not attach template when condition is false", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const tpl = css`
+      color: red;
+    `;
+    const conditional = tpl.when(false);
+    conditional.template.attach(ctx, el, false);
+    expect(el.classList.contains(tpl.className)).toBe(false);
   });
 });

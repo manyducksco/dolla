@@ -3,6 +3,7 @@ import { isFunction, uniqueId } from "../../utils";
 import { Context, onEffect } from "../context";
 
 const IS_CSS_TEMPLATE = Symbol.for("$_IS_CSS_TEMPLATE");
+const IS_CONDITIONAL_TEMPLATE = Symbol.for("$_IS_CONDITIONAL_TEMPLATE");
 
 /*============================*\
 ||           Types            ||
@@ -18,6 +19,15 @@ export type CSSTemplateBinding = {
 };
 
 /**
+ * A wrapper around a CSSTemplate that conditionally applies it.
+ */
+export type ConditionalTemplate = {
+  [IS_CONDITIONAL_TEMPLATE]: true;
+  template: CSSTemplate;
+  condition: MaybeGetter<any>;
+};
+
+/**
  * A template for a CSS snippet. Built when applied to an element.
  */
 export type CSSTemplate = {
@@ -26,9 +36,7 @@ export type CSSTemplate = {
 
   as(name: string): CSSTemplate;
   attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): void;
-
-  with(template: CSSTemplate, condition?: MaybeGetter<any>): CSSTemplate;
-  children: [CSSTemplate, MaybeGetter<any>][];
+  when(condition: MaybeGetter<any>): ConditionalTemplate;
 
   toString(): string;
 };
@@ -39,6 +47,10 @@ export type CSSTemplate = {
 
 export function isCSSTemplate(value: any): value is CSSTemplate {
   return value != null && value[IS_CSS_TEMPLATE] === true;
+}
+
+export function isConditionalTemplate(value: any): value is ConditionalTemplate {
+  return value != null && value[IS_CONDITIONAL_TEMPLATE] === true;
 }
 
 function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): string {
@@ -247,7 +259,6 @@ function createTemplate(prefix: string, strings: TemplateStringsArray, interpola
     [IS_CSS_TEMPLATE]: true,
 
     className,
-    children: [],
 
     toString() {
       return this.className;
@@ -325,14 +336,10 @@ function createTemplate(prefix: string, strings: TemplateStringsArray, interpola
 
         onCleanup(c, cleanupStyleRef);
       }
-
-      this.children.forEach(([childTemplate, childCondition]) => {
-        childTemplate.attach(c, element, childCondition);
-      });
     },
 
-    with(template: CSSTemplate, condition = true): CSSTemplate {
-      return { ...this, children: [...this.children, [template, condition]] };
+    when(condition: MaybeGetter<any>): ConditionalTemplate {
+      return { [IS_CONDITIONAL_TEMPLATE]: true, template: this, condition };
     },
   };
 

@@ -27,7 +27,7 @@ type ConnectedItem<T> = {
  * Renders a list of items.
  */
 export class RepeatNode<T> extends MarkupNode {
-  #root = createTextNode("");
+  #root: Text | null = null;
 
   #context;
 
@@ -48,15 +48,16 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   override getRoot() {
-    return this.#root;
+    return this.#root ?? undefined;
   }
 
   override isMounted() {
-    return this.#root.parentNode != null;
+    return this.#root?.parentNode != null;
   }
 
   override mount(parent: Element, after?: Node) {
     if (!this.isMounted()) {
+      this.#root = createTextNode("");
       addChild(parent, this.#root, after);
 
       this.#unsubscribe = subscribe(this.#items, (items) => {
@@ -75,13 +76,15 @@ export class RepeatNode<T> extends MarkupNode {
     }
 
     if (!skipDOM && this.isMounted()) {
-      this.#root.parentNode?.removeChild(this.#root);
+      this.#root!.parentNode?.removeChild(this.#root!);
     }
 
     this._cleanup(skipDOM);
   }
 
   override move(parent: Element, after?: Node) {
+    if (!this.#root) return;
+
     let referenceNode: Node | null = after?.nextSibling ?? null;
 
     if (parent.moveBefore) {
@@ -117,7 +120,7 @@ export class RepeatNode<T> extends MarkupNode {
   }
 
   private _update(value: T[]) {
-    if (!this.isMounted()) return;
+    if (!this.isMounted() || !this.#root) return;
 
     if (value.length === 0) {
       return this._cleanup(false);

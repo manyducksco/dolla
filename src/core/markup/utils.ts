@@ -1,10 +1,11 @@
 import type { Renderable, View } from "../../types.js";
-import { isArray, isFunction, isNumber, isObject, isString } from "../../utils.js";
+import { isArray, isFunction, isNumber, isString } from "../../utils.js";
 import { Context, createContext } from "../context.js";
 import { getDebug } from "../debug.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
+import { FragmentNode } from "./nodes/fragment.js";
 import { ViewNode } from "./nodes/view.js";
 import { IS_MARKUP, IS_MARKUP_NODE, IS_MARKUP_NODE_CLASS, Markup, MarkupNode, MountTarget, PropsOf } from "./types.js";
 
@@ -46,10 +47,9 @@ export function isMarkupNodeClass(value: any): value is new (...args: any[]) => 
 export function render(content: Renderable, context = createContext(null)): MarkupNode {
   const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
-    return nodes[0]; // if it's just one item return it
+    return nodes[0];
   }
-  // otherwise wrap it in something that can display multiple nodes
-  return new DynamicNode(context, () => nodes);
+  return new FragmentNode(context, nodes);
 }
 
 /**

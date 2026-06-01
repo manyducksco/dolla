@@ -1,8 +1,7 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+import { Renderable } from "../../types";
 import { html } from "./html.js";
 import { createMarkup as m } from "./utils.js";
-import { Renderable } from "../../types";
-import { Context } from "../context.js";
 
 describe("html", () => {
   test("parses into Markup", () => {

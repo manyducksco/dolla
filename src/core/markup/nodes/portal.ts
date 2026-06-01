@@ -8,7 +8,7 @@ import { addChild, createTextNode, moveAfter, render } from "../utils.js";
  */
 export class PortalNode extends MarkupNode {
   // Acts as a physical placeholder in the logical DOM tree
-  #anchor = createTextNode("");
+  #anchor: Text | null = null;
 
   #context: Context;
   #value: Renderable;
@@ -23,17 +23,17 @@ export class PortalNode extends MarkupNode {
   }
 
   override getRoot() {
-    // Return the anchor, allowing siblings to mount correctly around it
-    return this.#anchor;
+    return this.#anchor ?? undefined;
   }
 
   override isMounted() {
-    return this.#anchor.parentNode != null;
+    return this.#anchor?.parentNode != null;
   }
 
   override mount(logicalParent: MountTarget, after?: Node) {
     if (!this.isMounted()) {
       // Mount the anchor in the standard document flow
+      this.#anchor = createTextNode("");
       addChild(logicalParent, this.#anchor, after);
 
       // Render the content and mount it to the portal target
@@ -47,7 +47,7 @@ export class PortalNode extends MarkupNode {
   override unmount(skipDOM = false) {
     if (this.isMounted()) {
       if (!skipDOM) {
-        this.#anchor.parentNode?.removeChild(this.#anchor);
+        this.#anchor!.parentNode?.removeChild(this.#anchor!);
       }
 
       // Portals always force unmount the DOM of their children
@@ -58,6 +58,7 @@ export class PortalNode extends MarkupNode {
   }
 
   override move(logicalParent: MountTarget, after?: Node) {
+    if (!this.#anchor) return;
     moveAfter(logicalParent, this.#anchor, after);
   }
 }

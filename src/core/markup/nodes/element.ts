@@ -3,7 +3,7 @@ import { cleanupContext, Context, createContext, getNearestViewNode, mountContex
 import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
-import { isCSSTemplate } from "../css.js";
+import { ConditionalTemplate, CSSTemplate, isConditionalTemplate, isCSSTemplate } from "../css.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, camelToKebab, moveAfter, toMarkupNodes } from "../utils.js";
@@ -250,14 +250,12 @@ export class ElementNode extends MarkupNode {
 
         const eventName = key.substring(1);
         this.#attachListener(element, eventName, value);
-      } else if (key.startsWith("on") && isFunction(value)) {
-        // onClick, onclick → element.onclick = handler (property assignment)
+      } else if (key.startsWith("on")) {
+        // onClick → addEventListener("click")
 
-        const eventName = "on" + key.slice(2).toLowerCase();
-        element[eventName] = value;
-        this.#unsubscribers.add(() => {
-          element[eventName] = null;
-        });
+        const eventName = key.slice(2).toLowerCase();
+        if (!eventName) continue;
+        this.#attachListener(element, eventName, value);
       } else if (key in element && !this.#context[IS_SVG]) {
         // Set as property if the element has one.
 
@@ -265,7 +263,11 @@ export class ElementNode extends MarkupNode {
           this.#attach(value, (current) => {
             const isTrue = Boolean(current);
             element[key] = isTrue;
-            setAttribute(element, key, isTrue);
+            if (isTrue) {
+              element.setAttribute(key, "");
+            } else {
+              element.removeAttribute(key);
+            }
           });
         } else {
           this.#attach(value, (current) => {
@@ -287,20 +289,21 @@ export class ElementNode extends MarkupNode {
   }
 
   #applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
-    if (isCSSTemplate(styles)) {
-      styles.attach(this.#context, element);
-      return; // TODO: Support template in an array with object, string, etc?
-    }
-
     const localUnsubs = new Set<() => void>();
+    const attachedTemplates = new Set<CSSTemplate>();
+    const conditionSubs = new Map<CSSTemplate, () => void>();
 
     const apply = (current: unknown) => {
-      localUnsubs.forEach((unsub) => {
-        unsub();
-        this.#unsubscribers.delete(unsub);
-      });
-      localUnsubs.clear();
+      this.#clearLocalSubs(localUnsubs);
       element.style.cssText = "";
+
+      const { templates: currentTemplates, remaining: processedValue } =
+        this.#extractTemplates(current, element, attachedTemplates, conditionSubs);
+
+      this.#syncTemplates(currentTemplates, attachedTemplates, conditionSubs, element);
+
+      if (processedValue === undefined) return;
+      current = processedValue;
 
       const mapped = getStyleMap(current);
       for (const [name, { value, priority }] of Object.entries(mapped)) {
@@ -319,30 +322,30 @@ export class ElementNode extends MarkupNode {
       }
     };
 
-    if (isFunction(styles)) {
-      this.#unsubscribers.add(subscribe(styles, (current) => scheduleUpdate(() => apply(current))));
-    } else {
-      apply(styles);
-    }
+    this.#attach(styles, (current) => apply(current));
   }
 
   #applyClasses(element: HTMLElement | SVGElement, classes: unknown) {
     const localUnsubs = new Set<() => void>();
     const staticClasses = new Set<string>();
+    const attachedTemplates = new Set<CSSTemplate>();
+    const conditionSubs = new Map<CSSTemplate, () => void>();
 
     const apply = (current: unknown) => {
-      // Clean up nested subscriptions if the top-level signal emits a new object
-      localUnsubs.forEach((unsub) => {
-        unsub();
-        this.#unsubscribers.delete(unsub);
-      });
-      localUnsubs.clear();
+      this.#clearLocalSubs(localUnsubs);
 
-      // Remove previously applied static classes before re-evaluating
       for (const name of staticClasses) {
         element.classList.remove(name);
       }
       staticClasses.clear();
+
+      const { templates: currentTemplates, remaining: processedValue } =
+        this.#extractTemplates(current, element, attachedTemplates, conditionSubs);
+
+      this.#syncTemplates(currentTemplates, attachedTemplates, conditionSubs, element);
+
+      if (processedValue === undefined) return;
+      current = processedValue;
 
       const mapped = getClassMap(current);
 
@@ -366,11 +369,134 @@ export class ElementNode extends MarkupNode {
       }
     };
 
-    if (isFunction(classes)) {
-      this.#unsubscribers.add(subscribe(classes, (current) => scheduleUpdate(() => apply(current))));
-    } else {
-      apply(classes);
+    this.#attach(classes, (current) => apply(current));
+  }
+
+  /**
+   * Scan an incoming style/class value and separate out any CSSTemplates and
+   * ConditionalTemplates.  Returns the templates to track and the remaining
+   * non-template value (or `undefined` if nothing is left).
+   *
+   * ## Plain CSSTemplates
+   *
+   * Collected for deferred attachment by `#syncTemplates`.  This avoids
+   * re-attaching templates that are already live (tracked in
+   * `attachedTemplates`).
+   *
+   * ## ConditionalTemplates (`css\`…\`.when(…)`)
+   *
+   * Attached eagerly — the template rules/bindings are set up once, then the
+   * class name is toggled on/off by the condition.  If the condition is a
+   * reactive getter, a subscription is created and tracked in `conditionSubs`
+   * (also registered on `#unsubscribers` for element-level cleanup).  If it's
+   * a static boolean, the toggle happens immediately.
+   *
+   * Both forms (top-level or nested inside an array) are handled identically.
+   */
+  #extractTemplates(
+    current: unknown,
+    element: HTMLElement | SVGElement,
+    attachedTemplates: Set<CSSTemplate>,
+    conditionSubs: Map<CSSTemplate, () => void>,
+  ): { templates: Set<CSSTemplate>; remaining: unknown } {
+    const templates = new Set<CSSTemplate>();
+    let remaining: unknown = current;
+
+    const addConditional = (condTpl: ConditionalTemplate) => {
+      templates.add(condTpl.template);
+      if (!attachedTemplates.has(condTpl.template)) {
+        condTpl.template.attach(this.#context, element);
+        attachedTemplates.add(condTpl.template);
+      }
+      if (isFunction(condTpl.condition)) {
+        if (!conditionSubs.has(condTpl.template)) {
+          const unsub = subscribe(condTpl.condition, (val) => {
+            scheduleUpdate(() => element.classList.toggle(condTpl.template.className, Boolean(val)));
+          });
+          conditionSubs.set(condTpl.template, unsub);
+          this.#unsubscribers.add(unsub);
+        }
+      } else {
+        element.classList.toggle(condTpl.template.className, Boolean(condTpl.condition));
+      }
+    };
+
+    if (isCSSTemplate(current)) {
+      templates.add(current);
+      if (!attachedTemplates.has(current)) {
+        current.attach(this.#context, element);
+        attachedTemplates.add(current);
+      }
+      remaining = undefined;
+    } else if (isConditionalTemplate(current)) {
+      addConditional(current);
+      remaining = undefined;
+    } else if (isArray(current)) {
+      const items: unknown[] = [];
+      for (const item of current) {
+        if (isCSSTemplate(item)) {
+          templates.add(item);
+        } else if (isConditionalTemplate(item)) {
+          addConditional(item);
+        } else {
+          items.push(item);
+        }
+      }
+      remaining = items.length === 0 ? undefined : items.length === 1 ? items[0] : items;
     }
+
+    return { templates, remaining };
+  }
+
+  /**
+   * Synchronise the live set of attached CSSTemplates with what the current
+   * value requires.  Must be called after `#extractTemplates` on every apply.
+   *
+   * 1. **Attach newcomers** — templates in `currentTemplates` that aren't yet
+   *    in `attachedTemplates` get a one-time `.attach()` call.
+   * 2. **Detach removed** — templates that were in `attachedTemplates` but are
+   *    no longer in `currentTemplates` have their class name removed and their
+   *    condition subscription (if any) cleaned up.
+   * 3. **Sync state** — `attachedTemplates` is reset to match
+   *    `currentTemplates`, ready for the next call.
+   *
+   * Because CSSTemplate attachment happens through the CSSOM (class-name based
+   * rules), a detach is simply `element.classList.remove(tpl.className)` —
+   * the CSSStyleRule stays in the sheet but is orphaned until garbage
+   * collection reclaims the template reference.
+   */
+  #syncTemplates(
+    currentTemplates: Set<CSSTemplate>,
+    attachedTemplates: Set<CSSTemplate>,
+    conditionSubs: Map<CSSTemplate, () => void>,
+    element: HTMLElement | SVGElement,
+  ): void {
+    for (const tpl of currentTemplates) {
+      if (!attachedTemplates.has(tpl)) {
+        tpl.attach(this.#context, element);
+      }
+    }
+    for (const tpl of attachedTemplates) {
+      if (!currentTemplates.has(tpl)) {
+        element.classList.remove(tpl.className);
+        const unsub = conditionSubs.get(tpl);
+        if (unsub) {
+          unsub();
+          conditionSubs.delete(tpl);
+          this.#unsubscribers.delete(unsub);
+        }
+      }
+    }
+    attachedTemplates.clear();
+    for (const tpl of currentTemplates) attachedTemplates.add(tpl);
+  }
+
+  #clearLocalSubs(localUnsubs: Set<() => void>) {
+    localUnsubs.forEach((unsub) => {
+      unsub();
+      this.#unsubscribers.delete(unsub);
+    });
+    localUnsubs.clear();
   }
 }
 
@@ -379,6 +505,7 @@ export class ElementNode extends MarkupNode {
  */
 function getClassMap(classes: unknown): Record<string, unknown> {
   if (isString(classes)) return Object.fromEntries(classes.split(" ").map((c) => [c, true]));
+  if (isCSSTemplate(classes)) return {};
   if (isArray(classes)) return Object.assign({}, ...classes.filter(Boolean).map(getClassMap));
   if (isObject(classes)) return classes as Record<string, unknown>;
   return {};
@@ -389,27 +516,25 @@ function getClassMap(classes: unknown): Record<string, unknown> {
  */
 function getStyleMap(styles: unknown): Record<string, { value: unknown; priority?: string }> {
   if (isString(styles)) {
-    return Object.fromEntries(
-      styles
-        .split(";")
-        .filter((s) => s.trim())
-        .flatMap((line) => {
-          const colonIdx = line.indexOf(":");
-          if (colonIdx === -1) return [];
-          const key = line.substring(0, colonIdx).trim();
-          const rawVal = line.substring(colonIdx + 1).trim();
-          const importantMatch = rawVal.match(/\s*!important\s*$/i);
-          const val = importantMatch ? rawVal.slice(0, importantMatch.index).trimEnd() : rawVal;
-          return [[
-            camelToKebab(key),
-            {
-              value: val,
-              priority: importantMatch ? "important" : "",
-            },
-          ]];
-        }),
-    );
+    const entries: [string, { value: unknown; priority?: string }][] = [];
+    for (const raw of styles.split(";")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const colonIdx = line.indexOf(":");
+      if (colonIdx === -1) continue;
+      const key = line.substring(0, colonIdx).trim();
+      let rawVal = line.substring(colonIdx + 1).trim();
+      let priority = "";
+      const importantMatch = rawVal.match(/\s*!important\s*$/i);
+      if (importantMatch) {
+        rawVal = rawVal.slice(0, importantMatch.index).trimEnd();
+        priority = "important";
+      }
+      entries.push([camelToKebab(key), { value: rawVal, priority }]);
+    }
+    return Object.fromEntries(entries);
   }
+  if (isCSSTemplate(styles)) return {};
   if (isArray(styles)) return Object.assign({}, ...styles.filter(Boolean).map(getStyleMap));
   if (isObject(styles)) {
     return Object.fromEntries(
@@ -472,7 +597,7 @@ function formatValue(name: string, value: any): string {
 }
 
 function setAttribute(element: Element, name: string, value: any) {
-  if (value) {
+  if (value != null) {
     element.setAttribute(name, String(value));
   } else {
     element.removeAttribute(name);

@@ -16,8 +16,9 @@ function setup() {
 describe("DynamicNode", () => {
   describe("creation and lifecycle", () => {
     test("getRoot returns a text node anchor", () => {
-      const { context } = setup();
+      const { context, container } = setup();
       const node = new DynamicNode(context, () => "hello");
+      node.mount(container);
       expect(node.getRoot()).toBeInstanceOf(Text);
     });
 

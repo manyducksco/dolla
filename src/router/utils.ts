@@ -30,19 +30,19 @@ export interface Match {
   meta: Record<any, any>;
 }
 
-export interface RouteMatch extends Match {
+interface RouteMatch extends Match {
   layers: RouteLayer[];
   redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
 }
 
-export type RoutePayload = {
+type RoutePayload = {
   pattern: string;
   meta: Record<any, any>;
   layers?: RouteLayer[];
   redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
 };
 
-export type RouteMatchOptions = {
+type RouteMatchOptions = {
   willMatch?: (route: RoutePayload) => boolean;
 };
 
@@ -52,7 +52,7 @@ export type RouteMatchOptions = {
  * @param path - A path string (e.g. `"/api/users/5"`)
  * @returns an array of fragments (e.g. `["api", "users", "5"]`)
  */
-export function splitPath(path: string): string[] {
+function splitPath(path: string): string[] {
   return path
     .split("/")
     .map((f) => f.trim())
@@ -110,7 +110,7 @@ export function resolvePath(base: string, part: string | null = null): string {
   return joinPath([base, part]);
 }
 
-export function parseQueryParams(query: string): Record<string, string> {
+function parseQueryParams(query: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(query));
 }
 
@@ -140,7 +140,7 @@ export function mergeQueryParams(
   return new URLSearchParams(merged as Record<string, string>);
 }
 
-export class RouteNode {
+class RouteNode {
   staticChildren = new Map<string, RouteNode>();
   numericChild: RouteNode | null = null;
   paramChild: RouteNode | null = null;
@@ -260,33 +260,29 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
   const parts = splitPath(path);
   const paramState: Record<string, string> = {}; // Reused across branches
 
+  function createMatch(route: RoutePayload, params: Record<string, string>): RouteMatch {
+    return {
+      path: path || "/",
+      pattern: route.pattern,
+      params,
+      query: parseQueryParams(query || ""),
+      meta: route.meta,
+      layers: route.layers ?? [],
+      redirect: route.redirect,
+    };
+  }
+
   function search(node: RouteNode, index: number): RouteMatch | undefined {
     // if we've consumed all URL parts
     if (index === parts.length) {
       if (node.route && (!options.willMatch || options.willMatch(node.route))) {
-        return {
-          path: path || "/",
-          pattern: node.route.pattern,
-          params: { ...paramState },
-          query: parseQueryParams(query || ""),
-          meta: node.route.meta,
-          layers: node.route.layers ?? [],
-          redirect: node.route.redirect,
-        };
+        return createMatch(node.route, { ...paramState });
       }
 
       // Allow wildcards to match zero remaining segments
       if (node.wildcardChild && node.wildcardChild.route) {
         if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-          return {
-            path: path || "/",
-            pattern: node.wildcardChild.route.pattern,
-            params: { ...paramState, wildcard: "/" },
-            query: parseQueryParams(query || ""),
-            meta: node.wildcardChild.route.meta,
-            layers: node.wildcardChild.route.layers ?? [],
-            redirect: node.wildcardChild.route.redirect,
-          };
+          return createMatch(node.wildcardChild.route, { ...paramState, wildcard: "/" });
         }
       }
 
@@ -318,15 +314,10 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
 
     if (node.wildcardChild && node.wildcardChild.route) {
       if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-        return {
-          path: path || "/",
-          pattern: node.wildcardChild.route.pattern,
-          params: { ...paramState, wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/") },
-          query: parseQueryParams(query || ""),
-          meta: node.wildcardChild.route.meta,
-          layers: node.wildcardChild.route.layers ?? [],
-          redirect: node.wildcardChild.route.redirect,
-        };
+        return createMatch(node.wildcardChild.route, {
+          ...paramState,
+          wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/"),
+        });
       }
     }
 
@@ -336,7 +327,7 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
   return search(rootNode, 0);
 }
 
-export interface ResolvedRoute {
+interface ResolvedRoute {
   match?: RouteMatch;
   journey: JourneyStep[];
 }
@@ -418,7 +409,7 @@ export function catchLinks(
   return () => root.removeEventListener("click", handler as any);
 }
 
-export function expandOptionalPaths(path: string): string[] {
+function expandOptionalPaths(path: string): string[] {
   const parts = splitPath(path);
   const permutations: string[][] = [[]];
 

@@ -11,7 +11,7 @@ import { DOMNode } from "./dom.js";
  */
 
 export class DynamicNode extends MarkupNode {
-  #root = createTextNode("");
+  #root: Text | null = null;
   #children: MarkupNode[] = [];
   #context: Context;
   #slot: Getter<any>;
@@ -24,15 +24,16 @@ export class DynamicNode extends MarkupNode {
   }
 
   override getRoot() {
-    return this.#root;
+    return this.#root ?? undefined;
   }
 
   override isMounted() {
-    return this.#root.parentNode != null;
+    return this.#root?.parentNode != null;
   }
 
   override mount(parent: MountTarget, after?: Node) {
     if (!this.isMounted()) {
+      this.#root = createTextNode("");
       addChild(parent, this.#root, after);
       this.#unsubscribe = subscribe(this.#slot, (content) => {
         scheduleUpdate(() => {
@@ -48,13 +49,15 @@ export class DynamicNode extends MarkupNode {
 
     if (this.isMounted()) {
       if (!skipDOM) {
-        this.#root.parentNode?.removeChild(this.#root);
+        this.#root!.parentNode?.removeChild(this.#root!);
       }
       this.#cleanup(skipDOM);
     }
   }
 
   override move(parent: MountTarget, after?: Node) {
+    if (!this.#root) return;
+
     let referenceNode: Node | null = after?.nextSibling ?? null;
 
     if (parent.moveBefore) {
@@ -91,7 +94,7 @@ export class DynamicNode extends MarkupNode {
   }
 
   #update(content: any) {
-    if (!this.isMounted()) return;
+    if (!this.isMounted() || !this.#root) return;
 
     // Fast-path for primitive text updates
     const isPrimitive = typeof content === "string" || typeof content === "number";
