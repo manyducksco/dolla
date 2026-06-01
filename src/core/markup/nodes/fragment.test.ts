@@ -9,30 +9,27 @@ function setup() {
   return { context, container };
 }
 
-function makeChildren(context: ReturnType<typeof createContext>) {
-  return [
-    new DOMNode(context, document.createTextNode("a")),
-    new DOMNode(context, document.createTextNode("b")),
-  ];
+function createChildren(context: ReturnType<typeof createContext>) {
+  return [new DOMNode(context, document.createTextNode("a")), new DOMNode(context, document.createTextNode("b"))];
 }
 
 describe("FragmentNode", () => {
   describe("creation and lifecycle", () => {
     test("getRoot returns undefined before mount", () => {
       const { context } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       expect(node.getRoot()).toBeUndefined();
     });
 
     test("isMounted returns false before mounting", () => {
       const { context } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       expect(node.isMounted()).toBe(false);
     });
 
     test("mount inserts anchor and children", () => {
       const { context, container } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       node.mount(container);
       expect(node.isMounted()).toBe(true);
       expect(container.childNodes.length).toBe(3); // anchor + a + b
@@ -45,7 +42,7 @@ describe("FragmentNode", () => {
       const { context, container } = setup();
       const existing = document.createElement("span");
       container.appendChild(existing);
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       node.mount(container, existing);
       expect(container.childNodes[0]).toBe(existing);
       expect(container.childNodes[1]).toBeInstanceOf(Text);
@@ -55,7 +52,7 @@ describe("FragmentNode", () => {
 
     test("unmount removes anchor and children from DOM", () => {
       const { context, container } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       node.mount(container);
       expect(container.childNodes.length).toBe(3);
       node.unmount();
@@ -64,7 +61,7 @@ describe("FragmentNode", () => {
 
     test("unmount with skipDOM keeps anchor and children in DOM", () => {
       const { context, container } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       node.mount(container);
       node.unmount(true);
       expect(container.childNodes.length).toBe(3);
@@ -81,7 +78,7 @@ describe("FragmentNode", () => {
   describe("move", () => {
     test("moves anchor and children to new position", () => {
       const { context, container } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       const first = document.createElement("div");
       first.textContent = "first";
       container.appendChild(first);
@@ -99,7 +96,7 @@ describe("FragmentNode", () => {
 
     test("move before mount is a no-op", () => {
       const { context, container } = setup();
-      const node = new FragmentNode(context, makeChildren(context));
+      const node = new FragmentNode(context, createChildren(context));
       expect(() => node.move(container)).not.toThrow();
     });
   });
