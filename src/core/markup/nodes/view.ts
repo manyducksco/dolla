@@ -69,6 +69,9 @@ export class ViewNode<P> extends MarkupNode {
     this.#node?.move(parent, after);
   }
 
+  /**
+   * Used for hot reload.
+   */
   replaceView(newView: View<P>) {
     const wasMounted = this.isMounted();
     if (!wasMounted) {

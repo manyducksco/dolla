@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createContext } from "../context.js";
+import { cleanupContext, createContext, mountContext } from "../context.js";
 import { createAtom } from "../signals.js";
 import { css, isCSSTemplate } from "./css.js";
 
@@ -319,5 +319,85 @@ describe("css.as()", () => {
       color: red;
     `;
     expect(tpl.className).toMatch(/^css-/);
+  });
+});
+
+describe("instance rule cleanup", () => {
+  test("removes instance rule from stylesheet after context cleanup", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const color = () => "red";
+    const tpl = css`
+      color: ${color};
+    `;
+
+    const sheets = document.adoptedStyleSheets;
+    const sheet = sheets[sheets.length - 1];
+    const beforeLength = sheet.cssRules.length;
+
+    tpl.attach(ctx, el);
+
+    expect(sheet.cssRules.length).toBe(beforeLength + 2);
+
+    const instanceRules = Array.from(sheet.cssRules).filter(
+      (r) => (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
+    );
+    expect(instanceRules.length).toBe(1);
+
+    mountContext(ctx);
+    cleanupContext(ctx);
+
+    expect(sheet.cssRules.length).toBe(beforeLength + 1);
+
+    const remaining = Array.from(sheet.cssRules).filter(
+      (r) => (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
+    );
+    expect(remaining.length).toBe(0);
+  });
+
+  test("static class rule remains after cleanup of dynamic template", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const size = () => "20px";
+    const tpl = css`
+      font-size: ${size};
+    `;
+
+    const sheets = document.adoptedStyleSheets;
+    const sheet = sheets[sheets.length - 1];
+
+    tpl.attach(ctx, el);
+
+    // Static rule exists before cleanup
+    const staticSelector = `.${tpl.className}`;
+    const ruleBefore = Array.from(sheet.cssRules).find(
+      (r) => (r as CSSStyleRule).selectorText === staticSelector,
+    );
+    expect(ruleBefore).toBeTruthy();
+
+    mountContext(ctx);
+    cleanupContext(ctx);
+
+    // Static rule still exists after cleanup
+    const ruleAfter = Array.from(sheet.cssRules).find(
+      (r) => (r as CSSStyleRule).selectorText === staticSelector,
+    );
+    expect(ruleAfter).toBeTruthy();
+  });
+
+  test("re-attach after cleanup does not error", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const tpl = css`
+      color: ${() => "red"};
+    `;
+
+    tpl.attach(ctx, el);
+    mountContext(ctx);
+    cleanupContext(ctx);
+
+    const ctx2 = createContext(null);
+    const el2 = document.createElement("div");
+    expect(() => tpl.attach(ctx2, el2)).not.toThrow();
   });
 });

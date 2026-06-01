@@ -393,15 +393,20 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
       styles
         .split(";")
         .filter((s) => s.trim())
-        .map((line) => {
-          const [key, val] = line.split(":");
-          return [
-            camelToKebab(key.trim()),
+        .flatMap((line) => {
+          const colonIdx = line.indexOf(":");
+          if (colonIdx === -1) return [];
+          const key = line.substring(0, colonIdx).trim();
+          const rawVal = line.substring(colonIdx + 1).trim();
+          const importantMatch = rawVal.match(/\s*!important\s*$/i);
+          const val = importantMatch ? rawVal.slice(0, importantMatch.index).trimEnd() : rawVal;
+          return [[
+            camelToKebab(key),
             {
-              value: val.replace("!important", "").trim(),
-              priority: val.includes("!important") ? "important" : "",
+              value: val,
+              priority: importantMatch ? "important" : "",
             },
-          ];
+          ]];
         }),
     );
   }

@@ -362,6 +362,57 @@ describe("ElementNode", () => {
       expect(el.style.color).toBe("blue");
       expect(el.style.fontSize).toBe("16px");
     });
+
+    test("handles CSS values containing colons (e.g. url())", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: "background: url('https://example.com/image.jpg')",
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.background).toContain('url("https://example.com/image.jpg")');
+    });
+
+    test("parses !important from inline style string", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: "color: red !important",
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+      expect(el.style.getPropertyPriority("color")).toBe("important");
+    });
+
+    test("does not strip !important from content values", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: 'content: "!important"',
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.content).toBe('"!important"');
+    });
+
+    test("handles multiple inline styles with urls and !important", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: "color: red !important; background: url('https://example.com/bg.png')",
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+      expect(el.style.getPropertyPriority("color")).toBe("important");
+      expect(el.style.background).toContain('url("https://example.com/bg.png")');
+    });
+
+    test("skips inline style entries without colon", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { style: "color: red; invalid" });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+    });
   });
 
   describe("events", () => {

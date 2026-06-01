@@ -187,12 +187,18 @@ class StyleRegistry {
 
   createInstanceRule(className: string): [CSSStyleDeclaration, () => void] {
     const index = this.sheet.cssRules.length;
-
     this.sheet.insertRule(`.${className}{}`, index);
+    const style = (this.sheet.cssRules[index] as CSSStyleRule).style;
     return [
-      (this.sheet.cssRules[index] as CSSStyleRule).style,
+      style,
       () => {
-        // TODO: Implement instance rule cleanup callback.
+        const rules = this.sheet.cssRules;
+        for (let i = 0; i < rules.length; i++) {
+          if ((rules[i] as CSSStyleRule).style === style) {
+            this.sheet.deleteRule(i);
+            return;
+          }
+        }
       },
     ];
   }
