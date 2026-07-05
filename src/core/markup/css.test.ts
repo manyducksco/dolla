@@ -116,19 +116,19 @@ describe("css tagged template", () => {
   });
 });
 
-describe("css.as()", () => {
-  test("css.as('name') produces className matching the given prefix", () => {
-    const tpl = css.as("sidebar")`
+describe("css.named()", () => {
+  test("css.named('name') produces className matching the given prefix", () => {
+    const tpl = css.named("sidebar")`
       color: red;
     `;
     expect(tpl.className).toMatch(/^sidebar-/);
   });
 
-  test("css.as('name') preserves the same hash as css for identical content", () => {
+  test("css.named('name') preserves the same hash as css for identical content", () => {
     const plain = css`
       color: red;
     `;
-    const named = css.as("sidebar")`
+    const named = css.named("sidebar")`
       color: red;
     `;
     const hash = plain.className.replace(/^css-/, "");
@@ -136,65 +136,65 @@ describe("css.as()", () => {
   });
 
   test("different prefixes produce classNames that differ only by prefix", () => {
-    const tpl1 = css.as("foo")`
+    const tpl1 = css.named("foo")`
       color: red;
     `;
-    const tpl2 = css.as("bar")`
+    const tpl2 = css.named("bar")`
       color: red;
     `;
     const hash = tpl1.className.replace(/^foo-/, "");
     expect(tpl2.className).toBe(`bar-${hash}`);
   });
 
-  test("instance .as('name') changes the prefix", () => {
+  test("instance .named('name') changes the prefix", () => {
     const tpl = css`
       color: red;
-    `.as("header");
+    `.named("header");
     expect(tpl.className).toMatch(/^header-/);
   });
 
-  test("instance .as() does not mutate the original template", () => {
+  test("instance .named() does not mutate the original template", () => {
     const original = css`
       color: red;
     `;
-    const renamed = original.as("header");
+    const renamed = original.named("header");
     expect(original.className).toMatch(/^css-/);
     expect(renamed.className).toMatch(/^header-/);
     expect(renamed).not.toBe(original);
   });
 
-  test("instance .as() preserves the hash", () => {
+  test("instance .named() preserves the hash", () => {
     const tpl = css`
       color: red;
     `;
     const hash = tpl.className.replace(/^css-/, "");
-    expect(tpl.as("nav").className).toBe(`nav-${hash}`);
+    expect(tpl.named("nav").className).toBe(`nav-${hash}`);
   });
 
   test("toString returns the renamed className", () => {
     const tpl = css`
       color: red;
-    `.as("widget");
+    `.named("widget");
     expect(String(tpl)).toBe(tpl.className);
     expect(`${tpl}`).toBe(tpl.className);
   });
 
-  test("css.as() sanitizes spaces in the name", () => {
-    const tpl = css.as("some name")`
+  test("css.named() sanitizes spaces in the name", () => {
+    const tpl = css.named("some name")`
       color: red;
     `;
     expect(tpl.className).toMatch(/^some-name-/);
   });
 
-  test("css.as() sanitizes special characters in the name", () => {
-    const tpl = css.as("my@#$class")`
+  test("css.named() sanitizes special characters in the name", () => {
+    const tpl = css.named("my@#$class")`
       color: red;
     `;
     expect(tpl.className).toMatch(/^my-class-/);
   });
 
-  test("css.as() falls back to css- when the sanitized name is empty", () => {
-    const tpl = css.as("@#$")`
+  test("css.named() falls back to css- when the sanitized name is empty", () => {
+    const tpl = css.named("@#$")`
       color: red;
     `;
     expect(tpl.className).toMatch(/^css-/);

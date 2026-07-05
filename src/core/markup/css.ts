@@ -34,9 +34,18 @@ export type CSSTemplate = {
   [IS_CSS_TEMPLATE]: true;
   className: string;
 
-  as(name: string): CSSTemplate;
+  named(name: string): CSSTemplate;
   attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): void;
   when(condition: MaybeGetter<any>): ConditionalTemplate;
+
+  /**
+   * Inserts the static class rule into the shared stylesheet without binding
+   * any per-instance reactive values to an element. Useful when the rule must
+   * be in the sheet at module-evaluation time so that later templates can
+   * override it via stylesheet order (e.g. `styled(MyButton)\`...\``).
+   * Safe to call multiple times; the registry dedups by className.
+   */
+  preinsert(): void;
 
   toString(): string;
 };
@@ -252,6 +261,63 @@ function sanitizeIdentifier(name: string): string {
 ||     Template builder       ||
 \*============================*/
 
+/**
+ * Walks the template strings/interpolations and produces the final CSS string
+ * (with `var(--className-N)` placeholders for function interpolations) plus
+ * the list of reactive bindings that need per-instance wiring.
+ *
+ * Pure: no context, no element, no side effects beyond optional Houdini
+ * `@property` registration (deduped by the registry). Used by both
+ * `preinsert` (static rule insertion) and `attach` (per-element binding).
+ */
+function buildStyles(
+  className: string,
+  strings: TemplateStringsArray,
+  interpolations: any[],
+): { styles: string; bindings: CSSTemplateBinding[] } {
+  const bindings: CSSTemplateBinding[] = [];
+  let styles = "";
+
+  strings.forEach((str, i) => {
+    styles += str;
+
+    if (i < interpolations.length) {
+      let expr = interpolations[i];
+
+      if (isCSSTemplate(expr)) {
+        styles += `.${expr.className}`;
+        return;
+      }
+
+      let syntax = "*";
+      let initialValue = null;
+
+      if (Array.isArray(expr)) {
+        [expr, syntax, initialValue = null] = expr;
+      }
+
+      if (typeof expr === "function") {
+        const varName = `--${className}-${i}`;
+
+        if (initialValue != null) {
+          styles += `var(${varName}, ${initialValue})`;
+          if (syntax !== "*") {
+            registry.addProperty(varName, syntax, initialValue);
+          }
+        } else {
+          styles += `var(${varName})`;
+        }
+
+        bindings.push({ varName, getter: expr, initialValue });
+      } else {
+        styles += expr;
+      }
+    }
+  });
+
+  return { styles, bindings };
+}
+
 function createTemplate(prefix: string, strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
   const className = `${prefix}-${hashTemplate(strings, interpolations)}`;
 
@@ -264,54 +330,21 @@ function createTemplate(prefix: string, strings: TemplateStringsArray, interpola
       return this.className;
     },
 
-    as(name: string): CSSTemplate {
+    named(name: string): CSSTemplate {
       const safe = sanitizeIdentifier(name);
       const hash = this.className.slice(this.className.indexOf("-") + 1);
       return { ...this, className: `${safe}-${hash}` };
     },
 
-    attach(c, element, condition = true) {
-      const bindings: CSSTemplateBinding[] = [];
+    preinsert() {
+      const { styles } = buildStyles(this.className, strings, interpolations);
+      registry.insertClass(this.className, styles);
+    },
 
+    attach(c, element, condition = true) {
       if (!attachClass(c, this.className, element, condition)) return;
 
-      let styles = "";
-      strings.forEach((str, i) => {
-        styles += str;
-
-        if (i < interpolations.length) {
-          let expr = interpolations[i];
-
-          if (isCSSTemplate(expr)) {
-            styles += `.${expr.className}`;
-            return;
-          }
-
-          let syntax = "*";
-          let initialValue = null;
-
-          if (Array.isArray(expr)) {
-            [expr, syntax, initialValue = null] = expr;
-          }
-
-          if (typeof expr === "function") {
-            const varName = `--${this.className}-${i}`;
-
-            if (initialValue != null) {
-              styles += `var(${varName}, ${initialValue})`;
-              if (syntax !== "*") {
-                registry.addProperty(varName, syntax, initialValue);
-              }
-            } else {
-              styles += `var(${varName})`;
-            }
-
-            bindings.push({ varName, getter: expr, initialValue });
-          } else {
-            styles += expr;
-          }
-        }
-      });
+      const { styles, bindings } = buildStyles(this.className, strings, interpolations);
 
       registry.insertClass(this.className, styles);
 
@@ -355,7 +388,7 @@ export function css(strings: TemplateStringsArray, ...interpolations: any[]): CS
 }
 
 export namespace css {
-  export function as(name: string): (strings: TemplateStringsArray, ...interpolations: any[]) => CSSTemplate {
+  export function named(name: string): (strings: TemplateStringsArray, ...interpolations: any[]) => CSSTemplate {
     const safe = sanitizeIdentifier(name);
     return (strings, ...interpolations) => createTemplate(safe, strings, interpolations);
   }

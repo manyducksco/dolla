@@ -19,6 +19,16 @@ export type { Markup, MarkupNode } from "./markup/types.js";
 export { createPortal, forEach, hideIf, hideUnless, showIf, showUnless } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
+export { styled } from "./markup/styled.js";
+export type {
+  CoreCSSSyntax,
+  CSSSyntaxDescriptor,
+  HoudiniTuple,
+  Interpolation,
+  InterpolationFn,
+  InterpolationValue,
+  StyledView,
+} from "./markup/styled.js";
 export { createMarkup, render } from "./markup/utils.js";
 export { transition } from "./markup/transition.js";
 export { DOMNode } from "./markup/nodes/dom.js";

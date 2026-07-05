@@ -1,31 +1,24 @@
 {
   "name": "@manyducks.co/dolla",
   "version": "4.5.1",
-  "description": "A fast, batteries-included JavaScript framework with a React-inspired API and the power of signals.",
-  "main": "dist/index.js",
-  "types": "dist/core/index.d.ts",
-  "type": "module",
-  "sideEffects": false,
+  "author": "tony@manyducks.co",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/manyducksco/dolla.git"
   },
-  "scripts": {
-    "test": "vitest",
-    "build:esbuild": "tsc && node build.js",
-    "build": "vite build && tsc",
-    "start": "tsc --watch",
-    "prepublishOnly": "NODE_ENV=production npm run build"
+  "main": "dist/index.js",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "csstype": "^3.2.3",
+    "happy-dom": "^20.9.0",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
   },
-  "keywords": [
-    "web app",
-    "front end framework",
-    "functional",
-    "reactive state",
-    "signals"
-  ],
-  "author": "tony@manyducks.co",
-  "license": "MIT",
+  "peerDependencies": {
+    "vite": "^8.0.0"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -60,21 +53,35 @@
       "types": "./dist/core/hmr.d.ts"
     },
     "./vite-plugin": {
-      "import": "./vite-plugin.js"
+      "import": "./vite-plugin.js",
+      "types": "./vite-plugin.d.ts"
     }
   },
+  "description": "A fast, batteries-included JavaScript framework with a React-inspired API and the power of signals.",
   "files": [
     "dist",
     "*.d.ts",
     "vite-plugin.js"
   ],
-  "devDependencies": {
-    "@types/node": "^25.6.0",
-    "csstype": "^3.2.3",
-    "happy-dom": "^20.9.0",
-    "prettier": "^3.8.3",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.10",
-    "vitest": "^4.1.5"
+  "keywords": [
+    "web app",
+    "front end framework",
+    "functional",
+    "reactive state",
+    "signals"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest",
+    "build:esbuild": "tsc && node build.js",
+    "build": "vite build && tsc",
+    "start": "tsc --watch",
+    "prepublishOnly": "NODE_ENV=production npm run build"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "types": "dist/core/index.d.ts",
+  "dependencies": {
+    "magic-string": "^0.30.21"
   }
 }
