@@ -31,7 +31,7 @@ export class DynamicNode extends MarkupNode {
     return this.#root?.parentNode != null;
   }
 
-  override mount(parent: MountTarget, after?: Node) {
+  override mount(parent: MountTarget, after?: Node | null) {
     if (!this.isMounted()) {
       this.#root = createTextNode("");
       addChild(parent, this.#root, after);
@@ -55,7 +55,7 @@ export class DynamicNode extends MarkupNode {
     }
   }
 
-  override move(parent: MountTarget, after?: Node) {
+  override move(parent: MountTarget, after?: Node | null) {
     if (!this.#root) return;
 
     let referenceNode: Node | null = after?.nextSibling ?? null;

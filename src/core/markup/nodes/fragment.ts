@@ -23,7 +23,7 @@ export class FragmentNode extends MarkupNode {
     return this.#anchor?.parentNode != null;
   }
 
-  override mount(parent: MountTarget, after?: Node) {
+  override mount(parent: MountTarget, after?: Node | null) {
     if (this.isMounted()) return;
 
     this.#anchor = createTextNode("");
@@ -49,7 +49,7 @@ export class FragmentNode extends MarkupNode {
     }
   }
 
-  override move(parent: MountTarget, after?: Node) {
+  override move(parent: MountTarget, after?: Node | null) {
     if (!this.#anchor) return;
 
     moveAfter(parent, this.#anchor, after);

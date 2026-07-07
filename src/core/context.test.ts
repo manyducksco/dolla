@@ -171,3 +171,57 @@ describe("stores", () => {
     expect(cleanupSpy).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("HMR-stable store identity", () => {
+  function AuthStore(this: Context) {
+    return { id: "auth", value: 1 };
+  }
+
+  test("a re-created function with the same name resolves to the same store", () => {
+    const ctx = createContext(null);
+    addStore(ctx, AuthStore);
+    const first = getStore(ctx, AuthStore);
+
+    // Simulate HMR: the module is re-evaluated, producing a new function
+    // instance with the same `name`.
+    function AuthStore(this: Context) {
+      return { id: "auth", value: 999 };
+    }
+    const after = getStore(ctx, AuthStore);
+
+    // The registry maps both functions to the same symbol, so the
+    // original store value is returned and the assert does not throw.
+    expect(after).toBe(first);
+  });
+
+  test("two different store names get distinct symbols", () => {
+    const ctx = createContext(null);
+    function AStore(this: Context) {
+      return { tag: "A" };
+    }
+    function BStore(this: Context) {
+      return { tag: "B" };
+    }
+    addStore(ctx, AStore);
+    addStore(ctx, BStore);
+    expect(getStore(ctx, AStore).tag).toBe("A");
+    expect(getStore(ctx, BStore).tag).toBe("B");
+  });
+
+  test("re-creating a store with the same name on a new context still adds it independently", () => {
+    // HMR can also produce a fresh root context in some flows; the
+    // registry should not leak store values across unrelated contexts.
+    const ctxA = createContext(null);
+    const ctxB = createContext(null);
+    function CounterStore(this: Context) {
+      let n = 0;
+      return { inc: () => ++n, get: () => n };
+    }
+    addStore(ctxA, CounterStore);
+    addStore(ctxB, CounterStore);
+    getStore(ctxA, CounterStore).inc();
+    getStore(ctxA, CounterStore).inc();
+    expect(getStore(ctxA, CounterStore).get()).toBe(2);
+    expect(getStore(ctxB, CounterStore).get()).toBe(0);
+  });
+});

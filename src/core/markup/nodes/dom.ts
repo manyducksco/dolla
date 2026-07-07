@@ -21,7 +21,7 @@ export class DOMNode extends MarkupNode {
     return this.#root.parentNode != null;
   }
 
-  override mount(parent: MountTarget, after?: Node) {
+  override mount(parent: MountTarget, after?: Node | null) {
     addChild(parent, this.#root, after);
   }
 
@@ -30,7 +30,7 @@ export class DOMNode extends MarkupNode {
     this.#root.parentNode?.removeChild(this.#root);
   }
 
-  override move(parent: Element, after?: Node) {
+  override move(parent: Element, after?: Node | null) {
     moveAfter(parent, this.#root, after);
   }
 }

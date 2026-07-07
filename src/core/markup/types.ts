@@ -35,6 +35,7 @@ export interface MountTarget {
   insertBefore(node: Node, child: Node | null): any;
   moveBefore?: (node: Node, child: Node | null) => any;
   appendChild(node: Node): any;
+  firstChild: Node | null;
 }
 
 /**
@@ -66,7 +67,7 @@ export abstract class MarkupNode {
    * Mount this node to a `parent` element.
    * If passed, this node will be mounted as the next sibling of `after`.
    */
-  abstract mount(parent: MountTarget, after?: Node): void;
+  abstract mount(parent: MountTarget, after?: Node | null): void;
 
   /**
    * Unmount this MarkupNode from its parent element.
@@ -81,5 +82,5 @@ export abstract class MarkupNode {
   /**
    * Moves a node without unmounting and remounting (if the browser supports Element.moveBefore).
    */
-  abstract move(parent: MountTarget, after?: Node): void;
+  abstract move(parent: MountTarget, after?: Node | null): void;
 }

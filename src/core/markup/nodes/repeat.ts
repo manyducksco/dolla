@@ -55,7 +55,7 @@ export class RepeatNode<T> extends MarkupNode {
     return this.#root?.parentNode != null;
   }
 
-  override mount(parent: Element, after?: Node) {
+  override mount(parent: Element, after?: Node | null) {
     if (!this.isMounted()) {
       this.#root = createTextNode("");
       addChild(parent, this.#root, after);
@@ -82,7 +82,7 @@ export class RepeatNode<T> extends MarkupNode {
     this._cleanup(skipDOM);
   }
 
-  override move(parent: Element, after?: Node) {
+  override move(parent: Element, after?: Node | null) {
     if (!this.#root) return;
 
     let referenceNode: Node | null = after?.nextSibling ?? null;

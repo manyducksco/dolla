@@ -130,6 +130,23 @@ export function getNearestViewNode<Props = unknown>(context: Context): ViewNode<
 ||              Stores               ||
 \*===================================*/
 
+/**
+ * Module-local registry: maps a store's stable name to a unique symbol.
+ * The symbol is reused across HMR re-evaluations of the same store
+ * function, so the context lookup in `getStore` keeps working after
+ * a hot reload even though the function itself is a new instance.
+ */
+const STORE_SYMBOLS = new Map<string, symbol>();
+
+function getStoreSymbol(name: string): symbol {
+  let s = STORE_SYMBOLS.get(name);
+  if (!s) {
+    s = Symbol(name);
+    STORE_SYMBOLS.set(name, s);
+  }
+  return s;
+}
+
 export const STORE_ID = Symbol.for("$_STORE_ID");
 
 /**
@@ -141,8 +158,10 @@ export function addStore<Props, Returns>(
   store: Store<Props, Returns> & { [STORE_ID]?: symbol },
   ...args: undefined extends Props ? [props?: Props] : [props: Props]
 ) {
-  // Tag the store function with a unique symbol if it doesn't have one.
-  store[STORE_ID] ??= Symbol(store.name);
+  // Tag the store function with the registry-resolved symbol for its name.
+  // The registry is the single source of truth so the same name always
+  // maps to the same symbol, even after HMR replaces the function instance.
+  store[STORE_ID] = getStoreSymbol(store.name);
 
   assert(!Object.hasOwn(context, store[STORE_ID]), "Store was already provided on this context.");
 
@@ -158,7 +177,7 @@ export function addStore<Props, Returns>(
  * Gets the nearest instance of a store from up this context chain.
  */
 export function getStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
-  const id = store[STORE_ID];
+  const id = store[STORE_ID] ??= getStoreSymbol(store.name);
   const result = id ? context[id] : undefined;
   assert(result != null, `Store '${store.name}' is not provided by this context.`);
   return result;

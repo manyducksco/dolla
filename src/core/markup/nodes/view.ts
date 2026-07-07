@@ -37,7 +37,7 @@ export class ViewNode<P> extends MarkupNode {
     return this.context.isMounted;
   }
 
-  mount(parent: Element, after?: Node) {
+  mount(parent: Element, after?: Node | null) {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
@@ -65,7 +65,7 @@ export class ViewNode<P> extends MarkupNode {
     unregisterViewInstance(this.#view, this);
   }
 
-  move(parent: Element, after?: Node) {
+  move(parent: Element, after?: Node | null) {
     this.#node?.move(parent, after);
   }
 
@@ -84,7 +84,7 @@ export class ViewNode<P> extends MarkupNode {
 
     const oldRoot = this.#node?.getRoot();
     const parent = oldRoot?.parentElement;
-    const after = oldRoot?.previousSibling ?? undefined;
+    const after = oldRoot?.previousSibling;
 
     this.#node?.unmount();
     cleanupContext(this.context);

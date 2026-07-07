@@ -127,7 +127,7 @@ export class ElementNode extends MarkupNode {
     return this.#root.parentNode != null;
   }
 
-  override mount(parent: MountTarget, after?: Node) {
+  override mount(parent: MountTarget, after?: Node | null) {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
@@ -184,7 +184,7 @@ export class ElementNode extends MarkupNode {
     this.#childNodes.length = 0;
   }
 
-  override move(parent: MountTarget, after?: Node) {
+  override move(parent: MountTarget, after?: Node | null) {
     moveAfter(parent, this.#root, after);
   }
 

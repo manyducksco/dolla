@@ -98,10 +98,12 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
 }
 
 export function addChild(parent: MountTarget, node: Node, after?: Node | null) {
-  if (after) {
-    parent.insertBefore(node, after?.nextSibling);
-  } else {
+  if (after === undefined) {
     parent.appendChild(node);
+  } else if (after === null) {
+    parent.insertBefore(node, parent.firstChild);
+  } else {
+    parent.insertBefore(node, after.nextSibling ?? null);
   }
 }
 

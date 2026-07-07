@@ -232,6 +232,21 @@ describe("ViewNode", () => {
       expect(container.children[2].textContent).toBe("after");
     });
 
+    test("replaceView preserves position when view is the first child", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
+      const view2 = vi.fn(() => createMarkup("span", { children: "v2" }));
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+      const sibling = document.createElement("div");
+      sibling.textContent = "sibling";
+      container.appendChild(sibling);
+      node.replaceView(view2);
+      expect(container.children.length).toBe(2);
+      expect(container.children[0].textContent).toBe("v2");
+      expect(container.children[1].textContent).toBe("sibling");
+    });
+
     test("replaceView triggers cleanup and mount hooks", () => {
       const { context, container } = setup();
       const cleanupSpy = vi.fn();
