@@ -13,9 +13,9 @@ export function __dolla_export<P>(id: string, impl: View<P> | P): View<P> | P {
     return existing;
   }
   let current: View<P> = impl as View<P>;
-  const live = function (this: any, props: P, ctx: any) {
-    return current.call(this, props, ctx);
-  } as View<P> & { __dolla_setImpl: (fn: View<P>) => void };
+  const live = function (this: any, ...args: any[]) {
+    return current.apply(this, args as Parameters<View<P>>);
+  } as unknown as View<P> & { __dolla_setImpl: (fn: View<P>) => void };
   live.__dolla_setImpl = (fn) => {
     current = fn;
   };
