@@ -1,7 +1,7 @@
 import MagicString from "magic-string";
 
-const HMR_IMPORT = 'import { __dolla_apply } from "@manyducks.co/dolla/hmr"';
-const HMR_IMPORT_RE = /import\s+.*__dolla_apply.*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
+const HMR_IMPORT = 'import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"';
+const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export).*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
 
 // Match `export function Foo` — NOT `export default function`
 const EXPORT_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
@@ -265,6 +265,50 @@ function applyStyledNamer(s, code) {
 }
 
 /*============================*\
+||   Live-Binding Rewriter   ||
+\*============================*/
+
+/**
+ * Rewrites `export function Foo` into `function Foo` (local) and appends
+ * `Foo = __dolla_export("<id>:Foo", Foo); export { Foo };` at the bottom.
+ * Skips `export default function` (handled separately).
+ */
+function applyLiveBindings(s, code, id, entries) {
+  // Only wrap named-function exports. Skips default, const, etc.
+  const EXPORT_NAMED_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
+
+  const seen = new Set();
+  const names = [];
+  let match;
+
+  EXPORT_NAMED_FUNC_RE.lastIndex = 0;
+  while ((match = EXPORT_NAMED_FUNC_RE.exec(code)) !== null) {
+    const name = match[1];
+    const exportStart = match.index;
+
+    // Remove `export ` (7 chars). The regex guarantees they are there.
+    s.remove(exportStart, exportStart + 7);
+
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  if (names.length === 0) return false;
+
+  let block = "";
+  for (const name of names) {
+    const strId = JSON.stringify(`${id}:${name}`);
+    block += `\n${name} = __dolla_export(${strId}, ${name});`;
+  }
+  block += `\nexport { ${names.join(", ")} };\n`;
+
+  s.appendRight(code.length, block);
+  return true;
+}
+
+/*============================*\
 ||         Plugin Default     ||
 \*============================*/
 
@@ -294,9 +338,16 @@ export default function dollaPlugin() {
         if (!HMR_IMPORT_RE.test(code)) {
           s.appendLeft(0, HMR_IMPORT + ";\n");
         }
+        edited = true;
+      }
+
+      // Live-binding: wrap named function exports in a stable proxy for HMR (dev only).
+      // Must run before the HMR call so the proxy is assigned before the callback captures it.
+      const liveBound = isDev && entries.length > 0 && applyLiveBindings(s, code, id, entries);
+
+      if (entries.length > 0) {
         const hmrCall = `\nif (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`;
         s.appendRight(code.length, hmrCall);
-        edited = true;
       }
 
       // Styled-namer (dev only).
