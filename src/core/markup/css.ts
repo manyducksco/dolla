@@ -1,4 +1,5 @@
 import { MaybeGetter, onCleanup } from "..";
+import type { Interpolation } from "./styled.js";
 import { isFunction, uniqueId } from "../../utils";
 import { Context, onEffect } from "../context";
 
@@ -62,6 +63,16 @@ export function isConditionalTemplate(value: any): value is ConditionalTemplate 
   return value != null && value[IS_CONDITIONAL_TEMPLATE] === true;
 }
 
+export function isStyledComponent(value: any): boolean {
+  return typeof value === "function" && (value as any).__cssTemplate != null;
+}
+
+function getTemplateClassName(value: any): string | undefined {
+  if (isCSSTemplate(value)) return value.className;
+  if (isStyledComponent(value)) return (value as any).__cssTemplate.className;
+  return undefined;
+}
+
 function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): string {
   let statics = "";
 
@@ -71,9 +82,9 @@ function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): str
     if (i < interpolations.length) {
       let expr = interpolations[i];
 
-      if (isCSSTemplate(expr)) {
-        // Include nested style references
-        statics += `.${expr.className}`;
+      const className = getTemplateClassName(expr);
+      if (className != null) {
+        statics += `.${className}`;
       }
     }
   });
@@ -284,8 +295,9 @@ function buildStyles(
     if (i < interpolations.length) {
       let expr = interpolations[i];
 
-      if (isCSSTemplate(expr)) {
-        styles += `.${expr.className}`;
+      const classNameFromTpl = getTemplateClassName(expr);
+      if (classNameFromTpl != null) {
+        styles += `.${classNameFromTpl}`;
         return;
       }
 
@@ -383,12 +395,12 @@ function createTemplate(prefix: string, strings: TemplateStringsArray, interpola
 ||         css helper         ||
 \*============================*/
 
-export function css(strings: TemplateStringsArray, ...interpolations: any[]): CSSTemplate {
+export function css<P = {}>(strings: TemplateStringsArray, ...interpolations: Interpolation<P>[]): CSSTemplate {
   return createTemplate("css", strings, interpolations);
 }
 
 export namespace css {
-  export function named(name: string): (strings: TemplateStringsArray, ...interpolations: any[]) => CSSTemplate {
+  export function named<P = {}>(name: string): (strings: TemplateStringsArray, ...interpolations: Interpolation<P>[]) => CSSTemplate {
     const safe = sanitizeIdentifier(name);
     return (strings, ...interpolations) => createTemplate(safe, strings, interpolations);
   }

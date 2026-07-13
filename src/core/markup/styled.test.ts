@@ -348,4 +348,25 @@ describe("TemplateFn.as (tag override)", () => {
     expect(el).not.toBeNull();
     expect(el.getAttribute("class")!.split(" ").some((c) => c.startsWith("MyLink-"))).toBe(true);
   });
+
+  test("interpolating a StyledView inlines its class name as a CSS selector", async () => {
+    const Text = styled.span`
+      color: red;
+    `;
+
+    // StyledView should expose its underlying CSSTemplate
+    const textTemplate = (Text as any).__cssTemplate;
+    expect(textTemplate).toBeDefined();
+
+    // Interpolating the StyledView should produce the same hash
+    // as interpolating the raw CSSTemplate.
+    const tplViaView = css`
+      ${Text} { font-weight: bold; }
+    `;
+    const tplViaTemplate = css`
+      ${textTemplate} { font-weight: bold; }
+    `;
+
+    expect(tplViaView.className).toBe(tplViaTemplate.className);
+  });
 });

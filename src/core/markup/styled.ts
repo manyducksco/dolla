@@ -1,7 +1,7 @@
 import type { MaybeGetter, Renderable, View } from "../../types.js";
 import type { Context } from "../context.js";
 import { unwrap } from "../signals.js";
-import { css } from "./css.js";
+import { css, type CSSTemplate } from "./css.js";
 import { createMarkup } from "./utils.js";
 
 /*============================*\
@@ -47,7 +47,7 @@ export type InterpolationValue = string | number | null | undefined;
 
 export type InterpolationFn<Props> = (props: Props & Record<string, any>) => MaybeGetter<InterpolationValue>;
 
-export type Interpolation<Props> = InterpolationValue | InterpolationFn<Props> | HoudiniTuple<Props, any>;
+export type Interpolation<Props> = InterpolationValue | InterpolationFn<Props> | HoudiniTuple<Props, any> | CSSTemplate | StyledView<any>;
 
 type StyledProps = {
   /**
@@ -175,6 +175,8 @@ function createBuilder(tagOrView: any, boundName?: string, boundAs?: string): Te
       value: `Styled(${boundName ?? (typeof tagOrView === "string" ? tagOrView : (tagOrView as any).name)})`,
       configurable: true,
     });
+
+    (StyledView as any).__cssTemplate = initial;
 
     return StyledView;
   }
