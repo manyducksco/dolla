@@ -18,7 +18,7 @@ describe("dollaPlugin — HMR injection", () => {
       "serve",
     );
     expect(result).not.toBeNull();
-    expect(result!.code).toContain('import { __dolla_apply } from "@manyducks.co/dolla/hmr"');
+    expect(result!.code).toContain('import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"');
     expect(result!.code).toContain("Foo");
     expect(result!.code).toContain("import.meta.hot.accept");
   });

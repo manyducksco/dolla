@@ -235,14 +235,14 @@ class StyleRegistry {
     ];
   }
 
-  addProperty(name: string, syntax: string, initialValue: any) {
+  addProperty(name: string, syntax: string, initialValue: any, inherits: boolean) {
     if (this.properties.has(name) || syntax === "*") return;
 
     try {
       CSS.registerProperty({
         name,
         syntax,
-        inherits: false,
+        inherits,
         initialValue,
       });
       this.properties.add(name);
@@ -301,26 +301,40 @@ function buildStyles(
         return;
       }
 
-      let syntax = "*";
-      let initialValue = null;
-
-      if (Array.isArray(expr)) {
-        [expr, syntax, initialValue = null] = expr;
-      }
-
-      if (typeof expr === "function") {
+      // PropertyConfig: a Houdini @property descriptor. The runtime
+      // registers a typed custom property and binds its value from
+      // the `value` (getter or static).
+      if (
+        typeof expr === "object" &&
+        expr !== null &&
+        !Array.isArray(expr) &&
+        "syntax" in expr &&
+        "value" in expr
+      ) {
+        const config = expr as {
+          syntax: string;
+          value: (() => any) | any;
+          initialValue?: any;
+          inherits?: boolean;
+        };
+        const { syntax, value, initialValue, inherits } = config;
         const varName = `--${className}-${i}`;
+        const getter = typeof value === "function" ? value : () => value;
 
         if (initialValue != null) {
           styles += `var(${varName}, ${initialValue})`;
           if (syntax !== "*") {
-            registry.addProperty(varName, syntax, initialValue);
+            registry.addProperty(varName, syntax, initialValue, inherits ?? false);
           }
         } else {
           styles += `var(${varName})`;
         }
 
-        bindings.push({ varName, getter: expr, initialValue });
+        bindings.push({ varName, getter, initialValue });
+      } else if (typeof expr === "function") {
+        const varName = `--${className}-${i}`;
+        styles += `var(${varName})`;
+        bindings.push({ varName, getter: expr, initialValue: null });
       } else {
         styles += expr;
       }

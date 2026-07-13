@@ -15,7 +15,10 @@ function getStaticSheet(): CSSStyleSheet {
 
 /** Normalises a CSS rule's cssText so whitespace doesn't trip assertions. */
 function norm(s: string): string {
-  return s.replace(/\s*([:;{}])\s*/g, "$1").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/\s*([:;{}])\s*/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function ruleText(sheet: CSSStyleSheet, selector: string): string {
@@ -82,44 +85,66 @@ describe("styled.tag", () => {
     expect(a.getAttribute("class")).toBe(b.getAttribute("class"));
   });
 
-  test("function interpolation receives props and unwraps getters", async () => {
+  test("plain getter function interpolates via a reactive CSS variable binding", async () => {
     const target = document.createElement("div");
     document.body.append(target);
 
+    const [hue, setHue] = createAtom(0);
     const Panel = styled.div`
-      color: ${(p) => p.color};
+      background: ${() => hue()};
     `;
 
-    await mount(target, () => html`<${Panel} color="orange">x<//>`);
+    await mount(target, () => html`<${Panel}>x<//>`);
 
     const el = target.querySelector("div")!;
-    const className = el.getAttribute("class")!.split(" ").find((c) => c.startsWith("css-"))!;
-
-    expect(ruleText(getStaticSheet(), `.${className}`)).toContain(`var(--${className}-0)`);
-    expect(instanceVarValue(`--${className}-0`)).toBe("orange");
-  });
-
-  test("signal-driven prop update re-evaluates the binding", async () => {
-    const target = document.createElement("div");
-    document.body.append(target);
-
-    const [color, setColor] = createAtom<string>("red");
-    const Panel = styled.div`
-      color: ${(p) => p.color};
-    `;
-
-    await mount(target, () => html`<${Panel} color=${color}>x<//>`);
-
-    const el = target.querySelector("div")!;
-    const className = el.getAttribute("class")!.split(" ").find((c) => c.startsWith("css-"))!;
+    const className = el
+      .getAttribute("class")!
+      .split(" ")
+      .find((c) => c.startsWith("css-"))!;
     const varName = `--${className}-0`;
 
-    expect(instanceVarValue(varName)).toBe("red");
+    expect(instanceVarValue(varName)).toBe("0");
 
-    setColor("blue");
+    setHue(42);
     await Promise.resolve();
     await Promise.resolve();
-    expect(instanceVarValue(varName)).toBe("blue");
+    expect(instanceVarValue(varName)).toBe("42");
+  });
+
+  test("PropertyConfig registers a typed @property and binds via getter", async () => {
+    const target = document.createElement("div");
+    document.body.append(target);
+
+    const [hue, setHue] = createAtom(0);
+    const Panel = styled.div`
+      background: ${() => hue()};
+      color: ${{ syntax: "<integer>", value: () => hue(), initialValue: 0, inherits: false }};
+    `;
+
+    await mount(target, () => html`<${Panel}>x<//>`);
+
+    const el = target.querySelector("div")!;
+    const className = el
+      .getAttribute("class")!
+      .split(" ")
+      .find((c) => c.startsWith("css-"))!;
+
+    // First interpolation: plain getter → CSS var --css-hash-0.
+    // The plain getter has no initialValue, so the value is always set.
+    const plainVar = `--${className}-0`;
+    expect(instanceVarValue(plainVar)).toBe("0");
+
+    // Second interpolation: PropertyConfig → CSS var --css-hash-1.
+    // When val === initialValue, the runtime removes the property because
+    // Houdini's @property initial-value declaration provides the fallback.
+    // So we don't assert the initial value here — only the updated value.
+    const cfgVar = `--${className}-1`;
+
+    setHue(42);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(instanceVarValue(plainVar)).toBe("42");
+    expect(instanceVarValue(cfgVar)).toBe("42");
   });
 
   test("`as` overrides the rendered tag for intrinsics", async () => {
@@ -175,7 +200,9 @@ describe("styled.tag", () => {
     const baseClass = styledClasses.find((c) => ruleText(getStaticSheet(), `.${c}`).includes("background"))!;
     const overrideClass = styledClasses.find((c) => c !== baseClass)!;
     expect(ruleIndex(getStaticSheet(), `.${baseClass}`)).toBeGreaterThanOrEqual(0);
-    expect(ruleIndex(getStaticSheet(), `.${overrideClass}`)).toBeGreaterThan(ruleIndex(getStaticSheet(), `.${baseClass}`));
+    expect(ruleIndex(getStaticSheet(), `.${overrideClass}`)).toBeGreaterThan(
+      ruleIndex(getStaticSheet(), `.${baseClass}`),
+    );
 
     // The override's color rule exists and contains "blue".
     expect(ruleText(getStaticSheet(), `.${overrideClass}`)).toContain("color:blue");
@@ -193,7 +220,10 @@ describe("styled.tag", () => {
     await mount(target, () => html`<${Text}>x<//>`);
 
     const el = target.querySelector("span")!;
-    const className = el.getAttribute("class")!.split(" ").find((c) => c.startsWith("css-"))!;
+    const className = el
+      .getAttribute("class")!
+      .split(" ")
+      .find((c) => c.startsWith("css-"))!;
     expect(ruleText(getStaticSheet(), `.${className}`)).toContain("font-size:14px");
   });
 
@@ -273,7 +303,7 @@ describe("TemplateFn.as (tag override)", () => {
     expect(target.querySelector("button")).toBeNull();
   });
 
-  test("chains .as(\"a\") with .named(\"MyLink\")", async () => {
+  test('chains .as("a") with .named("MyLink")', async () => {
     const target = document.createElement("div");
     document.body.append(target);
 
@@ -285,7 +315,12 @@ describe("TemplateFn.as (tag override)", () => {
 
     const el = target.querySelector("a")!;
     expect(el).not.toBeNull();
-    expect(el.getAttribute("class")!.split(" ").some((c) => c.startsWith("MyLink-"))).toBe(true);
+    expect(
+      el
+        .getAttribute("class")!
+        .split(" ")
+        .some((c) => c.startsWith("MyLink-")),
+    ).toBe(true);
   });
 
   test("per-instance `as` prop wins over builder-level .as()", async () => {
@@ -331,7 +366,12 @@ describe("TemplateFn.as (tag override)", () => {
 
     const el = target.querySelector("a")!;
     expect(el).not.toBeNull();
-    expect(el.getAttribute("class")!.split(" ").filter((c) => c.startsWith("css-")).length).toBe(2);
+    expect(
+      el
+        .getAttribute("class")!
+        .split(" ")
+        .filter((c) => c.startsWith("css-")).length,
+    ).toBe(2);
   });
 
   test("chain order is irrelevant (.named after .as)", async () => {
@@ -346,7 +386,12 @@ describe("TemplateFn.as (tag override)", () => {
 
     const el = target.querySelector("a")!;
     expect(el).not.toBeNull();
-    expect(el.getAttribute("class")!.split(" ").some((c) => c.startsWith("MyLink-"))).toBe(true);
+    expect(
+      el
+        .getAttribute("class")!
+        .split(" ")
+        .some((c) => c.startsWith("MyLink-")),
+    ).toBe(true);
   });
 
   test("interpolating a StyledView inlines its class name as a CSS selector", async () => {
@@ -361,12 +406,87 @@ describe("TemplateFn.as (tag override)", () => {
     // Interpolating the StyledView should produce the same hash
     // as interpolating the raw CSSTemplate.
     const tplViaView = css`
-      ${Text} { font-weight: bold; }
+      ${Text} {
+        font-weight: bold;
+      }
     `;
     const tplViaTemplate = css`
-      ${textTemplate} { font-weight: bold; }
+      ${textTemplate} {
+        font-weight: bold;
+      }
     `;
 
     expect(tplViaView.className).toBe(tplViaTemplate.className);
+  });
+
+  test("interpolating a StyledView in a styled template inlines its class name (not rendered output)", async () => {
+    const target = document.createElement("div");
+    document.body.append(target);
+
+    const Text = styled.span`
+      color: red;
+    `;
+
+    const Label = styled.label`
+      &:hover ${Text} {
+        opacity: 1 !important;
+      }
+    `;
+
+    await mount(target, () => html`<${Label}>x<//>`);
+
+    // The sheet should contain a rule that uses Text's class as a selector
+    // (not as a CSS var holding [object Object]).
+    const sheet = getStaticSheet();
+    const textClass = (Text as any).__cssTemplate.className;
+    const allRules = Array.from(sheet.cssRules) as CSSStyleRule[];
+
+    // No rule should have a CSS var set to "[object Object]" (the bug we're fixing).
+    for (const rule of allRules) {
+      expect(rule.style.cssText).not.toMatch(/\[object Object\]/);
+    }
+
+    // The rule should reference Text's class in its selector.
+    const matching = allRules.filter((r) => norm(r.cssText).includes(`.${textClass}`));
+    expect(matching.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("interpolating a named StyledView inlines the renamed class name", async () => {
+    const target = document.createElement("div");
+    document.body.append(target);
+
+    // Snapshot the rule count so we only check rules added by this test,
+    // avoiding false positives from earlier tests that share the same hash.
+    const sheet = getStaticSheet();
+    const initialRuleCount = sheet.cssRules.length;
+
+    const Text = styled.span.named("Text")`
+      color: red;
+    `;
+
+    // Verify Text's underlying CSSTemplate is the renamed one.
+    const textTemplate = (Text as any).__cssTemplate;
+    expect(textTemplate.className.startsWith("Text-")).toBe(true);
+
+    const Label = styled.label.named("Label")`
+      &:hover ${Text} {
+        opacity: 1 !important;
+      }
+    `;
+
+    await mount(target, () => html`<${Label}>x<//>`);
+
+    // Only inspect rules added by this test.
+    const newRules = Array.from(sheet.cssRules).slice(initialRuleCount) as CSSStyleRule[];
+
+    // The renamed class name should appear in the cssText of some new rule.
+    const matchingRenamed = newRules.filter((r) => norm(r.cssText).includes(`.${textTemplate.className}`));
+    expect(matchingRenamed.length).toBeGreaterThanOrEqual(1);
+
+    // The un-renamed hash class should NOT appear in any new rule's cssText.
+    const hashClass = "css-" + textTemplate.className.split("-")[1];
+    for (const rule of newRules) {
+      expect(rule.cssText).not.toContain(`.${hashClass} {`);
+    }
   });
 });

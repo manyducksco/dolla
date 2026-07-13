@@ -1,6 +1,7 @@
-import type { MaybeGetter, Renderable, View } from "../../types.js";
+import type { Renderable, View } from "../../types.js";
 import type { Context } from "../context.js";
 import { unwrap } from "../signals.js";
+import type { Getter } from "../signals.js";
 import { css, type CSSTemplate } from "./css.js";
 import { createMarkup } from "./utils.js";
 
@@ -34,20 +35,29 @@ type SyntaxValueType<T extends CSSSyntaxDescriptor> = T extends "<number>" | "<i
     : string | number;
 
 /**
- * A tuple of `[getter, syntax, initialValue]` that tells the CSS engine how
- * to register a custom property via Houdini `@property`.
+ * A Houdini `@property` config object passed as a template interpolation.
+ * Registers a typed custom property with the browser and binds its value
+ * from the given getter (or static `value`).
+ *
+ * ```ts
+ * ${{ syntax: "<color>", value: () => hue(), initialValue: "red", inherits: false }}
+ * ```
  */
-export type HoudiniTuple<Props, Syntax extends CSSSyntaxDescriptor> = [
-  getter: InterpolationFn<Props>,
-  syntax: Syntax,
-  initialValue: SyntaxValueType<Syntax>,
-];
+export type PropertyConfig<Syntax extends CSSSyntaxDescriptor> = {
+  syntax: Syntax;
+  value: Getter<InterpolationValue> | InterpolationValue;
+  initialValue?: SyntaxValueType<Syntax>;
+  inherits?: boolean;
+};
 
 export type InterpolationValue = string | number | null | undefined;
 
-export type InterpolationFn<Props> = (props: Props & Record<string, any>) => MaybeGetter<InterpolationValue>;
-
-export type Interpolation<Props> = InterpolationValue | InterpolationFn<Props> | HoudiniTuple<Props, any> | CSSTemplate | StyledView<any>;
+export type Interpolation<Props = {}> =
+  | InterpolationValue
+  | Getter<InterpolationValue>
+  | PropertyConfig<any>
+  | CSSTemplate
+  | StyledView<any>;
 
 type StyledProps = {
   /**
@@ -101,22 +111,23 @@ function composeClass(existing: unknown, tpl: any): unknown {
 }
 
 /**
- * Wraps an interpolation so function/tuple forms receive the rendered
- * component's props at evaluation time. Static values and nested CSSTemplates
- * pass through unchanged. The wrapping does not run the function eagerly; it
- * is only invoked from within an `onEffect` when the binding is tracked.
+ * Wraps a function interpolation into a thunk that the runtime evaluates
+ * reactively. Static values (primitives, CSSTemplates, PropertyConfigs,
+ * StyledViews) pass through unchanged.
  */
-function wrapInterpolation<Props>(ip: Interpolation<Props>, props: Props): any {
-  const wrappedProps = props as Props & Record<string, any>;
-
-  if (typeof ip === "function") {
-    const fn = ip as InterpolationFn<Props>;
-    return () => unwrap(fn(wrappedProps));
+function wrapInterpolation(ip: Interpolation<any>): any {
+  // StyledView components are functions with a __cssTemplate property.
+  // Pass through the CSSTemplate so buildStyles can inline the class name
+  // via getTemplateClassName (rather than treating the StyledView as a
+  // getter and wrapping it, which would render the view and produce
+  // [object Object] in a CSS var).
+  if (typeof ip === "function" && (ip as any).__cssTemplate != null) {
+    return (ip as any).__cssTemplate;
   }
 
-  if (Array.isArray(ip)) {
-    const [fn, syntax, initialValue] = ip as HoudiniTuple<Props, any>;
-    return [() => unwrap((fn as InterpolationFn<Props>)(wrappedProps)), syntax, initialValue] as const;
+  if (typeof ip === "function") {
+    const fn = ip as Getter<InterpolationValue>;
+    return () => unwrap(fn());
   }
 
   return ip;
@@ -131,11 +142,7 @@ function createBuilder<Tag extends keyof JSX.IntrinsicElements>(
   boundName?: string,
   boundAs?: string,
 ): TemplateFn<JSX.IntrinsicElements[Tag]>;
-function createBuilder<Props>(
-  view: View<Props>,
-  boundName?: string,
-  boundAs?: string,
-): TemplateFn<Props>;
+function createBuilder<Props>(view: View<Props>, boundName?: string, boundAs?: string): TemplateFn<Props>;
 function createBuilder(tagOrView: any, boundName?: string, boundAs?: string): TemplateFn<any> {
   function templateFn(strings: TemplateStringsArray, ...interpolations: any[]): StyledView<any> {
     // Insert the static class rule now so its position in the shared
@@ -154,7 +161,7 @@ function createBuilder(tagOrView: any, boundName?: string, boundAs?: string): Te
 
       // Render-time template: same statics => same hash. `.named` only
       // swaps the prefix so the registry dedups the static rule.
-      const wrapped = interpolations.map((ip) => wrapInterpolation(ip, rest));
+      const wrapped = interpolations.map((ip) => wrapInterpolation(ip));
       const renderInitial = css(strings, ...wrapped);
       const renderTpl = boundName ? renderInitial.named(boundName) : renderInitial;
 
@@ -176,7 +183,7 @@ function createBuilder(tagOrView: any, boundName?: string, boundAs?: string): Te
       configurable: true,
     });
 
-    (StyledView as any).__cssTemplate = initial;
+    (StyledView as any).__cssTemplate = tpl;
 
     return StyledView;
   }

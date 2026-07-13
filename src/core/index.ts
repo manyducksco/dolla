@@ -23,10 +23,9 @@ export { styled } from "./markup/styled.js";
 export type {
   CoreCSSSyntax,
   CSSSyntaxDescriptor,
-  HoudiniTuple,
   Interpolation,
-  InterpolationFn,
   InterpolationValue,
+  PropertyConfig,
   StyledView,
 } from "./markup/styled.js";
 export { createMarkup, render } from "./markup/utils.js";
