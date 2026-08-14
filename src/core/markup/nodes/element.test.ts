@@ -207,6 +207,68 @@ describe("ElementNode", () => {
       expect(c2.children[0].hasAttribute("data-test")).toBe(false);
     });
 
+    test("does not render reflected attributes when value is undefined", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { id: undefined, title: undefined });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.hasAttribute("id")).toBe(false);
+      expect(el.hasAttribute("title")).toBe(false);
+      expect(el.getAttribute("id")).not.toBe("undefined");
+      expect(el.getAttribute("title")).not.toBe("undefined");
+    });
+
+    test("does not render reflected attributes when value is null", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { id: null, title: null });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.hasAttribute("id")).toBe(false);
+      expect(el.hasAttribute("title")).toBe(false);
+    });
+
+    test("does not render name attribute when value is undefined", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "input", { name: undefined });
+      node.mount(container);
+      const el = container.children[0] as HTMLInputElement;
+      expect(el.hasAttribute("name")).toBe(false);
+      expect(el.getAttribute("name")).not.toBe("undefined");
+    });
+
+    test("does not render for attribute when value is undefined", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "label", { for: undefined });
+      node.mount(container);
+      const el = container.children[0] as HTMLLabelElement;
+      expect(el.hasAttribute("for")).toBe(false);
+      expect(el.getAttribute("for")).not.toBe("undefined");
+    });
+
+    test("does not render for attribute when value is null", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "label", { for: null });
+      node.mount(container);
+      const el = container.children[0] as HTMLLabelElement;
+      expect(el.hasAttribute("for")).toBe(false);
+    });
+
+    test("removes reflected attribute when prop: value becomes nullish", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { "prop:dataThing": undefined } as any);
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.hasAttribute("dataThing")).toBe(false);
+    });
+
+    test("removes reflected attribute when dot-prefixed value becomes nullish", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { ".dataThing": null } as any);
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.hasAttribute("dataThing")).toBe(false);
+    });
+
     test("sets attribute to string value for falsy but non-null values", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", { tabindex: 0 });
@@ -247,6 +309,24 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLButtonElement;
       expect(el.disabled).toBe(true);
       expect(el.hasAttribute("disabled")).toBe(true);
+    });
+
+    test("boolean property disabled={null} removes the disabled attribute", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "button", { disabled: null } as any);
+      node.mount(container);
+      const el = container.children[0] as HTMLButtonElement;
+      expect(el.disabled).toBe(false);
+      expect(el.hasAttribute("disabled")).toBe(false);
+    });
+
+    test("boolean property disabled={undefined} removes the disabled attribute", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "button", { disabled: undefined });
+      node.mount(container);
+      const el = container.children[0] as HTMLButtonElement;
+      expect(el.disabled).toBe(false);
+      expect(el.hasAttribute("disabled")).toBe(false);
     });
   });
 
@@ -295,6 +375,30 @@ describe("ElementNode", () => {
       setVal("");
       flushPendingUpdates();
       expect(el.getAttribute("data-test")).toBe("");
+    });
+
+    test("removes reflected attribute when signal becomes undefined", () => {
+      const { context, container } = setup();
+      const [val, setVal] = createAtom<string | undefined>("hello");
+      const node = new ElementNode(context, "div", { id: val });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("id")).toBe("hello");
+      setVal(undefined);
+      flushPendingUpdates();
+      expect(el.hasAttribute("id")).toBe(false);
+    });
+
+    test("removes reflected attribute when signal becomes null", () => {
+      const { context, container } = setup();
+      const [val, setVal] = createAtom<string | null>("hello");
+      const node = new ElementNode(context, "div", { title: val });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("title")).toBe("hello");
+      setVal(null);
+      flushPendingUpdates();
+      expect(el.hasAttribute("title")).toBe(false);
     });
   });
 

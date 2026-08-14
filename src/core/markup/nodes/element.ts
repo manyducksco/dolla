@@ -224,18 +224,20 @@ export class ElementNode extends MarkupNode {
         this.#applyClasses(element, value);
       } else if (key === "for") {
         this.#attach(value, (current) => {
-          element.htmlFor = current;
+          if (current == null) {
+            element.removeAttribute("for");
+          } else {
+            element.htmlFor = current;
+          }
         });
       } else if (key.startsWith("prop:") || key[0] === ".") {
         // Keys starting with `prop:` or `.` are set as props.
-
         const _key = key.startsWith("prop:") ? key.substring(5) : key.substring(1);
         this.#attach(value, (current) => {
-          element[_key] = current;
+          setProp(element, _key, current);
         });
       } else if (key.startsWith("attr:") || key[0] === ":") {
         // Keys starting with `attr:` or `:` are set as attributes.
-
         const _key = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
         this.#attach(value, (current) => {
           setAttribute(element, _key, current);
@@ -249,7 +251,6 @@ export class ElementNode extends MarkupNode {
         if (eventName) this.#attachListener(element, eventName, value);
       } else if (key in element && !this.#context[IS_SVG]) {
         // Set as property if the element has one.
-
         if (typeof element[key] === "boolean") {
           this.#attach(value, (current) => {
             const isTrue = Boolean(current);
@@ -262,7 +263,7 @@ export class ElementNode extends MarkupNode {
           });
         } else {
           this.#attach(value, (current) => {
-            element[key] = current;
+            setProp(element, key, current);
           });
         }
       } else {
@@ -288,8 +289,12 @@ export class ElementNode extends MarkupNode {
       this.#clearLocalSubs(localUnsubs);
       element.style.cssText = "";
 
-      const { templates: currentTemplates, remaining: processedValue } =
-        this.#extractTemplates(current, element, attachedTemplates, conditionSubs);
+      const { templates: currentTemplates, remaining: processedValue } = this.#extractTemplates(
+        current,
+        element,
+        attachedTemplates,
+        conditionSubs,
+      );
 
       this.#syncTemplates(currentTemplates, attachedTemplates, conditionSubs, element);
 
@@ -328,8 +333,12 @@ export class ElementNode extends MarkupNode {
       const prevStaticClasses = new Set(staticClasses);
       staticClasses.clear();
 
-      const { templates: currentTemplates, remaining: processedValue } =
-        this.#extractTemplates(current, element, attachedTemplates, conditionSubs);
+      const { templates: currentTemplates, remaining: processedValue } = this.#extractTemplates(
+        current,
+        element,
+        attachedTemplates,
+        conditionSubs,
+      );
 
       this.#syncTemplates(currentTemplates, attachedTemplates, conditionSubs, element);
 
@@ -591,9 +600,17 @@ function formatValue(name: string, value: any): string {
 }
 
 function setAttribute(element: Element, name: string, value: any) {
-  if (value != null) {
-    element.setAttribute(name, String(value));
-  } else {
+  if (value == null) {
     element.removeAttribute(name);
+  } else {
+    element.setAttribute(name, String(value));
+  }
+}
+
+function setProp(element: Element, key: string, value: unknown) {
+  if (value == null) {
+    element.removeAttribute(key);
+  } else {
+    (element as any)[key] = value;
   }
 }
