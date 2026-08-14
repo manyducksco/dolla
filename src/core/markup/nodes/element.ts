@@ -6,6 +6,7 @@ import { DEBUG } from "../../symbols.js";
 import { ConditionalTemplate, CSSTemplate, isConditionalTemplate, isCSSTemplate } from "../css.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, MountTarget } from "../types.js";
+import type { MaybeGetter } from "../../../types.js";
 import { addChild, camelToKebab, moveAfter, toMarkupNodes } from "../utils.js";
 
 const IS_SVG = Symbol.for("$_IS_SVG");
@@ -289,14 +290,10 @@ export class ElementNode extends MarkupNode {
       this.#clearLocalSubs(localUnsubs);
       element.style.cssText = "";
 
-      const { templates: currentTemplates, remaining: processedValue } = this.#extractTemplates(
-        current,
-        element,
-        attachedTemplates,
-        conditionSubs,
-      );
+      const { templates: currentTemplates, conditions, remaining: processedValue } = this.#extractTemplates(current);
 
-      this.#syncTemplates(currentTemplates, attachedTemplates, conditionSubs, element);
+      this.#syncTemplates(currentTemplates, attachedTemplates, element);
+      this.#applyConditions(conditions, currentTemplates, attachedTemplates, conditionSubs, element);
 
       if (processedValue === undefined) return;
       current = processedValue;
@@ -333,14 +330,10 @@ export class ElementNode extends MarkupNode {
       const prevStaticClasses = new Set(staticClasses);
       staticClasses.clear();
 
-      const { templates: currentTemplates, remaining: processedValue } = this.#extractTemplates(
-        current,
-        element,
-        attachedTemplates,
-        conditionSubs,
-      );
+      const { templates: currentTemplates, conditions, remaining: processedValue } = this.#extractTemplates(current);
 
-      this.#syncTemplates(currentTemplates, attachedTemplates, conditionSubs, element);
+      this.#syncTemplates(currentTemplates, attachedTemplates, element);
+      this.#applyConditions(conditions, currentTemplates, attachedTemplates, conditionSubs, element);
 
       if (processedValue === undefined) return;
       current = processedValue;
@@ -377,59 +370,32 @@ export class ElementNode extends MarkupNode {
 
   /**
    * Scan an incoming style/class value and separate out any CSSTemplates and
-   * ConditionalTemplates.  Returns the templates to track and the remaining
-   * non-template value (or `undefined` if nothing is left).
+   * ConditionalTemplates.  Returns the templates to track, the conditions to
+   * apply (one entry per ConditionalTemplate), and the remaining non-template
+   * value (or `undefined` if nothing is left).
    *
-   * ## Plain CSSTemplates
-   *
-   * Collected for deferred attachment by `#syncTemplates`.  This avoids
-   * re-attaching templates that are already live (tracked in
-   * `attachedTemplates`).
-   *
-   * ## ConditionalTemplates (`css\`…\`.when(…)`)
-   *
-   * Attached eagerly — the template rules/bindings are set up once, then the
-   * class name is toggled on/off by the condition.  If the condition is a
-   * reactive getter, a subscription is created and tracked in `conditionSubs`
-   * (also registered on `#unsubscribers` for element-level cleanup).  If it's
-   * a static boolean, the toggle happens immediately.
+   * Pure — no element side effects.  Both plain and conditional templates are
+   * collected and deferred to `#syncTemplates` (which calls `.attach()` in
+   * user-supplied order) and `#applyConditions` (which sets up the toggle/subscription
+   * once the template is on the element).  Preserving this order is what lets
+   * later templates override earlier ones in the stylesheet cascade.
    *
    * Both forms (top-level or nested inside an array) are handled identically.
    */
   #extractTemplates(
     current: unknown,
-    element: HTMLElement | SVGElement,
-    attachedTemplates: Set<CSSTemplate>,
-    conditionSubs: Map<CSSTemplate, () => void>,
-  ): { templates: Set<CSSTemplate>; remaining: unknown } {
+  ): { templates: Set<CSSTemplate>; conditions: Map<CSSTemplate, MaybeGetter<any>>; remaining: unknown } {
     const templates = new Set<CSSTemplate>();
+    const conditions = new Map<CSSTemplate, MaybeGetter<any>>();
     let remaining: unknown = current;
 
     const addConditional = (condTpl: ConditionalTemplate) => {
       templates.add(condTpl.template);
-      if (!attachedTemplates.has(condTpl.template)) {
-        condTpl.template.attach(this.#context, element);
-        attachedTemplates.add(condTpl.template);
-      }
-      if (isFunction(condTpl.condition)) {
-        if (!conditionSubs.has(condTpl.template)) {
-          const unsub = subscribe(condTpl.condition, (val) => {
-            scheduleUpdate(() => element.classList.toggle(condTpl.template.className, Boolean(val)));
-          });
-          conditionSubs.set(condTpl.template, unsub);
-          this.#unsubscribers.add(unsub);
-        }
-      } else {
-        element.classList.toggle(condTpl.template.className, Boolean(condTpl.condition));
-      }
+      conditions.set(condTpl.template, condTpl.condition);
     };
 
     if (isCSSTemplate(current)) {
       templates.add(current);
-      if (!attachedTemplates.has(current)) {
-        current.attach(this.#context, element);
-        attachedTemplates.add(current);
-      }
       remaining = undefined;
     } else if (isConditionalTemplate(current)) {
       addConditional(current);
@@ -448,7 +414,7 @@ export class ElementNode extends MarkupNode {
       remaining = items.length === 0 ? undefined : items.length === 1 ? items[0] : items;
     }
 
-    return { templates, remaining };
+    return { templates, conditions, remaining };
   }
 
   /**
@@ -456,10 +422,12 @@ export class ElementNode extends MarkupNode {
    * value requires.  Must be called after `#extractTemplates` on every apply.
    *
    * 1. **Attach newcomers** — templates in `currentTemplates` that aren't yet
-   *    in `attachedTemplates` get a one-time `.attach()` call.
+   *    in `attachedTemplates` get a one-time `.attach()` call, in the order the
+   *    user supplied them.  This is what determines stylesheet insertion order
+   *    and therefore CSS cascade for same-specificity rules.
    * 2. **Detach removed** — templates that were in `attachedTemplates` but are
-   *    no longer in `currentTemplates` have their class name removed and their
-   *    condition subscription (if any) cleaned up.
+   *    no longer in `currentTemplates` have their class name removed.  Any
+   *    condition subscription is cleaned up separately by `#applyConditions`.
    * 3. **Sync state** — `attachedTemplates` is reset to match
    *    `currentTemplates`, ready for the next call.
    *
@@ -471,7 +439,6 @@ export class ElementNode extends MarkupNode {
   #syncTemplates(
     currentTemplates: Set<CSSTemplate>,
     attachedTemplates: Set<CSSTemplate>,
-    conditionSubs: Map<CSSTemplate, () => void>,
     element: HTMLElement | SVGElement,
   ): void {
     for (const tpl of currentTemplates) {
@@ -482,6 +449,39 @@ export class ElementNode extends MarkupNode {
     for (const tpl of attachedTemplates) {
       if (!currentTemplates.has(tpl)) {
         element.classList.remove(tpl.className);
+      }
+    }
+    attachedTemplates.clear();
+    for (const tpl of currentTemplates) attachedTemplates.add(tpl);
+  }
+
+  /**
+   * Apply the condition for each ConditionalTemplate collected by
+   * `#extractTemplates`.  Called after `#syncTemplates` so the class is on the
+   * element by the time we toggle it.
+   *
+   * 1. **Clean up removed** — unsubscribe any condition subscriptions whose
+   *    template is no longer in `currentTemplates`, and remove them from
+   *    `#unsubscribers` so they don't outlive the element.
+   * 2. **Subscribe or toggle new** — for each `(template, condition)` pair in
+   *    `conditions` whose template is still current:
+   *    - Reactive getter condition: subscribe once (deduped via `conditionSubs`)
+   *      and toggle the class on every change.
+   *    - Static boolean condition: toggle the class immediately.  A no-op if
+   *      the class is already in the desired state.
+   *
+   * Subscriptions are also registered on `#unsubscribers` for element-level
+   * cleanup on unmount.
+   */
+  #applyConditions(
+    conditions: Map<CSSTemplate, MaybeGetter<any>>,
+    currentTemplates: Set<CSSTemplate>,
+    attachedTemplates: Set<CSSTemplate>,
+    conditionSubs: Map<CSSTemplate, () => void>,
+    element: HTMLElement | SVGElement,
+  ): void {
+    for (const tpl of attachedTemplates) {
+      if (!currentTemplates.has(tpl)) {
         const unsub = conditionSubs.get(tpl);
         if (unsub) {
           unsub();
@@ -490,8 +490,20 @@ export class ElementNode extends MarkupNode {
         }
       }
     }
-    attachedTemplates.clear();
-    for (const tpl of currentTemplates) attachedTemplates.add(tpl);
+    for (const [tpl, condition] of conditions) {
+      if (!currentTemplates.has(tpl)) continue;
+      if (isFunction(condition)) {
+        if (!conditionSubs.has(tpl)) {
+          const unsub = subscribe(condition, (val) => {
+            scheduleUpdate(() => element.classList.toggle(tpl.className, Boolean(val)));
+          });
+          conditionSubs.set(tpl, unsub);
+          this.#unsubscribers.add(unsub);
+        }
+      } else {
+        element.classList.toggle(tpl.className, Boolean(condition));
+      }
+    }
   }
 
   #clearLocalSubs(localUnsubs: Set<() => void>) {

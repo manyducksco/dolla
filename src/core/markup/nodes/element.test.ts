@@ -1052,5 +1052,163 @@ describe("ElementNode", () => {
     });
   });
 
+  describe("template cascade ordering", () => {
+    function sheet() {
+      return document.adoptedStyleSheets[document.adoptedStyleSheets.length - 1];
+    }
+    function ruleIndex(selector: string): number {
+      return Array.from(sheet().cssRules).findIndex(
+        (r) => (r as CSSStyleRule).selectorText === selector,
+      );
+    }
+
+    test("plain then conditional: conditional rule comes AFTER plain rule in sheet", () => {
+      const { context, container } = setup();
+      const base = css`
+        color: crimson;
+      `;
+      const override = css`
+        color: navy;
+      `;
+      const node = new ElementNode(context, "div", { class: [base, override.when(true)] });
+      node.mount(container);
+
+      const baseIdx = ruleIndex(`.${base.className}`);
+      const overrideIdx = ruleIndex(`.${override.className}`);
+      expect(baseIdx).toBeGreaterThanOrEqual(0);
+      expect(overrideIdx).toBeGreaterThan(baseIdx);
+    });
+
+    test("conditional then plain: plain rule comes AFTER conditional rule in sheet", () => {
+      const { context, container } = setup();
+      const base = css`
+        background: peru;
+      `;
+      const override = css`
+        background: salmon;
+      `;
+      const node = new ElementNode(context, "div", { class: [override.when(true), base] });
+      node.mount(container);
+
+      const overrideIdx = ruleIndex(`.${override.className}`);
+      const baseIdx = ruleIndex(`.${base.className}`);
+      expect(overrideIdx).toBeGreaterThanOrEqual(0);
+      expect(baseIdx).toBeGreaterThan(overrideIdx);
+    });
+
+    test("conditional template after plain wins cascade when its condition is active", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const base = css`
+        margin: 5px;
+      `;
+      const override = css`
+        margin: 10px;
+      `;
+      const node = new ElementNode(context, "div", {
+        class: [base, override.when(isActive)],
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+
+      // When inactive, only base is on the element.
+      expect(el.classList.contains(base.className)).toBe(true);
+      expect(el.classList.contains(override.className)).toBe(false);
+
+      setIsActive(true);
+      flushPendingUpdates();
+
+      // Both classes present; override's rule sits after base's in the sheet,
+      // so it wins the cascade tie.
+      expect(el.classList.contains(base.className)).toBe(true);
+      expect(el.classList.contains(override.className)).toBe(true);
+      const baseIdx = ruleIndex(`.${base.className}`);
+      const overrideIdx = ruleIndex(`.${override.className}`);
+      expect(baseIdx).toBeGreaterThanOrEqual(0);
+      expect(overrideIdx).toBeGreaterThan(baseIdx);
+
+      // Verify the override rule's content matches the override template.
+      const overrideRule = Array.from(sheet().cssRules).find(
+        (r) => (r as CSSStyleRule).selectorText === `.${override.className}`,
+      ) as CSSStyleRule;
+      expect(overrideRule?.style.margin).toBe("10px");
+    });
+
+    test("multiple conditional templates attach in array order", () => {
+      const { context, container } = setup();
+      const [a, setA] = createAtom(true);
+      const [b, setB] = createAtom(true);
+      const t1 = css`
+        letter-spacing: 1px;
+      `;
+      const t2 = css`
+        line-height: 2;
+      `;
+      const t3 = css`
+        word-spacing: 3px;
+      `;
+      const node = new ElementNode(context, "div", {
+        class: [t1, t2.when(a), t3.when(b)],
+      });
+      node.mount(container);
+
+      const i1 = ruleIndex(`.${t1.className}`);
+      const i2 = ruleIndex(`.${t2.className}`);
+      const i3 = ruleIndex(`.${t3.className}`);
+      expect(i1).toBeGreaterThanOrEqual(0);
+      expect(i2).toBeGreaterThan(i1);
+      expect(i3).toBeGreaterThan(i2);
+
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(t1.className)).toBe(true);
+      expect(el.classList.contains(t2.className)).toBe(true);
+      expect(el.classList.contains(t3.className)).toBe(true);
+
+      // Toggling one off only removes its class (and its sub); the others stay.
+      setA(false);
+      flushPendingUpdates();
+      expect(el.classList.contains(t1.className)).toBe(true);
+      expect(el.classList.contains(t2.className)).toBe(false);
+      expect(el.classList.contains(t3.className)).toBe(true);
+
+      setB(false);
+      flushPendingUpdates();
+      expect(el.classList.contains(t3.className)).toBe(false);
+    });
+
+    test("stylesheet order is preserved for style prop too", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const base = css`
+        padding: 7px;
+      `;
+      const override = css`
+        padding: 13px;
+      `;
+      const node = new ElementNode(context, "div", {
+        style: [base, override.when(isActive)],
+      });
+      node.mount(container);
+
+      const el = container.children[0] as HTMLElement;
+      // When inactive, only base class on element.
+      expect(el.classList.contains(base.className)).toBe(true);
+      expect(el.classList.contains(override.className)).toBe(false);
+
+      setIsActive(true);
+      flushPendingUpdates();
+
+      const baseIdx = ruleIndex(`.${base.className}`);
+      const overrideIdx = ruleIndex(`.${override.className}`);
+      expect(baseIdx).toBeGreaterThanOrEqual(0);
+      expect(overrideIdx).toBeGreaterThan(baseIdx);
+
+      const overrideRule = Array.from(sheet().cssRules).find(
+        (r) => (r as CSSStyleRule).selectorText === `.${override.className}`,
+      ) as CSSStyleRule;
+      expect(overrideRule?.style.padding).toBe("13px");
+    });
+  });
+
 
 });

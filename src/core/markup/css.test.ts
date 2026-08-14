@@ -309,3 +309,105 @@ describe("css.when()", () => {
     expect(el.classList.contains(tpl.className)).toBe(false);
   });
 });
+
+describe("hash collision prevention", () => {
+  test("templates differing only in static primitive interpolation get distinct classNames", () => {
+    const a = "20px";
+    const b = "14px";
+    const tplA = css`
+      font-size: ${a};
+    `;
+    const tplB = css`
+      font-size: ${b};
+    `;
+    expect(tplA.className).not.toBe(tplB.className);
+  });
+
+  test("templates differing only in numeric static interpolation get distinct classNames", () => {
+    const tplA = css`
+      z-index: ${10};
+    `;
+    const tplB = css`
+      z-index: ${99};
+    `;
+    expect(tplA.className).not.toBe(tplB.className);
+  });
+
+  test("identical static interpolations still dedup (same className)", () => {
+    const a = "20px";
+    const tplA = css`
+      font-size: ${a};
+    `;
+    const tplB = css`
+      font-size: ${a};
+    `;
+    expect(tplA.className).toBe(tplB.className);
+  });
+
+  test("PropertyConfigs with different syntax get distinct classNames", () => {
+    const cfgA = {
+      syntax: "<color>",
+      value: () => "red",
+      initialValue: "red",
+    } as const;
+    const cfgB = {
+      syntax: "<length>",
+      value: () => "10px",
+      initialValue: "10px",
+    } as const;
+    const tplA = css`
+      color: ${cfgA};
+    `;
+    const tplB = css`
+      padding: ${cfgB};
+    `;
+    // Different syntax → different static content → distinct classNames.
+    expect(tplA.className).not.toBe(tplB.className);
+  });
+
+  test("PropertyConfigs differing only in initialValue get distinct classNames", () => {
+    const cfgA = {
+      syntax: "<color>",
+      value: () => "red",
+      initialValue: "red",
+    } as const;
+    const cfgB = {
+      syntax: "<color>",
+      value: () => "red",
+      initialValue: "blue",
+    } as const;
+    const tplA = css`
+      color: ${cfgA};
+    `;
+    const tplB = css`
+      color: ${cfgB};
+    `;
+    expect(tplA.className).not.toBe(tplB.className);
+  });
+
+  test("reactive getter interpolations are still skipped from the hash (dedup preserved)", () => {
+    const getColor = () => "red";
+    const getOtherColor = () => "blue";
+    const tplA = css`
+      color: ${getColor};
+    `;
+    const tplB = css`
+      color: ${getOtherColor};
+    `;
+    // Both functions render as `var(--css-XYZ-0)`; the template identity is
+    // the same so they dedup.
+    expect(tplA.className).toBe(tplB.className);
+  });
+
+  test("reactive getter vs static primitive interpolation produce distinct classNames", () => {
+    const getColor = () => "red";
+    const tplFn = css`
+      color: ${getColor};
+    `;
+    const tplStatic = css`
+      color: red;
+    `;
+    // Different static content (function skipped vs literal "red").
+    expect(tplFn.className).not.toBe(tplStatic.className);
+  });
+});

@@ -84,7 +84,23 @@ function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): str
 
       const className = getTemplateClassName(expr);
       if (className != null) {
+        // Nested CSSTemplate / StyledView: include its className so equivalent
+        // templates dedup (e.g. `${base} { ... }` vs `${baseCopy} { ... }`).
         statics += `.${className}`;
+      } else if (typeof expr === "function") {
+        // Reactive getter: the function reference is not part of the rendered
+        // CSS (it becomes a `var(--…)` binding).  Skipping it preserves dedup
+        // across `css\`color: ${hue};\`` defined in two places.
+      } else if (isPropertyConfig(expr)) {
+        // PropertyConfig: the static-defining fields are `syntax` and
+        // `initialValue` (the `value` getter becomes a CSS var binding).
+        statics += `~${expr.syntax}|${String(expr.initialValue ?? "")}`;
+      } else {
+        // Static primitive (string/number/null/undefined) or other value:
+        // include its stringification so `css\`font-size: ${size};\`` and
+        // `css\`font-size: 14px;\`` produce distinct classNames when the
+        // static parts differ only in interpolation values.
+        statics += String(expr);
       }
     }
   });
@@ -96,6 +112,16 @@ function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): str
     hash = (Math.imul(31, hash) + statics.charCodeAt(i)) | 0;
   }
   return Math.abs(hash).toString(36);
+}
+
+function isPropertyConfig(value: any): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "syntax" in value &&
+    "value" in value
+  );
 }
 
 function attachClass(c: Context, className: string, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>) {
