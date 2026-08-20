@@ -23,6 +23,12 @@ export type Context<T = GenericState> = ContextState & T;
 const MOUNT_LISTENERS = Symbol.for("$_CONTEXT_MOUNT_LISTENERS");
 const CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_CLEANUP_LISTENERS");
 
+/**
+ * Set on a context during `replaceView` to tell `onEffect` to run
+ * immediately instead of deferring to `onMount` (which won't fire).
+ */
+export const REPLACING = Symbol.for("$_CONTEXT_REPLACING");
+
 export function createContext<State extends GenericState>(
   parent: Context | null,
   values?: Partial<State>,
@@ -37,6 +43,9 @@ export function mountContext(context: Context) {
 }
 
 export function cleanupContext(context: Context) {
+  // Always discard pending mount listeners — they were registered for a
+  // mount that isn't going to happen (e.g. during HMR replaceView).
+  if (Object.hasOwn(context, MOUNT_LISTENERS)) context[MOUNT_LISTENERS].length = 0;
   if (!context.isMounted) return;
   context.isMounted = false;
   _callListeners(context, CLEANUP_LISTENERS);
@@ -85,11 +94,7 @@ export function onEffect<const T extends readonly any[]>(
   options?: T | { deps?: T; name?: string },
 ): void;
 
-export function onEffect(
-  context: Context,
-  fn: () => void,
-  options?: any[] | { deps?: any[]; name?: string },
-) {
+export function onEffect(context: Context, fn: () => void, options?: any[] | { deps?: any[]; name?: string }) {
   if (Array.isArray(options)) options = { deps: options };
 
   const runEffect = () => {
@@ -99,7 +104,7 @@ export function onEffect(
     return cleanup;
   };
 
-  if (context.isMounted) {
+  if (context.isMounted || context[REPLACING]) {
     onCleanup(context, runEffect());
   } else {
     onMount(context, () => {
@@ -150,6 +155,12 @@ function getStoreSymbol(name: string): symbol {
 export const STORE_ID = Symbol.for("$_STORE_ID");
 
 /**
+ * Hidden property stored on the store result so `addStore` can retrieve
+ * the store's sub-context on re-registration (e.g. during HMR).
+ */
+const STORE_CONTEXT = Symbol.for("$_STORE_CONTEXT");
+
+/**
  * Creates a new store instance and attaches it to `context`. Returns the new store.
  * Children of this context can retrieve the nearest store instance from up the chain with `getStore(context)`.
  */
@@ -163,21 +174,33 @@ export function addStore<Props, Returns>(
   // maps to the same symbol, even after HMR replaces the function instance.
   store[STORE_ID] = getStoreSymbol(store.name);
 
-  assert(!Object.hasOwn(context, store[STORE_ID]), "Store was already provided on this context.");
+  if (Object.hasOwn(context, store[STORE_ID])) {
+    // Re-register lifecycle listeners for the existing store so they
+    // survive cleanupContext clearing MOUNT_LISTENERS during HMR.
+    const existing = context[store[STORE_ID]];
+    if (existing != null && existing[STORE_CONTEXT]) {
+      const storeContext = existing[STORE_CONTEXT];
+      onMount(context, () => mountContext(storeContext));
+      onCleanup(context, () => cleanupContext(storeContext));
+    }
+    return existing;
+  }
 
   // Give the store its own context bound to this lifecycle.
   const storeContext = createContext(context, { name: store.name });
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => cleanupContext(storeContext));
 
-  return (context[store[STORE_ID]!] = store.call(storeContext, args[0] as Props, storeContext));
+  const result = store.call(storeContext, args[0] as Props, storeContext);
+  if (result != null) (result as any)[STORE_CONTEXT] = storeContext;
+  return (context[store[STORE_ID]!] = result);
 }
 
 /**
  * Gets the nearest instance of a store from up this context chain.
  */
 export function getStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
-  const id = store[STORE_ID] ??= getStoreSymbol(store.name);
+  const id = (store[STORE_ID] ??= getStoreSymbol(store.name));
   const result = id ? context[id] : undefined;
   assert(result != null, `Store '${store.name}' is not provided by this context.`);
   return result;

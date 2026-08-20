@@ -100,10 +100,44 @@ describe("stores", () => {
     expect(store).toBeDefined();
   });
 
-  test("adding the same store twice on the same context throws", () => {
+  test("adding the same store twice on the same context returns existing store", () => {
     const ctx = createContext(null);
-    addStore(ctx, CounterStore);
-    expect(() => addStore(ctx, CounterStore)).toThrow("Store was already provided on this context.");
+    const first = addStore(ctx, CounterStore);
+    const second = addStore(ctx, CounterStore);
+    expect(second).toBe(first);
+  });
+
+  test("addStore re-registers lifecycle listeners on re-registration", () => {
+    const ctx = createContext(null);
+    const mountSpy = vi.fn();
+    function StoreWithHook(this: Context, _props: {}, storeCtx: Context) {
+      onMount(storeCtx, mountSpy);
+      return {};
+    }
+
+    // First registration: store function runs, registers its own mount hook
+    addStore(ctx, StoreWithHook, {});
+    mountContext(ctx);
+    expect(mountSpy).toHaveBeenCalledTimes(1);
+
+    // Cleanup tears down everything including store sub-context
+    cleanupContext(ctx);
+
+    // Re-registration re-wires parent's mount/cleanup listeners
+    addStore(ctx, StoreWithHook, {});
+
+    // Mount cascades to store sub-context again
+    mountContext(ctx);
+    // mountSpy won't fire — the store function wasn't re-called, so
+    // storeContext.MOUNT_LISTENERS was cleared during cleanup and never
+    // re-registered. Only the parent's listener was re-registered.
+    expect(mountSpy).toHaveBeenCalledTimes(1);
+
+    // But cleanup should still cascade properly
+    const cleanupSpy = vi.fn();
+    onCleanup(ctx, cleanupSpy);
+    cleanupContext(ctx);
+    expect(cleanupSpy).toHaveBeenCalledTimes(1);
   });
 
   test("hasStore returns true when store exists on context chain", () => {

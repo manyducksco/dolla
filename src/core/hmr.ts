@@ -46,18 +46,43 @@ export function __dolla_apply(
   newModule: Record<string, any>,
   exports: Record<string, View<any>>,
 ) {
+  // Track nodes that have already been replaced in this HMR cycle so that
+  // a view exposed under multiple keys (e.g. `Foo` and `default: Foo`) is
+  // only applied once per node.
+  const processed = new Set<ViewNode<any>>();
+  const summary: Array<[string, number]> = [];
+
   for (const key of Object.keys(newModule)) {
     const newView = newModule[key];
     const oldView = exports[key];
     if (typeof oldView !== "function" || typeof newView !== "function") continue;
 
-    // Live-wrapped views keep the same identity across HMR; replaceView
-    // re-renders the node with the (already-updated) inner implementation.
     const instances = activeInstances.get(oldView);
     if (!instances) continue;
 
-    for (const node of instances) {
-      node.replaceView(newView);
+    // Snapshot the Set so concurrent mutations inside replaceView (which
+    // unregisters and re-registers the node) don't desync the iteration.
+    const nodes = Array.from(instances);
+    let count = 0;
+    for (const node of nodes) {
+      if (processed.has(node)) continue;
+      processed.add(node);
+      count++;
+      try {
+        node.replaceView(newView);
+      } catch (e) {
+        console.error(`[dolla:hmr] ${key}: replaceView threw`, e);
+      }
     }
+    summary.push([key, count]);
   }
+
+  if (summary.length === 0) return;
+
+  const total = summary.reduce((sum, [, n]) => sum + n, 0);
+  console.groupCollapsed(
+    `[dolla:hmr] hot reload: ${total} view instance${total === 1 ? "" : "s"} across ${summary.length} export${summary.length === 1 ? "" : "s"}`,
+  );
+  for (const [key, count] of summary) console.log(`  ${key}: ${count}`);
+  console.groupEnd();
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createContext, mountContext, onCleanup, onMount } from "../../context.js";
+import { createContext, mountContext, onCleanup, onEffect, onMount } from "../../context.js";
 import { createMarkup } from "../utils.js";
 import { ViewNode, VIEW } from "./view.js";
 import { View } from "../../index.js";
@@ -247,7 +247,7 @@ describe("ViewNode", () => {
       expect(container.children[1].textContent).toBe("sibling");
     });
 
-    test("replaceView triggers cleanup and mount hooks", () => {
+    test("replaceView triggers cleanup for old view and mount for new view", () => {
       const { context, container } = setup();
       const cleanupSpy = vi.fn();
       const mountSpy = vi.fn();
@@ -265,6 +265,54 @@ describe("ViewNode", () => {
       node.replaceView(view2);
       expect(cleanupSpy).toHaveBeenCalledTimes(1);
       expect(mountSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test("replaceView does not accumulate mount listeners across repeated calls", () => {
+      const { context, container } = setup();
+      const mountSpy1 = vi.fn();
+      const mountSpy2 = vi.fn();
+      const view1 = vi.fn(function (this: any) {
+        onMount(this, mountSpy1);
+        return createMarkup("span", { children: "v1" });
+      });
+      const view2 = vi.fn(function (this: any) {
+        onMount(this, mountSpy2);
+        return createMarkup("span", { children: "v2" });
+      });
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+
+      // replaceView with view2 — cleanup clears old mount listeners,
+      // view2 re-executes and registers mountSpy2
+      node.replaceView(view2);
+
+      // Unmount and remount — only mountSpy2 should fire, not mountSpy1
+      node.unmount();
+      mountSpy1.mockClear();
+      mountSpy2.mockClear();
+      node.mount(container);
+      expect(mountSpy1).not.toHaveBeenCalled();
+      expect(mountSpy2).toHaveBeenCalledTimes(1);
+    });
+
+    test("replaceView runs onEffect immediately via REPLACING flag", () => {
+      const { context, container } = setup();
+      const effectSpy = vi.fn();
+      const view1 = vi.fn(function (this: any) {
+        onEffect(this, effectSpy);
+        return createMarkup("span", { children: "v1" });
+      });
+      const view2 = vi.fn(function (this: any) {
+        onEffect(this, effectSpy);
+        return createMarkup("span", { children: "v2" });
+      });
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+      effectSpy.mockClear();
+
+      node.replaceView(view2);
+      // onEffect should have run immediately during replacement, not deferred
+      expect(effectSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

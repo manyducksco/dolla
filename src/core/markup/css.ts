@@ -221,6 +221,10 @@ class StyleRegistry {
 
   constructor() {
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.sheet];
+    if (typeof window !== "undefined") {
+      const dbg = ((window as any).__dollaDbg ??= {});
+      dbg.registry = this;
+    }
   }
 
   insertClass(className: string, rawCss: string): void {

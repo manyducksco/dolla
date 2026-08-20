@@ -1,5 +1,5 @@
 import type { View } from "../../../types.js";
-import { Context, createContext, mountContext, cleanupContext } from "../../context.js";
+import { Context, createContext, mountContext, cleanupContext, REPLACING } from "../../context.js";
 import { peek } from "../../signals.js";
 import { pushComponentName, popComponentName } from "../../signal-debug.js";
 import { MarkupNode } from "../types.js";
@@ -93,6 +93,7 @@ export class ViewNode<P> extends MarkupNode {
     this.#view = newView;
     this.context.name = newView.name;
 
+    this.context[REPLACING] = true;
     pushComponentName(this.context.name);
     const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
     popComponentName();
@@ -108,5 +109,6 @@ export class ViewNode<P> extends MarkupNode {
     }
 
     mountContext(this.context);
+    this.context[REPLACING] = false;
   }
 }
