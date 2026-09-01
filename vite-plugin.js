@@ -2,6 +2,7 @@ import MagicString from "magic-string";
 
 const HMR_IMPORT = 'import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"';
 const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export).*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
+const HMR_ACCEPT_RE = /import\.meta\.hot\.accept\s*\(/;
 
 // Match `export function Foo` — NOT `export default function`
 const EXPORT_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
@@ -326,29 +327,55 @@ export default function dollaPlugin() {
         this.config?.command === "serve";
       const hasStyled = isDev && code.includes("styled");
 
-      if (!isDev && !code.match(/\bexport\b/)) return null;
-      if (!hasStyled && !code.match(/\bexport\b/)) return null;
+      // In a production build, only transform files that can actually change
+      // app behavior (have exports or `styled`). In dev we process every file
+      // so that even the entry module (which may have no matching exports) gets
+      // an `import.meta.hot.accept` self-accept boundary — that contains HMR
+      // cascades and prevents a full-reload re-mount of the whole app.
+      if (!isDev && !code.match(/\bexport\b/) && !code.includes("styled")) return null;
 
       const s = new MagicString(code);
       let edited = false;
 
       // HMR injection (dev + build).
       const entries = findExportEntries(code);
-      if (entries.length > 0) {
+
+      // Inject `import.meta.hot.accept` into EVERY module that participates in
+      // the HMR graph — including the entry module, which may have no matching
+      // exports. Without a self-accept handler on the entry, an update to a
+      // deeply-nested dependency bubbles all the way up and Vite falls through
+      // to a full reload of the entry. Re-mounting the whole app on every
+      // nested edit re-mounts the current route and duplicates its DOM in
+      // #app. Making each module a boundary contains the update so it resolves
+      // via the in-place `replaceView` path instead.
+      const needsAccept = isDev || entries.length > 0;
+
+      // Register the self-accept boundary at the VERY TOP of the module, before
+      // any other top-level code. A heavy view module (many imports, styled
+      // components) can throw during Vite's HMR re-evaluation (circular-import /
+      // re-eval ordering is the usual cause); if the boundary were appended at
+      // the bottom it would never register, Vite would treat the module as
+      // non-self-accepting, and the update would bubble to a full page reload —
+      // which re-mounts the whole app and duplicates the current route in #app.
+      // Placing it at the top guarantees registration regardless of any later
+      // throw during re-evaluation. The callback closes over `entries`, which
+      // are in lexical scope and defined by the time Vite actually invokes it.
+      if (needsAccept && !HMR_ACCEPT_RE.test(code)) {
+        const hmrCall = `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`;
         if (!HMR_IMPORT_RE.test(code)) {
-          s.appendLeft(0, HMR_IMPORT + ";\n");
+          s.appendLeft(0, HMR_IMPORT + ";\n" + hmrCall);
+        } else {
+          s.appendLeft(0, hmrCall);
         }
-        edited = true;
       }
+      // Mark as edited whenever we participate in the HMR graph so an
+      // idempotent re-transform still returns the (unchanged) code rather
+      // than null.
+      if (needsAccept) edited = true;
 
       // Live-binding: wrap named function exports in a stable proxy for HMR (dev only).
       // Must run before the HMR call so the proxy is assigned before the callback captures it.
       const liveBound = isDev && entries.length > 0 && applyLiveBindings(s, code, id, entries);
-
-      if (entries.length > 0) {
-        const hmrCall = `\nif (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`;
-        s.appendRight(code.length, hmrCall);
-      }
 
       // Styled-namer (dev only).
       if (hasStyled) {

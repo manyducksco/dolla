@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createContext } from "../core/context.js";
 import { createRoot } from "./root.js";
+import { createRouter, Outlet } from "../router/router.js";
+import { createMarkup } from "./markup/utils.js";
+import { __dolla_export, __dolla_apply } from "./hmr.js";
 
 describe("createRoot", () => {
   let container: HTMLDivElement;
@@ -130,4 +133,88 @@ describe("createRoot", () => {
     root.unmount();
     expect(container.textContent).toBe("");
   });
+
+  test("repeated HMR-style full-reload cycle leaves a single page instance", async () => {
+    // Mirrors the reported bug: a full app reload (unmount + fresh mount) on
+    // every save must not stack duplicate copies of the current route in #app.
+    const Page: any = vi.fn(function () {
+      return createMarkup("main", { class: "page", children: "PAGE" });
+    });
+
+    let current = createRoot(container);
+    current.plugin(createRouter({ routes: [{ path: "/", view: Page }] }));
+    await current.mount(Outlet);
+    await waitFor(() => container.querySelectorAll(".page").length === 1);
+
+    for (let i = 0; i < 4; i++) {
+      current.unmount();
+      const next = createRoot(container);
+      next.plugin(createRouter({ routes: [{ path: "/", view: Page }] }));
+      await next.mount(Outlet);
+      current = next;
+      // Invariant: never more than one page instance, even mid-cycle.
+      await waitFor(() => container.querySelectorAll(".page").length === 1);
+    }
+
+    expect(container.querySelectorAll(".page")).toHaveLength(1);
+    expect(container.textContent).toBe("PAGE");
+  });
+
+  test("in-place HMR replace of a page leaves a single instance", async () => {
+    // With the entry self-accepting, an update to a nested module resolves via
+    // `__dolla_apply` (replaceView in place) rather than a full reload. This
+    // must produce exactly one page instance with the new content.
+    const Page: any = __dolla_export("root.test:Page", function Page() {
+      return createMarkup("main", { class: "page", children: "PAGE v1" });
+    });
+
+    const root = createRoot(container);
+    root.plugin(createRouter({ routes: [{ path: "/", view: Page }] }));
+    await root.mount(Outlet);
+    await waitFor(() => container.querySelectorAll(".page").length === 1);
+
+    expect(container.querySelectorAll(".page")).toHaveLength(1);
+    expect(container.textContent).toBe("PAGE v1");
+
+    // Simulate the HMR cascade replacing the page view with a new impl.
+    const newPage = __dolla_export("root.test:Page", function Page() {
+      return createMarkup("main", { class: "page", children: "PAGE v2" });
+    });
+    __dolla_apply({ Page: newPage }, { Page });
+
+    expect(container.querySelectorAll(".page")).toHaveLength(1);
+    expect(container.textContent).toBe("PAGE v2");
+  });
+
+  test("fresh root into an element already hosting a dolla root replaces it (no duplicate)", async () => {
+    // Simulates a full HMR reload where the entry re-runs but the previous
+    // instance is never disposed (its `root.unmount` is never called). The new
+    // root must tear down the stale DOM instead of stacking a duplicate — this
+    // is exactly the duplicated-Workspace symptom.
+    const Page = vi.fn(function () {
+      return createMarkup("main", { class: "page", children: "PAGE" });
+    });
+
+    const first = createRoot(container);
+    first.plugin(createRouter({ routes: [{ path: "/", view: Page }] }));
+    await first.mount(Outlet);
+    await waitFor(() => container.querySelectorAll(".page").length === 1);
+
+    // Intentionally NOT calling `first.unmount()` — mimics a dispose-less reload.
+    const second = createRoot(container);
+    second.plugin(createRouter({ routes: [{ path: "/", view: Page }] }));
+    await second.mount(Outlet);
+    await waitFor(() => container.querySelectorAll(".page").length === 1);
+
+    expect(container.querySelectorAll(".page")).toHaveLength(1);
+    expect(container.textContent).toBe("PAGE");
+  });
 });
+
+async function waitFor(fn: () => boolean, timeout = 500) {
+  const start = Date.now();
+  while (!fn()) {
+    if (Date.now() - start > timeout) throw new Error("waitFor timed out");
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}

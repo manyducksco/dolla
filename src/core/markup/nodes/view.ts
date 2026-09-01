@@ -87,6 +87,11 @@ export class ViewNode<P> extends MarkupNode {
     const after = oldRoot?.previousSibling;
 
     this.#node?.unmount();
+
+    if (oldRoot && oldRoot.parentNode) {
+      oldRoot.parentNode.removeChild(oldRoot);
+    }
+
     cleanupContext(this.context);
     unregisterViewInstance(this.#view, this);
 

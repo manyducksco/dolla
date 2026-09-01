@@ -109,17 +109,25 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
         locators.push("<error>");
         continue;
       }
-      locators.push(describeInstance(node));
+      try {
+        locators.push(describeInstance(node));
+      } catch (e) {
+        locators.push("<unknown>");
+      }
     }
 
-    summary.push({
-      key,
-      oldName: (oldView as any).name ?? key,
-      newName: (newView as any).name ?? key,
-      path: pathFromId((oldView as any).__dolla_id),
-      locators,
-      elapsedMs: performance.now() - tExport,
-    });
+    try {
+      summary.push({
+        key,
+        oldName: (oldView as any).name ?? key,
+        newName: (newView as any).name ?? key,
+        path: pathFromId((oldView as any).__dolla_id),
+        locators,
+        elapsedMs: performance.now() - tExport,
+      });
+    } catch {
+      // If anything above failed, still record the update without throwing.
+    }
   }
 
   if (summary.length === 0) return;

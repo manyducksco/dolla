@@ -6,6 +6,11 @@ import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
 import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
 
+// Marks an element that already hosts a dolla root, so a subsequent mount into
+// the same element can tear down the previous instance instead of stacking a
+// duplicate.
+const ROOT_MARKER = Symbol("dolla:root-node");
+
 /**
  * Plugins are simply functions that take a context object.
  * A plugin can return a Promise to suspend app mounting.
@@ -69,19 +74,43 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
     await Promise.all(plugins.map((fn) => fn(context)));
 
+    // Defensive against duplicate mounts: a full HMR reload can re-run the entry
+    // without disposing the previous instance, leaving its DOM stacked in #app.
+    // If the target already hosts a dolla root, tear it down first so we never
+    // stack duplicate routes. (A normal re-mount of a different root is handled
+    // the same way — only one root per element is valid.)
+    const existing = (element as any)?.[ROOT_MARKER];
+    if (existing && existing !== rootNode) {
+      try {
+        existing.unmount?.();
+      } catch {}
+      if (element!.firstChild != null) element!.replaceChildren();
+    }
+
     rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
+    (element as any)[ROOT_MARKER] = rootNode;
     rootNode?.mount(element!);
 
     mountContext(context);
   }
 
   async function unmount() {
-    if (!context.isMounted) return;
-
+    // Always detach the mounted DOM. The previous early-return on
+    // `!context.isMounted` could skip removal when the context had already
+    // been cleaned up (e.g. during an HMR full-reload of the entry), leaving
+    // the old content stacked in #app — producing the duplicated-Workspace
+    // symptom. `rootNode.unmount(false)` is safe to call when already
+    // unmounted, and `cleanupContext` no-ops when already cleaned up.
     rootNode?.unmount(false);
     rootNode = null;
 
     cleanupContext(context);
+
+    if (element && (element as any)[ROOT_MARKER]) {
+      try {
+        delete (element as any)[ROOT_MARKER];
+      } catch {}
+    }
   }
 
   return self;

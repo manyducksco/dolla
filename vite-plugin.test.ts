@@ -32,9 +32,45 @@ describe("dollaPlugin — HMR injection", () => {
     expect(importOccurrences).toBe(1);
   });
 
-  test("returns null for files with no exports", () => {
+  test("injects HMR self-accept for no-export files in dev (entry boundary)", () => {
     const result = runTransform(`const x = 1;\n`, "/abs/file.tsx", "serve");
+    expect(result).not.toBeNull();
+    expect(result!.code).toContain('import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"');
+    expect(result!.code).toContain("import.meta.hot.accept");
+  });
+
+  test("still returns null for no-export files in production build", () => {
+    const result = runTransform(`const x = 1;\n`, "/abs/file.tsx", "build");
     expect(result).toBeNull();
+  });
+
+  test("makes the entry module a self-accept boundary (export let without initializer)", () => {
+    // The app entry exports `export let appContext;` which has no `=`/`:`, so
+    // it is not rewritten into a live-binding proxy — but it must still receive
+    // an `import.meta.hot.accept` so an HMR update to a deeply-nested
+    // dependency is contained here instead of bubbling to a full reload.
+    const code = `export let appContext;\nconst root = createRoot("#app");\n`;
+    const result = runTransform(code, "/abs/app.tsx", "serve");
+    expect(result).not.toBeNull();
+    expect(result!.code).toContain("import.meta.hot.accept");
+    // The export must be preserved verbatim (not rewritten).
+    expect(result!.code).toContain("export let appContext");
+  });
+
+  test("places the self-accept boundary at the top, before any user code", () => {
+    // Registering at the top (not the bottom) is critical: a heavy view module
+    // can throw during Vite's HMR re-evaluation, which would otherwise prevent
+    // the bottom-placed boundary from registering and force a full reload that
+    // duplicates the mounted route.
+    const code = `import { Something } from "./dep";\nexport function TaskModal() { return null; }\n`;
+    const result = runTransform(code, "/abs/views/TaskModal/TaskModal.tsx", "serve");
+    expect(result).not.toBeNull();
+    const acceptIdx = result!.code.indexOf("import.meta.hot.accept");
+    // The user's own import is the first surviving statement; the boundary
+    // must precede it.
+    const userCodeIdx = result!.code.indexOf("import { Something }");
+    expect(acceptIdx).toBeGreaterThanOrEqual(0);
+    expect(acceptIdx).toBeLessThan(userCodeIdx);
   });
 
   test("returns null for files inside node_modules", () => {
@@ -109,13 +145,17 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   test("does not rewrite destructuring assignments", () => {
     const code = `const { Foo } = styled;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
-    expect(result).toBeNull();
+    // No styled declaration to rewrite, but HMR self-accept is still injected.
+    expect(result).not.toBeNull();
+    expect(result!.code).not.toContain(".named(");
   });
 
   test("does not rewrite function returns", () => {
     const code = `function make() { return styled.button\`\`; }\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
-    expect(result).toBeNull();
+    // No styled declaration to rewrite, but HMR self-accept is still injected.
+    expect(result).not.toBeNull();
+    expect(result!.code).not.toContain(".named(");
   });
 
   test("rewrites multiple styled declarations in one file", () => {

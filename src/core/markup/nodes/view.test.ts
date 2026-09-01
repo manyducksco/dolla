@@ -314,5 +314,59 @@ describe("ViewNode", () => {
       // onEffect should have run immediately during replacement, not deferred
       expect(effectSpy).toHaveBeenCalledTimes(1);
     });
+
+    test("replaceView leaves exactly one instance in the container (no overlaid duplication)", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("span", { class: "pg", children: "v1" }));
+      const view2 = vi.fn(() => createMarkup("span", { class: "pg", children: "v2" }));
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+      expect(container.querySelectorAll(".pg")).toHaveLength(1);
+
+      node.replaceView(view2);
+
+      const pages = container.querySelectorAll(".pg");
+      expect(pages).toHaveLength(1);
+      expect(pages[0].textContent).toBe("v2");
+      // Ensure the old "v1" text is fully gone (no leftover overlaid copy).
+      expect(container.textContent).not.toContain("v1");
+    });
+
+    test("replaceView force-removes a leftover old root that unmount failed to detach", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("div", { class: "pg", children: "v1" }));
+      const view2 = vi.fn(() => createMarkup("div", { class: "pg", children: "v2" }));
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+
+      // Simulate the failure mode where `unmount()` is unable to detach the
+      // old root (e.g. a parent re-render reparented it between snapshot and
+      // unmount). We monkey-patch `removeChild` on the container so that the
+      // FIRST removal of an element with class "pg" (the initial `unmount`
+      // call) is silently swallowed, leaving the old root attached. The
+      // defensive guard in `replaceView` runs a second removal for the same
+      // node — that one should succeed and clean up the leftover.
+      const realRemove = container.removeChild.bind(container);
+      let swallowed = 0;
+      container.removeChild = ((child: Node) => {
+        if ((child as Element).classList?.contains("pg") && swallowed === 0) {
+          swallowed++;
+          // Simulate "unmount failed to detach": swallow this removal.
+          return child;
+        }
+        return realRemove(child);
+      }) as typeof container.removeChild;
+
+      node.replaceView(view2);
+
+      // Restore the real removeChild so the guard's force-remove works.
+      container.removeChild = realRemove as typeof container.removeChild;
+
+      // After replaceView (and the guard), there must be exactly one ".pg".
+      const pages = container.querySelectorAll(".pg");
+      expect(pages).toHaveLength(1);
+      expect(pages[0].textContent).toBe("v2");
+      expect(container.textContent).not.toContain("v1");
+    });
   });
 });
