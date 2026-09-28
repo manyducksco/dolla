@@ -190,7 +190,7 @@ describe("ElementNode", () => {
 
     test("sets properties via . prefix shorthand", () => {
       const { context, container } = setup();
-      const node = new ElementNode(context, "div", { ".innerHTML": "<span>hello</span>" });
+      const node = new ElementNode(context, "div", { "prop:innerHTML": "<span>hello</span>" });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       expect(el.innerHTML).toBe("<span>hello</span>");
@@ -256,14 +256,6 @@ describe("ElementNode", () => {
     test("removes reflected attribute when prop: value becomes nullish", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", { "prop:dataThing": undefined } as any);
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.hasAttribute("dataThing")).toBe(false);
-    });
-
-    test("removes reflected attribute when dot-prefixed value becomes nullish", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", { ".dataThing": null } as any);
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       expect(el.hasAttribute("dataThing")).toBe(false);
@@ -791,18 +783,27 @@ describe("ElementNode", () => {
       expect(el.style.color).toBe("red");
     });
 
-    test("sets styles via CSSTemplate alone", () => {
+    test("throws when CSSTemplate is passed to style", () => {
       const { context, container } = setup();
       const tpl = css`
         color: red;
       `;
       const node = new ElementNode(context, "div", { style: tpl });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.classList.contains(tpl.className)).toBe(true);
+      expect(() => node.mount(container)).toThrow(
+        /CSS templates are not supported on the "style" prop\. Pass them to "class" instead/,
+      );
     });
 
-    test("sets styles via array of CSSTemplate and object", () => {
+    test("throws when ConditionalTemplate is passed to style", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { style: tpl.when(true) });
+      expect(() => node.mount(container)).toThrow(/CSS templates are not supported/);
+    });
+
+    test("throws when CSSTemplate is in style array", () => {
       const { context, container } = setup();
       const tpl = css`
         color: red;
@@ -810,65 +811,7 @@ describe("ElementNode", () => {
       const node = new ElementNode(context, "div", {
         style: [tpl, { background: "blue" }],
       });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.classList.contains(tpl.className)).toBe(true);
-      expect(el.style.background).toBe("blue");
-    });
-
-    test("sets styles via array of multiple CSSTemplates", () => {
-      const { context, container } = setup();
-      const a = css`
-        color: red;
-      `;
-      const b = css`
-        font-size: 16px;
-      `;
-      const node = new ElementNode(context, "div", { style: [a, b] });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.classList.contains(a.className)).toBe(true);
-      expect(el.classList.contains(b.className)).toBe(true);
-    });
-
-    test("conditionally applies style via .when(true)", () => {
-      const { context, container } = setup();
-      const tpl = css`
-        color: red;
-      `;
-      const node = new ElementNode(context, "div", { style: tpl.when(true) });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.classList.contains(tpl.className)).toBe(true);
-    });
-
-    test("conditionally applies style via .when(false)", () => {
-      const { context, container } = setup();
-      const tpl = css`
-        color: red;
-      `;
-      const node = new ElementNode(context, "div", { style: tpl.when(false) });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.classList.contains(tpl.className)).toBe(false);
-    });
-
-    test("reactively toggles style via .when(getter)", () => {
-      const { context, container } = setup();
-      const [isActive, setIsActive] = createAtom(false);
-      const tpl = css`
-        color: red;
-      `;
-      const node = new ElementNode(context, "div", { style: tpl.when(isActive) });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.classList.contains(tpl.className)).toBe(false);
-      setIsActive(true);
-      flushPendingUpdates();
-      expect(el.classList.contains(tpl.className)).toBe(true);
-      setIsActive(false);
-      flushPendingUpdates();
-      expect(el.classList.contains(tpl.className)).toBe(false);
+      expect(() => node.mount(container)).toThrow(/CSS templates are not supported/);
     });
   });
 
@@ -903,33 +846,11 @@ describe("ElementNode", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    test("handles @ convention (@click)", () => {
-      const { context, container } = setup();
-      const handler = vi.fn();
-      const node = new ElementNode(context, "button", { "@click": handler });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      el.click();
-      expect(handler).toHaveBeenCalledTimes(1);
-    });
-
     test("on:click with handler object (handleEvent)", () => {
       const { context, container } = setup();
       const handler = vi.fn();
       const node = new ElementNode(context, "button", {
         "on:click": { handleEvent: handler },
-      });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      el.click();
-      expect(handler).toHaveBeenCalledTimes(1);
-    });
-
-    test("@click with handler object (handleEvent)", () => {
-      const { context, container } = setup();
-      const handler = vi.fn();
-      const node = new ElementNode(context, "button", {
-        "@click": { handleEvent: handler },
       });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
@@ -989,10 +910,10 @@ describe("ElementNode", () => {
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
-    test("unsubscribes @ listeners on unmount", () => {
+    test("unsubscribes on: listeners on unmount", () => {
       const { context, container } = setup();
       const handler = vi.fn();
-      const node = new ElementNode(context, "button", { "@click": handler });
+      const node = new ElementNode(context, "button", { "on:click": handler });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       el.click();
@@ -1260,38 +1181,7 @@ describe("ElementNode", () => {
       expect(el.classList.contains(t3.className)).toBe(false);
     });
 
-    test("stylesheet order is preserved for style prop too", () => {
-      const { context, container } = setup();
-      const [isActive, setIsActive] = createAtom(false);
-      const base = css`
-        padding: 7px;
-      `;
-      const override = css`
-        padding: 13px;
-      `;
-      const node = new ElementNode(context, "div", {
-        style: [base, override.when(isActive)],
-      });
-      node.mount(container);
 
-      const el = container.children[0] as HTMLElement;
-      // When inactive, only base class on element.
-      expect(el.classList.contains(base.className)).toBe(true);
-      expect(el.classList.contains(override.className)).toBe(false);
-
-      setIsActive(true);
-      flushPendingUpdates();
-
-      const baseIdx = ruleIndex(`.${base.className}`);
-      const overrideIdx = ruleIndex(`.${override.className}`);
-      expect(baseIdx).toBeGreaterThanOrEqual(0);
-      expect(overrideIdx).toBeGreaterThan(baseIdx);
-
-      const overrideRule = Array.from(sheet().cssRules).find(
-        (r) => (r as CSSStyleRule).selectorText === `.${override.className}`,
-      ) as CSSStyleRule;
-      expect(overrideRule?.style.padding).toBe("13px");
-    });
   });
 
 

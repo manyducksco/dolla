@@ -21,7 +21,7 @@ function flushUpdates() {
         try {
           update();
         } catch (e) {
-          console.error("[dolla] scheduled update threw:", e);
+          console.error("[dolla] Scheduled update threw an error:", e);
         }
       }
     }

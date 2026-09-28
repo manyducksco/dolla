@@ -70,8 +70,8 @@ export function isFunction<T = (...args: unknown[]) => unknown>(value: unknown):
   return typeof value === "function" && !isClass(value);
 }
 
-export function isClass(value: unknown) {
-  return /^\s*class\s+/.test(String(value));
+export function isClass(value: unknown): boolean {
+  return typeof value === "function" && value.toString().startsWith("class ");
 }
 
 /**

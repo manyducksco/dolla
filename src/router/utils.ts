@@ -433,26 +433,21 @@ function expandOptionalPaths(path: string): string[] {
   return permutations.map((p) => "/" + p.join("/")).map((p) => (p === "/" ? p : p.replace(/\/$/, "")));
 }
 
+const PARAM_RE = /\{(#)?([a-zA-Z0-9_]+)(\?)?\}/g;
+const OPTIONAL_RE = /\{#?[a-zA-Z0-9_]+\?\}/g;
+const MULTISLASH_RE = /\/+/g;
+
 /**
  * Replace route pattern param placeholders with real matched values.
  */
 export function replaceParams(path: string, params: Record<string, string | number>) {
-  for (const key in params) {
-    const value = String(params[key]);
-    path = path
-      .replace(`{${key}}`, value)
-      .replace(`{#${key}}`, value)
-      .replace(`{${key}?}`, value) // Handle optional string param
-      .replace(`{#${key}?}`, value); // Handle optional numeric param
-  }
+  const paramMap: Record<string, string> = {};
+  for (const key in params) paramMap[key] = String(params[key]);
 
-  // Remove any remaining unmatched optional parameters
-  path = path.replace(/\{#?[a-zA-Z0-9_]+\?\}/g, "");
+  path = path.replace(PARAM_RE, (_, _numeric, name) => paramMap[name] ?? "");
+  path = path.replace(OPTIONAL_RE, "");
+  path = path.replace(MULTISLASH_RE, "/");
 
-  // Clean up any double slashes created by the removal
-  path = path.replace(/\/+/g, "/");
-
-  // Strip trailing slash unless the entire path is just "/"
   if (path.length > 1 && path.endsWith("/")) {
     path = path.slice(0, -1);
   }

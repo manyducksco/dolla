@@ -326,11 +326,10 @@ function shallowPropagate(link: Link): void {
 }
 
 function isValidLink(checkLink: Link, sub: ReactiveNode): boolean {
+  if (sub._depsTail === checkLink) return true;
   let link = sub._depsTail;
   while (link !== undefined) {
-    if (link === checkLink) {
-      return true;
-    }
+    if (link === checkLink) return true;
     link = link._prevDep;
   }
   return false;
@@ -392,10 +391,7 @@ function run(e: EffectNode): void {
       try {
         e._cleanup?.();
         e._cleanup = undefined;
-        const __fn0 = performance.now();
         const result = e._fn();
-        const __fn1 = performance.now();
-        if (__fn1 - __fn0 > 100) console.warn(`[dolla:signals] slow effect fn: ${(__fn1 - __fn0).toFixed(2)}ms`);
         if (isFunction(result)) e._cleanup = result;
       } catch (error) {
         throw enhanceError(error);

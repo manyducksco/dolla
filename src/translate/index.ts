@@ -228,6 +228,15 @@ async function createLookup(
   const strings = isFunction(translation) ? await translation() : translation;
   const entries = compile(strings);
   const templates = new Map(entries);
+  const pluralRulesCache = new Map<string, Intl.PluralRules>();
+  const ordinalRulesCache = new Map<string, Intl.PluralRules>();
+
+  function getPluralRules(ordinal: boolean): Intl.PluralRules {
+    const cache = ordinal ? ordinalRulesCache : pluralRulesCache;
+    let rules = cache.get(locale);
+    if (!rules) cache.set(locale, rules = new Intl.PluralRules(locale, ordinal ? { type: "ordinal" } : undefined));
+    return rules;
+  }
 
   /**
    * Looks up the template and produces the output. Any reactive values in `options` are tracked when used.
@@ -245,7 +254,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_ordinal_" + new Intl.PluralRules(locale, { type: "ordinal" }).select(unwrap(options.count));
+            selector += "_ordinal_" + getPluralRules(true).select(unwrap(options.count));
           }
         } else {
           // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
@@ -253,7 +262,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_" + new Intl.PluralRules(locale).select(unwrap(options.count));
+            selector += "_" + getPluralRules(false).select(unwrap(options.count));
           }
         }
       }

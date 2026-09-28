@@ -1,3 +1,4 @@
+import { isArray } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { subscribe, type Getter } from "../../signals.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
@@ -96,7 +97,7 @@ export class DynamicNode extends MarkupNode {
   #update(content: any) {
     if (!this.isMounted() || !this.#root) return;
 
-    // Fast-path for primitive text updates
+    // Fast-path for primitive text updates to a single text node
     const isPrimitive = typeof content === "string" || typeof content === "number";
     if (isPrimitive && this.#children.length === 1) {
       const child = this.#children[0];
@@ -106,6 +107,19 @@ export class DynamicNode extends MarkupNode {
           domNode.nodeValue = String(content);
           return;
         }
+      }
+    }
+
+    // Fast-path for arrays of primitives where all children are text nodes
+    if (isArray(content) && content.length === this.#children.length && content.length > 0) {
+      const allText = this.#children.every(
+        (c) => c instanceof DOMNode && c.getRoot()?.nodeType === Node.TEXT_NODE,
+      );
+      if (allText) {
+        for (let i = 0; i < content.length; i++) {
+          (this.#children[i].getRoot() as Text).nodeValue = String(content[i]);
+        }
+        return;
       }
     }
 

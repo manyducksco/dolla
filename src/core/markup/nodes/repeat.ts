@@ -142,10 +142,7 @@ export class RepeatNode<T> extends MarkupNode {
           const [_item, _setItem] = createAtom(itemVal);
           const [_index, _setIndex] = createAtom(i);
 
-          const renderContent = this.#render(
-            () => _item(),
-            () => _index(),
-          );
+          const renderContent = this.#render(_item, _index);
           const _node = render(renderContent, this.#context);
 
           connected = {

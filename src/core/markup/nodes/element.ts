@@ -1,4 +1,4 @@
-import { isArray, isFunction, isNumber, isObject, isString, omit } from "../../../utils.js";
+import { isArray, isFunction, isNumber, isObject, isString } from "../../../utils.js";
 import { cleanupContext, Context, createContext, getNearestViewNode, mountContext } from "../../context.js";
 import { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
@@ -11,8 +11,8 @@ import { addChild, camelToKebab, moveAfter, toMarkupNodes } from "../utils.js";
 
 const IS_SVG = Symbol.for("$_IS_SVG");
 
-// Properties in this list will not be processed by applyProps because they are already handled elsewhere.
-const ignoredProps = ["ref", "children"];
+const EMPTY_TEMPLATE_SET = new Set<CSSTemplate>();
+const EMPTY_TEMPLATE_MAP = new Map<CSSTemplate, MaybeGetter<any>>();
 
 // SVG presentation attributes that must use kebab-case as attribute names.
 // When a matching camelCase key is encountered (e.g. `fillOpacity`), it is
@@ -132,7 +132,7 @@ export class ElementNode extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      this.#applyProps(this.#root, omit(ignoredProps, this.#props));
+      this.#applyProps(this.#root, this.#props);
 
       if (this.#props.children) {
         this.#childNodes = toMarkupNodes(this.#context, this.#props.children);
@@ -217,6 +217,8 @@ export class ElementNode extends MarkupNode {
 
   #applyProps(element: any, props: Record<string, unknown>) {
     for (const key in props) {
+      if (key === "ref" || key === "children") continue;
+
       const value = props[key];
 
       if (key === "style") {
@@ -231,9 +233,9 @@ export class ElementNode extends MarkupNode {
             element.htmlFor = current;
           }
         });
-      } else if (key.startsWith("prop:") || key[0] === ".") {
-        // Keys starting with `prop:` or `.` are set as props.
-        const _key = key.startsWith("prop:") ? key.substring(5) : key.substring(1);
+      } else if (key.startsWith("prop:")) {
+        // Keys starting with `prop:` are set as props.
+        const _key = key.substring(5);
         this.#attach(value, (current) => {
           setProp(element, _key, current);
         });
@@ -245,8 +247,6 @@ export class ElementNode extends MarkupNode {
         });
       } else if (key.startsWith("on:")) {
         this.#attachListener(element, key.substring(3), value);
-      } else if (key[0] === "@") {
-        this.#attachListener(element, key.substring(1), value);
       } else if (key.startsWith("on")) {
         const eventName = key.slice(2).toLowerCase();
         if (eventName) this.#attachListener(element, eventName, value);
@@ -290,24 +290,26 @@ export class ElementNode extends MarkupNode {
 
   #applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
     const localUnsubs = new Set<() => void>();
-    const attachedTemplates = new Set<CSSTemplate>();
-    const conditionSubs = new Map<CSSTemplate, () => void>();
+    const prevStyles = new Map<string, string>();
 
     const apply = (current: unknown) => {
       this.#clearLocalSubs(localUnsubs);
-      element.style.cssText = "";
-
-      const { templates: currentTemplates, conditions, remaining: processedValue } = this.#extractTemplates(current);
-
-      this.#syncTemplates(currentTemplates, attachedTemplates, element);
-      this.#applyConditions(conditions, currentTemplates, attachedTemplates, conditionSubs, element);
-
-      if (processedValue === undefined) return;
-      current = processedValue;
+      assertNotTemplate(current, "style", this.#context.name);
+      if (current == null || current === false) {
+        if (prevStyles.size > 0) {
+          element.style.cssText = "";
+          prevStyles.clear();
+        }
+        return;
+      }
 
       const mapped = getStyleMap(current);
+      const cssTextParts: string[] = [];
+      const removed: string[] = [];
+
       for (const [name, { value, priority }] of Object.entries(mapped)) {
         if (isFunction(value)) {
+          prevStyles.delete(name);
           const unsub = subscribe(value, (v) => {
             scheduleUpdate(() => {
               if (v) element.style.setProperty(name, formatValue(name, v), priority);
@@ -317,9 +319,25 @@ export class ElementNode extends MarkupNode {
           this.#unsubscribers.add(unsub);
           localUnsubs.add(unsub);
         } else if (value != null) {
-          element.style.setProperty(name, formatValue(name, value), priority);
+          const formatted = formatValue(name, value);
+          if (prevStyles.get(name) !== formatted) {
+            cssTextParts.push(`${name}: ${formatted}${priority ? " !" + priority : ""}`);
+          }
+          prevStyles.set(name, formatted);
         }
       }
+
+      for (const name of prevStyles.keys()) {
+        if (!(name in mapped)) removed.push(name);
+      }
+
+      if (cssTextParts.length > 0) {
+        element.style.cssText = cssTextParts.join("; ");
+      }
+      if (removed.length > 0) {
+        for (const name of removed) element.style.removeProperty(name);
+      }
+      prevStyles.clear();
     };
 
     this.#attach(styles, (current) => apply(current));
@@ -392,6 +410,10 @@ export class ElementNode extends MarkupNode {
   #extractTemplates(
     current: unknown,
   ): { templates: Set<CSSTemplate>; conditions: Map<CSSTemplate, MaybeGetter<any>>; remaining: unknown } {
+    if (!isArray(current) && !isCSSTemplate(current) && !isConditionalTemplate(current)) {
+      return { templates: EMPTY_TEMPLATE_SET, conditions: EMPTY_TEMPLATE_MAP, remaining: current };
+    }
+
     const templates = new Set<CSSTemplate>();
     const conditions = new Map<CSSTemplate, MaybeGetter<any>>();
     let remaining: unknown = current;
@@ -526,9 +548,22 @@ export class ElementNode extends MarkupNode {
  * Parse classes into a single object. Classes can be passed as a string, an object with class keys can boolean values, or an array with a mix of both.
  */
 function getClassMap(classes: unknown): Record<string, unknown> {
-  if (isString(classes)) return Object.fromEntries(classes.split(" ").map((c) => [c, true]));
+  if (isString(classes)) {
+    const result: Record<string, unknown> = {};
+    for (const c of classes.split(" ")) if (c) result[c] = true;
+    return result;
+  }
   if (isCSSTemplate(classes)) return {};
-  if (isArray(classes)) return Object.assign({}, ...classes.filter(Boolean).map(getClassMap));
+  if (isArray(classes)) {
+    const result: Record<string, unknown> = {};
+    for (const item of classes) {
+      if (item) {
+        const m = getClassMap(item);
+        for (const k in m) result[k] = m[k];
+      }
+    }
+    return result;
+  }
   if (isObject(classes)) return classes as Record<string, unknown>;
   return {};
 }
@@ -538,7 +573,7 @@ function getClassMap(classes: unknown): Record<string, unknown> {
  */
 function getStyleMap(styles: unknown): Record<string, { value: unknown; priority?: string }> {
   if (isString(styles)) {
-    const entries: [string, { value: unknown; priority?: string }][] = [];
+    const result: Record<string, { value: unknown; priority?: string }> = {};
     for (const raw of styles.split(";")) {
       const line = raw.trim();
       if (!line) continue;
@@ -552,16 +587,26 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
         rawVal = rawVal.slice(0, importantIdx).trimEnd();
         priority = "important";
       }
-      entries.push([camelToKebab(key), { value: rawVal, priority }]);
+      result[camelToKebab(key)] = { value: rawVal, priority };
     }
-    return Object.fromEntries(entries);
+    return result;
   }
-  if (isCSSTemplate(styles)) return {};
-  if (isArray(styles)) return Object.assign({}, ...styles.filter(Boolean).map(getStyleMap));
+  if (isArray(styles)) {
+    const result: Record<string, { value: unknown; priority?: string }> = {};
+    for (const item of styles) {
+      if (item) {
+        const m = getStyleMap(item);
+        for (const k in m) result[k] = m[k];
+      }
+    }
+    return result;
+  }
   if (isObject(styles)) {
-    return Object.fromEntries(
-      Object.entries(styles).map(([k, v]) => [k.startsWith("--") ? k : camelToKebab(k), { value: v }]),
-    );
+    const result: Record<string, { value: unknown }> = {};
+    for (const k in styles) {
+      result[k.startsWith("--") ? k : camelToKebab(k)] = { value: styles[k] };
+    }
+    return result;
   }
   return {};
 }
@@ -632,4 +677,37 @@ function setProp(element: Element, key: string, value: unknown) {
   } else {
     (element as any)[key] = value;
   }
+}
+
+function assertNotTemplate(value: unknown, prop: string, contextName: string): void {
+  if (isCSSTemplate(value) || isConditionalTemplate(value)) {
+    const message = `CSS templates are not supported on the "${prop}" prop. Pass them to "class" instead.\nComponent: ${contextName}\nSource: ${getSourceFrame()}`;
+    throw new TypeError(message);
+  }
+  if (isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (value[i] != null) assertNotTemplate(value[i], prop, contextName);
+    }
+  }
+}
+
+function getSourceFrame(): string {
+  const stack = new Error().stack;
+  if (!stack) return "(unknown)";
+  const frames = stack.split("\n");
+  for (let i = 1; i < frames.length; i++) {
+    const line = frames[i];
+    if (
+      line.includes("element.ts") ||
+      line.includes("element.js") ||
+      line.includes("signals.") ||
+      line.includes("markup/") ||
+      line.includes("node:")
+    ) {
+      continue;
+    }
+    const match = line.match(/^\s*at\s+(?:.*?\s+)?\(?(.+?):(\d+):(\d+)\)?/);
+    if (match) return `${match[1]}:${match[2]}:${match[3]}`;
+  }
+  return "(unknown)";
 }
