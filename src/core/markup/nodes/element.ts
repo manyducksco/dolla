@@ -270,9 +270,16 @@ export class ElementNode extends MarkupNode {
       } else {
         // Fall back to attributes.
         // SVG presentation attributes must use kebab-case (e.g. `fill-opacity`)
-        // while JSX conventionally uses camelCase (`fillOpacity`). Convert here
-        // so both forms work.  `camelToKebab` is a no-op for already-kebab keys.
-        const attrName = SVG_PRESENTATION_ATTRS.has(key) ? camelToKebab(key) : key;
+        // while JSX conventionally uses camelCase (`fillOpacity`). ARIA
+        // attributes also require kebab-case (e.g. `aria-hidden`); any key
+        // starting with "aria" followed by an uppercase letter is converted
+        // by lowercasing the remainder and inserting a hyphen.
+        let attrName = key;
+        if (SVG_PRESENTATION_ATTRS.has(key)) {
+          attrName = camelToKebab(key);
+        } else if (/^aria[A-Z]/.test(key)) {
+          attrName = "aria-" + key.slice(4).toLowerCase();
+        }
 
         this.#attach(value, (current) => {
           setAttribute(element, attrName, current);

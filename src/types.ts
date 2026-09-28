@@ -465,7 +465,664 @@ export interface ElementProps {
     | (string | CSSProperties | CSSTemplate)[];
 }
 
-export interface HTMLElementProps extends ElementProps {
+/**
+ * Base ARIA attributes in kebab-case (spec naming).
+ * Both kebab-case and camelCase are accepted via {@link AriaProps}.
+ */
+type AriaPropsBase = {
+  /**
+   * Identifies the currently active element when focus is on a composite widget,
+   * combobox, group, or application.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-activedescendant
+   */
+  "aria-activedescendant"?: OptionalProperty<string>;
+  /**
+   * Indicates whether assistive technologies will present all, or only parts of,
+   * the changed region based on the change notifications defined by the aria-relevant attribute.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-atomic
+   */
+  "aria-atomic"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates whether inputting text could trigger the display of one or more
+   * predictions of the user's intended value for a combobox, searchbox, or textbox.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-autocomplete
+   */
+  "aria-autocomplete"?: OptionalProperty<"inline" | "list" | "both" | "none">;
+  /**
+   * Defines an author-localized abbreviated description of the role of an element
+   * for Braille display rendering.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-braillelabel
+   */
+  "aria-braillelabel"?: OptionalProperty<string>;
+  /**
+   * Defines an author-localized, human-readable description of the role of an element
+   * translated into Braille.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-brailleroledescription
+   */
+  "aria-brailleroledescription"?: OptionalProperty<string>;
+  /**
+   * Indicates an element is being modified and assistive technologies MAY wait until
+   * modifications are complete before exposing them to the user.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-busy
+   */
+  "aria-busy"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates the current "checked" state of checkboxes, radio buttons, and other widgets.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-checked
+   */
+  "aria-checked"?: OptionalProperty<"true" | "false" | "mixed" | boolean>;
+  /**
+   * Defines the total number of columns in a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colcount
+   */
+  "aria-colcount"?: OptionalProperty<number>;
+  /**
+   * Defines an element's column index or position with respect to the total number
+   * of columns within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colindex
+   */
+  "aria-colindex"?: OptionalProperty<number>;
+  /**
+   * Defines a human-readable text alternative of aria-colindex on a cell or gridcell.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colindextext
+   */
+  "aria-colindextext"?: OptionalProperty<string>;
+  /**
+   * Defines the number of columns spanned by a cell or gridcell within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colspan
+   */
+  "aria-colspan"?: OptionalProperty<number>;
+  /**
+   * Identifies the element (or elements) whose contents or presence are controlled by the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-controls
+   */
+  "aria-controls"?: OptionalProperty<string>;
+  /**
+   * Indicates the element that represents the current item within a container or set of related elements.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-current
+   */
+  "aria-current"?: OptionalProperty<
+    "page" | "step" | "location" | "date" | "time" | true | false
+  >;
+  /**
+   * Identifies the element (or elements) that describes the object.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-describedby
+   */
+  "aria-describedby"?: OptionalProperty<string>;
+  /**
+   * Defines a string value that describes or annotates the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-description
+   */
+  "aria-description"?: OptionalProperty<string>;
+  /**
+   * Identifies the element that provides a detailed, extended description for the object.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-details
+   */
+  "aria-details"?: OptionalProperty<string>;
+  /**
+   * Indicates that the element is perceivable but disabled, so it is not editable
+   * or otherwise operable.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-disabled
+   */
+  "aria-disabled"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Identifies the element that provides an error message for the object.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-errormessage
+   */
+  "aria-errormessage"?: OptionalProperty<string>;
+  /**
+   * Indicates whether a grouping or composite widget is expanded or collapsed.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-expanded
+   */
+  "aria-expanded"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Identifies the next element (or elements) in an alternate reading order of content.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-flowto
+   */
+  "aria-flowto"?: OptionalProperty<string>;
+  /**
+   * Indicates the availability and type of interactive popup element, such as menu
+   * or dialog, that can be triggered by an element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-haspopup
+   */
+  "aria-haspopup"?: OptionalProperty<
+    "false" | "true" | "menu" | "listbox" | "tree" | "grid" | "dialog"
+  >;
+  /**
+   * Indicates whether the element is exposed to an accessibility API.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-hidden
+   */
+  "aria-hidden"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates the entered value does not conform to the format expected by the application.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-invalid
+   */
+  "aria-invalid"?: OptionalProperty<"false" | "true" | "grammar" | "spelling">;
+  /**
+   * Indicates keyboard shortcuts that an author has implemented to activate or
+   * give focus to an element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts
+   */
+  "aria-keyshortcuts"?: OptionalProperty<string>;
+  /**
+   * Defines a string value that labels the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-label
+   */
+  "aria-label"?: OptionalProperty<string>;
+  /**
+   * Identifies the element (or elements) that labels the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-labelledby
+   */
+  "aria-labelledby"?: OptionalProperty<string>;
+  /**
+   * Defines the hierarchical level of an element within a structure.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-level
+   */
+  "aria-level"?: OptionalProperty<number>;
+  /**
+   * Indicates that an element will be updated, and describes the types of updates
+   * the assistive technologies, user agents, and user can expect from the live region.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-live
+   */
+  "aria-live"?: OptionalProperty<"assertive" | "off" | "polite">;
+  /**
+   * Indicates whether an element is modal when displayed.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-modal
+   */
+  "aria-modal"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates whether a text box accepts multiple lines of input.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-multiline
+   */
+  "aria-multiline"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates that the user may select more than one item from the current selectable descendants.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-multiselectable
+   */
+  "aria-multiselectable"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates whether the element's orientation is horizontal, vertical, or unknown.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-orientation
+   */
+  "aria-orientation"?: OptionalProperty<"horizontal" | "vertical" | "undefined">;
+  /**
+   * Defines a short hint (a word or short phrase) intended to aid the user with data entry
+   * when the control has no value.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-placeholder
+   */
+  "aria-placeholder"?: OptionalProperty<string>;
+  /**
+   * Defines an element's number or position in the current set of listitems or treeitems.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-posinset
+   */
+  "aria-posinset"?: OptionalProperty<number>;
+  /**
+   * Indicates the current "pressed" state of toggle buttons.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-pressed
+   */
+  "aria-pressed"?: OptionalProperty<"true" | "false" | "mixed" | boolean>;
+  /**
+   * Indicates that the element is not editable, but is otherwise operable.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-readonly
+   */
+  "aria-readonly"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates what notifications the user agent will trigger when the accessibility
+   * tree within a live region is modified.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-relevant
+   */
+  "aria-relevant"?: OptionalProperty<string>;
+  /**
+   * Indicates that user input is required on the element before a form may be submitted.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-required
+   */
+  "aria-required"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Defines a human-readable, author-localized description for the role of an element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-roledescription
+   */
+  "aria-roledescription"?: OptionalProperty<string>;
+  /**
+   * Defines the total number of rows in a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowcount
+   */
+  "aria-rowcount"?: OptionalProperty<number>;
+  /**
+   * Defines an element's row index or position with respect to the total number
+   * of rows within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowindex
+   */
+  "aria-rowindex"?: OptionalProperty<number>;
+  /**
+   * Defines a human-readable text alternative of aria-rowindex on a cell or gridcell.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowindextext
+   */
+  "aria-rowindextext"?: OptionalProperty<string>;
+  /**
+   * Defines the number of rows spanned by a cell or gridcell within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowspan
+   */
+  "aria-rowspan"?: OptionalProperty<number>;
+  /**
+   * Indicates the current "selected" state of various widgets.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-selected
+   */
+  "aria-selected"?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Defines the number of items in the current set of listitems or treeitems.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-setsize
+   */
+  "aria-setsize"?: OptionalProperty<number>;
+  /**
+   * Indicates if items in a table or grid are sorted in ascending or descending order.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-sort
+   */
+  "aria-sort"?: OptionalProperty<"ascending" | "descending" | "none" | "other">;
+  /**
+   * Defines the maximum allowed value for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuemax
+   */
+  "aria-valuemax"?: OptionalProperty<number>;
+  /**
+   * Defines the minimum allowed value for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuemin
+   */
+  "aria-valuemin"?: OptionalProperty<number>;
+  /**
+   * Defines the current value for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuenow
+   */
+  "aria-valuenow"?: OptionalProperty<number>;
+  /**
+   * Defines the human-readable text alternative of aria-valuenow for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuetext
+   */
+  "aria-valuetext"?: OptionalProperty<string>;
+};
+
+/**
+ * ARIA attributes in camelCase. Manually defined to produce natural names
+ * (e.g. `ariaMultiSelectable` from `aria-multiselectable`), since the spec
+ * compounds multiple words into single hyphen segments.
+ */
+type AriaPropsCamel = {
+  /**
+   * Identifies the currently active element when focus is on a composite widget,
+   * combobox, group, or application.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-activedescendant
+   */
+  ariaActiveDescendant?: OptionalProperty<string>;
+  /**
+   * Indicates whether assistive technologies will present all, or only parts of,
+   * the changed region based on the change notifications defined by the aria-relevant attribute.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-atomic
+   */
+  ariaAtomic?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates whether inputting text could trigger the display of one or more
+   * predictions of the user's intended value for a combobox, searchbox, or textbox.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-autocomplete
+   */
+  ariaAutoComplete?: OptionalProperty<"inline" | "list" | "both" | "none">;
+  /**
+   * Defines an author-localized abbreviated description of the role of an element
+   * for Braille display rendering.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-braillelabel
+   */
+  ariaBrailleLabel?: OptionalProperty<string>;
+  /**
+   * Defines an author-localized, human-readable description of the role of an element
+   * translated into Braille.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-brailleroledescription
+   */
+  ariaBrailleRoleDescription?: OptionalProperty<string>;
+  /**
+   * Indicates an element is being modified and assistive technologies MAY wait until
+   * modifications are complete before exposing them to the user.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-busy
+   */
+  ariaBusy?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates the current "checked" state of checkboxes, radio buttons, and other widgets.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-checked
+   */
+  ariaChecked?: OptionalProperty<"true" | "false" | "mixed" | boolean>;
+  /**
+   * Defines the total number of columns in a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colcount
+   */
+  ariaColCount?: OptionalProperty<number>;
+  /**
+   * Defines an element's column index or position with respect to the total number
+   * of columns within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colindex
+   */
+  ariaColIndex?: OptionalProperty<number>;
+  /**
+   * Defines a human-readable text alternative of aria-colindex on a cell or gridcell.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colindextext
+   */
+  ariaColIndexText?: OptionalProperty<string>;
+  /**
+   * Defines the number of columns spanned by a cell or gridcell within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-colspan
+   */
+  ariaColSpan?: OptionalProperty<number>;
+  /**
+   * Identifies the element (or elements) whose contents or presence are controlled by the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-controls
+   */
+  ariaControls?: OptionalProperty<string>;
+  /**
+   * Indicates the element that represents the current item within a container or set of related elements.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-current
+   */
+  ariaCurrent?: OptionalProperty<
+    "page" | "step" | "location" | "date" | "time" | true | false
+  >;
+  /**
+   * Identifies the element (or elements) that describes the object.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-describedby
+   */
+  ariaDescribedBy?: OptionalProperty<string>;
+  /**
+   * Defines a string value that describes or annotates the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-description
+   */
+  ariaDescription?: OptionalProperty<string>;
+  /**
+   * Identifies the element that provides a detailed, extended description for the object.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-details
+   */
+  ariaDetails?: OptionalProperty<string>;
+  /**
+   * Indicates that the element is perceivable but disabled, so it is not editable
+   * or otherwise operable.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-disabled
+   */
+  ariaDisabled?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Identifies the element that provides an error message for the object.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-errormessage
+   */
+  ariaErrorMessage?: OptionalProperty<string>;
+  /**
+   * Indicates whether a grouping or composite widget is expanded or collapsed.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-expanded
+   */
+  ariaExpanded?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Identifies the next element (or elements) in an alternate reading order of content.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-flowto
+   */
+  ariaFlowTo?: OptionalProperty<string>;
+  /**
+   * Indicates the availability and type of interactive popup element, such as menu
+   * or dialog, that can be triggered by an element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-haspopup
+   */
+  ariaHasPopup?: OptionalProperty<
+    "false" | "true" | "menu" | "listbox" | "tree" | "grid" | "dialog"
+  >;
+  /**
+   * Indicates whether the element is exposed to an accessibility API.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-hidden
+   */
+  ariaHidden?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates the entered value does not conform to the format expected by the application.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-invalid
+   */
+  ariaInvalid?: OptionalProperty<"false" | "true" | "grammar" | "spelling">;
+  /**
+   * Indicates keyboard shortcuts that an author has implemented to activate or
+   * give focus to an element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts
+   */
+  ariaKeyShortcuts?: OptionalProperty<string>;
+  /**
+   * Defines a string value that labels the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-label
+   */
+  ariaLabel?: OptionalProperty<string>;
+  /**
+   * Identifies the element (or elements) that labels the current element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-labelledby
+   */
+  ariaLabelledBy?: OptionalProperty<string>;
+  /**
+   * Defines the hierarchical level of an element within a structure.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-level
+   */
+  ariaLevel?: OptionalProperty<number>;
+  /**
+   * Indicates that an element will be updated, and describes the types of updates
+   * the assistive technologies, user agents, and user can expect from the live region.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-live
+   */
+  ariaLive?: OptionalProperty<"assertive" | "off" | "polite">;
+  /**
+   * Indicates whether an element is modal when displayed.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-modal
+   */
+  ariaModal?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates whether a text box accepts multiple lines of input.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-multiline
+   */
+  ariaMultiLine?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates that the user may select more than one item from the current selectable descendants.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-multiselectable
+   */
+  ariaMultiSelectable?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates whether the element's orientation is horizontal, vertical, or unknown.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-orientation
+   */
+  ariaOrientation?: OptionalProperty<"horizontal" | "vertical" | "undefined">;
+  /**
+   * Defines a short hint (a word or short phrase) intended to aid the user with data entry
+   * when the control has no value.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-placeholder
+   */
+  ariaPlaceholder?: OptionalProperty<string>;
+  /**
+   * Defines an element's number or position in the current set of listitems or treeitems.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-posinset
+   */
+  ariaPosInSet?: OptionalProperty<number>;
+  /**
+   * Indicates the current "pressed" state of toggle buttons.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-pressed
+   */
+  ariaPressed?: OptionalProperty<"true" | "false" | "mixed" | boolean>;
+  /**
+   * Indicates that the element is not editable, but is otherwise operable.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-readonly
+   */
+  ariaReadOnly?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Indicates what notifications the user agent will trigger when the accessibility
+   * tree within a live region is modified.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-relevant
+   */
+  ariaRelevant?: OptionalProperty<string>;
+  /**
+   * Indicates that user input is required on the element before a form may be submitted.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-required
+   */
+  ariaRequired?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Defines a human-readable, author-localized description for the role of an element.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-roledescription
+   */
+  ariaRoleDescription?: OptionalProperty<string>;
+  /**
+   * Defines the total number of rows in a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowcount
+   */
+  ariaRowCount?: OptionalProperty<number>;
+  /**
+   * Defines an element's row index or position with respect to the total number
+   * of rows within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowindex
+   */
+  ariaRowIndex?: OptionalProperty<number>;
+  /**
+   * Defines a human-readable text alternative of aria-rowindex on a cell or gridcell.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowindextext
+   */
+  ariaRowIndexText?: OptionalProperty<string>;
+  /**
+   * Defines the number of rows spanned by a cell or gridcell within a table, grid, or treegrid.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-rowspan
+   */
+  ariaRowSpan?: OptionalProperty<number>;
+  /**
+   * Indicates the current "selected" state of various widgets.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-selected
+   */
+  ariaSelected?: OptionalProperty<"true" | "false" | boolean>;
+  /**
+   * Defines the number of items in the current set of listitems or treeitems.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-setsize
+   */
+  ariaSetSize?: OptionalProperty<number>;
+  /**
+   * Indicates if items in a table or grid are sorted in ascending or descending order.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-sort
+   */
+  ariaSort?: OptionalProperty<"ascending" | "descending" | "none" | "other">;
+  /**
+   * Defines the maximum allowed value for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuemax
+   */
+  ariaValueMax?: OptionalProperty<number>;
+  /**
+   * Defines the minimum allowed value for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuemin
+   */
+  ariaValueMin?: OptionalProperty<number>;
+  /**
+   * Defines the current value for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuenow
+   */
+  ariaValueNow?: OptionalProperty<number>;
+  /**
+   * Defines the human-readable text alternative of aria-valuenow for a range widget.
+   *
+   * @see https://www.w3.org/TR/wai-aria-1.2/#aria-valuetext
+   */
+  ariaValueText?: OptionalProperty<string>;
+};
+
+/**
+ * ARIA attributes — accepts both kebab-case (`aria-hidden`) and camelCase (`ariaHidden`).
+ * Boolean attributes accept both `boolean` and string `"true"`/`"false"` values.
+ */
+type AriaProps = AriaPropsBase & AriaPropsCamel;
+
+export interface HTMLElementProps extends ElementProps, AriaProps {
   /**
    * Data attribute.
    */
@@ -3500,7 +4157,7 @@ export type SVGElementProps = {
     | ((value: SVGElement) => () => void)
     | ((value: Element) => () => void)
     | ((value: Node) => () => void);
-} & SVGPresentationAttributes & EventsFor<SVGElement>;
+} & SVGPresentationAttributes & AriaProps & EventsFor<SVGElement>;
 
 // --- SVG container / structural elements ---
 

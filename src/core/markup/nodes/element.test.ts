@@ -293,6 +293,90 @@ describe("ElementNode", () => {
       expect(el.getAttribute("aria-hidden")).toBe("false");
     });
 
+    test("sets aria-hidden to \"true\" string when passed true", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { "aria-hidden": true });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    test("sets ariaLabel via camelCase and converts to kebab-case attribute", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { ariaLabel: "close" });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-label")).toBe("close");
+    });
+
+    test("sets aria-label via kebab-case", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { "aria-label": "close" });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-label")).toBe("close");
+    });
+
+    test("sets aria-pressed to \"mixed\"", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { "aria-pressed": "mixed" });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-pressed")).toBe("mixed");
+    });
+
+    test("sets ariaDescribedBy via camelCase and converts to kebab-case attribute", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", { ariaDescribedBy: "desc-id" });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-describedby")).toBe("desc-id");
+    });
+
+    test("boolean aria attributes render true as \"true\" and false as \"false\"", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        "aria-hidden": true,
+        "aria-disabled": false,
+        "aria-checked": true,
+        "aria-expanded": false,
+        "aria-pressed": true,
+        "aria-selected": false,
+        "aria-busy": true,
+        "aria-readonly": false,
+        "aria-required": true,
+        "aria-modal": false,
+        "aria-multiline": true,
+        "aria-multiselectable": false,
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("aria-hidden")).toBe("true");
+      expect(el.getAttribute("aria-disabled")).toBe("false");
+      expect(el.getAttribute("aria-checked")).toBe("true");
+      expect(el.getAttribute("aria-expanded")).toBe("false");
+      expect(el.getAttribute("aria-pressed")).toBe("true");
+      expect(el.getAttribute("aria-selected")).toBe("false");
+      expect(el.getAttribute("aria-busy")).toBe("true");
+      expect(el.getAttribute("aria-readonly")).toBe("false");
+      expect(el.getAttribute("aria-required")).toBe("true");
+      expect(el.getAttribute("aria-modal")).toBe("false");
+      expect(el.getAttribute("aria-multiline")).toBe("true");
+      expect(el.getAttribute("aria-multiselectable")).toBe("false");
+    });
+
+    test("boolean aria attributes remove attribute when value is null or undefined", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        "aria-hidden": null,
+        "aria-disabled": undefined,
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.hasAttribute("aria-hidden")).toBe(false);
+      expect(el.hasAttribute("aria-disabled")).toBe(false);
+    });
+
     test("boolean property disabled={false} removes the disabled attribute", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "button", { disabled: false });
