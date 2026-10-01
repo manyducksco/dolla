@@ -98,22 +98,37 @@ export class ViewNode<P> extends MarkupNode {
     this.#view = newView;
     this.context.name = newView.name;
 
-    this.context[REPLACING] = true;
-    pushComponentName(this.context.name);
-    const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
-    popComponentName();
-    this.#node =
-      viewContent != null && viewContent !== false
-        ? render(viewContent, this.context)
-        : new DOMNode(this.context, createTextNode(""));
+    try {
+      this.context[REPLACING] = true;
+      pushComponentName(this.context.name);
+      const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
+      this.#node =
+        viewContent != null && viewContent !== false
+          ? render(viewContent, this.context)
+          : new DOMNode(this.context, createTextNode(""));
 
-    registerViewInstance(this.#view, this);
+      registerViewInstance(newView, this);
 
-    if (parent) {
-      this.#node.mount(parent, after);
+      if (parent) {
+        this.#node.mount(parent, after);
+      }
+
+      mountContext(this.context);
+    } catch (e) {
+      registerViewInstance(newView, this);
+      try {
+        this.#node = new DOMNode(this.context, createTextNode(""));
+        if (parent) {
+          this.#node.mount(parent, after);
+        }
+        mountContext(this.context);
+      } catch {
+        // Node stays unmounted; next HMR cycle will handle it.
+      }
+      throw e;
+    } finally {
+      this.context[REPLACING] = false;
+      popComponentName();
     }
-
-    mountContext(this.context);
-    this.context[REPLACING] = false;
   }
 }

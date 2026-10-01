@@ -1,8 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
-import { createContext, mountContext, onCleanup, onEffect, onMount } from "../../context.js";
-import { createMarkup } from "../utils.js";
-import { ViewNode, VIEW } from "./view.js";
+import { createContext, onCleanup, onEffect, onMount, REPLACING } from "../../context.js";
 import { View } from "../../index.js";
+import { createMarkup } from "../utils.js";
+import { VIEW, ViewNode } from "./view.js";
 
 describe("ViewNode", () => {
   const noopView = vi.fn(function (this: ReturnType<typeof createContext>, _props: {}) {
@@ -363,6 +363,79 @@ describe("ViewNode", () => {
       container.removeChild = realRemove as typeof container.removeChild;
 
       // After replaceView (and the guard), there must be exactly one ".pg".
+      const pages = container.querySelectorAll(".pg");
+      expect(pages).toHaveLength(1);
+      expect(pages[0].textContent).toBe("v2");
+      expect(container.textContent).not.toContain("v1");
+    });
+
+    test("replaceView resets REPLACING flag when view function throws", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
+      const throwingView = vi.fn(() => {
+        throw new Error("view render failed");
+      });
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+      expect(container.querySelector("span")!.textContent).toBe("v1");
+
+      expect(() => node.replaceView(throwingView as any)).toThrow("view render failed");
+      expect(node.context[REPLACING]).toBe(false);
+    });
+
+    test("replaceView keeps ViewNode HMR-registered when view function throws", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
+      const throwingView = vi.fn(() => {
+        throw new Error("view render failed");
+      });
+      const view3 = vi.fn(() => createMarkup("span", { children: "v3" }));
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+
+      expect(() => node.replaceView(throwingView as any)).toThrow("view render failed");
+
+      // The node should still be HMR-tracked under the throwing view so a
+      // subsequent replaceView can recover.
+      node.replaceView(view3);
+      expect(container.querySelector("span")!.textContent).toBe("v3");
+    });
+
+    test("replaceView resets REPLACING flag when mount throws", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
+      const view2 = vi.fn(() => createMarkup("span", { children: "v2" }));
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+
+      // Patch container.insertBefore to throw during mount
+      const realInsert = container.insertBefore.bind(container);
+      container.insertBefore = ((child: Node, ref: Node | null) => {
+        throw new Error("mount failed");
+      }) as typeof container.insertBefore;
+
+      expect(() => node.replaceView(view2)).toThrow("mount failed");
+      expect(node.context[REPLACING]).toBe(false);
+
+      container.insertBefore = realInsert as typeof container.insertBefore;
+    });
+
+    test("replaceView recovers on next HMR cycle after a failed replacement", () => {
+      const { context, container } = setup();
+      const view1 = vi.fn(() => createMarkup("span", { class: "pg", children: "v1" }));
+      const throwingView = vi.fn(() => {
+        throw new Error("boom");
+      });
+      const view2 = vi.fn(() => createMarkup("span", { class: "pg", children: "v2" }));
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+      expect(container.querySelectorAll(".pg")).toHaveLength(1);
+
+      // First replacement fails
+      expect(() => node.replaceView(throwingView as any)).toThrow("boom");
+
+      // Second replacement with a working view should succeed
+      node.replaceView(view2);
       const pages = container.querySelectorAll(".pg");
       expect(pages).toHaveLength(1);
       expect(pages[0].textContent).toBe("v2");
