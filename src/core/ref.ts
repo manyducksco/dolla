@@ -1,5 +1,8 @@
-import { assert } from "../utils";
-
+/**
+ * Manages a non-reactive reference, usually to a DOM node.
+ * Refs are functions that take a DOM node and return a cleanup function.
+ * Refs can be called with no arguments to return the currently held reference.
+ */
 export interface Ref<T> {
   /**
    * Call with no arguments to get the stored value.
@@ -14,6 +17,9 @@ export interface Ref<T> {
   (value: T): () => void;
 }
 
+/**
+ * Creates a ref container for holding a reference to a rendered DOM node.
+ */
 export function createRef<T = HTMLElement>(): Ref<T> {
   let currentValue: T | undefined;
 

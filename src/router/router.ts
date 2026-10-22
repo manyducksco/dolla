@@ -1,13 +1,21 @@
-import { Context, onCleanup, onMount } from "../core/context.js";
-import { DollaPlugin, addStore, createDebug, getRootElement } from "../core/index.js";
-import { DynamicNode } from "../core/markup/nodes/dynamic.js";
-import { ViewNode } from "../core/markup/nodes/view.js";
-import type { MarkupNode } from "../core/markup/types.js";
-import { addListener, createMarkup } from "../core/markup/utils.js";
-import { batch, createAtom, peek } from "../core/signals.js";
-import { DEBUG } from "../core/symbols.js";
-import type { View } from "../types.js";
-import { assert } from "../utils.js";
+import {
+  DollaPlugin,
+  DynamicNode,
+  ViewNode,
+  addStore,
+  batch,
+  createAtom,
+  createDebug,
+  createMarkup,
+  getRootElement,
+  onCleanup,
+  onMount,
+  peek,
+  type Context,
+  type MarkupNode,
+  type View,
+} from "../core/index.js";
+
 import { RouterStore } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
 import { isLazyView } from "./types.js";
@@ -20,6 +28,10 @@ import {
   resolveRoute,
   type Match,
 } from "./utils.js";
+
+import { addListener } from "../core/markup/utils.js";
+import { DEBUG } from "../core/symbols.js";
+import { assert } from "../utils.js";
 
 const ROUTER_ROOT_SLOT = Symbol.for("$_ROUTER_ROOT_SLOT");
 
@@ -125,9 +137,11 @@ export function createRouter(options: RouterOptions): DollaPlugin {
         const preload = layer.preload;
         if (preload) {
           tasks.push(
-            Promise.resolve().then(() => preload(match)).then((data) => {
-              preloadedData[i - branchIndex] = data;
-            }),
+            Promise.resolve()
+              .then(() => preload(match))
+              .then((data) => {
+                preloadedData[i - branchIndex] = data;
+              }),
           );
         }
 

@@ -3,6 +3,73 @@
 ![bundle size](https://img.shields.io/bundlephobia/min/@manyducks.co/dolla)
 ![bundle size](https://img.shields.io/bundlephobia/minzip/@manyducks.co/dolla)
 
+Dolla is a personal JavaScript framework for creating web apps in a way I think is fun and interesting. It's based on my experience using React, Angular, Vue, Svelte and others and takes the best ideas from all of these and combines them into one fully featured, batteries-included web app framework.
+
+## Features
+
+### Core
+
+- 🚥 **Signals** — pinpoint reactive updates with no virtual DOM
+- 📦 **Views** — reusable UI components that run once and update via signals
+- 🧩 **Context** — each view exposes a context object that inherits values from the parent context
+- 💾 **Stores** — shared-state-on-rails via the context tree
+- 🎨 **CSS-in-JS** — a `css` helper for quick inline classes and `styled.*` elements for easy composition
+- ?? **Buildless** - use the `html` helper instead of JSX and skip the bundler
+
+- 🐛 **Debug logging** — colored, taggable, filterable
+- ⏱ **Temporal helpers** — `debounce` and `throttle`
+
+### Modules
+
+- 🔀 **Router** — nested routes, lazy loading, guards, preload, error views
+- 🌍 **i18n** — pluralization, formatting, async translation loading
+- 📡 **HTTP client** — middleware pipeline, typed responses
+- 📜 **Virtual list** — recycled DOM pool, infinite scroll, sticky headers
+- 🔥 **HMR** — hot module replacement via Vite plugin
+
+## Installation
+
+```sh
+npm install @manyducks.co/dolla
+```
+
+## How does it work?
+
+Dolla is built around signals for state management and reactive DOM updates. This means components are "rendered" just once, then all changes thereafter are caused directly and synchronously by updates to the app's state. State is held in containers called Atoms.
+
+```ts
+import { createAtom } from "@manyducks.co/dolla";
+
+const [count, setCount] = createAtom(1);
+
+count(); // returns the current value
+setCount(2); // replaces the atom's value
+```
+
+Dolla includes helpers and signal-based machinery to translate these values to DOM nodes and update them when state is changed.
+
+```ts
+import { createAtom, html } from "@manyducks.co/dolla";
+
+function MyView() {
+  const [count, setCount] = createAtom(1);
+
+  const increment = () => setCount((current) => current + 1);
+
+  return html`
+    <section>
+      <header>This is the count.</header>
+      <p>${count}</p>
+      <button onclick=${increment}></button>
+    </section>
+  `;
+}
+```
+
+Notice that `count` is passed directly into the HTML template. We're not calling the function to get the value inside the view. Dolla will do that internally, tracking the value and updating the DOM when we call `setCount`.
+
+---
+
 Dolla is a research framework for trying out ideas. The goal is to create a full-featured framework that, first and foremost, provides the **best developer experience possible** out of the box. Low resource usage and small code size are secondary objectives.
 
 Dolla is based on experience working with React, Angular, Vue, Svelte and Flutter, and is an amalgamation of all the things I liked and ways I wish things worked, all rolled into a single framework for making web-based SPAs. It's more than a toy and less than a production-ready workhorse. It's a labor of love. Use at your own joy and peril.
