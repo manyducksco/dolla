@@ -2,6 +2,8 @@
 
 Effects run side-effect code in response to state changes. Dolla provides two overloads for `createEffect` and a lifecycle-scoped variant `onEffect`.
 
+See [When updates run](./concepts.md#when-updates-run) for the difference between synchronous effects and microtask DOM updates, and for the order of lifecycle hooks.
+
 ## Auto-tracking effect
 
 When called with a single function, `createEffect` tracks any getters read inside the callback. The effect re-runs whenever a tracked value changes.

@@ -11,18 +11,27 @@ function HomePage() {
   return html`<p>Current path: ${router.path}</p>`;
 }
 
-createRoot("#app")
+function App() {
+  return html`
+    <header>My app</header>
+    <main><${Outlet} /></main>
+  `;
+}
+
+await createRoot("#app")
   .plugin(createRouter({
     routes: [
       { path: "/", view: HomePage },
     ],
   }))
-  .mount(HomePage);
+  .mount(App);
 ```
+
+`App` is the root view and uses `<${Outlet} />` to render the matched route. Nested layout views receive their child layer as `props.children`.
 
 ## Routes
 
-Each route has a `path` pattern and a `view` component. Nested routes use an `<${Outlet} />` component to render child views.
+Each route has a `path` pattern and a `view` component. The root view uses `<${Outlet} />` to render the matched route; nested layout views receive their child route as `props.children`.
 
 ```js
 createRouter({
@@ -41,10 +50,10 @@ createRouter({
 ```
 
 ```jsx
-function UsersLayout() {
+function UsersLayout(props) {
   return html`
     <nav>...</nav>
-    <main><${Outlet} /></main>
+    <main>${props.children}</main>
   `;
 }
 ```
@@ -58,6 +67,28 @@ function UsersLayout() {
 | `/users/{name}` | String param — matches any non-slash segment |
 | `/artists/{#artistId?}` | Optional param — matches even if the segment is absent |
 | `/files/*` | Wildcard — matches everything after `/files/` |
+
+### Reading route state
+
+`path`, `pattern`, `params`, `query`, and `meta` are getters. Interpolate them directly for a reactive value, or wrap property access in a getter:
+
+```js
+function UserPage() {
+  const router = getRouter(this);
+
+  return html`
+    <p>Path: ${router.path}</p>
+    <p>User id: ${() => router.params().id}</p>
+    <p>Search: ${() => router.query().q}</p>
+  `;
+}
+```
+
+`isActive(path, exact?)` returns a getter, which works directly in a reactive class object:
+
+```js
+html`<a class=${{ active: router.isActive("/users") }}>Users</a>`;
+```
 
 ### Meta data
 
@@ -73,6 +104,19 @@ Attach arbitrary data to a route:
 
 Meta from all matched layers is merged and accessible via `router.meta`.
 
+### Not found
+
+Add a final wildcard route to handle unmatched paths:
+
+```js
+{
+  path: "*",
+  view: NotFoundPage,
+}
+```
+
+`*` matches any remaining path segments. Without a matching route, the router leaves the current view in place and resets `progress` to `0`.
+
 ## Lazy loading
 
 Use `lazy()` to code-split route views:
@@ -85,6 +129,23 @@ createRouter({
     { path: "/dashboard", view: lazy(() => import("./views/dashboard.js")) },
   ],
 });
+```
+
+The loaded module is cached on the route definition, so navigating back to the route does not fetch it again. Load failures are handled by the route's `errorView`.
+
+## Loading UI
+
+`router.progress` is a getter from `0` to `1` while navigation is in flight, and `0` when idle:
+
+```js
+function App() {
+  const router = getRouter(this);
+
+  return html`
+    ${showIf(() => router.progress() > 0, html`<div class="loading-bar"></div>`)}
+    <main><${Outlet} /></main>
+  `;
+}
 ```
 
 ## Preloading data
@@ -183,9 +244,56 @@ const unblock = router.block(() => {
 
 Guards can be async. Navigation is blocked while any guard returns `true`.
 
+### Protected routes
+
+For authentication, redirect from `preload` instead of blocking silently:
+
+```js
+import { RedirectError } from "@manyducks.co/dolla/router";
+
+{
+  path: "/admin",
+  view: AdminPage,
+  preload: () => {
+    if (!isLoggedIn()) throw new RedirectError("/login");
+  },
+}
+```
+
+`block` is for confirmation-style guards:
+
+```js
+const unblock = router.block(async () => {
+  return await hasUnsavedChanges();
+});
+```
+
+When guards are registered, the router also warns on tab close via `beforeunload`. Call `unblock()` to remove the guard.
+
+## Navigation
+
+```js
+router.push("/users/1");
+router.replace("/users/1");
+router.back();
+router.forward(2);
+router.setQuery({ q: "alice", page: null }); // null deletes a key
+```
+
+`push` and `replace` return immediately; navigation work continues asynchronously. Use `router.progress` for loading UI.
+
 ## Outlet
 
-`<${Outlet} />` renders the matched child route. Use it in layout views to nest routes.
+`<${Outlet} />` renders the matched route in the root layout. Nested layout views receive their child route as `props.children`:
+
+```js
+function AdminLayout(props) {
+  return html`
+    <nav>...</nav>
+    <section>${props.children}</section>
+  `;
+}
+```
 
 ## Options
 

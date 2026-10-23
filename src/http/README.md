@@ -12,8 +12,8 @@ const user = await http.get("/api/user");
 // user.body is typed as `unknown` by default
 
 // With explicit type
-const user = await http.get<{ name: string }>("/api/user");
-// user.body.name is now typed
+const typedUser = await http.get<{ name: string }>("/api/user");
+// typedUser.body.name is now typed
 ```
 
 ## Methods
@@ -30,6 +30,30 @@ http.head("/data");
 http.options("/data");
 http.trace("/data");
 ```
+
+`trace()` is available for API completeness, but browsers (and many `fetch` implementations) reject `TRACE` requests.
+
+## Base URL and defaults
+
+There is no configurable base URL option. Relative URLs resolve against `window.location.origin` in the browser, or `http://localhost` outside one. Use absolute URLs or a middleware to point requests at another host:
+
+```ts
+http.use(async (request, next) => {
+  request.url = new URL(request.url.pathname + request.url.search, "https://api.example.com");
+  return next();
+});
+```
+
+The client also has no default-headers or credentials option. Add headers with middleware:
+
+```ts
+http.use(async (request, next) => {
+  request.headers.set("authorization", `Bearer ${getToken()}`);
+  return next();
+});
+```
+
+`new HTTP({ retry })` is the only constructor option.
 
 ## Request Options
 
@@ -104,6 +128,27 @@ Every method returns an `HTTPResponse<Body>`:
 | `redirected` | `boolean` | Whether the request was redirected at least once |
 
 Non-OK responses (status >= 400) throw an `HTTPResponseError` with the same response object attached.
+
+```ts
+import { HTTPResponseError } from "@manyducks.co/dolla/http";
+
+try {
+  await http.get("/api/user");
+} catch (error) {
+  if (error instanceof HTTPResponseError) {
+    console.error(error.response.status, error.response.body);
+  }
+}
+```
+
+Cancel a request with an `AbortSignal`:
+
+```ts
+const controller = new AbortController();
+
+const request = http.get("/api/search", { signal: controller.signal });
+controller.abort();
+```
 
 Redirects are followed automatically using the platform's `fetch` defaults. The response reports the final URL and whether a redirect occurred; middleware still sees the original request URL on `request.url`.
 

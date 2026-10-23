@@ -1,6 +1,8 @@
 # CSS
 
-Dolla includes a CSS-in-JS solution via the `css` tagged template literal. It generates scoped class names, registers styles in a shared `CSSStyleSheet`, and supports reactive variables.
+Dolla includes a CSS-in-JS solution via the `css` tagged template. It generates scoped class names, registers styles in a shared `CSSStyleSheet`, and supports reactive variable bindings.
+
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
 
 ```js
 import { css } from "@manyducks.co/dolla";
@@ -10,15 +12,17 @@ const redText = css`
   font-weight: bold;
 `;
 
-console.log(redText.className); // "css-1a2b3c"
-console.log(String(redText));   // "css-1a2b3c"
+redText.className; // "css-1a2b3c"
+String(redText);   // "css-1a2b3c"
 ```
 
 ## Usage with views
 
-Pass the class name as a string — it works naturally with the `class` attribute:
+Pass a template to `class`:
 
-```jsx
+```js
+import { html, css } from "@manyducks.co/dolla";
+
 const card = css`
   padding: 16px;
   border: 1px solid #ddd;
@@ -26,8 +30,18 @@ const card = css`
 `;
 
 function Card() {
-  return html`<div class="${card}">...</div>`;
+  return html`<div class=${card}>...</div>`;
 }
+```
+
+`class` accepts a string, a `CSSTemplate`, a conditional template, or an array containing any of those:
+
+```js
+const [count] = createAtom(0);
+const isActive = () => count() > 0;
+const highlight = css`outline: 2px solid gold;`;
+
+html`<div class=${[card, highlight.when(isActive)]}>...</div>`;
 ```
 
 ## Deduplication
@@ -37,7 +51,8 @@ The same CSS input always produces the same class name. If multiple components u
 ```js
 const a = css`color: red;`;
 const b = css`color: red;`;
-console.log(a.className === b.className); // true
+
+a.className === b.className; // true
 ```
 
 ## Interpolation
@@ -53,31 +68,35 @@ const tpl = css`
 
 ## Reactive variables
 
-Pass a getter (e.g. an atom) for a reactive CSS variable. When the signal changes, the CSS custom property updates on the element without touching the stylesheet:
+Pass a getter to bind a CSS custom property. When the signal changes, the property updates on the element without rebuilding the stylesheet:
 
 ```js
 const [color, setColor] = createAtom("blue");
+
 const tpl = css`
   color: ${color};
 `;
 ```
 
-You can also specify a CSS syntax and initial value using an array `[getter, syntax, initialValue]`:
+Use a `PropertyConfig` object when you need a typed `@property` registration, an initial value, or inheritance:
 
 ```js
+const [padding, setPadding] = createAtom("0px");
+
 const tpl = css`
-  padding: ${[padding, "<length>", "0px"]};
+  padding: ${{ syntax: "<length>", value: padding, initialValue: "0px", inherits: false }};
 `;
 ```
 
-If the current value equals `initialValue`, the variable is stripped from the element (falling back to the default in the CSS rule).
+The `value` may be a getter or a static value. When the value is `null`, `undefined`, or equal to `initialValue`, the custom property is removed so the CSS fallback applies.
 
 ## Template composition
 
-Reference another `CSSTemplate` in an interpolation to compose selectors:
+Reference another `CSSTemplate` in a selector interpolation to compose rules:
 
 ```js
 const base = css`color: red;`;
+
 const tpl = css`
   ${base} {
     font-weight: bold;
@@ -87,53 +106,67 @@ const tpl = css`
 
 This generates a rule like `.css-abc .css-def { font-weight: bold; }`.
 
-## Child templates
-
-Use `.with()` to compose child templates that are attached to the same element:
+To apply multiple templates to the same element, pass them in a class array:
 
 ```js
-const base = css`color: red;`;
-const child = css`font-weight: bold;`;
-const combined = base.with(child);
+html`<div class=${[base, child]}>...</div>`;
 ```
 
-`.with()` returns a new template — the original is not mutated:
+## Conditional templates
+
+Call `.when(condition)` to return a conditional template:
 
 ```js
-const a = css`color: red;`;
-const b = a.with(child1);
-const c = b.with(child2);
-// a.children === []
-// b.children === [child1]
-// c.children === [child1, child2]
+const card = css`padding: 16px;`;
+const [active] = createAtom(false);
+
+html`<div class=${card.when(active)}>...</div>`;
 ```
 
-Child templates are attached to the element when the parent is attached.
+`active` is a getter, so the class is attached and detached as it changes. A plain boolean also works, but is evaluated once.
 
-## Conditional attachment
+## Named templates
 
-Attach a template only when a condition is met:
+Use `css.named(name)` or `template.named(name)` to control the class prefix:
 
 ```js
-const combined = base.with(child, isLoggedIn);
+const sidebar = css.named("sidebar")`
+  width: 240px;
+`;
+
+sidebar.className; // "sidebar-<hash>"
+
+const renamed = sidebar.named("nav");
+renamed.className; // "nav-<hash>"
 ```
 
-Pass a getter for reactive conditions:
+The hash is unchanged, so equivalent styles still deduplicate in the shared sheet.
+
+## Styled components
+
+For component-level composition, use [`styled`](./styled.md):
 
 ```js
-const combined = base.with(child, () => isLoggedIn());
+const Button = styled.button`
+  padding: 8px 12px;
+`;
 ```
 
 ## API
 
 ### `css\`...\``
 
-Returns a `CSSTemplate` object:
+Returns a `CSSTemplate`:
 
-| Property/Method | Description |
+| Member | Description |
 |---|---|
 | `className` | The generated scoped class name |
-| `children` | Array of child `[CSSTemplate, condition]` tuples |
+| `named(name)` | Returns a copy with a different class prefix |
+| `when(condition)` | Returns a conditional template that is attached only when the condition is truthy |
+| `attach(context, element, condition?)` | Applies the class and reactive bindings to an element. Called internally by the framework. |
+| `preinsert()` | Inserts the static rule into the sheet without binding reactive values. Used internally by `styled`. |
 | `toString()` | Returns `className` |
-| `attach(context, element, condition?)` | Applies the class to an element — called internally by the framework |
-| `with(template, condition?)` | Returns a new CSSTemplate with the child appended |
+
+### `css.named(name)\`...\``
+
+Creates a template with a custom class prefix. Special characters are sanitized; an empty sanitized name falls back to the default `css-` prefix.

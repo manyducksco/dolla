@@ -75,6 +75,7 @@
     "test": "vitest",
     "build:esbuild": "tsc && node build.js",
     "build": "vite build && tsc",
+    "docs:check": "node scripts/check-docs.mjs",
     "start": "tsc --watch",
     "prepublishOnly": "NODE_ENV=production npm run build"
   },

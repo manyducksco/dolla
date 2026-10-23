@@ -2,6 +2,8 @@
 
 Dolla apps are built from three ideas: **signals**, **run-once views**, and **context inheritance**.
 
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown. See [Templates](./templates.md) for markup syntax and props.
+
 ## Signals are the only dynamic thing
 
 The component function runs exactly once. It returns a static tree of markup. Nothing ever re-runs that function. Instead, you place **getters** (the read-half of a signal) into the template where dynamic values are needed. The framework tracks which getters are used in which parts of the DOM and updates only those nodes when a signal changes.
@@ -16,7 +18,7 @@ function Counter() {
 }
 ```
 
-There is no virtual DOM, no diffing, no re-rendering. Every update is a pinpoint operation on the exact DOM node that depends on the changed signal.
+There is no virtual DOM, no diffing, no re-rendering. Every update is a pinpoint operation on the exact DOM node that depends on the changed signal. Keyed lists (`forEach`) reuse nodes and `keepAlive` can park a branch, but there is no general VDOM diff or re-render cycle.
 
 ## Values flow through getters
 
@@ -69,15 +71,19 @@ Outside these, calling a getter returns the current value without registering a 
 This is the single most important thing to internalize. A view function is called once when the component is created. It sets up signals, wires up effects, and returns a static markup description. There are no re-renders, no reconciliation, no lifecycle methods that re-execute the function.
 
 ```js
-function Welcome({ name }) {
-  // This runs once.
-  const greeting = compose(() => `Hello, ${name()}!`);
+function Welcome(props) {
+  // This runs once. `props.name` is a getter because the parent passed
+  // name=${userName} instead of a plain string.
+  const greeting = compose(() => `Hello, ${props.name()}!`);
 
   return html`<p>${greeting}</p>`;
 }
+
+// Parent:
+html`<${Welcome} name=${userName} />`;
 ```
 
-If `name` changes, only the text node inside `<p>` updates — `Welcome` does not re-run, `compose` does not re-run (until it's read), and no diffing occurs.
+If `userName` changes, only the text node inside `<p>` updates — `Welcome` does not re-run, `compose` does not re-run until it is read, and no diffing occurs.
 
 This means:
 - Event handlers, timers, and subscriptions set up in the component persist for its entire lifetime. No need to re-attach them.
@@ -93,6 +99,25 @@ showIf(activeTab, keepAlive(html`<${Editor} />`));
 ```
 
 This is not async Suspense and it does not pause effects. Hidden content keeps running; use `onSuspend` / `onResume` to pause specific work. `onCleanup` runs only when the content is actually disposed, not when it is suspended. See [Control flow helpers](./components.md#control-flow-helpers) and [Hooks](./hooks.md#suspension-hooks).
+
+## When updates run
+
+It helps to know the order of events when you call a setter.
+
+1. Signal writes notify dependent effects **synchronously**, unless they are inside `batch`.
+2. Markup and attribute DOM updates are scheduled through a **microtask** and coalesced. Several writes in one synchronous block produce one DOM pass.
+3. `batch(fn)` groups signal effects until `fn` returns. DOM updates still flush on the microtask.
+4. `createEffect` runs its callback immediately when created. `onEffect` runs on mount, after the view's DOM is mounted.
+5. `onMount` listeners run after the subtree mounts. `onCleanup` runs when the component is disposed.
+6. `onSuspend` / `onResume` run when a `keepAlive` branch is parked or resumed. See [Hooks](./hooks.md#suspension-hooks).
+
+```js
+setCount(1);
+setName("Alice");
+// effects have already run; the DOM updates together in one microtask
+```
+
+In tests, the internal `flushPendingUpdates` helper can force the DOM queue to run. Application code should not need it.
 
 ## Context as the wiring harness
 
@@ -124,8 +149,12 @@ The context chain serves as the dependency injection system for:
 A plugin is a function that receives the root context and can attach anything to it. The router and translate systems are plugins:
 
 ```js
+const routes = [
+  { path: "/", view: HomePage },
+];
+
 createRoot("#app")
-  .plugin(createRouter({ routes: [...] }))
+  .plugin(createRouter({ routes }))
   .mount(App);
 ```
 
@@ -186,4 +215,4 @@ If you're coming from another framework, here's how the pieces map:
 | `useRef` | `createRef` |
 | Virtual DOM / diffing | None — direct DOM updates via tracked dependencies |
 | `useReducer` | A custom setter function wrapping `createAtom` |
-| Suspense | Route `preload` / `errorView` — declarative async boundaries per route layer |
+| Suspense | No direct equivalent. Use a pending getter with `showIf` (optionally `keepAlive`). The router exposes `progress` and `errorView` for route-level async, but it does not suspend a tree. |

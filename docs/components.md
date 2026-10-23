@@ -1,5 +1,7 @@
 # Components
 
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
+
 ## Views
 
 A View returns markup. It receives `(props, context)` and returns a `Renderable` (typically `html\`...\`` or JSX). The `this` inside a View is the same as the `context` argument.
@@ -18,7 +20,36 @@ function ExampleView(props) {
 Mount a View onto a DOM node:
 
 ```js
-createRoot(document.body).mount(ExampleView);
+await createRoot("#app").mount(ExampleView);
+```
+
+Use function declarations (or function expressions), not arrow functions, when the view reads `this` for context or hooks.
+
+### Props and children
+
+Props are passed in the component tag and are available on the `props` argument:
+
+```js
+function Greeting(props) {
+  return html`<p>Hello, ${props.name}!</p>`;
+}
+
+function App() {
+  const [name] = createAtom("Alice");
+  return html`<${Greeting} name=${name} />`;
+}
+```
+
+Pass a getter (`name=${name}`) to keep the prop reactive. Pass a plain value (`name="Alice"`) when it never changes. A child does not re-render when its parent's state changes; see [Props and the run-once model](./templates.md#props-and-the-run-once-model) for the full explanation and patterns.
+
+Children are passed between the component tags and are available as `props.children`:
+
+```js
+function Card(props) {
+  return html`<section class="card">${props.children}</section>`;
+}
+
+html`<${Card}><p>Hello</p><//>`;
 ```
 
 ## Stores
@@ -55,17 +86,25 @@ function Counter() {
 }
 ```
 
-A store instance is available to all components in its subtree. Check existence with `hasStore(context, store)` or `hasOwnStore(context, store)`.
+A store instance is available to all components in its subtree. Check existence with `hasStore(context, store)` or `hasOwnStore(context, store)`. See [Stores vs Views](./concepts.md#stores-vs-views) for the conceptual difference.
 
 ## Type helpers
 
-`createView` and `createStore` are identity functions for type inference:
+`createView` and `createStore` are identity functions used for type inference. They return the function you pass in unchanged.
 
 ```ts
-const MyView = createView((props: { name: string }) => {
+const Greeting = createView(function (props: { name: string }) {
+  this.name = "Greeting";
   return html`<p>${props.name}</p>`;
 });
+
+const CounterStore = createStore(function (props: { initial: number }) {
+  const [count, setCount] = createAtom(props.initial);
+  return { count, increment: () => setCount((c) => c + 1) };
+});
 ```
+
+They infer `this` and `context` as `Context` and type the props argument. They do not change runtime behavior. See [Advanced internals](./advanced.md#core-types) for the underlying types.
 
 ## Lifecycle
 
@@ -89,8 +128,11 @@ Conditionally render content:
 
 ```js
 html`<div>${showIf(isLoggedIn, html`<p>Welcome!</p>`)}</div>`;
-html`<div>${hideIf(isLoading, html`<p>Loading...</p>`)}</div>`;
+html`<div>${showIf(isLoading, html`<p>Loading...</p>`)}</div>`;
+html`<div>${hideIf(isLoading, html`<p>Content</p>`, html`<p>Loading...</p>`)}</div>`;
 ```
+
+Conditions can be getters (reactive) or plain values (evaluated once).
 
 By default, hidden content is unmounted. Wrap a branch side in `keepAlive` to suspend it instead:
 
@@ -120,15 +162,32 @@ Inverse of the above:
 html`<div>${showUnless(isLoggedIn, html`<p>Please log in.</p>`)}</div>`;
 ```
 
+| Helper        | Condition truthy | Condition falsy | Alias        |
+| ------------- | ---------------- | --------------- | ------------ |
+| `showIf`      | `content`        | `fallback`      | —            |
+| `hideIf`      | `fallback`       | `content`       | —            |
+| `showUnless`  | `fallback`       | `content`       | `hideIf`     |
+| `hideUnless`  | `content`        | `fallback`      | `showIf`     |
+
+`showUnless` / `hideUnless` are aliases; the table shows why they are easy to mix up.
+
 ### `forEach`
 
 Render a dynamic, keyed list:
 
 ```js
 html`<ul>${forEach(items, (item) => item.id, (item, index) => {
-  return html`<li>${item.name}</li>`;
+  return html`<li>${() => item().name}</li>`;
 })}</ul>`;
 ```
+
+`forEach` takes a list or a getter for a list:
+
+- The key function receives plain `(item, index)` values.
+- The render function receives `item` and `index` as **getters**.
+- Read those getters inside another getter or `compose` to stay reactive. Writing `${item.name}` is wrong; writing `${item().name}` evaluates once.
+- Items with the same key reuse their existing DOM node when the list changes.
+- For a static array that never changes, a plain `.map()` is fine. Use `forEach` when the list is reactive.
 
 ### `createPortal`
 
@@ -144,18 +203,21 @@ function Modal() {
 }
 ```
 
+Portal content is physically outside the logical parent. Make sure the target exists, and manage focus and ARIA relationships manually when moving dialogs or menus outside the tree. Portals participate in `keepAlive` suspension: their content is retained and removed from the target while the branch is hidden.
+
 ## Context
 
 The context object carries lifecycle state, stores, debug loggers, and arbitrary data down the component tree via prototypal inheritance.
 
 ```js
 function Parent() {
-  this.user = createAtom({ name: "Alice" });
+  const [user] = createAtom({ name: "Alice" });
+  this.user = user;
   return html`<${Child} />`;
 }
 
 function Child() {
   // this.user is inherited from the parent's context
-  return html`<p>${this.user().name}</p>`;
+  return html`<p>${() => this.user().name}</p>`;
 }
 ```

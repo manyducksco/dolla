@@ -2,6 +2,8 @@
 
 Hooks are just functions that take a Context as the first argument. Following this convention makes hooks composable; a hook can call other hooks by passing the context it was called with.
 
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
+
 ## Lifecycle Hooks
 
 | Hook | Description |
@@ -11,7 +13,7 @@ Hooks are just functions that take a Context as the first argument. Following th
 | `onEffect(context, callback)` | Creates an auto-tracking effect scoped to the component lifecycle. Re-runs whenever tracked signals change. `callback` may return a cleanup function. |
 | `onEffect(context, callback, deps)` | Creates a deps-array effect — `callback` receives the unwrapped dependency values and re-runs only when deps change. |
 
-Effects created with `onEffect` are automatically cleaned up when the component unmounts.
+Effects created with `onEffect` are automatically cleaned up when the component unmounts. Hooks should be registered while the view is being constructed; registering them later may miss the lifecycle event. `onCleanup` is **not** called when a `keepAlive` branch is suspended; see [Suspension Hooks](#suspension-hooks). See [When updates run](./concepts.md#when-updates-run) for ordering.
 
 ### Suspension Hooks
 
@@ -28,6 +30,8 @@ Suspension is not unmounting. `onSuspend` / `onResume` run on every hide/show, w
 ```js
 function Poller() {
   let timer;
+  const [data, setData] = createAtom("...");
+  const refresh = () => setData("updated");
   const stop = () => clearInterval(timer);
   const start = () => { timer = setInterval(refresh, 5000); };
 
@@ -65,3 +69,5 @@ If a component — or a hook — is added while its keep-alive scope is already 
 | Hook | Description |
 |---|---|
 | `getDebug(context, ...tagEntries)` | Gets a debug logger from a context, using the context name. |
+
+See [Debugging](./debugging.md) for log levels, filters, and debug mode.

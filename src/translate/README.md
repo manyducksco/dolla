@@ -12,7 +12,7 @@ function App() {
   return html`<button onClick=${() => alert("HELLO!")}>${t("helloButtonLabel")}</button>`;
 }
 
-createRoot("#app")
+await createRoot("#app")
   .plugin(
     createTranslate({
       locale: "en-US",
@@ -34,13 +34,18 @@ createRoot("#app")
 Use `{{key}}` syntax to inject dynamic values:
 
 ```js
-t("welcome", { name: "Alice" });
-// "Hello, Alice!"
+const greeting = t("welcome", { name: "Alice" });
+greeting(); // "Hello, Alice!"
+
+// In a template, pass the getter directly:
+html`<p>${t("welcome", { name: "Alice" })}</p>`;
 ```
 
 ```json
 { "welcome": "Hello, {{name}}!" }
 ```
+
+Options values may be getters, so `t("welcome", { name })` stays reactive when `name` changes.
 
 ### Pluralization
 
@@ -55,14 +60,18 @@ const translations = {
     },
   },
 };
+
+t("apples", { count: 3 })(); // "3 apples"
 ```
+
+`count` may be a getter. Exact-number keys (`apples_(=2)`) and ordinal keys (`apples_ordinal_one`) are also supported.
 
 ### Context-aware keys
 
 Append `_context` to a key to select locale-specific variants:
 
 ```js
-t("greeting", { context: "formal" });
+t("greeting", { context: "formal" })();
 // Selects key "greeting_formal" if it exists
 ```
 
@@ -71,7 +80,7 @@ t("greeting", { context: "formal" });
 Pipe values through formatters using `|`:
 
 ```js
-t("created", { date: "2024-01-15" });
+t("created", { date: "2024-01-15" })();
 // "Created: Jan 15, 2024" (when template is "Created: {{date|datetime}}")
 ```
 
@@ -87,7 +96,7 @@ Register custom formatters in the plugin options:
 ```js
 createTranslate({
   formatters: {
-    uppercase: (locale, value) => String(value).toUpperCase(),
+    uppercase: (locale, value, options) => String(value).toUpperCase(),
   },
 });
 ```
@@ -105,13 +114,32 @@ createTranslate({
 });
 ```
 
+The initial locale is loaded when the plugin runs. `createRoot(...).mount(...)` awaits it, so the app does not mount until the starting locale is ready.
+
+`setLocale(name?)` is async. Await it if you need to know when the new locale is available:
+
+```js
+const { setLocale } = getTranslate(this);
+
+try {
+  await setLocale("fr");
+} catch (error) {
+  console.error("Could not load French", error);
+}
+```
+
+If the requested locale has no translations, `setLocale` rejects. A failed translation fetch also rejects.
+
 ### Reactive `t()`
 
-The `t()` function returns a `Getter<string>` that automatically updates whenever the locale changes.
+The `t()` function returns a `Getter<string>` that automatically updates whenever the locale (or a reactive option) changes.
 
 ```js
 const { t } = getTranslate(this);
+
 const label = t("hello"); // Getter<string>
+html`<p>${label}</p>`;     // reactive
+label();                   // current string
 ```
 
 ### API
@@ -132,12 +160,26 @@ Returns a `Translator` API object:
 
 | Method | Description |
 |---|---|
-| `t(selector, options?)` | Returns a `Getter<string>` for the translated string. |
-| `setLocale(name?)` | Switches the current locale. |
+| `t(selector, options?)` | Returns a `Getter<string>`. Options: `count`, `ordinal`, `context`, and interpolation values. Values may be getters. |
+| `setLocale(name?)` | Switches the current locale. Returns a `Promise<void>`. |
 | `currentLocale` | Getter for the current locale string. |
 | `supportedLocales` | Array of available locale codes. |
-| `format(name, value, options?)` | Applies a named formatter to a value. |
+| `format(name, value, options?)` | Returns a `Getter<string>` for a formatted value. `value` may be a getter. |
 
 #### `compile(strings, path?)`
 
 Compiles translation objects into reusable template arrays. Useful for pre-processing translation files.
+
+```js
+import { compile } from "@manyducks.co/dolla/translate";
+
+const entries = compile({
+  greeting: "Hello, {{name}}!",
+  apples: {
+    one: "{{count}} apple",
+    other: "{{count}} apples",
+  },
+});
+```
+
+`compile` returns `[key, segments]` entries. This is the same representation the translator uses internally; most apps do not need it.

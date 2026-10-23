@@ -51,60 +51,9 @@ throttler.call(() => console.log("hello"));
 
 ## Reactivity helpers
 
-### `peek`
+`peek`, `batch`, `unwrap`, `subscribe`, and `createSetter` are documented in [Reactivity](./reactivity.md).
 
-Read a getter without tracking it as a dependency.
-
-```js
-import { peek } from "@manyducks.co/dolla";
-
-const result = compose(() => {
-  const a = signalA(); // tracks signalA
-  const b = peek(signalB); // reads signalB without tracking
-  return a + b;
-});
-```
-
-### `batch`
-
-Group multiple signal changes into a single update. Effects run once after all changes, not after each one.
-
-```js
-import { batch } from "@manyducks.co/dolla";
-
-batch(() => {
-  setCount(5);
-  setName("Alice");
-  setAge(30);
-  // effect only runs once after this block
-});
-```
-
-### `unwrap`
-
-Unwraps a `MaybeGetter<T>` into a plain `T`. If the value is a getter, it's called and tracked as a dependency.
-
-```js
-import { unwrap } from "@manyducks.co/dolla";
-
-unwrap(42); // 42
-unwrap(count); // current value of count, tracked
-```
-
-### `subscribe`
-
-Subscribe to a getter and run a callback whenever its value changes. Returns an unsubscribe function.
-
-```js
-import { subscribe } from "@manyducks.co/dolla";
-
-const unsub = subscribe(count, (value) => {
-  console.log("count changed to", value);
-});
-// later: unsub();
-```
-
-### `sleep`
+## `sleep`
 
 Returns a Promise that resolves after `ms` milliseconds.
 

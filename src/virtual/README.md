@@ -11,11 +11,11 @@ const [items, setItems] = createAtom(data);
 const [VirtualListView, api] = createVirtualList({
   items,
   keyFn: (item) => item.id,
-  render: (item) => html`<div>${item().text}</div>`,
+  render: (item) => html`<div>${() => item().text}</div>`,
   renderEmpty: () => html`<p>No items</p>`,
 });
 
-createRoot(document.body).mount(() => html`<${VirtualListView} />`);
+await createRoot(document.body).mount(() => html`<${VirtualListView} />`);
 ```
 
 ## Options
@@ -49,6 +49,48 @@ createRoot(document.body).mount(() => html`<${VirtualListView} />`);
 | `isAtBottom` | `Getter<boolean>` — whether the viewport is at the bottom. |
 
 API calls made before the list is mounted are queued and executed automatically when the DOM is ready.
+
+## Caveats
+
+- DOM nodes are **recycled**. Do not rely on node identity or on DOM state surviving a scroll.
+- Keys must be stable and unique. Changing an item's key recreates its node.
+- `render` should be deterministic for a given item value and should read item/index getters inside a getter or `compose`.
+- Heights are measured asynchronously with `ResizeObserver`; provide a reasonable `estimatedItemHeight` to reduce scrollbar jumps.
+- `scrollTo*` calls made before mount are queued, not dropped.
+
+## Recipes
+
+### Infinite scroll
+
+```js
+const [items, setItems] = createAtom(initialItems);
+const [List, api] = createVirtualList({
+  items,
+  keyFn: (item) => item.id,
+  render: (item) => html`<article>${() => item().title}</article>`,
+  threshold: 400,
+  onBottomReached: async () => {
+    const nextPage = await fetchNextPage();
+    setItems((current) => [...current, ...nextPage]);
+  },
+});
+```
+
+### Sticky headers
+
+```js
+const [List] = createVirtualList({
+  items,
+  keyFn: (item) => item.id,
+  render: (item) => html`<div>${() => item().text}</div>`,
+  isSticky: (item) => item.kind === "header",
+  renderSticky: (item) => html`<h3>${() => item().text}</h3>`,
+});
+```
+
+### Chat-style lists
+
+Use `bottomUp: true` to lock the scroll position to the bottom. Prepending older messages triggers scroll anchoring so the viewport does not jump.
 
 ## Features
 

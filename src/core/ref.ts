@@ -6,7 +6,7 @@
 export interface Ref<T> {
   /**
    * Call with no arguments to get the stored value.
-   * Throws an error if the ref is empty (this means you forgot to pass it or it was called after teardown).
+   * Returns `undefined` if the ref has not been set or has been cleaned up.
    */
   (): T;
 

@@ -2,6 +2,8 @@
 
 Dolla's reactivity system is built on signals — lightweight, synchronous, dependency-tracked reactive values.
 
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
+
 ## Atoms
 
 The fundamental building block. `createAtom` returns a tuple of `[getter, setter]`.
@@ -38,26 +40,9 @@ doubled(); // → 50 (recomputed)
 
 `compose` returns a getter. It's lazy — it only recomputes when read and a dependency has changed.
 
-## Effects with `createEffect`
+## Effects
 
-Effects run side-effect code immediately and re-run whenever their tracked dependencies change.
-
-```js
-const stop = createEffect(() => {
-  console.log("count is now", count());
-  // may return a cleanup function
-  return () => console.log("cleanup");
-});
-
-stop(); // stop the effect
-```
-
-`createEffect` has two overloads:
-
-| Signature | Tracking |
-|---|---|
-| `createEffect(fn)` | Auto-tracking — tracks any getter read in `fn` |
-| `createEffect(fn, deps)` | Deps array — `fn` receives unwrapped values from `deps`, re-runs only when those change |
+Effects are covered in [Effects](./effects.md). See [When updates run](./concepts.md#when-updates-run) for how effect timing differs from DOM update timing.
 
 ## Reading without tracking
 

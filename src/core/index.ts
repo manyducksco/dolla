@@ -45,6 +45,7 @@ export type { Ref } from "./ref.js";
 // Temporal Control Flow
 export { debounce } from "./debounce.js";
 export { throttle } from "./throttle.js";
+export { sleep } from "../utils.js";
 
 // Type Helpers
 export { createView, createStore } from "./helpers.js";
