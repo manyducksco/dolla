@@ -30,8 +30,15 @@ export function createRef<T = HTMLElement>(): Ref<T> {
         currentValue = undefined;
       };
     } else {
-      // assert(currentValue !== undefined, "Empty ref!");
       return currentValue;
     }
   }) as Ref<T>;
 }
+
+/**
+ * NOTE: The reason for this structure for refs is a previous 'mixin' feature that let you attach logic to the
+ * creation and destruction of an individual DOM node. This design lets you provide a custom ref that can run
+ * that logic, either in the initial ref function that takes the node (create) or the cleanup function (destroy).
+ *
+ * Mixins were removed in favor of ref callbacks to simplify the design.
+ */
