@@ -10,13 +10,14 @@ export type { Getter, Setter } from "./signals.js";
 export { addStore, getNearestViewNode, getRootElement, getStore, hasOwnStore, hasStore, onCleanup, onEffect, onMount } from "./context.js";
 export { createContext, mountContext, cleanupContext } from "./context.js";
 export type { Context } from "./context.js";
+export { isSuspended, onResume, onSuspend } from "./suspend.js";
 
 // Debug
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
 export type { Markup, MarkupNode } from "./markup/types.js";
-export { createPortal, forEach, hideIf, hideUnless, showIf, showUnless } from "./markup/helpers.js";
+export { createPortal, forEach, hideIf, hideUnless, keepAlive, showIf, showUnless } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
 export { styled } from "./markup/styled.js";
@@ -49,7 +50,7 @@ export { throttle } from "./throttle.js";
 export { createView, createStore } from "./helpers.js";
 
 // Other types
-export type { CSSProperties, Env, InputType, MaybeGetter, Renderable, Store, View } from "../types.js";
+export type { CSSProperties, Env, InputType, KeepAlive, MaybeGetter, Renderable, Store, View } from "../types.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";
 declare global {

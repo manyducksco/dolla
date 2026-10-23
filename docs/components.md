@@ -92,6 +92,26 @@ html`<div>${showIf(isLoggedIn, html`<p>Welcome!</p>`)}</div>`;
 html`<div>${hideIf(isLoading, html`<p>Loading...</p>`)}</div>`;
 ```
 
+By default, hidden content is unmounted. Wrap a branch side in `keepAlive` to suspend it instead:
+
+```js
+import { keepAlive, showIf } from "@manyducks.co/dolla";
+
+html`<div>${showIf(activeTab, keepAlive(html`<${Editor} />`))}</div>`;
+```
+
+A suspended side keeps its signals, stores, DOM, refs, listeners, and effects alive; only its DOM is detached. This is useful for tabs, panels, and forms where losing state would be disruptive.
+
+Things to know:
+
+- `keepAlive` must wrap the **entire branch side**, not a nested child.
+- Effects, timers, and fetches keep running while suspended. Use `onSuspend` / `onResume` (see [Hooks](./hooks.md)) to pause work explicitly.
+- `onCleanup` does **not** run when content is suspended; it runs when the owner unmounts.
+- Suspended content is absent from the document, so `querySelector` won't find it and it is hidden from assistive technology.
+- Focus and text selection are lost. Media and iframe state may reset on resume.
+- Memory is retained until the conditional owner unmounts. There is one retained instance per branch side.
+- `keepAlive` is only meaningful inside a suspend-aware helper such as `showIf` / `hideIf`.
+
 ### `showUnless` / `hideUnless`
 
 Inverse of the above:

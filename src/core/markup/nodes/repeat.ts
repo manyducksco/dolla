@@ -2,7 +2,7 @@ import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
-import { MarkupNode } from "../types.js";
+import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, render } from "../utils.js";
 
 // ----- Types ----- //
@@ -168,7 +168,9 @@ export class RepeatNode<T> extends MarkupNode {
     this.#connectedItems = nextItems;
 
     // Forward pass to insert or move nodes.
-    const parent = this.#root.parentElement!;
+    // Use parentNode so updates work while parked in a DocumentFragment.
+    const parent = this.#root.parentNode as MountTarget | null;
+    if (!parent) return;
     let referenceNode: Node = this.#root;
 
     for (const connected of this.#connectedItems.values()) {

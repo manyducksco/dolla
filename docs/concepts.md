@@ -84,6 +84,16 @@ This means:
 - State is initialized once. No effect cleanup and re-setup on every "render."
 - The mental model is closer to "build a circuit" than "re-render a function."
 
+## Suspending content
+
+By default, hidden conditional content is unmounted. Wrapping a branch side in `keepAlive` suspends it instead: the DOM is detached, but the component graph — signals, contexts, refs, listeners, effects — stays alive.
+
+```js
+showIf(activeTab, keepAlive(html`<${Editor} />`));
+```
+
+This is not async Suspense and it does not pause effects. Hidden content keeps running; use `onSuspend` / `onResume` to pause specific work. `onCleanup` runs only when the content is actually disposed, not when it is suspended. See [Control flow helpers](./components.md#control-flow-helpers) and [Hooks](./hooks.md#suspension-hooks).
+
 ## Context as the wiring harness
 
 Every component receives a context object (`this` inside a view). Contexts form a chain via prototypal inheritance — when you read `this.something`, it walks up the chain until it finds a value.

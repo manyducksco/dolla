@@ -1,5 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import { Context } from "../../context.js";
+import { SUSPEND_SCOPE, SuspendScope } from "../../suspend.js";
 import { MarkupNode, MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter, render } from "../utils.js";
 
@@ -14,6 +15,10 @@ export class PortalNode extends MarkupNode {
   #value: Renderable;
   #parent: MountTarget;
   #childNode?: MarkupNode;
+
+  #scope?: SuspendScope;
+  #parking: DocumentFragment | null = null;
+  #suspended = false;
 
   constructor(context: Context, value: Renderable, parent: MountTarget) {
     super();
@@ -36,15 +41,30 @@ export class PortalNode extends MarkupNode {
       this.#anchor = createTextNode("");
       addChild(logicalParent, this.#anchor, after);
 
-      // Render the content and mount it to the portal target
+      this.#scope = (this.#context as any)[SUSPEND_SCOPE] as SuspendScope | undefined;
+
+      // Render the content and mount it to the portal target. If the nearest
+      // keep-alive scope is already suspended, mount directly into parking so
+      // the content never flashes in the target.
       if (!this.#childNode) {
         this.#childNode = render(this.#value, this.#context);
       }
-      this.#childNode.mount(this.#parent);
+
+      if (this.#scope?.suspended) {
+        this.#suspended = true;
+        this.#childNode.mount(this.#getParking());
+      } else {
+        this.#childNode.mount(this.#parent);
+      }
+
+      this.#scope?.addResource(this);
     }
   }
 
   override unmount(skipDOM = false) {
+    this.#scope?.deleteResource(this);
+    this.#scope = undefined;
+
     if (this.isMounted()) {
       if (!skipDOM) {
         this.#anchor!.parentNode?.removeChild(this.#anchor!);
@@ -55,6 +75,33 @@ export class PortalNode extends MarkupNode {
         this.#childNode.unmount(false);
       }
     }
+
+    this.#suspended = false;
+    this.#parking = null;
+  }
+
+  /**
+   * Called by the nearest keep-alive scope. Moves portal content out of its
+   * target without unmounting it.
+   */
+  suspend() {
+    if (this.#suspended || !this.#childNode) return;
+    this.#suspended = true;
+    this.#childNode.move(this.#getParking());
+  }
+
+  /**
+   * Called by the nearest keep-alive scope. Restores portal content to its
+   * target.
+   */
+  resume() {
+    if (!this.#suspended || !this.#childNode) return;
+    this.#suspended = false;
+    this.#childNode.move(this.#parent);
+  }
+
+  #getParking() {
+    return (this.#parking ??= document.createDocumentFragment());
   }
 
   override move(logicalParent: MountTarget, after?: Node) {

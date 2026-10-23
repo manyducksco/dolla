@@ -1,7 +1,8 @@
-import type { Renderable, View } from "../../types.js";
+import type { KeepAlive, Renderable, View } from "../../types.js";
 import { isArray, isFunction, isNumber, isString } from "../../utils.js";
 import { Context, createContext } from "../context.js";
 import { getDebug } from "../debug.js";
+import { KEEP_ALIVE } from "../symbols.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
@@ -37,6 +38,13 @@ export function isMarkupNode(value: any): value is MarkupNode {
   return value?.[IS_MARKUP_NODE] ?? false;
 }
 
+/**
+ * Returns true if `value` is a keep-alive marker created by `keepAlive()`.
+ */
+export function isKeepAlive(value: any): value is KeepAlive {
+  return value?.[KEEP_ALIVE] === true;
+}
+
 export function isMarkupNodeClass(value: any): value is new (...args: any[]) => MarkupNode {
   return value?.[IS_MARKUP_NODE_CLASS] ?? false;
 }
@@ -62,7 +70,11 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
   function process(item: any) {
     if (item == null || item === false) return;
 
-    if (isArray(item)) {
+    if (isKeepAlive(item)) {
+      // Keep-alive is only meaningful to suspend-aware owners. Everywhere
+      // else it simply renders its content.
+      process(item.content);
+    } else if (isArray(item)) {
       for (let i = 0; i < item.length; i++) {
         process(item[i]);
       }

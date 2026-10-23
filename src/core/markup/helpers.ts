@@ -1,7 +1,9 @@
 import { createMarkup, MaybeGetter, Renderable } from "..";
+import type { KeepAlive } from "../../types";
 import { isFunction } from "../../utils";
-import { type Getter, compose } from "../signals";
-import { DynamicNode } from "./nodes/dynamic";
+import { KEEP_ALIVE } from "../symbols";
+import { type Getter } from "../signals";
+import { BranchNode } from "./nodes/branch";
 import { PortalNode } from "./nodes/portal";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
 
@@ -38,14 +40,29 @@ export function forEach<T>(
  */
 function _conditional(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (isFunction(condition)) {
-    return createMarkup(DynamicNode, {
-      args: [compose(() => (condition() ? whenTruthy : whenFalsy))],
+    return createMarkup(BranchNode, {
+      args: [condition as Getter<any>, whenTruthy, whenFalsy],
     });
   } else if (condition) {
     return whenTruthy;
   } else {
     return whenFalsy;
   }
+}
+
+/**
+ * Marks a conditional branch side as keep-alive. When hidden by `showIf` /
+ * `hideIf`, the content is suspended instead of unmounted, preserving its
+ * signals, DOM, refs, and effects.
+ *
+ * `keepAlive` must wrap the entire branch side:
+ *
+ * ```js
+ * showIf(condition, keepAlive(SomeView))
+ * ```
+ */
+export function keepAlive(content: Renderable): KeepAlive {
+  return { [KEEP_ALIVE]: true, content };
 }
 
 /**

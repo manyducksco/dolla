@@ -3,6 +3,7 @@ import type { Context, GenericState } from "./core/context.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { Getter } from "./core/signals.js";
 import { CSSTemplate } from "./core/markup/css.js";
+import { KEEP_ALIVE } from "./core/symbols.js";
 
 export type Env = "production" | "development";
 
@@ -16,12 +17,22 @@ export type Renderable =
   | Node
   | Markup
   | MarkupNode
+  | KeepAlive
   | false
   | null
   | undefined
   | void
   | Getter<any>
   | Renderable[];
+
+/**
+ * Marks a branch side as keep-alive. Only suspend-aware owners (like `showIf`)
+ * act on this; elsewhere it renders its content normally.
+ */
+export interface KeepAlive {
+  [KEEP_ALIVE]: true;
+  content: Renderable;
+}
 
 export interface BaseProps {
   children?: Renderable;

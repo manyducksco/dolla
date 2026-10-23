@@ -129,7 +129,10 @@ export class DynamicNode extends MarkupNode {
 
     const nodes = toMarkupNodes(this.#context, content);
 
-    const parent = this.#root.parentElement!;
+    // Use the parent node rather than the parent element so updates continue
+    // to work while this node is parked in a DocumentFragment (keep-alive).
+    const parent = this.#root.parentNode as MountTarget | null;
+    if (!parent) return;
     let referenceNode: Node = this.#root;
 
     for (let i = 0; i < nodes.length; i++) {

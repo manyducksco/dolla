@@ -2,7 +2,7 @@ import type { View } from "../../../types.js";
 import { Context, createContext, mountContext, cleanupContext, REPLACING } from "../../context.js";
 import { peek } from "../../signals.js";
 import { pushComponentName, popComponentName } from "../../signal-debug.js";
-import { MarkupNode } from "../types.js";
+import { MarkupNode, type MountTarget } from "../types.js";
 import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";
 import { registerViewInstance, unregisterViewInstance } from "../../hmr.js";
@@ -83,7 +83,9 @@ export class ViewNode<P> extends MarkupNode {
     }
 
     const oldRoot = this.#node?.getRoot();
-    const parent = oldRoot?.parentElement;
+    // Use parentNode so HMR can replace a view that is parked in a
+    // DocumentFragment by keep-alive.
+    const parent = oldRoot?.parentNode as MountTarget | undefined;
     const after = oldRoot?.previousSibling;
 
     this.#node?.unmount();

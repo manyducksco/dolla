@@ -13,6 +13,34 @@ Hooks are just functions that take a Context as the first argument. Following th
 
 Effects created with `onEffect` are automatically cleaned up when the component unmounts.
 
+### Suspension Hooks
+
+These hooks only fire for content inside a `keepAlive` branch side (see `showIf` / `hideIf`):
+
+| Hook | Description |
+|---|---|
+| `onSuspend(context, callback)` | Runs when the nearest keep-alive scope is suspended. For already-mounted content, the DOM is still connected when this runs. |
+| `onResume(context, callback)` | Runs when the nearest keep-alive scope is resumed. The DOM has been reattached when this runs. |
+| `isSuspended(context)` | Returns whether the nearest keep-alive scope is currently suspended. This is a plain boolean read, not a reactive value. |
+
+Suspension is not unmounting. `onSuspend` / `onResume` run on every hide/show, while `onCleanup` runs only when the content is actually disposed. Effects and timers keep running while suspended, so use these hooks to pause polling, playback, or other background work:
+
+```js
+function Poller() {
+  let timer;
+  const stop = () => clearInterval(timer);
+  const start = () => { timer = setInterval(refresh, 5000); };
+
+  onMount(this, start);
+  onSuspend(this, stop);
+  onResume(this, start);
+
+  return html`<p>${data}</p>`;
+}
+```
+
+If a component — or a hook — is added while its keep-alive scope is already suspended, `onSuspend` runs immediately after registration. In that case the content is already detached when the hook fires.
+
 ## Context Hooks
 
 | Hook | Description |
