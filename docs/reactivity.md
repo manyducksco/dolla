@@ -11,8 +11,8 @@ The fundamental building block. `createAtom` returns a tuple of `[getter, setter
 ```js
 const [count, setCount] = createAtom(0);
 
-count();               // get the value → 0
-setCount(5);            // set the value
+count(); // get the value → 0
+setCount(5); // set the value
 setCount((c) => c + 1); // transform via function
 ```
 
@@ -22,7 +22,7 @@ Pass an existing getter to create a "settable" computed value — useful for inp
 const [getValue, setValue] = createAtom("");
 const [input, setInput] = createAtom(getValue);
 
-setInput("temp");  // input() → "temp", value() → ""
+setInput("temp"); // input() → "temp", value() → ""
 setValue("saved"); // both return "saved"
 ```
 
@@ -70,8 +70,8 @@ batch(() => {
 Unwraps a `MaybeGetter<T>` into a plain value. Tracks if the value is a getter. Use `peek` (above) to read without tracking.
 
 ```js
-unwrap(42);     // 42
-unwrap(count);  // calls count() and tracks it
+unwrap(42); // 42
+unwrap(count); // calls count() and tracks it
 ```
 
 ## Subscribing to changes
@@ -87,8 +87,18 @@ const unsub = subscribe(count, (value) => {
 Create a custom setter for an existing getter:
 
 ```js
-const setCount = createSetter(count, (next) => {
-  if (next >= 0) return next;
-  return 0;
+const [count, _setCount] = createAtom(0);
+
+// Create a setter that can accept and parse a string.
+const setCount = createSetter(count, (next: number | string) => {
+  const parsed = Number(next);
+  if (!isNaN(parsed)) {
+    _setCount(parsed);
+  }
 });
+
+// Setters created this way can take a plain value or an update function.
+setCount(1); // count() == 1
+setCount("2"); // count() == 2
+setCount((current) => String(current + 1)); // count() == 3
 ```
