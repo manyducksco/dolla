@@ -4,85 +4,104 @@ Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unl
 
 ## Views
 
-A View returns markup. It receives `(props, context)` and returns a `Renderable` (typically `html\`...\`` or JSX). The `this` inside a View is the same as the `context` argument.
+A View returns markup. It receives `(props, context)` and returns a `Renderable` (typically JSX). The `this` inside a View is the same as the `context` argument.
 
-```js
+```jsx
 function ExampleView(props) {
-  return html`
+  return (
     <section>
-      <header><h2>${props.title}</h2></header>
-      <article>${props.children}</article>
+      <header>
+        <h2>{props.title}</h2>
+      </header>
+      <article>{props.children}</article>
     </section>
-  `;
+  );
 }
 ```
 
 Mount a View onto a DOM node:
 
-```js
+```jsx
 await createRoot("#app").mount(ExampleView);
 ```
 
-Use function declarations (or function expressions), not arrow functions, when the view reads `this` for context or hooks.
+Use the context argument for hooks and context data:
+
+```jsx
+function ExampleView(props, context) {
+  onMount(context, () => {
+    // ...
+  });
+
+  return <p>{props.title}</p>;
+}
+```
+
+`this` also works, but the explicit argument is easier to follow and works with arrow functions.
 
 ### Props and children
 
 Props are passed in the component tag and are available on the `props` argument:
 
-```js
+```jsx
 function Greeting(props) {
-  return html`<p>Hello, ${props.name}!</p>`;
+  return <p>Hello, {props.name}!</p>;
 }
 
 function App() {
-  const [name] = createAtom("Alice");
-  return html`<${Greeting} name=${name} />`;
+  const [getUserName] = createAtom("Alice");
+  return <Greeting name={getUserName} />;
 }
 ```
 
-Pass a getter (`name=${name}`) to keep the prop reactive. Pass a plain value (`name="Alice"`) when it never changes. A child does not re-render when its parent's state changes; see [Props and the run-once model](./templates.md#props-and-the-run-once-model) for the full explanation and patterns.
+Pass a getter (`name={getUserName}`) to keep the prop reactive. Pass a plain value (`name="Alice"`) when it never changes. A child does not re-render when its parent's state changes; see [Props and the run-once model](./templates.md#props-and-the-run-once-model) for the full explanation and patterns.
 
 Children are passed between the component tags and are available as `props.children`:
 
-```js
+```jsx
 function Card(props) {
-  return html`<section class="card">${props.children}</section>`;
+  return <section class="card">{props.children}</section>;
 }
 
-html`<${Card}><p>Hello</p><//>`;
+<Card>
+  <p>Hello</p>
+</Card>;
 ```
 
 ## Stores
 
 A Store returns shared state and logic. Parent creates it with `addStore`, children retrieve it with `getStore`.
 
-```js
+```jsx
 function ExampleStore(props) {
-  const [count, setCount] = createAtom(props.initialCount ?? 0);
-  const increment = (amount = 1) => setCount((c) => c + amount);
-  const decrement = (amount = 1) => setCount((c) => c - amount);
+  const [getCount, setCount] = createAtom(props.initialCount ?? 0);
+  const increment = (amount = 1) => setCount((count) => count + amount);
+  const decrement = (amount = 1) => setCount((count) => count - amount);
   const reset = () => setCount(0);
-  return { count, increment, decrement, reset };
+  return { getCount, increment, decrement, reset };
 }
 
-function App() {
-  addStore(this, ExampleStore, { initialCount: 12 });
+function App(props, context) {
+  addStore(context, ExampleStore, { initialCount: 12 });
 
-  return html`
+  return (
     <main>
-      <${Counter} />
-      <${Counter} />
+      <Counter />
+      <Counter />
     </main>
-  `;
+  );
 }
 
-function Counter() {
-  const store = getStore(this, ExampleStore);
-  return html`
-    <p>Count: ${store.count}</p>
-    <button onclick=${store.increment}>+</button>
-    <button onclick=${store.decrement}>-</button>
-  `;
+function Counter(props, context) {
+  const store = getStore(context, ExampleStore);
+
+  return (
+    <>
+      <p>Count: {store.getCount}</p>
+      <button onClick={store.increment}>+</button>
+      <button onClick={store.decrement}>-</button>
+    </>
+  );
 }
 ```
 
@@ -92,33 +111,42 @@ A store instance is available to all components in its subtree. Check existence 
 
 `createView` and `createStore` are identity functions used for type inference. They return the function you pass in unchanged.
 
-```ts
+```tsx
 const Greeting = createView(function (props: { name: string }) {
-  this.name = "Greeting";
-  return html`<p>${props.name}</p>`;
+  return <p>{props.name}</p>;
 });
 
 const CounterStore = createStore(function (props: { initial: number }) {
-  const [count, setCount] = createAtom(props.initial);
-  return { count, increment: () => setCount((c) => c + 1) };
+  const [getCount, setCount] = createAtom(props.initial);
+  return { getCount, increment: () => setCount((count) => count + 1) };
 });
 ```
 
-They infer `this` and `context` as `Context` and type the props argument. They do not change runtime behavior. See [Advanced internals](./advanced.md#core-types) for the underlying types.
+They infer `this` and `context` as `Context` and type the props argument. They do not change runtime behavior. For props that may be getters, type them as `T | Getter<T>` or use `MaybeGetter<T>`. See [Advanced internals](./advanced.md#core-types).
 
 ## Lifecycle
 
-Components hook into their lifecycle with `onMount`, `onCleanup`, and `onEffect`. The first argument is always the context (`this`):
+Components hook into their lifecycle with `onMount`, `onCleanup`, and `onEffect`. The first argument is the context:
 
-```js
-function Example() {
-  onMount(this, () => { /* component is on the page */ });
-  onCleanup(this, () => { /* component is leaving the page */ });
-  onEffect(this, () => { /* auto-tracking effect, cleaned up on unmount */ });
+```jsx
+function Example(props, context) {
+  onMount(context, () => {
+    // The component is on the page.
+  });
 
-  return html`<p>Hello</p>`;
+  onCleanup(context, () => {
+    // The component is leaving the page.
+  });
+
+  onEffect(context, () => {
+    // Auto-tracking effect, cleaned up on unmount.
+  });
+
+  return <p>Hello</p>;
 }
 ```
+
+See [Hooks](./hooks.md) for the full lifecycle and visibility hook reference.
 
 ## Control flow helpers
 
@@ -126,20 +154,20 @@ function Example() {
 
 Conditionally render content:
 
-```js
-html`<div>${showIf(isLoggedIn, html`<p>Welcome!</p>`)}</div>`;
-html`<div>${showIf(isLoading, html`<p>Loading...</p>`)}</div>`;
-html`<div>${hideIf(isLoading, html`<p>Content</p>`, html`<p>Loading...</p>`)}</div>`;
+```jsx
+{showIf(getIsLoggedIn, <p>Welcome!</p>)}
+{showIf(getIsLoading, <p>Loading...</p>)}
+{hideIf(getIsLoading, <p>Content</p>, <p>Loading...</p>)}
 ```
 
 Conditions can be getters (reactive) or plain values (evaluated once).
 
 By default, hidden content is unmounted. Wrap a branch side in `keepAlive` to hide it without unmounting:
 
-```js
+```jsx
 import { keepAlive, showIf } from "@manyducks.co/dolla";
 
-html`<div>${showIf(activeTab, keepAlive(html`<${Editor} />`))}</div>`;
+{showIf(getActiveTab, keepAlive(<Editor />))}
 ```
 
 A hidden side keeps its signals, stores, DOM, refs, listeners, and effects alive; only its DOM is detached. This is useful for tabs, panels, and forms where losing state would be disruptive.
@@ -154,27 +182,33 @@ Things to know:
 - Memory is retained until the conditional owner unmounts. There is one retained instance per branch side.
 - `keepAlive` is only meaningful inside a helper that supports it, such as `showIf` / `hideIf`.
 
+See [Keep-alive caveats](./advanced.md#keep-alive-caveats) for the edge cases.
+
 ### `branch`
 
 Renders one of several cases based on a reactive value, like a `switch` statement:
 
-```js
-html`${branch(status, {
-  loading: html`<p>Loading...</p>`,
-  ready: html`<${Profile} />`,
-  error: html`<p>Something went wrong.</p>`,
-}, html`<p>Unknown status</p>`)}`;
+```jsx
+{branch(
+  getStatus,
+  {
+    loading: <p>Loading...</p>,
+    ready: <Profile />,
+    error: <p>Something went wrong.</p>,
+  },
+  <p>Unknown status</p>,
+)}
 ```
 
 Pass cases as an object keyed by the match values, or as an array of `[value, content]` tuples when the match values are not strings or symbols:
 
-```js
+```jsx
 const tabs = [
-  [tabA, html`<${TabA} />`],
-  [tabB, html`<${TabB} />`],
+  [tabA, <TabA />],
+  [tabB, <TabB />],
 ];
 
-html`${branch(activeTab, tabs, html`<${EmptyTab} />`)}`;
+{branch(getActiveTab, tabs, <EmptyTab />)}
 ```
 
 - Values can be getters (reactive) or plain values (evaluated once).
@@ -186,36 +220,31 @@ html`${branch(activeTab, tabs, html`<${EmptyTab} />`)}`;
 
 ### `showUnless` / `hideUnless`
 
-Inverse of the above:
-
-```js
-html`<div>${showUnless(isLoggedIn, html`<p>Please log in.</p>`)}</div>`;
-```
-
-| Helper        | Condition truthy | Condition falsy | Alias        |
-| ------------- | ---------------- | --------------- | ------------ |
-| `showIf`      | `content`        | `fallback`      | —            |
-| `hideIf`      | `fallback`       | `content`       | —            |
-| `showUnless`  | `fallback`       | `content`       | `hideIf`     |
-| `hideUnless`  | `content`        | `fallback`      | `showIf`     |
-
-`showUnless` / `hideUnless` are aliases; the table shows why they are easy to mix up.
+`showUnless` and `hideUnless` are aliases of `hideIf` and `showIf`. Prefer `showIf` / `hideIf` in new code; the aliases exist for readability in some templates.
 
 ### `forEach`
 
 Render a dynamic, keyed list:
 
-```js
-html`<ul>${forEach(items, (item) => item.id, (item, index) => {
-  return html`<li>${() => item().name}</li>`;
-})}</ul>`;
+```jsx
+<ul>
+  {forEach(
+    getItems,
+    (item) => item.id,
+    (getItem, getIndex) => (
+      <li>
+        {getIndex}: {() => getItem().name}
+      </li>
+    ),
+  )}
+</ul>
 ```
 
 `forEach` takes a list or a getter for a list:
 
 - The key function receives plain `(item, index)` values.
 - The render function receives `item` and `index` as **getters**.
-- Read those getters inside another getter or `compose` to stay reactive. Writing `${item.name}` is wrong; writing `${item().name}` evaluates once.
+- Read those getters inside another getter or `compose` to stay reactive. Writing `{getItem().name}` evaluates once.
 - Items with the same key reuse their existing DOM node when the list changes.
 - For a static array that never changes, a plain `.map()` is fine. Use `forEach` when the list is reactive.
 
@@ -223,12 +252,13 @@ html`<ul>${forEach(items, (item) => item.id, (item, index) => {
 
 Render content into a different DOM element:
 
-```js
+```jsx
 import { createPortal } from "@manyducks.co/dolla";
 
 function Modal() {
-  return createPortal(document.getElementById("modal-root"),
-    html`<div class="modal">...</div>`
+  return createPortal(
+    document.getElementById("modal-root"),
+    <div class="modal">...</div>,
   );
 }
 ```
@@ -239,15 +269,17 @@ Portal content is physically outside the logical parent. Make sure the target ex
 
 The context object carries lifecycle state, stores, debug loggers, and arbitrary data down the component tree via prototypal inheritance.
 
-```js
-function Parent() {
-  const [user] = createAtom({ name: "Alice" });
-  this.user = user;
-  return html`<${Child} />`;
+```jsx
+function Parent(props, context) {
+  const [getUser] = createAtom({ name: "Alice" });
+  context.user = getUser;
+  return <Child />;
 }
 
-function Child() {
-  // this.user is inherited from the parent's context
-  return html`<p>${() => this.user().name}</p>`;
+function Child(props, context) {
+  // context.user is inherited from the parent's context.
+  return <p>{() => context.user().name}</p>;
 }
 ```
+
+See [Context as the wiring harness](./concepts.md#context-as-the-wiring-harness) for the bigger picture.

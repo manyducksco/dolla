@@ -2,11 +2,11 @@
 
 `createRoot` mounts a Dolla app into a DOM element.
 
-```js
-import { createRoot, html } from "@manyducks.co/dolla";
+```jsx
+import { createRoot } from "@manyducks.co/dolla";
 
 function App() {
-  return html`<h1>Hello</h1>`;
+  return <h1>Hello</h1>;
 }
 
 await createRoot("#app").mount(App);
@@ -24,16 +24,16 @@ await createRoot(app).mount(App);
 ## Options
 
 | Option | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `debug` | `boolean` | Adds `data-view` attributes to elements based on the nearest view name. See [Debugging](./debugging.md). |
 
 ## `mount(content)`
 
 `mount` accepts either a View function or any `Renderable`:
 
-```js
+```jsx
 await createRoot("#app").mount(App);
-await createRoot("#app").mount(html`<main>Static content</main>`);
+await createRoot("#app").mount(<main>Static content</main>);
 ```
 
 `mount` returns a `Promise<void>`. It awaits all registered plugins before mounting the content. Calling `mount` while the root is already mounted is a no-op.
@@ -56,7 +56,7 @@ root.unmount();
 A plugin is a function that receives the root context. It can attach services, stores, or lifecycle behavior:
 
 ```js
-import { onMount, onCleanup } from "@manyducks.co/dolla";
+import { onCleanup, onMount } from "@manyducks.co/dolla";
 
 const analytics = (context) => {
   context.track = (event) => {
@@ -93,10 +93,16 @@ type DollaPlugin = (context: Context) => any;
 
 A rejected plugin promise rejects `mount`. A view that throws during mounting also rejects `mount`. In that case the root may be partially mounted; call `unmount()` before retrying if needed.
 
-```js
+```jsx
 try {
   await createRoot("#app").mount(App);
 } catch (error) {
   console.error("Failed to mount", error);
 }
 ```
+
+## Next steps
+
+- [Getting started](./getting-started.md) — project setup
+- [Components](./components.md) — views and stores
+- [HMR](./hmr.md) — development-time view replacement

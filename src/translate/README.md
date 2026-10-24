@@ -2,14 +2,14 @@
 
 A simple i18n system. Put your translated strings in a JSON file and access them with the `t` function.
 
-```js
-import { createRoot, html } from "@manyducks.co/dolla";
+```jsx
+import { createRoot } from "@manyducks.co/dolla";
 import { createTranslate, getTranslate } from "@manyducks.co/dolla/translate";
 
-function App() {
-  const { t } = getTranslate(this);
+function App(props, context) {
+  const { t } = getTranslate(context);
 
-  return html`<button onClick=${() => alert("HELLO!")}>${t("helloButtonLabel")}</button>`;
+  return <button onClick={() => alert("HELLO!")}>{t("helloButtonLabel")}</button>;
 }
 
 await createRoot("#app")
@@ -20,7 +20,7 @@ await createRoot("#app")
         "en-US": {
           helloButtonLabel: "Hello",
         },
-        ja: () => fetch("/locales/ja.json").then((res) => res.json()),
+        ja: () => fetch("/locales/ja.json").then((response) => response.json()),
       },
     }),
   )
@@ -34,18 +34,18 @@ await createRoot("#app")
 Use `{{key}}` syntax to inject dynamic values:
 
 ```js
-const greeting = t("welcome", { name: "Alice" });
-greeting(); // "Hello, Alice!"
+const getGreeting = t("welcome", { name: "Alice" });
+getGreeting(); // "Hello, Alice!"
 
 // In a template, pass the getter directly:
-html`<p>${t("welcome", { name: "Alice" })}</p>`;
+<p>{t("welcome", { name: "Alice" })}</p>;
 ```
 
 ```json
 { "welcome": "Hello, {{name}}!" }
 ```
 
-Options values may be getters, so `t("welcome", { name })` stays reactive when `name` changes.
+Options values may be getters, so `t("welcome", { name: getUserName })` stays reactive when the name changes.
 
 ### Pluralization
 
@@ -81,10 +81,11 @@ Pipe values through formatters using `|`:
 
 ```js
 t("created", { date: "2024-01-15" })();
-// "Created: Jan 15, 2024" (when template is "Created: {{date|datetime}}")
+// "Created: Jan 15, 2024" (when the template is "Created: {{date|datetime}}")
 ```
 
 Available built-in formatters:
+
 - `{{value|number}}` — uses `Intl.NumberFormat`
 - `{{value|datetime}}` — uses `Intl.DateTimeFormat`
 - `{{value|list}}` — uses `Intl.ListFormat`
@@ -109,7 +110,7 @@ Pass a fetch function instead of a static object:
 createTranslate({
   translations: {
     "en-US": { hello: "Hello" },
-    fr: () => fetch("/locales/fr.json").then((r) => r.json()),
+    fr: () => fetch("/locales/fr.json").then((response) => response.json()),
   },
 });
 ```
@@ -119,7 +120,7 @@ The initial locale is loaded when the plugin runs. `createRoot(...).mount(...)` 
 `setLocale(name?)` is async. Await it if you need to know when the new locale is available:
 
 ```js
-const { setLocale } = getTranslate(this);
+const { setLocale } = getTranslate(context);
 
 try {
   await setLocale("fr");
@@ -134,13 +135,16 @@ If the requested locale has no translations, `setLocale` rejects. A failed trans
 
 The `t()` function returns a `Getter<string>` that automatically updates whenever the locale (or a reactive option) changes.
 
-```js
-const { t } = getTranslate(this);
+```jsx
+function App(props, context) {
+  const { t } = getTranslate(context);
+  const getLabel = t("hello");
 
-const label = t("hello"); // Getter<string>
-html`<p>${label}</p>`;     // reactive
-label();                   // current string
+  return <p>{getLabel}</p>; // reactive
+}
 ```
+
+`getLabel()` returns the current string outside a template.
 
 ### API
 
@@ -149,7 +153,7 @@ label();                   // current string
 Creates a DollaPlugin for internationalization.
 
 | Option | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `translations` | `Record<string, LocalizedStrings \| () => LocalizedStrings \| Promise<LocalizedStrings>>` | — | Locale-keyed translation objects or async fetch functions. |
 | `locale` | `string` | browser default | Initial locale to load. |
 | `formatters` | `Record<string, Formatter>` | — | Custom formatter functions. |
@@ -159,7 +163,7 @@ Creates a DollaPlugin for internationalization.
 Returns a `Translator` API object:
 
 | Method | Description |
-|---|---|
+| --- | --- |
 | `t(selector, options?)` | Returns a `Getter<string>`. Options: `count`, `ordinal`, `context`, and interpolation values. Values may be getters. |
 | `setLocale(name?)` | Switches the current locale. Returns a `Promise<void>`. |
 | `currentLocale` | Getter for the current locale string. |

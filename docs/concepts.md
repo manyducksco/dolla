@@ -2,19 +2,19 @@
 
 Dolla apps are built from three ideas: **signals**, **run-once views**, and **context inheritance**.
 
-Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown. See [Templates](./templates.md) for markup syntax and props.
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown. See [Templates](./templates.md) for JSX syntax and props.
 
 ## Signals are the only dynamic thing
 
 The component function runs exactly once. It returns a static tree of markup. Nothing ever re-runs that function. Instead, you place **getters** (the read-half of a signal) into the template where dynamic values are needed. The framework tracks which getters are used in which parts of the DOM and updates only those nodes when a signal changes.
 
-```js
+```jsx
 function Counter() {
-  const [count, setCount] = createAtom(0);
+  const [getCount, setCount] = createAtom(0);
 
   // This runs once. But the DOM updates when count changes,
-  // because count (a getter) is interpolated in the template.
-  return html`<p>${count}</p>`;
+  // because getCount (a getter) is interpolated in the template.
+  return <p>{getCount}</p>;
 }
 ```
 
@@ -24,45 +24,47 @@ There is no virtual DOM, no diffing, no re-rendering. Every update is a pinpoint
 
 A signal produces a getter — a function that returns the current value and registers itself as a dependency of whatever tracking context it's called in.
 
-```js
+```jsx
 // Passing a getter keeps things reactive:
-return html`<p>${count}</p>`;
+return <p>{getCount}</p>;
 
 // Calling the getter produces a static value — reactivity is lost:
-return html`<p>${count()}</p>`;
+return <p>{getCount()}</p>;
 
 // Wrap in a function to re-introduce reactivity:
-return html`<p>${() => count()}</p>`;
+return <p>{() => getCount() * 2}</p>;
 ```
 
-The same rule applies everywhere — `compose`, `createEffect`, `onEffect`, `showIf`, CSS template functions, and any markup interpolation. If you pass a getter, the framework tracks it. If you pass a plain value, it's used once.
+The same rule applies everywhere — `compose`, `onEffect`, `showIf`, CSS template functions, and any markup interpolation. If you pass a getter, the framework tracks it. If you pass a plain value, it's used once.
 
 ```js
-compose(() => count() * 2);  // tracks count — reactive
-compose(count() * 2);        // plain number — static
+compose(() => getCount() * 2);  // tracks getCount — reactive
+compose(getCount() * 2);        // plain number — static
 
-showIf(() => user().isLoggedIn, ...); // reactive
-showIf(user().isLoggedIn, ...);       // static
+showIf(() => getUser().isLoggedIn, ...); // reactive
+showIf(getUser().isLoggedIn, ...);       // static
 ```
 
-### Kinds of signals
+### Signals and effects
 
 | Primitive | Purpose |
-|---|---|
+| --- | --- |
 | `createAtom(value)` | Mutable state — returns `[getter, setter]` |
 | `compose(fn)` | Derived state — returns a getter that recomputes when dependencies change |
-| `createEffect(fn)` | Side-effect — runs `fn` immediately, re-runs when tracked getters change |
+| `onEffect(context, fn)` | Side-effect scoped to a component lifecycle — runs on mount, re-runs when tracked getters change |
+
+For effects outside the context tree, see [Standalone effects](./advanced.md#standalone-effects).
 
 ### Tracking contexts
 
 Getters are only tracked when called inside a **tracking context**:
 
 - The function passed to `compose`
-- The function passed to `createEffect` / `onEffect`
-- A getter interpolated in an `html` template (`${someGetter}`)
+- The function passed to `onEffect`
+- A getter interpolated in JSX (`{someGetter}`)
 - The condition function of `showIf` / `hideIf`
 - A function value in a `css` template
-- Reactive attributes and props (`value=${getter}`)
+- Reactive attributes and props (`value={getValue}`)
 
 Outside these, calling a getter returns the current value without registering a dependency. Use `peek(getter)` to explicitly read without tracking even inside a tracking context.
 
@@ -70,22 +72,23 @@ Outside these, calling a getter returns the current value without registering a 
 
 This is the single most important thing to internalize. A view function is called once when the component is created. It sets up signals, wires up effects, and returns a static markup description. There are no re-renders, no reconciliation, no lifecycle methods that re-execute the function.
 
-```js
+```jsx
 function Welcome(props) {
   // This runs once. `props.name` is a getter because the parent passed
-  // name=${userName} instead of a plain string.
-  const greeting = compose(() => `Hello, ${props.name()}!`);
+  // name={getUserName} instead of a plain string.
+  const getGreeting = compose(() => `Hello, ${unwrap(props.name)}!`);
 
-  return html`<p>${greeting}</p>`;
+  return <p>{getGreeting}</p>;
 }
 
 // Parent:
-html`<${Welcome} name=${userName} />`;
+<Welcome name={getUserName} />;
 ```
 
-If `userName` changes, only the text node inside `<p>` updates — `Welcome` does not re-run, `compose` does not re-run until it is read, and no diffing occurs.
+If `getUserName` changes, only the text node inside `<p>` updates — `Welcome` does not re-run, `compose` does not re-run until it is read, and no diffing occurs.
 
 This means:
+
 - Event handlers, timers, and subscriptions set up in the component persist for its entire lifetime. No need to re-attach them.
 - State is initialized once. No effect cleanup and re-setup on every "render."
 - The mental model is closer to "build a circuit" than "re-render a function."
@@ -94,8 +97,8 @@ This means:
 
 By default, hidden conditional content is unmounted. Wrapping a branch side in `keepAlive` hides it instead: the DOM is detached, but the component graph — signals, contexts, refs, listeners, effects — stays alive.
 
-```js
-showIf(activeTab, keepAlive(html`<${Editor} />`));
+```jsx
+{showIf(getActiveTab, keepAlive(<Editor />))}
 ```
 
 This is not React Suspense and it does not pause effects. Hidden content keeps running; use `onHide` / `onShow` to pause specific work. `onCleanup` runs only when the content is actually disposed, not when it is hidden. See [Control flow helpers](./components.md#control-flow-helpers) and [Hooks](./hooks.md#visibility-hooks).
@@ -107,7 +110,7 @@ It helps to know the order of events when you call a setter.
 1. Signal writes notify dependent effects **synchronously**, unless they are inside `batch`.
 2. Markup and attribute DOM updates are scheduled through a **microtask** and coalesced. Several writes in one synchronous block produce one DOM pass.
 3. `batch(fn)` groups signal effects until `fn` returns. DOM updates still flush on the microtask.
-4. `createEffect` runs its callback immediately when created. `onEffect` runs on mount, after the view's DOM is mounted.
+4. `onEffect` runs on mount, after the view's DOM is mounted.
 5. `onMount` listeners run after the subtree mounts. `onCleanup` runs when the component is disposed.
 6. `onHide` / `onShow` run when content becomes hidden or visible, including when a `keepAlive` branch hides or shows. See [Hooks](./hooks.md#visibility-hooks).
 
@@ -121,37 +124,37 @@ In tests, the internal `flushPendingUpdates` helper can force the DOM queue to r
 
 ## Context as the wiring harness
 
-Every component receives a context object (`this` inside a view). Contexts form a chain via prototypal inheritance — when you read `this.something`, it walks up the chain until it finds a value.
+Every component receives a context object as its second argument. Contexts form a chain via prototypal inheritance — when you read `context.something`, it walks up the chain until it finds a value.
 
-```js
-function Parent() {
-  // Attach signals directly to the context
-  const [user] = createAtom({ name: "Alice" });
-  this.user = user;
-  return html`<${Child} />`;
+```jsx
+function Parent(props, context) {
+  // Attach signals directly to the context.
+  const [getUser] = createAtom({ name: "Alice" });
+  context.user = getUser;
+  return <Child />;
 }
 
-function Child() {
-  // Inherited from parent's context
-  return html`<p>${() => this.user().name}</p>`;
+function Child(props, context) {
+  // Inherited from the parent's context.
+  return <p>{() => context.user().name}</p>;
 }
 ```
 
+`this` is the same object inside a view, so `function Child() { return <p>{() => this.user().name}</p>; }` also works. The explicit `context` argument is easier to follow and works with arrow functions.
+
 The context chain serves as the dependency injection system for:
 
-- **Stores** — `addStore` attaches a store instance to the current context; `getStore` walks up the chain to find it
+- **Stores** — `addStore(context, Store)` attaches a store instance to the current context; `getStore(context, Store)` walks up the chain to find it
 - **Router state** — accessed via `getRouter(context)`
 - **Translate state** — accessed via `getTranslate(context)`
-- **Arbitrary data** — any property you set on `this` becomes available to descendants
+- **Arbitrary data** — any property you set on `context` becomes available to descendants
 
 ## Plugins extend the context
 
 A plugin is a function that receives the root context and can attach anything to it. The router and translate systems are plugins:
 
 ```js
-const routes = [
-  { path: "/", view: HomePage },
-];
+const routes = [{ path: "/", view: HomePage }];
 
 createRoot("#app")
   .plugin(createRouter({ routes }))
@@ -182,19 +185,24 @@ batch(() => {
 
 ## Stores vs Views
 
-A View returns markup. A Store returns state and logic. They share the same function shape and both have access to the context (`this`), but they serve different purposes.
+A View returns markup. A Store returns state and logic. They share the same function shape and both receive `(props, context)`, but they serve different purposes.
 
-```js
+```jsx
 // Store — state and logic, no markup
 function CounterStore() {
-  const [count, setCount] = createAtom(0);
-  return { count, increment: () => setCount(c => c + 1) };
+  const [getCount, setCount] = createAtom(0);
+  return { getCount, increment: () => setCount((count) => count + 1) };
 }
 
 // View — markup, uses the store
-function Counter() {
-  const store = getStore(this, CounterStore);
-  return html`<p>${store.count}</p>`;
+function Counter(props, context) {
+  const store = getStore(context, CounterStore);
+  return <p>{store.getCount}</p>;
+}
+
+function App(props, context) {
+  addStore(context, CounterStore);
+  return <Counter />;
 }
 ```
 
@@ -205,14 +213,16 @@ Stores are created once per subtree (via `addStore`) and shared by all child vie
 If you're coming from another framework, here's how the pieces map:
 
 | Concept | In Dolla |
-|---|---|
+| --- | --- |
 | Component re-render | Getters in the template — pinpoint DOM updates |
 | `useState` / `setState` | `createAtom` |
 | `useMemo` | `compose` |
-| `useEffect` | `createEffect` (standalone) or `onEffect` (component-scoped) |
+| `useEffect` | `onEffect` (component-scoped) |
 | `useCallback` | A plain function — no re-renders means no need for referential stability |
-| `useContext` | `this.property` or `getStore(this, Store)` |
+| `useContext` | `getStore(context, Store)` or a context property |
 | `useRef` | `createRef` |
 | Virtual DOM / diffing | None — direct DOM updates via tracked dependencies |
 | `useReducer` | A custom setter function wrapping `createAtom` |
 | React Suspense | No direct equivalent. Use a pending getter with `showIf` (optionally `keepAlive`). The router exposes `progress` and `errorView` for route-level async, but it does not pause rendering or show a fallback. |
+
+See [Coming from React](./from-react.md) for side-by-side examples.

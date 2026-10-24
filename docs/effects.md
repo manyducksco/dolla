@@ -1,73 +1,73 @@
 # Effects
 
-Effects run side-effect code in response to state changes. Dolla provides two overloads for `createEffect` and a lifecycle-scoped variant `onEffect`.
+Effects run side-effect code in response to state changes. Inside a view or store, use `onEffect(context, callback)`. It tracks the getters read in the callback, re-runs when they change, and is cleaned up automatically when the context unmounts.
 
-See [When updates run](./concepts.md#when-updates-run) for the difference between synchronous effects and microtask DOM updates, and for the order of lifecycle hooks.
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
 
 ## Auto-tracking effect
 
-When called with a single function, `createEffect` tracks any getters read inside the callback. The effect re-runs whenever a tracked value changes.
+```jsx
+import { createAtom, onEffect } from "@manyducks.co/dolla";
 
-```js
-import { createEffect, createAtom } from "@manyducks.co/dolla";
+function Counter(props, context) {
+  const [getCount, setCount] = createAtom(0);
 
-const [count, setCount] = createAtom(0);
+  onEffect(context, () => {
+    console.log("Count is:", getCount()); // getCount() is tracked
+  });
 
-const stop = createEffect(() => {
-  console.log("Count is:", count()); // count() is tracked
-});
-
-setCount(1); // logs "Count is: 1"
-setCount(2); // logs "Count is: 2"
-
-stop(); // manually stop the effect
+  return <button onClick={() => setCount((count) => count + 1)}>{getCount}</button>;
+}
 ```
+
+The effect runs when the view's context mounts, then whenever `getCount` changes. No dependency array is needed.
 
 ### Cleanup
 
-The callback may return a cleanup function that runs before the next invocation and when the effect is stopped:
+The callback may return a cleanup function that runs before the next invocation and when the context unmounts:
 
-```js
-createEffect(() => {
-  const timer = setInterval(() => { /* ... */ }, 1000);
-  return () => clearInterval(timer);
+```jsx
+onEffect(context, () => {
+  const id = setInterval(() => {
+    // ...
+  }, 1000);
+
+  return () => clearInterval(id);
 });
 ```
 
 ## Deps-array effect
 
-Pass a second argument — an array of getters — to avoid auto-tracking. The callback receives the unwrapped values:
+Pass an array of getters as the third argument to avoid auto-tracking. The callback receives the unwrapped values:
 
-```js
-createEffect((count, name) => {
-  console.log(`${name}: ${count}`);
-}, [count, name]);
+```jsx
+onEffect(
+  context,
+  (count, name) => {
+    console.log(`${name}: ${count}`);
+  },
+  [getCount, getName],
+);
 ```
 
 The effect only re-runs when the values of the listed getters change.
 
-## Lifecycle-scoped effects
+## When it runs
 
-`createEffect` is standalone. Inside a component, use `onEffect(context, callback)` — it's automatically cleaned up when the component unmounts:
+`onEffect` registers the effect on mount, after the view's DOM is mounted. It is the usual choice inside a view or store.
 
-```js
-import { onEffect, html } from "@manyducks.co/dolla";
+- Use `onEffect` for work that should re-run when tracked state changes.
+- Use `onMount` for one-time setup that does not need to re-run.
+- Use `onCleanup` for teardown that is not tied to an effect.
 
-function Timer() {
-  const [elapsed, setElapsed] = createAtom(0);
+See [When updates run](./concepts.md#when-updates-run) for the difference between synchronous effects and microtask DOM updates.
 
-  onEffect(this, () => {
-    const id = setInterval(() => setElapsed((c) => c + 1), 1000);
-    return () => clearInterval(id);
-  });
+## Outside the context tree
 
-  return html`<p>${elapsed}s</p>`;
-}
-```
+If you need an effect where there is no view or store context — for example, in a module-level integration or a test harness — use the standalone `createEffect` described in [Standalone effects](./advanced.md#standalone-effects). Prefer `onEffect` whenever a context is available.
 
-`onEffect` supports both overloads:
+## Next steps
 
-```js
-onEffect(this, callback);              // auto-tracking
-onEffect(this, callback, [dep1, dep2]); // deps array
-```
+- [Hooks](./hooks.md) — lifecycle and visibility hooks
+- [Reactivity](./reactivity.md) — atoms, `compose`, `batch`, `peek`
+- [Mental model](./concepts.md#when-updates-run) — update timing

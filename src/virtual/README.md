@@ -2,26 +2,27 @@
 
 A high-performance virtual scrolling list with a recycled DOM pool, sticky headers, and infinite scroll support.
 
-```js
-import { createRoot, createAtom, html } from "@manyducks.co/dolla";
+```jsx
+import { createAtom, createRoot } from "@manyducks.co/dolla";
 import { createVirtualList } from "@manyducks.co/dolla/virtual";
 
-const data = Array.from({ length: 10000 }, (_, i) => ({ id: i, text: `Item ${i}` }));
-const [items, setItems] = createAtom(data);
+const data = Array.from({ length: 10000 }, (_, index) => ({ id: index, text: `Item ${index}` }));
+const [getItems, setItems] = createAtom(data);
+
 const [VirtualListView, api] = createVirtualList({
-  items,
+  items: getItems,
   keyFn: (item) => item.id,
-  render: (item) => html`<div>${() => item().text}</div>`,
-  renderEmpty: () => html`<p>No items</p>`,
+  render: (getItem) => <div>{() => getItem().text}</div>,
+  renderEmpty: () => <p>No items</p>,
 });
 
-await createRoot(document.body).mount(() => html`<${VirtualListView} />`);
+await createRoot(document.body).mount(() => <VirtualListView />);
 ```
 
 ## Options
 
 | Option | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `items` | `Getter<T[]>` | — | Reactive array of items to display. |
 | `keyFn` | `(item: T) => string \| number` | — | Stable identifier for each item. |
 | `render` | `(item: Getter<T>, index: Getter<number>, context: VirtualListContext) => any` | — | Renders a single item. |
@@ -41,7 +42,7 @@ await createRoot(document.body).mount(() => html`<${VirtualListView} />`);
 `createVirtualList` returns a tuple `[View, VirtualListAPI]`:
 
 | Method | Description |
-|---|---|
+| --- | --- |
 | `scrollToBottom(smooth?)` | Scroll to the bottom of the list. |
 | `scrollToTop(smooth?)` | Scroll to the top of the list. |
 | `scrollToIndex(index, options?)` | Scroll to a specific index. Options: `{ smooth?, align?: "start" \| "center" \| "end" }` |
@@ -62,12 +63,13 @@ API calls made before the list is mounted are queued and executed automatically 
 
 ### Infinite scroll
 
-```js
-const [items, setItems] = createAtom(initialItems);
+```jsx
+const [getItems, setItems] = createAtom(initialItems);
+
 const [List, api] = createVirtualList({
-  items,
+  items: getItems,
   keyFn: (item) => item.id,
-  render: (item) => html`<article>${() => item().title}</article>`,
+  render: (getItem) => <article>{() => getItem().title}</article>,
   threshold: 400,
   onBottomReached: async () => {
     const nextPage = await fetchNextPage();
@@ -78,13 +80,13 @@ const [List, api] = createVirtualList({
 
 ### Sticky headers
 
-```js
+```jsx
 const [List] = createVirtualList({
-  items,
+  items: getItems,
   keyFn: (item) => item.id,
-  render: (item) => html`<div>${() => item().text}</div>`,
+  render: (getItem) => <div>{() => getItem().text}</div>,
   isSticky: (item) => item.kind === "header",
-  renderSticky: (item) => html`<h3>${() => item().text}</h3>`,
+  renderSticky: (getItem) => <h3>{() => getItem().text}</h3>,
 });
 ```
 

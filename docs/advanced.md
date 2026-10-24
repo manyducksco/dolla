@@ -5,7 +5,7 @@ This page covers public exports that are lower-level than the normal helpers. Th
 ## Core types
 
 | Type | Meaning |
-|---|---|
+| --- | --- |
 | `Renderable` | Everything accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, `null`/`false`/`undefined`, and keep-alive markers. |
 | `MaybeGetter<T>` | `T` or `() => T`. |
 | `Getter<T>` | A function returning the current value and registering a dependency when read in a tracking context. |
@@ -37,12 +37,11 @@ For intrinsic tags, `type` is the tag string and `props` are the element props. 
 
 Converts a `Renderable` into a single `MarkupNode`:
 
-```js
-import { createContext } from "@manyducks.co/dolla";
-import { render } from "@manyducks.co/dolla";
+```jsx
+import { createContext, render } from "@manyducks.co/dolla";
 
 const context = createContext(null);
-const node = render(html`<p>Hello</p>`, context);
+const node = render(<p>Hello</p>, context);
 node.mount(document.body);
 ```
 
@@ -92,7 +91,7 @@ These are available for advanced integrations:
 - `DynamicNode` — renders any renderable and updates it when its getter changes.
 - `PortalNode` — renders content into another DOM parent.
 
-Prefer the helpers (`html`, `forEach`, `showIf`, `createPortal`) unless you are building a custom rendering primitive.
+Prefer the helpers (JSX, `html`, `forEach`, `showIf`, `createPortal`) unless you are building a custom rendering primitive.
 
 ## Visibility internals
 
@@ -107,7 +106,65 @@ Use the public hooks rather than reaching into the scope directly:
 
 `isMounted(context)` is the lifecycle check that replaced the old context field. `isVisible(context)` adds keep-alive visibility to it. The `MarkupNode.isMounted()` method above is a different concept: it describes whether the render node is attached to a parent, not whether the context is visible.
 
+## Keep-alive caveats
+
+- `keepAlive` must wrap the **entire branch side**, not a nested child.
+- Effects, timers, and fetches keep running while hidden. Use `onHide` / `onShow` to pause them.
+- `onCleanup` does not run when content is hidden; it runs when the owner unmounts.
+- Hidden content is absent from the document, so `querySelector` won't find it and it is hidden from assistive technology.
+- Focus and text selection are lost. Media and iframe state may reset on show.
+- Memory is retained until the conditional owner unmounts. There is one retained instance per branch side.
+- `keepAlive` is only meaningful inside a helper that supports it, such as `showIf`, `hideIf`, or `branch`.
+- Portal content is retained, but removed from its target while the branch is hidden.
+- Nested keep-alive scopes inherit visibility from their nearest scope.
+- `isVisible(context)` is a plain boolean read, not a reactive getter.
+
 See [Visibility hooks](./hooks.md#visibility-hooks) and [Keep-alive](./components.md#control-flow-helpers).
+
+## Standalone effects
+
+`createEffect` is the advanced counterpart to `onEffect`. Use it when you need an effect outside the normal context tree — a module-level integration, a test harness, or a plain signal setup with no view or store.
+
+```js
+import { createAtom, createEffect } from "@manyducks.co/dolla";
+
+const [getCount, setCount] = createAtom(0);
+
+const stop = createEffect(() => {
+  console.log("Count is:", getCount());
+});
+
+setCount(1); // logs "Count is: 1"
+
+stop();
+```
+
+`createEffect` runs the callback immediately, tracks the getters read inside it, and returns a stop function. It does not clean itself up automatically; call the stop function when you are done.
+
+The callback may return a cleanup function, which runs before the next invocation and when the effect is stopped:
+
+```js
+const stop = createEffect(() => {
+  const id = setInterval(() => {
+    // ...
+  }, 1000);
+
+  return () => clearInterval(id);
+});
+```
+
+A deps-array form is available for explicit control. The callback receives the unwrapped values:
+
+```js
+createEffect(
+  (count, name) => {
+    console.log(`${name}: ${count}`);
+  },
+  [getCount, getName],
+);
+```
+
+Prefer [`onEffect(context, ...)`](./effects.md) inside views and stores. `createEffect` is the backup for code that has no context.
 
 ## Stability
 

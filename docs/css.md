@@ -2,7 +2,7 @@
 
 Dolla includes a CSS-in-JS solution via the `css` tagged template. It generates scoped class names, registers styles in a shared `CSSStyleSheet`, and supports reactive variable bindings.
 
-Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
+Examples use `class` in JSX; `className` also works. See [Templates](./templates.md#classes).
 
 ```js
 import { css } from "@manyducks.co/dolla";
@@ -13,15 +13,15 @@ const redText = css`
 `;
 
 redText.className; // "css-1a2b3c"
-String(redText);   // "css-1a2b3c"
+String(redText); // "css-1a2b3c"
 ```
 
 ## Usage with views
 
 Pass a template to `class`:
 
-```js
-import { html, css } from "@manyducks.co/dolla";
+```jsx
+import { createRoot, css } from "@manyducks.co/dolla";
 
 const card = css`
   padding: 16px;
@@ -30,27 +30,35 @@ const card = css`
 `;
 
 function Card() {
-  return html`<div class=${card}>...</div>`;
+  return <div class={card}>...</div>;
 }
+
+await createRoot("#app").mount(Card);
 ```
 
 `class` accepts a string, a `CSSTemplate`, a conditional template, or an array containing any of those:
 
-```js
-const [count] = createAtom(0);
-const isActive = () => count() > 0;
-const highlight = css`outline: 2px solid gold;`;
+```jsx
+const [getCount] = createAtom(0);
+const getIsActive = () => getCount() > 0;
+const highlight = css`
+  outline: 2px solid gold;
+`;
 
-html`<div class=${[card, highlight.when(isActive)]}>...</div>`;
+<div class={[card, highlight.when(getIsActive)]}>...</div>;
 ```
 
 ## Deduplication
 
-The same CSS input always produces the same class name. If multiple components use the same `css\`...\`` template, the styles are registered only once.
+The same CSS input always produces the same class name. If multiple components use the same `css` template, the styles are registered only once.
 
 ```js
-const a = css`color: red;`;
-const b = css`color: red;`;
+const a = css`
+  color: red;
+`;
+const b = css`
+  color: red;
+`;
 
 a.className === b.className; // true
 ```
@@ -71,20 +79,20 @@ const tpl = css`
 Pass a getter to bind a CSS custom property. When the signal changes, the property updates on the element without rebuilding the stylesheet:
 
 ```js
-const [color, setColor] = createAtom("blue");
+const [getColor, setColor] = createAtom("blue");
 
 const tpl = css`
-  color: ${color};
+  color: ${getColor};
 `;
 ```
 
 Use a `PropertyConfig` object when you need a typed `@property` registration, an initial value, or inheritance:
 
 ```js
-const [padding, setPadding] = createAtom("0px");
+const [getPadding, setPadding] = createAtom("0px");
 
 const tpl = css`
-  padding: ${{ syntax: "<length>", value: padding, initialValue: "0px", inherits: false }};
+  padding: ${{ syntax: "<length>", value: getPadding, initialValue: "0px", inherits: false }};
 `;
 ```
 
@@ -95,7 +103,9 @@ The `value` may be a getter or a static value. When the value is `null`, `undefi
 Reference another `CSSTemplate` in a selector interpolation to compose rules:
 
 ```js
-const base = css`color: red;`;
+const base = css`
+  color: red;
+`;
 
 const tpl = css`
   ${base} {
@@ -108,22 +118,24 @@ This generates a rule like `.css-abc .css-def { font-weight: bold; }`.
 
 To apply multiple templates to the same element, pass them in a class array:
 
-```js
-html`<div class=${[base, child]}>...</div>`;
+```jsx
+<div class={[base, child]}>...</div>;
 ```
 
 ## Conditional templates
 
 Call `.when(condition)` to return a conditional template:
 
-```js
-const card = css`padding: 16px;`;
-const [active] = createAtom(false);
+```jsx
+const card = css`
+  padding: 16px;
+`;
+const [getIsActive] = createAtom(false);
 
-html`<div class=${card.when(active)}>...</div>`;
+<div class={card.when(getIsActive)}>...</div>;
 ```
 
-`active` is a getter, so the class is attached and detached as it changes. A plain boolean also works, but is evaluated once.
+`getIsActive` is a getter, so the class is attached and detached as it changes. A plain boolean also works, but is evaluated once.
 
 ## Named templates
 
@@ -146,20 +158,22 @@ The hash is unchanged, so equivalent styles still deduplicate in the shared shee
 
 For component-level composition, use [`styled`](./styled.md):
 
-```js
+```jsx
 const Button = styled.button`
   padding: 8px 12px;
 `;
+
+<Button onClick={save}>Save</Button>;
 ```
 
 ## API
 
-### `css\`...\``
+### ``css`...` ``
 
 Returns a `CSSTemplate`:
 
 | Member | Description |
-|---|---|
+| --- | --- |
 | `className` | The generated scoped class name |
 | `named(name)` | Returns a copy with a different class prefix |
 | `when(condition)` | Returns a conditional template that is attached only when the condition is truthy |
@@ -167,6 +181,12 @@ Returns a `CSSTemplate`:
 | `preinsert()` | Inserts the static rule into the sheet without binding reactive values. Used internally by `styled`. |
 | `toString()` | Returns `className` |
 
-### `css.named(name)\`...\``
+### ``css.named(name)`...` ``
 
 Creates a template with a custom class prefix. Special characters are sanitized; an empty sanitized name falls back to the default `css-` prefix.
+
+## Next steps
+
+- [Styled components](./styled.md) — `styled.*`, naming, `as`, composition
+- [Templates](./templates.md#classes) — the `class` prop
+- [Cheatsheet](./cheatsheet.md) — quick lookups

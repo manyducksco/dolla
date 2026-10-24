@@ -4,16 +4,19 @@
 
 Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
 
-```js
+```jsx
 import { transition } from "@manyducks.co/dolla";
 
 transition({
-  when: () => open(),
-  enter: [{ opacity: 0, transform: "translateY(-4px)" }, { opacity: 1, transform: "none" }],
+  when: getOpen,
+  enter: [
+    { opacity: 0, transform: "translateY(-4px)" },
+    { opacity: 1, transform: "none" },
+  ],
   exit: [{ opacity: 1 }, { opacity: 0 }],
   duration: 180,
   easing: "ease-out",
-  children: html`<div class="modal">...</div>`,
+  children: <div class="modal">...</div>,
 });
 ```
 
@@ -31,7 +34,7 @@ Animations use `fill: "forwards"`. On entering finish, the final styles are comm
 ## Props
 
 | Prop | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `when` | `Getter<boolean>` | Whether the content is mounted. |
 | `children` | `Renderable` | Content to animate. |
 | `enter` | `Keyframe[] \| PropertyIndexedKeyframes` | Enter keyframes. |
@@ -47,18 +50,24 @@ If no duration is provided, the Web Animations default is used (usually `0`), so
 
 ## Example with separate phases
 
-```js
-const [open, setOpen] = createAtom(false);
+```jsx
+const [getOpen, setOpen] = createAtom(false);
 
-html`${transition({
-  when: open,
-  enter: [{ transform: "scale(0.96)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }],
-  exit: [{ transform: "scale(1)", opacity: 1 }, { transform: "scale(0.96)", opacity: 0 }],
+transition({
+  when: getOpen,
+  enter: [
+    { transform: "scale(0.96)", opacity: 0 },
+    { transform: "scale(1)", opacity: 1 },
+  ],
+  exit: [
+    { transform: "scale(1)", opacity: 1 },
+    { transform: "scale(0.96)", opacity: 0 },
+  ],
   enterDuration: 160,
   exitDuration: 120,
   easing: "ease-out",
-  children: html`<div class="dialog">...</div>`,
-})}`;
+  children: <div class="dialog">...</div>,
+});
 ```
 
 ## Requirements and notes
@@ -67,3 +76,9 @@ html`${transition({
 - The wrapper `<div>` is an extra DOM element. Style the child directly or target the wrapper through its child.
 - `transition` is not `keepAlive`. It controls mount/unmount animation; `keepAlive` controls whether hidden content is retained.
 - Consider respecting `prefers-reduced-motion` in your app and skipping keyframes when the user requests reduced motion.
+
+## Next steps
+
+- [Components](./components.md#control-flow-helpers) — `showIf`, `keepAlive`, and friends
+- [CSS](./css.md) — styling the content
+- [Cheatsheet](./cheatsheet.md) — quick lookups

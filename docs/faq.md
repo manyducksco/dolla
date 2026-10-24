@@ -1,28 +1,37 @@
 # FAQ
 
-Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
+Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown. For task-oriented snippets, see the [Cheatsheet](./cheatsheet.md).
 
 ### Why isn't my value updating?
 
 You probably called the getter:
 
-```js
-html`<p>${count()}</p>`; // evaluated once
-html`<p>${count}</p>`;   // tracked and reactive
+```jsx
+<p>{getCount()}</p>; // evaluated once
+<p>{getCount}</p>;   // tracked and reactive
 ```
 
 See [Templates](./templates.md#interpolation).
+
+### Why is my value static?
+
+Same cause: a getter was called in the template or in an attribute. Pass the getter itself, or wrap the work in another getter:
+
+```jsx
+<p>{() => getCount() * 2}</p>;
+<p>{compose(() => getCount() * 2)}</p>;
+```
 
 ### Why don't my props update?
 
 Views run once. A child captures its `props` when it mounts; a parent state change does not re-run the parent or the child. Pass a getter when the prop should change:
 
-```js
+```jsx
 function Child(props) {
-  return html`<p>${() => props.name()}!</p>`;
+  return <p>{props.name}!</p>;
 }
 
-html`<${Child} name=${name} />`;
+<Child name={getUserName} />;
 ```
 
 If a prop must be replaced as a plain value, create a new child with `showIf` or a keyed `forEach`. See [Props and the run-once model](./templates.md#props-and-the-run-once-model).
@@ -31,34 +40,40 @@ If a prop must be replaced as a plain value, create a new child with `showIf` or
 
 Use `forEach` for reactive lists. The render callback receives getters:
 
-```js
-html`<ul>${forEach(items, (item) => item.id, (item) => html`
-  <li>${() => item().name}</li>
-`)}</ul>`;
+```jsx
+<ul>
+  {forEach(
+    getItems,
+    (item) => item.id,
+    (getItem) => <li>{() => getItem().name}</li>,
+  )}
+</ul>
 ```
 
-Use a plain `.map()` only for an array that never changes. See [forEach](./components.md#foreach).
+Use a plain `.map()` only for an array that never changes. See [`forEach`](./components.md#foreach).
 
 ### How do I do async data? Is there React-style Suspense?
 
 There is no React-style Suspense or thrown-promise boundary. Model async work as state and branch on it:
 
-```js
-const [user, setUser] = createAtom(null);
-const [loading, setLoading] = createAtom(true);
+```jsx
+const [getUser, setUser] = createAtom(null);
+const [getLoading, setLoading] = createAtom(true);
 
-html`<div>${showIf(
-  loading,
-  html`<p>Loading...</p>`,
-  keepAlive(html`<${UserView} />`), // optional: preserve the loaded view
-)}</div>`;
+<div>
+  {showIf(
+    getLoading,
+    <p>Loading...</p>,
+    keepAlive(<UserView user={getUser} />), // optional: preserve the loaded view
+  )}
+</div>;
 ```
 
-The router has `preload`, `progress`, lazy routes, and `errorView` for route-level async. See [Router](../src/router/README.md).
+The router has `preload`, `progress`, lazy routes, and `errorView` for route-level async. See [Router](./../src/router/README.md).
 
 ### Why did my effect run before the DOM was ready?
 
-`createEffect` runs immediately when it is created. Inside a view, use `onEffect` or `onMount`; both run after the view's DOM is mounted.
+Inside a view or store, use `onEffect`; it runs after the view's DOM is mounted. `onMount` also runs after mount, but it does not re-run when state changes.
 
 See [When updates run](./concepts.md#when-updates-run) and [Effects](./effects.md).
 
@@ -72,10 +87,12 @@ See [Visibility hooks](./hooks.md#visibility-hooks).
 
 Use `createRef` or a callback ref:
 
-```js
+```jsx
 const inputRef = createRef();
-html`<input ref=${inputRef} />`;
-// later: inputRef()?.focus()
+
+<input ref={inputRef} />;
+
+onMount(context, () => inputRef().focus());
 ```
 
 See [Refs](./refs.md).
@@ -84,15 +101,15 @@ See [Refs](./refs.md).
 
 Use a Store, which is scoped to a subtree through the context chain:
 
-```js
-function App() {
-  addStore(this, CounterStore);
-  return html`<${Counter} />`;
+```jsx
+function App(props, context) {
+  addStore(context, CounterStore);
+  return <Counter />;
 }
 
-function Counter() {
-  const store = getStore(this, CounterStore);
-  return html`<p>${store.count}</p>`;
+function Counter(props, context) {
+  const store = getStore(context, CounterStore);
+  return <p>{store.getCount}</p>;
 }
 ```
 
@@ -102,19 +119,22 @@ See [Stores](./components.md#stores).
 
 The router exposes `progress` and `errorView`, and supports lazy route views:
 
-```js
-html`${showIf(() => router.progress() > 0, html`<p>Loading...</p>`)}`;
+```jsx
+{showIf(() => router.progress() > 0, <p>Loading...</p>)}
 ```
 
-See [Router](../src/router/README.md) and [Translate](../src/translate/README.md) for locale-loading behavior.
+See [Router](./../src/router/README.md) and [Translate](./../src/translate/README.md) for locale-loading behavior.
 
 ### How do I style a component?
 
 Use the `css` helper with `class`, or create a styled view with `styled.*`:
 
-```js
-const card = css`padding: 16px;`;
-html`<div class=${card}>...</div>`;
+```jsx
+const card = css`
+  padding: 16px;
+`;
+
+<div class={card}>...</div>;
 ```
 
 See [CSS](./css.md).
@@ -125,33 +145,56 @@ No. Updates target the exact DOM node that depends on the changed signal. Keyed 
 
 ### Can a view return multiple root nodes?
 
-Yes. Return an array, or use an `html` template with multiple top-level elements:
+Yes. Return an array, or use a fragment:
 
-```js
+```jsx
 function Layout() {
-  return [html`<header>Header</header>`, html`<main>Main</main>`];
+  return (
+    <>
+      <header>Header</header>
+      <main>Main</main>
+    </>
+  );
 }
 ```
 
-See [Templates](./templates.md#multiple-roots).
+See [Templates](./templates.md#what-can-be-rendered).
 
 ### Why is `this` undefined in my view?
 
-Use a function declaration or function expression, not an arrow function. Views receive the context as `this`:
+You used an arrow function. Use the context argument instead:
 
-```js
-function View() {
-  onMount(this, () => {});
-  return html`<p>Hello</p>`;
+```jsx
+function View(props, context) {
+  onMount(context, () => {});
+  return <p>Hello</p>;
 }
 ```
 
+Or use a function declaration with `this`:
+
+<!-- legacy-this -->
+```jsx
+function View() {
+  onMount(this, () => {});
+  return <p>Hello</p>;
+}
+```
+
+The explicit argument is easier to follow and works with arrow functions.
+
 ### How do I pass children to a component?
 
-Put them between the tags and close with `<//>`:
+Put them between the tags:
 
-```js
-html`<${Card}><p>Hello</p><//>`;
+```jsx
+<Card>
+  <p>Hello</p>
+</Card>;
 ```
 
 Inside the component, render `props.children`. See [Components](./components.md#props-and-children).
+
+### Where can I look up a pattern quickly?
+
+Use the [Cheatsheet](./cheatsheet.md). It covers state, derived state, effects, lists, stores, refs, router, translate, HTTP, and common mistakes.

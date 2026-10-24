@@ -2,36 +2,40 @@
 
 A client-side router with nested routes, lazy loading, auth guards, and async data fetching.
 
-```js
-import { createRoot, html } from "@manyducks.co/dolla";
+```jsx
+import { createRoot } from "@manyducks.co/dolla";
 import { createRouter, Outlet, getRouter } from "@manyducks.co/dolla/router";
 
-function HomePage() {
-  const router = getRouter(this);
-  return html`<p>Current path: ${router.path}</p>`;
+function HomePage(props, context) {
+  const router = getRouter(context);
+  return <p>Current path: {router.path}</p>;
 }
 
 function App() {
-  return html`
-    <header>My app</header>
-    <main><${Outlet} /></main>
-  `;
+  return (
+    <>
+      <header>My app</header>
+      <main>
+        <Outlet />
+      </main>
+    </>
+  );
 }
 
 await createRoot("#app")
-  .plugin(createRouter({
-    routes: [
-      { path: "/", view: HomePage },
-    ],
-  }))
+  .plugin(
+    createRouter({
+      routes: [{ path: "/", view: HomePage }],
+    }),
+  )
   .mount(App);
 ```
 
-`App` is the root view and uses `<${Outlet} />` to render the matched route. Nested layout views receive their child layer as `props.children`.
+`App` is the root view and uses `<Outlet />` to render the matched route. Nested layout views receive their child layer as `props.children`.
 
 ## Routes
 
-Each route has a `path` pattern and a `view` component. The root view uses `<${Outlet} />` to render the matched route; nested layout views receive their child route as `props.children`.
+Each route has a `path` pattern and a `view` component. The root view uses `<Outlet />` to render the matched route; nested layout views receive their child route as `props.children`.
 
 ```js
 createRouter({
@@ -51,43 +55,47 @@ createRouter({
 
 ```jsx
 function UsersLayout(props) {
-  return html`
-    <nav>...</nav>
-    <main>${props.children}</main>
-  `;
+  return (
+    <>
+      <nav>...</nav>
+      <main>{props.children}</main>
+    </>
+  );
 }
 ```
 
 ### Route Patterns
 
 | Pattern | Description | Example |
-|---|---|---|
-| `/users` | Static — matches exactly `/users` |
-| `/users/{#id}` | Numeric param — matches only numbers |
-| `/users/{name}` | String param — matches any non-slash segment |
-| `/artists/{#artistId?}` | Optional param — matches even if the segment is absent |
-| `/files/*` | Wildcard — matches everything after `/files/` |
+| --- | --- | --- |
+| `/users` | Static — matches exactly `/users` | `/users` |
+| `/users/{#id}` | Numeric param — matches only numbers | `/users/123` |
+| `/users/{name}` | String param — matches any non-slash segment | `/users/alice` |
+| `/artists/{#artistId?}` | Optional param — matches even if the segment is absent | `/artists` or `/artists/42` |
+| `/files/*` | Wildcard — matches everything after `/files/` | `/files/a/b` |
 
 ### Reading route state
 
 `path`, `pattern`, `params`, `query`, and `meta` are getters. Interpolate them directly for a reactive value, or wrap property access in a getter:
 
-```js
-function UserPage() {
-  const router = getRouter(this);
+```jsx
+function UserPage(props, context) {
+  const router = getRouter(context);
 
-  return html`
-    <p>Path: ${router.path}</p>
-    <p>User id: ${() => router.params().id}</p>
-    <p>Search: ${() => router.query().q}</p>
-  `;
+  return (
+    <>
+      <p>Path: {router.path}</p>
+      <p>User id: {() => router.params().id}</p>
+      <p>Search: {() => router.query().q}</p>
+    </>
+  );
 }
 ```
 
 `isActive(path, exact?)` returns a getter, which works directly in a reactive class object:
 
-```js
-html`<a class=${{ active: router.isActive("/users") }}>Users</a>`;
+```jsx
+<a class={{ active: router.isActive("/users") }}>Users</a>;
 ```
 
 ### Meta data
@@ -137,14 +145,20 @@ The loaded module is cached on the route definition, so navigating back to the r
 
 `router.progress` is a getter from `0` to `1` while navigation is in flight, and `0` when idle:
 
-```js
-function App() {
-  const router = getRouter(this);
+```jsx
+import { showIf } from "@manyducks.co/dolla";
 
-  return html`
-    ${showIf(() => router.progress() > 0, html`<div class="loading-bar"></div>`)}
-    <main><${Outlet} /></main>
-  `;
+function App(props, context) {
+  const router = getRouter(context);
+
+  return (
+    <>
+      {showIf(() => router.progress() > 0, <div class="loading-bar" />)}
+      <main>
+        <Outlet />
+      </main>
+    </>
+  );
 }
 ```
 
@@ -156,13 +170,13 @@ Routes can define a `preload` function that fetches data before the view renders
 {
   path: "/user/{#id}",
   view: UserDetail,
-  preload: (match) => fetch(`/api/users/${match.params.id}`).then(r => r.json()),
+  preload: (match) => fetch(`/api/users/${match.params.id}`).then((response) => response.json()),
 }
 ```
 
 ```jsx
 function UserDetail({ data }) {
-  return html`<p>Name: ${data.name}</p>`;
+  return <p>Name: {data.name}</p>;
 }
 ```
 
@@ -170,12 +184,12 @@ function UserDetail({ data }) {
 
 Provide an `errorView` to catch errors from `preload` or lazy loading:
 
-```js
-{
+```jsx
+const route = {
   path: "/risky",
   view: RiskyPage,
-  errorView: ({ error }) => html`<p>Something went wrong: ${error.message}</p>`,
-}
+  errorView: ({ error }) => <p>Something went wrong: {error.message}</p>,
+};
 ```
 
 ## Redirects
@@ -194,7 +208,10 @@ Dynamic redirects using a function:
 ```js
 {
   path: "/user/{#id}",
-  redirect: (match) => fetch(`/api/users/${match.params.id}`).then(r => r.json()).then(user => `/profile/${user.handle}`),
+  redirect: (match) =>
+    fetch(`/api/users/${match.params.id}`)
+      .then((response) => response.json())
+      .then((user) => `/profile/${user.handle}`),
 }
 ```
 
@@ -214,7 +231,7 @@ Programmatic redirects from `preload`:
 Access the router with `getRouter(context)`:
 
 | Property | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `path` | `Getter<string>` | Current URL path |
 | `pattern` | `Getter<string \| undefined>` | Matched route pattern |
 | `params` | `Getter<Record<string, string>>` | Extracted path parameters |
@@ -223,7 +240,7 @@ Access the router with `getRouter(context)`:
 | `progress` | `Getter<number>` | Navigation progress (0–1, 0 when idle) |
 
 | Method | Description |
-|---|---|
+| --- | --- |
 | `push(path)` | Navigate to a new path |
 | `replace(path)` | Replace current history entry and navigate |
 | `back(steps?)` | Go back in history |
@@ -284,21 +301,23 @@ router.setQuery({ q: "alice", page: null }); // null deletes a key
 
 ## Outlet
 
-`<${Outlet} />` renders the matched route in the root layout. Nested layout views receive their child route as `props.children`:
+`<Outlet />` renders the matched route in the root layout. Nested layout views receive their child route as `props.children`:
 
-```js
+```jsx
 function AdminLayout(props) {
-  return html`
-    <nav>...</nav>
-    <section>${props.children}</section>
-  `;
+  return (
+    <>
+      <nav>...</nav>
+      <section>{props.children}</section>
+    </>
+  );
 }
 ```
 
 ## Options
 
 | Option | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `routes` | `Route[]` | — | Route definitions |
 | `hash` | `boolean` | `false` | Use hash-based routing (`/#!/path`) |
 | `preserveQuery` | `boolean \| string[]` | `false` | Preserve query params across navigations |

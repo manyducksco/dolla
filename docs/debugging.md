@@ -21,25 +21,25 @@ The first argument is the logger name. It may be a getter if the name should be 
 
 ## Getting a logger from a context
 
-`getDebug(context, ...tags)` uses the context's `name`:
+`getDebug(context, ...tags)` uses the context's name:
 
-```js
-function UserCard() {
-  this.name = "UserCard";
-  const debug = getDebug(this, ["user", userId]);
+```jsx
+function UserCard(props, context) {
+  context.name = "UserCard";
+  const debug = getDebug(context, ["user", userId]);
   debug.log("rendered");
-  return html`<article>...</article>`;
+  return <article>...</article>;
 }
 ```
 
-Views are named automatically from the function name. Setting `this.name` overrides it.
+Views are named automatically from the function name. Setting `context.name` overrides it. `this.name` also works inside a function declaration.
 
 ## Levels
 
 ```js
 import { setLogLevel } from "@manyducks.co/dolla";
 
-setLogLevel("warn");   // show warn + error
+setLogLevel("warn"); // show warn + error
 setLogLevel("silent"); // disable all debug output
 ```
 
@@ -60,7 +60,7 @@ The default filter hides framework loggers whose names start with `dolla:`. Sett
 
 Enable debug attributes on the root:
 
-```js
+```jsx
 await createRoot("#app", { debug: true }).mount(App);
 ```
 
@@ -69,5 +69,11 @@ In debug mode, elements receive a `data-view` attribute containing the nearest v
 ## Notes
 
 - Loggers are cheap no-ops when the level or filter excludes them, but the call sites still execute.
-- `getDebug` uses the context name, so keep `this.name` stable if you rely on log filtering.
+- `getDebug` uses the context name, so keep `context.name` stable if you rely on log filtering.
 - Module loggers use their own names; namespace them (for example `my-app:router`) and filter accordingly.
+
+## Next steps
+
+- [Hooks](./hooks.md) — `getDebug` in the hook reference
+- [App root](./root.md) — `createRoot` options
+- [Cheatsheet](./cheatsheet.md) — quick lookups

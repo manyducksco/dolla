@@ -1,13 +1,13 @@
 # Templates
 
-Dolla has two templating styles that produce the same kind of markup: the `html` tagged template and JSX. You can use either one, and you can mix them.
+Dolla has two template styles that produce the same markup: **JSX** and the **`html` tagged template**. JSX is the default in these docs because it has editor tooling and type-checking. This page covers JSX and the rules that apply to both styles. For the complete buildless syntax, see [HTML templates](./html.md).
 
 Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
 
 ## Choosing a style
 
-- **`html`** needs no compiler and works directly in the browser. This is the buildless option.
-- **JSX** requires the TypeScript/esbuild JSX settings shown below. It is convenient if you already use JSX.
+- **JSX** needs a compiler, but gives you syntax highlighting, autocomplete, and prop type-checking. This is the recommended default.
+- **`html`** needs no compiler and works directly in the browser. It is the buildless option.
 
 Both styles return the same `Markup` objects, so components written in one style can render components written in the other.
 
@@ -15,40 +15,51 @@ Both styles return the same `Markup` objects, so components written in one style
 
 The most important rule: pass a **getter**, not a value, when you want the DOM to update.
 
-```js
-const [count, setCount] = createAtom(0);
+```jsx
+const [getCount, setCount] = createAtom(0);
 
-html`<p>${count}</p>`; // reactive: the getter is tracked
-html`<p>${count()}</p>`; // static: the current value is baked in
+<p>{getCount}</p>;   // reactive: the getter is tracked
+<p>{getCount()}</p>; // static: the current value is baked in
 ```
 
 If you need to transform the value, wrap the work in a getter or use `compose`:
 
-```js
-html`<p>${() => count() * 2}</p>`;
-html`<p>${compose(() => count() * 2)}</p>`;
+```jsx
+<p>{() => getCount() * 2}</p>;
+<p>{compose(() => getCount() * 2)}</p>;
 ```
 
 ## What can be rendered
 
 These values can be interpolated or returned from a view:
 
-| Value                        | Behavior                                                                               |
-| ---------------------------- | -------------------------------------------------------------------------------------- |
-| `string`, `number`           | Rendered as a text node                                                                |
-| `Markup`                     | Rendered as elements/components                                                        |
-| `MarkupNode`                 | Mounted directly                                                                       |
-| `Node`                       | Inserted into the DOM                                                                  |
-| Getter (`() => value`)       | Tracked and rendered reactively                                                        |
-| Array                        | Each item is processed, in order                                                       |
-| `null`, `undefined`, `false` | Rendered as nothing                                                                    |
-| `keepAlive(...)`             | Rendered as its content outside a keep-alive-aware helper such as `showIf` or `branch` |
+| Value | Behavior |
+| --- | --- |
+| `string`, `number` | Rendered as a text node |
+| `Markup` | Rendered as elements/components |
+| `MarkupNode` | Mounted directly |
+| `Node` | Inserted into the DOM |
+| Getter (`() => value`) | Tracked and rendered reactively |
+| Array | Each item is processed, in order |
+| `null`, `undefined`, `false` | Rendered as nothing |
+| `keepAlive(...)` | Rendered as its content outside a keep-alive-aware helper such as `showIf` or `branch` |
 
-An `html` template can contain multiple root nodes. A view can also return an array to render several roots:
+A view can return multiple root nodes, either as an array or as a fragment:
 
-```js
+```jsx
 function Layout() {
-  return [html`<header>Header</header>`, html`<main>Content</main>`];
+  return (
+    <>
+      <header>Header</header>
+      <main>Content</main>
+    </>
+  );
+}
+```
+
+```jsx
+function Layout() {
+  return [<header>Header</header>, <main>Content</main>];
 }
 ```
 
@@ -56,10 +67,10 @@ function Layout() {
 
 ### Text and attributes
 
-```js
-const [name] = createAtom("Alice");
+```jsx
+const [getName] = createAtom("Alice");
 
-html`<p class="greeting" title=${name}>Hello, ${() => name()}!</p>`;
+<p class="greeting" title={getName}>Hello, {() => getName()}!</p>;
 ```
 
 Attribute values are reactive when you pass a getter. The framework decides how to apply each key:
@@ -68,25 +79,26 @@ Attribute values are reactive when you pass a getter. The framework decides how 
 - Boolean properties also set or remove the attribute.
 - Everything else is set as an attribute.
 - Keys starting with `prop:` are always set as properties.
-- Keys starting with `attr:` or `:` are always set as attributes (lowercased).
+- Keys starting with `attr:` are always set as attributes (lowercased). In `html` templates, a leading `:` is shorthand for `attr:`.
 - `for` is assigned to `htmlFor`.
 
-```js
-html`<input prop:value=${text} />`;
-html`<div attr:data-id=${id}></div>`;
-html`<div :data-id=${id}></div>`;
+```jsx
+<input prop:value={getText} />;
+<div attr:data-id={getId}></div>;
 ```
+
+`class` and `for` are the defaults in these examples. `className` and `htmlFor` also work.
 
 ### Classes
 
 `class` and `className` accept a string, an object of class names to booleans, an array of either, or one or more CSS templates:
 
-```js
-const [active] = createAtom(false);
+```jsx
+const [getIsActive] = createAtom(false);
 
-html`<div class="card"></div>`;
-html`<div class=${["card", { active }]}></div>`;
-html`<div class=${cardTemplate}></div>`;
+<div class="card"></div>;
+<div class={["card", { active: getIsActive }]}></div>;
+<div class={cardTemplate}></div>;
 ```
 
 Object values can be getters when the class should toggle reactively. See [CSS](./css.md) for `css` templates, reactive variables, and `styled` components.
@@ -95,42 +107,44 @@ Object values can be getters when the class should toggle reactively. See [CSS](
 
 `style` accepts a string, a style object, or an array of either:
 
-```js
-html`<div style=${{ color: "red", padding: 8 }}></div>`;
-html`<div style="color: red; padding: 8px"></div>`;
+```jsx
+<div style={{ color: "red", padding: 8 }}></div>;
+<div style="color: red; padding: 8px"></div>;
 ```
 
 Numeric values get a `px` suffix unless the property is unitless (for example `opacity`, `z-index`, `line-height`). Object values can be getters. CSS templates are not supported on `style`; pass them to `class` instead.
 
 ### Events
 
-Use `onClick`, `onInput`, etc. Event names are case-insensitive, so lowercase `onclick` also works:
+Use `onClick`, `onInput`, and so on. Event names are case-insensitive, so lowercase `onclick` also works:
 
-```js
-html`<button onClick=${() => setCount((c) => c + 1)}>+1</button>`;
+```jsx
+<button onClick={() => setCount((count) => count + 1)}>+1</button>;
 ```
 
 The value may also be an object with `handleEvent` and listener options:
 
-```js
-html`<button onClick=${{ handleEvent: onClick, once: true }}>Once</button>`;
+```jsx
+<button onClick={{ handleEvent: onClick, once: true }}>Once</button>;
 ```
 
 ### Refs
 
 Pass `createRef()` or a callback to `ref`:
 
-```js
+```jsx
 const inputRef = createRef();
 
-html`<input ref=${inputRef} />`;
+<input ref={inputRef} />;
+```
 
-html`<input
-  ref=${(el) => {
-    el.focus();
-    return () => el.blur();
+```jsx
+<input
+  ref={(element) => {
+    element.focus();
+    return () => element.blur();
   }}
-/>`;
+/>;
 ```
 
 See [Refs](./refs.md).
@@ -139,25 +153,39 @@ See [Refs](./refs.md).
 
 SVG elements created through an `<svg>` tag use the SVG namespace. Nested `foreignObject` content switches back to HTML. SVG presentation attributes written in camelCase (`fillOpacity`, `strokeWidth`) are converted to kebab-case.
 
+```jsx
+<svg viewBox="0 0 24 24" width="24" height="24">
+  <circle cx="12" cy="12" r="10" fillOpacity="0.5" />
+</svg>;
+```
+
 ## Components
 
-Components are interpolated with `${...}` in the tag position. Self-closing components use `/>`:
+Components are used like elements. Self-closing components use `/>`:
 
-```js
-html`<${Greeting} name="Alice" />`;
+```jsx
+<Greeting name="Alice" />;
 ```
 
-Children go between the tags, and a component closes with `<//>`:
+Children go between the tags:
 
-```js
-html`<${Card}><p>Hello</p><//>`;
+```jsx
+<Card>
+  <p>Hello</p>
+</Card>;
 ```
 
-Inside `Card`, the children are available as `props.children`.
+Inside `Card`, the children are available as `props.children`:
+
+```jsx
+function Card(props) {
+  return <section class="card">{props.children}</section>;
+}
+```
 
 ### Multiple roots
 
-A view may return multiple root nodes, either as an array or as an `html` template with more than one top-level element. The framework wraps them in a fragment.
+A view may return multiple root nodes, either as a fragment or as an array. See [What can be rendered](#what-can-be-rendered).
 
 ## Props and the run-once model
 
@@ -169,15 +197,24 @@ There are two ways to pass dynamic data:
 
 1. **Pass a getter** and read it in a tracking context in the child:
 
-```js
+```jsx
 function Greeting(props) {
-  // props.name is a getter because the parent passed name=${name}
-  return html`<p>Hello, ${() => props.name()}!</p>`;
+  // props.name is a getter because the parent passed name={getUserName}.
+  return <p>Hello, {props.name}!</p>;
 }
 
 function App() {
-  const [name] = createAtom("Alice");
-  return html`<${Greeting} name=${name} />`;
+  const [getUserName] = createAtom("Alice");
+  return <Greeting name={getUserName} />;
+}
+```
+
+When you need the value in logic, use `unwrap(props.name)`:
+
+```jsx
+function Greeting(props) {
+  const getInitial = compose(() => unwrap(props.name).charAt(0));
+  return <p>{getInitial}: {props.name}</p>;
 }
 ```
 
@@ -185,76 +222,63 @@ function App() {
 
 If you pass a plain value, it stays static:
 
-```js
-html`<${Greeting} name="Alice" />`;
+```jsx
+<Greeting name="Alice" />;
 // props.name() would throw; props.name is the string "Alice"
 ```
 
 Because children do not re-render, replacing a static prop requires creating a new child. Use a conditional (`showIf`) or a keyed list (`forEach`) so the old instance is removed and a new one is mounted.
 
-Use function declarations or function expressions for views that need `this`:
+Use the context argument for lifecycle hooks and context data:
 
-```js
-function Panel() {
-  onMount(this, () => {
-    /* ... */
+```jsx
+function Panel(props, context) {
+  onMount(context, () => {
+    // ...
   });
-  return html`<div>Panel</div>`;
+
+  return <div>Panel</div>;
 }
 ```
 
-An arrow function has no own `this` binding, so hooks that take the context will not work.
+`this` is the same context object, so `function Panel() { onMount(this, ...) }` also works. The explicit argument is easier to follow and works with arrow functions.
 
 ## Lists and conditionals
 
-Use `showIf`, `hideIf`, `showUnless`, `hideUnless`, `branch`, and `forEach` from [Components](./components.md#control-flow-helpers). `forEach` receives item and index **getters**, so read them inside a getter:
-
-```js
-html`<ul>
-  ${forEach(
-    items,
-    (item) => item.id,
-    (item) => html` <li>${() => item().name}</li> `,
-  )}
-</ul>`;
-```
-
-## JSX
-
-Enable the automatic JSX runtime:
-
-```json
-{
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "@manyducks.co/dolla"
-  }
-}
-```
-
-Then use JSX as usual:
+Use `showIf`, `hideIf`, `branch`, and `forEach` from [Components](./components.md#control-flow-helpers). `forEach` receives item and index **getters**, so read them inside a getter:
 
 ```jsx
-function Greeting({ name }) {
-  return <p>Hello, {name}!</p>;
-}
+<ul>
+  {forEach(
+    getItems,
+    (item) => item.id,
+    (getItem, getIndex) => (
+      <li>
+        {getIndex}: {() => getItem().text}
+      </li>
+    ),
+  )}
+</ul>
 ```
 
-Important differences from React:
+## Using the `html` helper
 
-- Props are still captured at mount; pass getters for reactive props.
-- There is no re-render, so there is no need for `useCallback`/`useMemo` for referential stability.
-- Use the hooks from [Hooks](./hooks.md), not React hooks.
+The buildless equivalent of a component with children is:
 
-See [JSX setup](./jsx.md) for the minimal configuration.
+```js
+html`<${Card} title="Hello">Content</>`;
+```
+
+See [HTML templates](./html.md) for the full syntax, the JSX ↔ `html` equivalence table, and migration notes.
 
 ## Common mistakes
 
-| Symptom                       | Cause                                                    | Fix                                                  |
-| ----------------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
-| Value never updates           | `${count()}`                                             | `${count}` or `${() => count()}`                     |
-| List item text never updates  | `${item.name}` or `${item().name}`                       | `${() => item().name}`                               |
-| Prop getter throws            | Parent passed a static value, child calls `props.name()` | Pass `name=${getter}` or use `props.name` as a value |
-| `this` is undefined in a view | View is an arrow function                                | Use `function View() {}`                             |
-| Route params never update     | `${router.params().id}`                                  | `${() => router.params().id}`                        |
-| App renders nothing           | `mount` not awaited or selector missing                  | `await createRoot("#app").mount(App)`                |
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Value never updates | `{getCount()}` | `{getCount}` or `{() => getCount()}` |
+| List item text never updates | `{getItem().text}` | `{() => getItem().text}` |
+| Prop getter throws | Parent passed a static value, child calls `props.name()` | Pass `name={getUserName}` or use `unwrap(props.name)` |
+| `this` is undefined in a view | View is an arrow function | Use `(props, context)` or `function View() {}` |
+| Route params never update | `{router.params().id}` | `{() => router.params().id}` |
+| App renders nothing | `mount` not awaited or selector missing | `await createRoot("#app").mount(App)` |
+| JSX doesn't compile | Missing `jsx` / `jsxImportSource` | See [Getting started](./getting-started.md) |
