@@ -71,7 +71,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
     if (item == null || item === false) return;
 
     if (isKeepAlive(item)) {
-      // Keep-alive is only meaningful to suspend-aware owners. Everywhere
+      // Keep-alive is only meaningful to helpers that support it. Everywhere
       // else it simply renders its content.
       process(item.content);
     } else if (isArray(item)) {

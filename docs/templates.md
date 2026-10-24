@@ -18,7 +18,7 @@ The most important rule: pass a **getter**, not a value, when you want the DOM t
 ```js
 const [count, setCount] = createAtom(0);
 
-html`<p>${count}</p>`;   // reactive: the getter is tracked
+html`<p>${count}</p>`; // reactive: the getter is tracked
 html`<p>${count()}</p>`; // static: the current value is baked in
 ```
 
@@ -33,16 +33,16 @@ html`<p>${compose(() => count() * 2)}</p>`;
 
 These values can be interpolated or returned from a view:
 
-| Value | Behavior |
-|---|---|
-| `string`, `number` | Rendered as a text node |
-| `Markup` | Rendered as elements/components |
-| `MarkupNode` | Mounted directly |
-| `Node` | Inserted into the DOM |
-| Getter (`() => value`) | Tracked and rendered reactively |
-| Array | Each item is processed, in order |
-| `null`, `undefined`, `false` | Rendered as nothing |
-| `keepAlive(...)` | Rendered as its content outside a suspend-aware owner |
+| Value                        | Behavior                                                                               |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| `string`, `number`           | Rendered as a text node                                                                |
+| `Markup`                     | Rendered as elements/components                                                        |
+| `MarkupNode`                 | Mounted directly                                                                       |
+| `Node`                       | Inserted into the DOM                                                                  |
+| Getter (`() => value`)       | Tracked and rendered reactively                                                        |
+| Array                        | Each item is processed, in order                                                       |
+| `null`, `undefined`, `false` | Rendered as nothing                                                                    |
+| `keepAlive(...)`             | Rendered as its content outside a keep-alive-aware helper such as `showIf` or `branch` |
 
 An `html` template can contain multiple root nodes. A view can also return an array to render several roots:
 
@@ -125,10 +125,12 @@ const inputRef = createRef();
 
 html`<input ref=${inputRef} />`;
 
-html`<input ref=${(el) => {
-  el.focus();
-  return () => el.blur();
-}} />`;
+html`<input
+  ref=${(el) => {
+    el.focus();
+    return () => el.blur();
+  }}
+/>`;
 ```
 
 See [Refs](./refs.md).
@@ -194,7 +196,9 @@ Use function declarations or function expressions for views that need `this`:
 
 ```js
 function Panel() {
-  onMount(this, () => { /* ... */ });
+  onMount(this, () => {
+    /* ... */
+  });
   return html`<div>Panel</div>`;
 }
 ```
@@ -203,12 +207,16 @@ An arrow function has no own `this` binding, so hooks that take the context will
 
 ## Lists and conditionals
 
-Use `showIf`, `hideIf`, `showUnless`, `hideUnless`, and `forEach` from [Components](./components.md#control-flow-helpers). `forEach` receives item and index **getters**, so read them inside a getter:
+Use `showIf`, `hideIf`, `showUnless`, `hideUnless`, `branch`, and `forEach` from [Components](./components.md#control-flow-helpers). `forEach` receives item and index **getters**, so read them inside a getter:
 
 ```js
-html`<ul>${forEach(items, (item) => item.id, (item) => html`
-  <li>${() => item().name}</li>
-`)}</ul>`;
+html`<ul>
+  ${forEach(
+    items,
+    (item) => item.id,
+    (item) => html` <li>${() => item().name}</li> `,
+  )}
+</ul>`;
 ```
 
 ## JSX
@@ -242,11 +250,11 @@ See [JSX setup](./jsx.md) for the minimal configuration.
 
 ## Common mistakes
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Value never updates | `${count()}` | `${count}` or `${() => count()}` |
-| List item text never updates | `${item.name}` or `${item().name}` | `${() => item().name}` |
-| Prop getter throws | Parent passed a static value, child calls `props.name()` | Pass `name=${getter}` or use `props.name` as a value |
-| `this` is undefined in a view | View is an arrow function | Use `function View() {}` |
-| Route params never update | `${router.params().id}` | `${() => router.params().id}` |
-| App renders nothing | `mount` not awaited or selector missing | `await createRoot("#app").mount(App)` |
+| Symptom                       | Cause                                                    | Fix                                                  |
+| ----------------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| Value never updates           | `${count()}`                                             | `${count}` or `${() => count()}`                     |
+| List item text never updates  | `${item.name}` or `${item().name}`                       | `${() => item().name}`                               |
+| Prop getter throws            | Parent passed a static value, child calls `props.name()` | Pass `name=${getter}` or use `props.name` as a value |
+| `this` is undefined in a view | View is an arrow function                                | Use `function View() {}`                             |
+| Route params never update     | `${router.params().id}`                                  | `${() => router.params().id}`                        |
+| App renders nothing           | `mount` not awaited or selector missing                  | `await createRoot("#app").mount(App)`                |

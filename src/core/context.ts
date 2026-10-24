@@ -3,12 +3,11 @@ import { assert } from "../utils.js";
 import { VIEW, ViewNode } from "./markup/nodes/view.js";
 import { createEffect, Unwrapped } from "./signals.js";
 import { pushComponentName, popComponentName } from "./signal-debug.js";
-import { PARENT_ELEMENT } from "./symbols.js";
+import { HIDDEN, MOUNTED, PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
 
 export type ContextState = {
-  isMounted: boolean;
   name: string;
 };
 
@@ -21,6 +20,8 @@ export type Context<T = GenericState> = ContextState & T;
 \*===================================*/
 
 const MOUNT_LISTENERS = Symbol.for("$_CONTEXT_MOUNT_LISTENERS");
+const AFTER_MOUNT_LISTENERS = Symbol.for("$_CONTEXT_AFTER_MOUNT_LISTENERS");
+const BEFORE_CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_BEFORE_CLEANUP_LISTENERS");
 const CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_CLEANUP_LISTENERS");
 
 /**
@@ -33,21 +34,41 @@ export function createContext<State extends GenericState>(
   parent: Context | null,
   values?: Partial<State>,
 ): Context<State> {
-  return Object.assign(Object.create(parent), { isMounted: false, ...values });
+  return Object.assign(Object.create(parent), values);
+}
+
+/**
+ * Returns true while the context lifecycle is mounted.
+ *
+ * This is a plain boolean read and is not reactive. It is the replacement for
+ * the old `context.isMounted` field.
+ */
+export function isMounted(context: Context): boolean {
+  return Object.hasOwn(context, MOUNTED);
 }
 
 export function mountContext(context: Context) {
-  if (context.isMounted) return;
-  context.isMounted = true;
+  if (isMounted(context)) return;
+  context[MOUNTED] = true;
+  delete context[HIDDEN];
   _callListeners(context, MOUNT_LISTENERS);
+  _callListeners(context, AFTER_MOUNT_LISTENERS);
 }
 
 export function cleanupContext(context: Context) {
-  // Always discard pending mount listeners — they were registered for a
-  // mount that isn't going to happen (e.g. during HMR replaceView).
+  // Always discard pending mount/visibility listeners — they were registered
+  // for a mount that isn't going to happen (e.g. during HMR replaceView).
   if (Object.hasOwn(context, MOUNT_LISTENERS)) context[MOUNT_LISTENERS].length = 0;
-  if (!context.isMounted) return;
-  context.isMounted = false;
+  if (Object.hasOwn(context, AFTER_MOUNT_LISTENERS)) context[AFTER_MOUNT_LISTENERS].length = 0;
+
+  if (!isMounted(context)) {
+    if (Object.hasOwn(context, BEFORE_CLEANUP_LISTENERS)) context[BEFORE_CLEANUP_LISTENERS].length = 0;
+    return;
+  }
+
+  _callListeners(context, BEFORE_CLEANUP_LISTENERS);
+  delete context[MOUNTED];
+  delete context[HIDDEN];
   _callListeners(context, CLEANUP_LISTENERS);
 }
 
@@ -78,6 +99,24 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 }
 
 /**
+ * Internal: registers a callback to run after all mount listeners have run.
+ * Used for the initial visibility hook decision.
+ */
+export function onAfterMount(context: Context, fn: LifecycleListener) {
+  if (!Object.hasOwn(context, AFTER_MOUNT_LISTENERS)) context[AFTER_MOUNT_LISTENERS] = [fn];
+  else context[AFTER_MOUNT_LISTENERS].push(fn);
+}
+
+/**
+ * Internal: registers a callback to run before a mounted context is cleaned up.
+ * Used to fire `onHide` while the context is still technically mounted.
+ */
+export function onBeforeCleanup(context: Context, fn: LifecycleListener) {
+  if (!Object.hasOwn(context, BEFORE_CLEANUP_LISTENERS)) context[BEFORE_CLEANUP_LISTENERS] = [fn];
+  else context[BEFORE_CLEANUP_LISTENERS].push(fn);
+}
+
+/**
  * Creates an effect that auto-tracks getters called within its callback.
  */
 export function onEffect(context: Context, fn: () => void, options?: { name?: string }): void;
@@ -104,7 +143,7 @@ export function onEffect(context: Context, fn: () => void, options?: any[] | { d
     return cleanup;
   };
 
-  if (context.isMounted || context[REPLACING]) {
+  if (isMounted(context) || context[REPLACING]) {
     onCleanup(context, runEffect());
   } else {
     onMount(context, () => {

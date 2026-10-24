@@ -7,17 +7,18 @@ export { batch, compose, createAtom, createEffect, createSetter, peek, subscribe
 export type { Getter, Setter } from "./signals.js";
 
 // Hooks
-export { addStore, getNearestViewNode, getRootElement, getStore, hasOwnStore, hasStore, onCleanup, onEffect, onMount } from "./context.js";
+export { addStore, getNearestViewNode, getRootElement, getStore, hasOwnStore, hasStore, isMounted, onCleanup, onEffect, onMount } from "./context.js";
 export { createContext, mountContext, cleanupContext } from "./context.js";
 export type { Context } from "./context.js";
-export { isSuspended, onResume, onSuspend } from "./suspend.js";
+export { isVisible, onHide, onShow } from "./visibility.js";
 
 // Debug
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
 export type { Markup, MarkupNode } from "./markup/types.js";
-export { createPortal, forEach, hideIf, hideUnless, keepAlive, showIf, showUnless } from "./markup/helpers.js";
+export { branch, createPortal, forEach, hideIf, hideUnless, keepAlive, showIf, showUnless } from "./markup/helpers.js";
+export type { BranchTuple } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
 export { styled } from "./markup/styled.js";

@@ -1,6 +1,6 @@
 import type { Renderable, View } from "../types.js";
 import { assert, isFunction, isString } from "../utils.js";
-import { type Context, createContext, GenericState, mountContext, cleanupContext } from "./context.js";
+import { type Context, createContext, GenericState, mountContext, cleanupContext, isMounted } from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
@@ -70,7 +70,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   }
 
   async function mount(content: View<{}> | Renderable) {
-    if (context.isMounted) return;
+    if (isMounted(context)) return;
 
     await Promise.all(plugins.map((fn) => fn(context)));
 

@@ -48,12 +48,29 @@ for (const file of files) {
 }
 
 const linkPattern = /\]\(([^)\s]+)\)/g;
+const forbiddenTerms = [
+  [/\bpark(?:ed|ing)?\b/i, "use hide/show terminology, not park"],
+  [/\bonSuspend\b|\bonResume\b|\bisSuspended\b/, "use onHide/onShow/isVisible"],
+  [/suspend-aware/i, "say 'a helper that supports keepAlive'"],
+  [/Suspension Hooks/, "use 'Visibility Hooks'"],
+  [/\bsuspend(?:ed|s|ing|sion)?\b/, "use hide/show terminology, not suspend"],
+];
 let problems = 0;
 
 for (const file of files) {
   const full = path.join(root, file);
   const text = fs.readFileSync(full, "utf8");
   let match;
+
+  // The contributing guide names the forbidden terms on purpose.
+  if (file !== "docs/contributing.md") {
+    for (const [pattern, message] of forbiddenTerms) {
+      if (pattern.test(text)) {
+        console.error(`[docs] forbidden terminology in ${file}: ${message}`);
+        problems++;
+      }
+    }
+  }
 
   while ((match = linkPattern.exec(text))) {
     const target = match[1];

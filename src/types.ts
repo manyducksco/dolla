@@ -26,8 +26,8 @@ export type Renderable =
   | Renderable[];
 
 /**
- * Marks a branch side as keep-alive. Only suspend-aware owners (like `showIf`)
- * act on this; elsewhere it renders its content normally.
+ * Marks a branch side as keep-alive. Only helpers that support it (like
+ * `showIf`) act on this; elsewhere it renders its content normally.
  */
 export interface KeepAlive {
   [KEEP_ALIVE]: true;

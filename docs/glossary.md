@@ -21,8 +21,11 @@ Terms used throughout the Dolla docs.
 | **MarkupNode** | The runtime object that mounts, updates, moves, and unmounts a piece of markup. |
 | **Renderable** | Any value accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, `null`, `false`, and keep-alive markers. See [Templates](./templates.md#what-can-be-rendered). |
 | **Mount / Unmount** | Mounting creates DOM and starts subscriptions. Unmounting removes DOM and disposes contexts, effects, refs, and listeners. |
-| **Suspend / Park** | Detaching a `keepAlive` branch from the DOM while keeping its signals, contexts, refs, and effects alive. Suspended content is not unmounted. See [Keep-alive](./components.md#control-flow-helpers). |
+| **Hide / Show** | The visibility lifecycle. Hiding detaches a `keepAlive` branch’s DOM while keeping its signals, contexts, refs, and effects alive; showing reattaches it. Hidden content is not unmounted. See [Keep-alive](./components.md#control-flow-helpers). |
+| **isMounted** | `isMounted(context)` reports whether the context lifecycle is mounted. Replaces the old `context.isMounted` field. |
+| **isVisible** | `isVisible(context)` reports whether a mounted context is currently visible. False while hidden by `keepAlive`. |
 | **Keep-alive** | The opt-in behavior enabled by `keepAlive(content)` on a conditional branch side. |
+| **React Suspense** | React’s async rendering feature. Dolla has no equivalent; Dolla’s `onHide` / `onShow` hooks are about `keepAlive` visibility, not async readiness. |
 | **Portal** | Content that is logically part of the current tree but rendered into a different DOM parent. See [Portals](./components.md#createportal). |
 | **Ref** | A callable container for a DOM node, created with `createRef`, or a callback passed to `ref`. See [Refs](./refs.md). |
 | **Key** | A stable identity returned from the key function passed to `forEach`. Items with the same key reuse their DOM nodes. |

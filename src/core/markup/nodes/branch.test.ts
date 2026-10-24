@@ -1,10 +1,10 @@
 import { describe, expect, test, vi } from "vitest";
 import type { Context } from "../../context.js";
-import { createContext, onCleanup } from "../../context.js";
+import { createContext, isMounted, onCleanup, onMount } from "../../context.js";
 import { createAtom } from "../../signals.js";
-import { isSuspended, onResume, onSuspend } from "../../suspend.js";
+import { isVisible, onHide, onShow } from "../../visibility.js";
 import { flushPendingUpdates } from "../scheduler.js";
-import { createPortal, forEach, hideIf, keepAlive, showIf } from "../helpers.js";
+import { branch, createPortal, forEach, hideIf, keepAlive, showIf } from "../helpers.js";
 import { createMarkup, render } from "../utils.js";
 import { BranchNode } from "./branch.js";
 import { ViewNode } from "./view.js";
@@ -114,16 +114,16 @@ describe("keepAlive in showIf", () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
-  test("onSuspend and onResume run while DOM is still/again attached", () => {
+  test("onShow and onHide run while DOM is still/again attached", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
     let el: HTMLElement | null = null;
-    const suspend = vi.fn();
-    const resume = vi.fn();
+    const show = vi.fn();
+    const hide = vi.fn();
 
     function Hooked(this: Context) {
-      onSuspend(this, () => suspend(el?.parentNode === container, isSuspended(this)));
-      onResume(this, () => resume(el?.parentNode === container, isSuspended(this)));
+      onShow(this, () => show(el?.parentNode === container, isVisible(this)));
+      onHide(this, () => hide(el?.parentNode === container, isVisible(this)));
       return createMarkup("span", {
         ref: (node: HTMLElement) => {
           el = node;
@@ -136,26 +136,30 @@ describe("keepAlive in showIf", () => {
     const node = render(showIf(cond, keepAlive(createMarkup(Hooked, {}))), context);
     node.mount(container);
 
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(show).toHaveBeenCalledWith(true, true);
+
     setCond(false);
     flushPendingUpdates();
-    expect(suspend).toHaveBeenCalledTimes(1);
-    expect(suspend).toHaveBeenCalledWith(true, true);
-    expect(resume).not.toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(hide).toHaveBeenCalledWith(true, false);
 
     setCond(true);
     flushPendingUpdates();
-    expect(resume).toHaveBeenCalledTimes(1);
-    expect(resume).toHaveBeenCalledWith(true, false);
+    expect(show).toHaveBeenCalledTimes(2);
+    expect(show).toHaveBeenLastCalledWith(true, true);
   });
 
-  test("hooks fire for content created while the branch is suspended", () => {
+  test("content created while hidden gets no visibility hooks until shown", () => {
     const { context, container } = setup();
     const [outer, setOuter] = createAtom(true);
     const [inner, setInner] = createAtom(false);
-    const suspend = vi.fn();
+    const show = vi.fn();
+    const hide = vi.fn();
 
     function Later(this: Context) {
-      onSuspend(this, () => suspend(isSuspended(this)));
+      onShow(this, show);
+      onHide(this, hide);
       return "created later";
     }
 
@@ -170,12 +174,17 @@ describe("keepAlive in showIf", () => {
     setInner(true);
     flushPendingUpdates();
 
-    expect(suspend).toHaveBeenCalledTimes(1);
-    expect(suspend).toHaveBeenCalledWith(true);
+    expect(show).not.toHaveBeenCalled();
+    expect(hide).not.toHaveBeenCalled();
     expect(container.textContent).toBe("");
+
+    setOuter(true);
+    flushPendingUpdates();
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(hide).not.toHaveBeenCalled();
   });
 
-  test("a dynamic subtree can structurally update while parked", () => {
+  test("a dynamic subtree can structurally update while hidden", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
     const [pick, setPick] = createAtom<"a" | "b">("a");
@@ -195,7 +204,7 @@ describe("keepAlive in showIf", () => {
     expect(container.textContent).toBe("b");
   });
 
-  test("a repeat node can update while parked", () => {
+  test("a repeat node can update while hidden", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
     const [items, setItems] = createAtom(["a"]);
@@ -221,7 +230,7 @@ describe("keepAlive in showIf", () => {
     expect(container.textContent).toBe("ab");
   });
 
-  test("suspends and resumes portal content", () => {
+  test("hides and shows portal content", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
     const target = document.createElement("div");
@@ -240,7 +249,7 @@ describe("keepAlive in showIf", () => {
     expect(target.textContent).toBe("portaled");
   });
 
-  test("suspends portals inside a non-keepAlive child of a keepAlive side", () => {
+  test("hides portals inside a non-keepAlive child of a keepAlive side", () => {
     const { context, container } = setup();
     const [outer, setOuter] = createAtom(true);
     const [inner] = createAtom(true);
@@ -290,16 +299,16 @@ describe("keepAlive in showIf", () => {
     expect(container.textContent).toBe("content");
   });
 
-  test("outer suspension reaches keep-alive content in a nested branch", () => {
+  test("outer hide reaches keep-alive content in a nested branch", () => {
     const { context, container } = setup();
     const [outer, setOuter] = createAtom(true);
     const [inner, setInner] = createAtom(true);
-    const suspend = vi.fn();
-    const resume = vi.fn();
+    const show = vi.fn();
+    const hide = vi.fn();
 
     function Inner(this: Context) {
-      onSuspend(this, suspend);
-      onResume(this, resume);
+      onShow(this, show);
+      onHide(this, hide);
       return "inner";
     }
 
@@ -307,32 +316,36 @@ describe("keepAlive in showIf", () => {
     const node = render(showIf(outer, keepAlive(innerContent)), context);
     node.mount(container);
     expect(container.textContent).toBe("inner");
+    expect(show).toHaveBeenCalledTimes(1);
 
     setOuter(false);
     flushPendingUpdates();
-    expect(suspend).toHaveBeenCalledTimes(1);
-    expect(resume).not.toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledTimes(1);
     expect(container.textContent).toBe("");
 
     setOuter(true);
     flushPendingUpdates();
-    expect(resume).toHaveBeenCalledTimes(1);
+    expect(show).toHaveBeenCalledTimes(2);
     expect(container.textContent).toBe("inner");
   });
 
-  test("does not resume an inner parked side when the outer branch resumes", () => {
+  test("does not show an inner hidden side when the outer branch shows", () => {
     const { context, container } = setup();
     const [outer, setOuter] = createAtom(true);
     const [inner, setInner] = createAtom(true);
-    const aResume = vi.fn();
-    const bResume = vi.fn();
+    const aShow = vi.fn();
+    const aHide = vi.fn();
+    const bShow = vi.fn();
+    const bHide = vi.fn();
 
     function A(this: Context) {
-      onResume(this, aResume);
+      onShow(this, aShow);
+      onHide(this, aHide);
       return "A";
     }
     function B(this: Context) {
-      onResume(this, bResume);
+      onShow(this, bShow);
+      onHide(this, bHide);
       return "B";
     }
 
@@ -340,23 +353,26 @@ describe("keepAlive in showIf", () => {
     const node = render(showIf(outer, keepAlive(innerContent)), context);
     node.mount(container);
     expect(container.textContent).toBe("A");
+    expect(aShow).toHaveBeenCalledTimes(1);
 
-    // Park the whole outer branch.
+    // Hide the whole outer branch.
     setOuter(false);
     flushPendingUpdates();
+    expect(aHide).toHaveBeenCalledTimes(1);
 
-    // Flip the inner branch while everything is suspended.
+    // Flip the inner branch while everything is hidden.
     setInner(false);
     flushPendingUpdates();
-    expect(bResume).not.toHaveBeenCalled();
-    expect(aResume).not.toHaveBeenCalled();
+    expect(bShow).not.toHaveBeenCalled();
+    expect(bHide).not.toHaveBeenCalled();
 
-    // Resuming the outer branch should only resume B (the active inner side).
+    // Showing the outer branch should only show B (the active inner side).
     setOuter(true);
     flushPendingUpdates();
     expect(container.textContent).toBe("B");
-    expect(bResume).toHaveBeenCalledTimes(1);
-    expect(aResume).not.toHaveBeenCalled();
+    expect(bShow).toHaveBeenCalledTimes(1);
+    expect(aShow).toHaveBeenCalledTimes(1);
+    expect(aHide).toHaveBeenCalledTimes(1);
   });
 
   test("rapid condition flips coalesce to the final side", () => {
@@ -376,7 +392,7 @@ describe("keepAlive in showIf", () => {
     expect(container.textContent).toBe("kept");
   });
 
-  test("keepAlive is inert outside a suspend-aware owner", () => {
+  test("keepAlive is inert outside a helper that supports it", () => {
     const { context, container } = setup();
     const node = render(keepAlive("plain"), context);
     node.mount(container);
@@ -413,23 +429,23 @@ describe("keepAlive in showIf", () => {
     expect(container.querySelector("span")).not.toBe(first);
   });
 
-  test("unmount disposes both active and parked sides", () => {
+  test("unmount disposes both active and hidden sides", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
     const activeCleanup = vi.fn();
-    const parkedCleanup = vi.fn();
+    const hiddenCleanup = vi.fn();
 
     function Active(this: Context) {
       onCleanup(this, activeCleanup);
       return "active";
     }
-    function Parked(this: Context) {
-      onCleanup(this, parkedCleanup);
-      return "parked";
+    function Hidden(this: Context) {
+      onCleanup(this, hiddenCleanup);
+      return "hidden";
     }
 
     const node = render(
-      showIf(cond, keepAlive(createMarkup(Active, {})), keepAlive(createMarkup(Parked, {}))),
+      showIf(cond, keepAlive(createMarkup(Active, {})), keepAlive(createMarkup(Hidden, {}))),
       context,
     );
     node.mount(container);
@@ -437,15 +453,15 @@ describe("keepAlive in showIf", () => {
 
     setCond(false);
     flushPendingUpdates();
-    expect(container.textContent).toBe("parked");
+    expect(container.textContent).toBe("hidden");
 
     node.unmount();
     expect(container.childNodes.length).toBe(0);
     expect(activeCleanup).toHaveBeenCalledTimes(1);
-    expect(parkedCleanup).toHaveBeenCalledTimes(1);
+    expect(hiddenCleanup).toHaveBeenCalledTimes(1);
   });
 
-  test("HMR can replace a view while it is parked", () => {
+  test("HMR can replace a view while it is hidden", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
 
@@ -474,31 +490,42 @@ describe("keepAlive in showIf", () => {
   test("hooks do not fire after the owner is disposed", () => {
     const { context, container } = setup();
     const [cond, setCond] = createAtom(true);
-    const suspend = vi.fn();
-    const resume = vi.fn();
+    const show = vi.fn();
+    const hide = vi.fn();
 
     function Hooked(this: Context) {
-      onSuspend(this, suspend);
-      onResume(this, resume);
+      onShow(this, show);
+      onHide(this, hide);
       return "hooked";
     }
 
     const node = render(showIf(cond, keepAlive(createMarkup(Hooked, {}))), context);
     node.mount(container);
+    expect(show).toHaveBeenCalledTimes(1);
+
     node.unmount();
+    expect(hide).toHaveBeenCalledTimes(1);
 
     setCond(false);
     flushPendingUpdates();
-    expect(suspend).not.toHaveBeenCalled();
-    expect(resume).not.toHaveBeenCalled();
+    expect(show).toHaveBeenCalledTimes(1);
+    expect(hide).toHaveBeenCalledTimes(1);
   });
 
-  test("a parked branch can be moved to a new parent", () => {
+  test("a hidden branch can be moved to a new parent", () => {
     const { context, container } = setup();
     const other = document.createElement("div");
     const [cond, setCond] = createAtom(true);
 
-    const node = new BranchNode(context, cond, keepAlive("moved"), undefined);
+    const node = new BranchNode(
+      context,
+      () => (cond() ? "truthy" : "falsy"),
+      [
+        ["truthy", keepAlive("moved")],
+        ["falsy", undefined],
+      ],
+      undefined,
+    );
     node.mount(container);
     expect(container.textContent).toBe("moved");
 
@@ -512,5 +539,309 @@ describe("keepAlive in showIf", () => {
 
     expect(container.textContent).toBe("");
     expect(other.textContent).toBe("moved");
+  });
+
+  test("isMounted stays true while hidden; isVisible does not", () => {
+    const { context, container } = setup();
+    const [cond, setCond] = createAtom(true);
+    let viewContext: Context | undefined;
+
+    function Hooked(this: Context) {
+      viewContext = this;
+      return "hooked";
+    }
+
+    const node = render(showIf(cond, keepAlive(createMarkup(Hooked, {}))), context);
+    node.mount(container);
+
+    expect(isMounted(viewContext!)).toBe(true);
+    expect(isVisible(viewContext!)).toBe(true);
+
+    setCond(false);
+    flushPendingUpdates();
+    expect(isMounted(viewContext!)).toBe(true);
+    expect(isVisible(viewContext!)).toBe(false);
+
+    setCond(true);
+    flushPendingUpdates();
+    expect(isVisible(viewContext!)).toBe(true);
+
+    node.unmount();
+    expect(isMounted(viewContext!)).toBe(false);
+    expect(isVisible(viewContext!)).toBe(false);
+  });
+
+  test("onMount runs before onShow, and onHide before onCleanup", () => {
+    const { context, container } = setup();
+    const [cond, setCond] = createAtom(true);
+    const events: string[] = [];
+
+    function Hooked(this: Context) {
+      onMount(this, () => events.push("mount"));
+      onShow(this, () => events.push("show"));
+      onHide(this, () => events.push("hide"));
+      onCleanup(this, () => events.push("cleanup"));
+      return "hooked";
+    }
+
+    const node = render(showIf(cond, keepAlive(createMarkup(Hooked, {}))), context);
+    node.mount(container);
+    expect(events).toEqual(["mount", "show"]);
+
+    setCond(false);
+    flushPendingUpdates();
+    expect(events).toEqual(["mount", "show", "hide"]);
+
+    setCond(true);
+    flushPendingUpdates();
+    expect(events).toEqual(["mount", "show", "hide", "show"]);
+
+    node.unmount();
+    expect(events).toEqual(["mount", "show", "hide", "show", "hide", "cleanup"]);
+  });
+
+  test("unmounting while hidden skips onHide and runs onCleanup", () => {
+    const { context, container } = setup();
+    const [cond, setCond] = createAtom(true);
+    const events: string[] = [];
+
+    function Hooked(this: Context) {
+      onShow(this, () => events.push("show"));
+      onHide(this, () => events.push("hide"));
+      onCleanup(this, () => events.push("cleanup"));
+      return "hooked";
+    }
+
+    const node = render(showIf(cond, keepAlive(createMarkup(Hooked, {}))), context);
+    node.mount(container);
+    expect(events).toEqual(["show"]);
+
+    setCond(false);
+    flushPendingUpdates();
+    expect(events).toEqual(["show", "hide"]);
+
+    node.unmount();
+    expect(events).toEqual(["show", "hide", "cleanup"]);
+  });
+
+  test("unmounting content that was only ever hidden skips onHide", () => {
+    const { context, container } = setup();
+    const [outer, setOuter] = createAtom(true);
+    const [inner, setInner] = createAtom(false);
+    const show = vi.fn();
+    const hide = vi.fn();
+    const cleanup = vi.fn();
+
+    function Later(this: Context) {
+      onShow(this, show);
+      onHide(this, hide);
+      onCleanup(this, cleanup);
+      return "later";
+    }
+
+    const content = () => showIf(inner, createMarkup(Later, {}));
+    const node = render(showIf(outer, keepAlive(content)), context);
+    node.mount(container);
+
+    setOuter(false);
+    flushPendingUpdates();
+    setInner(true);
+    flushPendingUpdates();
+
+    expect(show).not.toHaveBeenCalled();
+    expect(hide).not.toHaveBeenCalled();
+
+    node.unmount();
+    expect(show).not.toHaveBeenCalled();
+    expect(hide).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  test("visibility hooks work outside keepAlive", () => {
+    const { context, container } = setup();
+    const events: string[] = [];
+
+    function Hooked(this: Context) {
+      onShow(this, () => events.push("show"));
+      onHide(this, () => events.push("hide"));
+      onCleanup(this, () => events.push("cleanup"));
+      return "hooked";
+    }
+
+    const node = render(createMarkup(Hooked, {}), context);
+    node.mount(container);
+    expect(events).toEqual(["show"]);
+
+    node.unmount();
+    expect(events).toEqual(["show", "hide", "cleanup"]);
+  });
+});
+
+describe("branch", () => {
+  test("switches between object cases reactively", () => {
+    const { context, container } = setup();
+    const [state, setState] = createAtom<"a" | "b" | "c">("a");
+    const node = render(branch(state, { a: "A", b: "B" }, "fallback"), context);
+    node.mount(container);
+
+    expect(container.textContent).toBe("A");
+
+    setState("b");
+    flushPendingUpdates();
+    expect(container.textContent).toBe("B");
+
+    setState("c");
+    flushPendingUpdates();
+    expect(container.textContent).toBe("fallback");
+  });
+
+  test("renders nothing when no case matches and there is no fallback", () => {
+    const { context, container } = setup();
+    const [state, setState] = createAtom<"a" | "b">("a");
+    const node = render(branch(state, { a: "A" }), context);
+    node.mount(container);
+
+    setState("b");
+    flushPendingUpdates();
+    expect(container.textContent).toBe("");
+  });
+
+  test("matches tuple keys that are not strings or symbols", () => {
+    const { context, container } = setup();
+    const tabA = {};
+    const tabB = {};
+    const [tab, setTab] = createAtom<object>(tabA);
+    const node = render(
+      branch(
+        tab,
+        [
+          [tabA, "A"],
+          [tabB, "B"],
+        ],
+        "fallback",
+      ),
+      context,
+    );
+    node.mount(container);
+
+    expect(container.textContent).toBe("A");
+
+    setTab(tabB);
+    flushPendingUpdates();
+    expect(container.textContent).toBe("B");
+
+    setTab({});
+    flushPendingUpdates();
+    expect(container.textContent).toBe("fallback");
+  });
+
+  test("tuple keys use strict equality", () => {
+    const { context, container } = setup();
+    const [value, setValue] = createAtom<string | number>(1);
+    const node = render(
+      branch(value, [
+        [1, "number"],
+        ["1", "string"],
+      ]),
+      context,
+    );
+    node.mount(container);
+
+    expect(container.textContent).toBe("number");
+
+    setValue("1");
+    flushPendingUpdates();
+    expect(container.textContent).toBe("string");
+  });
+
+  test("keepAlive preserves branch content across several switches", () => {
+    const { context, container } = setup();
+    const [state, setState] = createAtom<"a" | "b" | "c">("a");
+    const node = render(
+      branch(
+        state,
+        {
+          a: keepAlive(createMarkup("input", {})),
+          b: keepAlive(createMarkup("span", { children: "B" })),
+          c: keepAlive(createMarkup("span", { children: "C" })),
+        },
+        keepAlive(createMarkup("span", { children: "fallback" })),
+      ),
+      context,
+    );
+    node.mount(container);
+
+    const input = container.querySelector("input") as HTMLInputElement;
+    input.value = "typed";
+
+    setState("b");
+    flushPendingUpdates();
+    const b = container.querySelector("span");
+    expect(container.textContent).toBe("B");
+
+    setState("c");
+    flushPendingUpdates();
+    expect(container.textContent).toBe("C");
+
+    setState("a");
+    flushPendingUpdates();
+    expect(container.querySelector("input")).toBe(input);
+    expect(input.value).toBe("typed");
+
+    setState("b");
+    flushPendingUpdates();
+    expect(container.querySelector("span")).toBe(b);
+  });
+
+  test("unmount disposes every retained branch", () => {
+    const { context, container } = setup();
+    const [state, setState] = createAtom<"a" | "b">("a");
+    const aCleanup = vi.fn();
+    const bCleanup = vi.fn();
+
+    function A(this: Context) {
+      onCleanup(this, aCleanup);
+      return "A";
+    }
+    function B(this: Context) {
+      onCleanup(this, bCleanup);
+      return "B";
+    }
+
+    const node = render(
+      branch(state, {
+        a: keepAlive(createMarkup(A, {})),
+        b: keepAlive(createMarkup(B, {})),
+      }),
+      context,
+    );
+    node.mount(container);
+
+    setState("b");
+    flushPendingUpdates();
+
+    node.unmount();
+    expect(container.childNodes.length).toBe(0);
+    expect(aCleanup).toHaveBeenCalledTimes(1);
+    expect(bCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a keepAlive fallback is retained when cases match again", () => {
+    const { context, container } = setup();
+    const [state, setState] = createAtom<"a" | "missing">("missing");
+    const node = render(branch(state, { a: "A" }, keepAlive(createMarkup("input", {}))), context);
+    node.mount(container);
+
+    const input = container.querySelector("input") as HTMLInputElement;
+    input.value = "fallback state";
+
+    setState("a");
+    flushPendingUpdates();
+    expect(container.textContent).toBe("A");
+
+    setState("missing");
+    flushPendingUpdates();
+    expect(container.querySelector("input")).toBe(input);
+    expect(input.value).toBe("fallback state");
   });
 });

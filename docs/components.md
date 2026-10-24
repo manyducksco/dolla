@@ -134,7 +134,7 @@ html`<div>${hideIf(isLoading, html`<p>Content</p>`, html`<p>Loading...</p>`)}</d
 
 Conditions can be getters (reactive) or plain values (evaluated once).
 
-By default, hidden content is unmounted. Wrap a branch side in `keepAlive` to suspend it instead:
+By default, hidden content is unmounted. Wrap a branch side in `keepAlive` to hide it without unmounting:
 
 ```js
 import { keepAlive, showIf } from "@manyducks.co/dolla";
@@ -142,17 +142,47 @@ import { keepAlive, showIf } from "@manyducks.co/dolla";
 html`<div>${showIf(activeTab, keepAlive(html`<${Editor} />`))}</div>`;
 ```
 
-A suspended side keeps its signals, stores, DOM, refs, listeners, and effects alive; only its DOM is detached. This is useful for tabs, panels, and forms where losing state would be disruptive.
+A hidden side keeps its signals, stores, DOM, refs, listeners, and effects alive; only its DOM is detached. This is useful for tabs, panels, and forms where losing state would be disruptive.
 
 Things to know:
 
 - `keepAlive` must wrap the **entire branch side**, not a nested child.
-- Effects, timers, and fetches keep running while suspended. Use `onSuspend` / `onResume` (see [Hooks](./hooks.md)) to pause work explicitly.
-- `onCleanup` does **not** run when content is suspended; it runs when the owner unmounts.
-- Suspended content is absent from the document, so `querySelector` won't find it and it is hidden from assistive technology.
-- Focus and text selection are lost. Media and iframe state may reset on resume.
+- Effects, timers, and fetches keep running while hidden. Use `onHide` / `onShow` (see [Hooks](./hooks.md)) to pause work explicitly.
+- `onCleanup` does **not** run when content is hidden; it runs when the owner unmounts.
+- Hidden content is absent from the document, so `querySelector` won't find it and it is hidden from assistive technology.
+- Focus and text selection are lost. Media and iframe state may reset on show.
 - Memory is retained until the conditional owner unmounts. There is one retained instance per branch side.
-- `keepAlive` is only meaningful inside a suspend-aware helper such as `showIf` / `hideIf`.
+- `keepAlive` is only meaningful inside a helper that supports it, such as `showIf` / `hideIf`.
+
+### `branch`
+
+Renders one of several cases based on a reactive value, like a `switch` statement:
+
+```js
+html`${branch(status, {
+  loading: html`<p>Loading...</p>`,
+  ready: html`<${Profile} />`,
+  error: html`<p>Something went wrong.</p>`,
+}, html`<p>Unknown status</p>`)}`;
+```
+
+Pass cases as an object keyed by the match values, or as an array of `[value, content]` tuples when the match values are not strings or symbols:
+
+```js
+const tabs = [
+  [tabA, html`<${TabA} />`],
+  [tabB, html`<${TabB} />`],
+];
+
+html`${branch(activeTab, tabs, html`<${EmptyTab} />`)}`;
+```
+
+- Values can be getters (reactive) or plain values (evaluated once).
+- Cases match with strict equality (`===`), like `switch`. Tuple keys can be objects, numbers, `null`, or any other value and are matched by identity.
+- Object keys follow normal object property rules, so numeric and boolean values match their string keys.
+- There is no fallthrough; only the first matching case is rendered.
+- Pass the fallback as the third argument. Without one, an unmatched value renders nothing.
+- Cases and the fallback support `keepAlive`, so hidden branch content can retain its state.
 
 ### `showUnless` / `hideUnless`
 
@@ -203,7 +233,7 @@ function Modal() {
 }
 ```
 
-Portal content is physically outside the logical parent. Make sure the target exists, and manage focus and ARIA relationships manually when moving dialogs or menus outside the tree. Portals participate in `keepAlive` suspension: their content is retained and removed from the target while the branch is hidden.
+Portal content is physically outside the logical parent. Make sure the target exists, and manage focus and ARIA relationships manually when moving dialogs or menus outside the tree. Portals participate in `keepAlive` visibility: their content is retained and removed from the target while the branch is hidden.
 
 ## Context
 

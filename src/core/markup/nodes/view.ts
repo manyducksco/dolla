@@ -1,11 +1,12 @@
 import type { View } from "../../../types.js";
-import { Context, createContext, mountContext, cleanupContext, REPLACING } from "../../context.js";
+import { Context, createContext, mountContext, cleanupContext, REPLACING, isMounted } from "../../context.js";
 import { peek } from "../../signals.js";
 import { pushComponentName, popComponentName } from "../../signal-debug.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";
 import { registerViewInstance, unregisterViewInstance } from "../../hmr.js";
+import { hideContext } from "../../visibility.js";
 
 export const VIEW = Symbol.for("$_VIEW_NODE");
 
@@ -34,7 +35,7 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   isMounted() {
-    return this.context.isMounted;
+    return isMounted(this.context);
   }
 
   mount(parent: Element, after?: Node | null) {
@@ -60,6 +61,8 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   unmount(skipDOM = false) {
+    // Fire onHide while the context is still mounted and its DOM still exists.
+    hideContext(this.context);
     this.#node?.unmount(skipDOM);
     cleanupContext(this.context);
     unregisterViewInstance(this.#view, this);
@@ -83,11 +86,12 @@ export class ViewNode<P> extends MarkupNode {
     }
 
     const oldRoot = this.#node?.getRoot();
-    // Use parentNode so HMR can replace a view that is parked in a
+    // Use parentNode so HMR can replace a view that is hidden in a
     // DocumentFragment by keep-alive.
     const parent = oldRoot?.parentNode as MountTarget | undefined;
     const after = oldRoot?.previousSibling;
 
+    hideContext(this.context);
     this.#node?.unmount();
 
     if (oldRoot && oldRoot.parentNode) {

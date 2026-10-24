@@ -14,7 +14,7 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - 🧩 **Context** — each view exposes a context object that inherits values from the parent context
 - 💾 **Stores** — shared-state-on-rails via the context tree
 - 🎨 **CSS-in-JS** — a `css` helper for quick inline classes and `styled.*` elements for easy composition
-- 🧊 **Keep-alive conditionals** — optionally suspend hidden content instead of unmounting it
+- 🧊 **Keep-alive conditionals** — optionally hide content instead of unmounting it
 - 🏗 **Buildless templates** — use the `html` helper instead of JSX, with no template compiler
 - 🐛 **Debug logging** — colored, taggable, filterable
 - ⏱ **Temporal helpers** — `debounce` and `throttle`
@@ -80,7 +80,7 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Mental 
 | [Styled components](./docs/styled.md)      | `styled.*`, naming, `as`, composition, props                     |
 | [Transitions](./docs/transitions.md)       | Enter/exit animations with the Web Animations API                |
 | [Refs](./docs/refs.md)                     | Direct DOM access with createRef                                 |
-| [Hooks](./docs/hooks.md)                   | Lifecycle, context, store, and suspension hooks                  |
+| [Hooks](./docs/hooks.md)                   | Lifecycle, context, store, and visibility hooks                  |
 | [Debugging](./docs/debugging.md)           | Loggers, levels, filters, and debug mode                         |
 | [Utilities](./docs/utilities.md)           | debounce, throttle, sleep                                        |
 | [Advanced internals](./docs/advanced.md)   | Types, `createMarkup`/`render`, custom nodes                     |

@@ -33,7 +33,11 @@ Use the [Glossary](./glossary.md) as the authority:
 - **View** for functions returning markup.
 - **Store** for functions returning state/logic.
 - **Component** only as the umbrella term.
-- **Getter**, **signal**, **atom**, **markup**, **mount/unmount**, **suspend/park/keep-alive** consistently.
+- **Getter**, **signal**, **atom**, **markup**, **mount/unmount**, and **show/hide/visibility** consistently.
+- Use **`keepAlive`** for the helper and **keep-alive** as the adjective.
+- Use **detach / reattach** only for the DOM mechanism.
+- Use **`isMounted(context)`** for lifecycle state and **`isVisible(context)`** for visibility.
+- Do **not** use park, suspend, or resume for this feature. Reserve capitalized **React Suspense** for React’s async feature.
 
 ## Checks
 

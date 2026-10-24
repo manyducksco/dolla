@@ -39,7 +39,7 @@ html`<ul>${forEach(items, (item) => item.id, (item) => html`
 
 Use a plain `.map()` only for an array that never changes. See [forEach](./components.md#foreach).
 
-### How do I do async data? Is there Suspense?
+### How do I do async data? Is there React-style Suspense?
 
 There is no React-style Suspense or thrown-promise boundary. Model async work as state and branch on it:
 
@@ -64,9 +64,9 @@ See [When updates run](./concepts.md#when-updates-run) and [Effects](./effects.m
 
 ### Why doesn't `onCleanup` run when content is hidden?
 
-If the content is a `keepAlive` branch side, hiding it **suspends** it instead of unmounting it. `onCleanup` runs only when the owner is disposed. Use `onSuspend` / `onResume` to pause work while hidden.
+If the content is a `keepAlive` branch side, hiding it keeps it alive instead of unmounting it. `onCleanup` runs only when the owner is disposed. Use `onHide` / `onShow` to pause work while hidden.
 
-See [Suspension hooks](./hooks.md#suspension-hooks).
+See [Visibility hooks](./hooks.md#visibility-hooks).
 
 ### How do I access a DOM node?
 
@@ -121,7 +121,7 @@ See [CSS](./css.md).
 
 ### Is there a virtual DOM?
 
-No. Updates target the exact DOM node that depends on the changed signal. Keyed lists reuse nodes and `keepAlive` can park a branch, but there is no general diff or re-render cycle.
+No. Updates target the exact DOM node that depends on the changed signal. Keyed lists reuse nodes and `keepAlive` can hide a branch, but there is no general diff or re-render cycle.
 
 ### Can a view return multiple root nodes?
 

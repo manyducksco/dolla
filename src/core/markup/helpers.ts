@@ -1,9 +1,9 @@
 import { createMarkup, MaybeGetter, Renderable } from "..";
 import type { KeepAlive } from "../../types";
-import { isFunction } from "../../utils";
+import { isArray, isFunction } from "../../utils";
 import { KEEP_ALIVE } from "../symbols";
 import { type Getter } from "../signals";
-import { BranchNode } from "./nodes/branch";
+import { BranchNode, type BranchEntry } from "./nodes/branch";
 import { PortalNode } from "./nodes/portal";
 import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
 
@@ -41,7 +41,14 @@ export function forEach<T>(
 function _conditional(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (isFunction(condition)) {
     return createMarkup(BranchNode, {
-      args: [condition as Getter<any>, whenTruthy, whenFalsy],
+      args: [
+        () => Boolean(condition()),
+        [
+          [true, whenTruthy],
+          [false, whenFalsy],
+        ] as const,
+        undefined,
+      ],
     });
   } else if (condition) {
     return whenTruthy;
@@ -50,10 +57,70 @@ function _conditional(condition: any, whenTruthy?: Renderable, whenFalsy?: Rende
   }
 }
 
+export type BranchTuple<T = unknown> = readonly [value: T, content: Renderable];
+
+function toPropertyKey(value: unknown): PropertyKey {
+  return typeof value === "symbol" ? value : String(value);
+}
+
 /**
- * Marks a conditional branch side as keep-alive. When hidden by `showIf` /
- * `hideIf`, the content is suspended instead of unmounted, preserving its
- * signals, DOM, refs, and effects.
+ * Renders content based on a reactive value, like a `switch` statement.
+ *
+ * Cases can be provided as an object keyed by the match values, or as an array
+ * of `[value, content]` tuples. The tuple form supports matching any value,
+ * including objects (by identity), while the object form uses normal object
+ * property keys.
+ *
+ * When no case matches, `fallback` is rendered. Cases and the fallback support
+ * `keepAlive()`.
+ *
+ * @param value - Value to match. Can be reactive.
+ * @param cases - Object of cases or array of `[value, content]` tuples.
+ * @param fallback - Content to display when no case matches.
+ */
+export function branch<T extends PropertyKey | boolean>(
+  value: MaybeGetter<T>,
+  cases: Partial<Record<PropertyKey, Renderable>>,
+  fallback?: Renderable,
+): Renderable;
+export function branch<T>(value: MaybeGetter<T>, cases: readonly BranchTuple<T>[], fallback?: Renderable): Renderable;
+export function branch<T>(
+  value: MaybeGetter<T>,
+  cases: Partial<Record<PropertyKey, Renderable>> | readonly BranchTuple<T>[],
+  fallback?: Renderable,
+): Renderable {
+  const tupleForm = isArray(cases);
+
+  // Short circuit on static value.
+  if (!isFunction(value)) {
+    if (tupleForm) {
+      for (const [key, content] of cases as readonly BranchTuple<T>[]) {
+        if (key === value) return content;
+      }
+      return fallback;
+    }
+
+    const key = toPropertyKey(value);
+    return Object.hasOwn(cases as object, key) ? (cases as Partial<Record<PropertyKey, Renderable>>)[key] : fallback;
+  }
+
+  const entries: readonly BranchEntry[] = tupleForm
+    ? (cases as readonly BranchTuple<T>[])
+    : Reflect.ownKeys(cases as object).map(
+        (key): BranchEntry => [key, (cases as Partial<Record<PropertyKey, Renderable>>)[key]],
+      );
+
+  const selector = tupleForm ? (value as Getter<unknown>) : () => toPropertyKey((value as Getter<T>)());
+
+  return createMarkup(BranchNode, {
+    args: [selector, entries, fallback],
+  });
+}
+
+/**
+ * Marks a conditional branch side as keep-alive. When hidden by `showIf`,
+ * `hideIf`, or `branch`, the content is hidden instead of unmounted, preserving
+ * its signals, DOM, refs, and effects.
  *
  * `keepAlive` must wrap the entire branch side:
  *

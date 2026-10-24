@@ -2,11 +2,12 @@ import { describe, expect, test, vi } from "vitest";
 import { createContext } from "../context.js";
 import { createAtom } from "../signals.js";
 import { flushPendingUpdates } from "./scheduler.js";
+import { BranchNode } from "./nodes/branch.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { PortalNode } from "./nodes/portal.js";
 import { RepeatNode } from "./nodes/repeat.js";
 import { createMarkup, render } from "./utils.js";
-import { createPortal, forEach, hideIf, showIf, showUnless } from "./helpers.js";
+import { branch, createPortal, forEach, hideIf, showIf, showUnless } from "./helpers.js";
 
 function setup() {
   const context = createContext(null);
@@ -174,6 +175,51 @@ describe("showIf / hideIf / showUnless / hideUnless", () => {
       flushPendingUpdates();
       expect(container.textContent).toBe("content");
     });
+  });
+});
+
+describe("branch", () => {
+  test("static object case returns the matching content", () => {
+    expect(branch("loading", { loading: "loading view", ready: "ready view" })).toBe("loading view");
+  });
+
+  test("static object case falls back when nothing matches", () => {
+    expect(branch("missing", { loading: "loading view" }, "fallback")).toBe("fallback");
+  });
+
+  test("static object case renders nothing with no match or fallback", () => {
+    expect(branch("missing", { loading: "loading view" })).toBeUndefined();
+  });
+
+  test("object cases match numeric and boolean values using property keys", () => {
+    expect(branch(1, { 1: "number" })).toBe("number");
+    expect(branch(true, { true: "yes", false: "no" })).toBe("yes");
+  });
+
+  test("static tuple case supports object keys", () => {
+    const key = {};
+    expect(branch(key, [[key, "matched"]], "fallback")).toBe("matched");
+    expect(branch({}, [[key, "matched"]], "fallback")).toBe("fallback");
+  });
+
+  test("static tuple case uses strict equality", () => {
+    expect(branch(1, [[1, "number"]])).toBe("number");
+    expect(branch<string | number>("1", [[1, "number"]], "fallback")).toBe("fallback");
+  });
+
+  test("reactive value returns markup with BranchNode", () => {
+    const [state] = createAtom("loading");
+    const result = branch(state, { loading: "loading view" });
+    const markup = result as ReturnType<typeof createMarkup>;
+    expect(markup.type).toBe(BranchNode);
+  });
+
+  test("reactive tuple value returns markup with BranchNode", () => {
+    const key = {};
+    const [state] = createAtom<object>(key);
+    const result = branch(state, [[key, "content"]]);
+    const markup = result as ReturnType<typeof createMarkup>;
+    expect(markup.type).toBe(BranchNode);
   });
 });
 

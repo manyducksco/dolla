@@ -18,7 +18,7 @@ function Counter() {
 }
 ```
 
-There is no virtual DOM, no diffing, no re-rendering. Every update is a pinpoint operation on the exact DOM node that depends on the changed signal. Keyed lists (`forEach`) reuse nodes and `keepAlive` can park a branch, but there is no general VDOM diff or re-render cycle.
+There is no virtual DOM, no diffing, no re-rendering. Every update is a pinpoint operation on the exact DOM node that depends on the changed signal. Keyed lists (`forEach`) reuse nodes and `keepAlive` can hide a branch, but there is no general VDOM diff or re-render cycle.
 
 ## Values flow through getters
 
@@ -90,15 +90,15 @@ This means:
 - State is initialized once. No effect cleanup and re-setup on every "render."
 - The mental model is closer to "build a circuit" than "re-render a function."
 
-## Suspending content
+## Keeping hidden content alive
 
-By default, hidden conditional content is unmounted. Wrapping a branch side in `keepAlive` suspends it instead: the DOM is detached, but the component graph — signals, contexts, refs, listeners, effects — stays alive.
+By default, hidden conditional content is unmounted. Wrapping a branch side in `keepAlive` hides it instead: the DOM is detached, but the component graph — signals, contexts, refs, listeners, effects — stays alive.
 
 ```js
 showIf(activeTab, keepAlive(html`<${Editor} />`));
 ```
 
-This is not async Suspense and it does not pause effects. Hidden content keeps running; use `onSuspend` / `onResume` to pause specific work. `onCleanup` runs only when the content is actually disposed, not when it is suspended. See [Control flow helpers](./components.md#control-flow-helpers) and [Hooks](./hooks.md#suspension-hooks).
+This is not React Suspense and it does not pause effects. Hidden content keeps running; use `onHide` / `onShow` to pause specific work. `onCleanup` runs only when the content is actually disposed, not when it is hidden. See [Control flow helpers](./components.md#control-flow-helpers) and [Hooks](./hooks.md#visibility-hooks).
 
 ## When updates run
 
@@ -109,7 +109,7 @@ It helps to know the order of events when you call a setter.
 3. `batch(fn)` groups signal effects until `fn` returns. DOM updates still flush on the microtask.
 4. `createEffect` runs its callback immediately when created. `onEffect` runs on mount, after the view's DOM is mounted.
 5. `onMount` listeners run after the subtree mounts. `onCleanup` runs when the component is disposed.
-6. `onSuspend` / `onResume` run when a `keepAlive` branch is parked or resumed. See [Hooks](./hooks.md#suspension-hooks).
+6. `onHide` / `onShow` run when content becomes hidden or visible, including when a `keepAlive` branch hides or shows. See [Hooks](./hooks.md#visibility-hooks).
 
 ```js
 setCount(1);
@@ -215,4 +215,4 @@ If you're coming from another framework, here's how the pieces map:
 | `useRef` | `createRef` |
 | Virtual DOM / diffing | None — direct DOM updates via tracked dependencies |
 | `useReducer` | A custom setter function wrapping `createAtom` |
-| Suspense | No direct equivalent. Use a pending getter with `showIf` (optionally `keepAlive`). The router exposes `progress` and `errorView` for route-level async, but it does not suspend a tree. |
+| React Suspense | No direct equivalent. Use a pending getter with `showIf` (optionally `keepAlive`). The router exposes `progress` and `errorView` for route-level async, but it does not pause rendering or show a fallback. |

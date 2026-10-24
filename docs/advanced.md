@@ -15,7 +15,7 @@ This page covers public exports that are lower-level than the normal helpers. Th
 | `Context` | The prototype-inherited object passed to views and stores. |
 | `Markup` | A description of an element/component: `{ type, props }` with the internal `IS_MARKUP` marker. |
 | `MarkupNode` | The runtime object that mounts, updates, moves, and unmounts markup. |
-| `KeepAlive` | The branded descriptor returned by `keepAlive()`; normally consumed by `showIf`/`hideIf`. |
+| `KeepAlive` | The branded descriptor returned by `keepAlive()`; normally consumed by `showIf`, `hideIf`, or `branch`. |
 
 See [Templates](./templates.md#what-can-be-rendered) for the user-facing renderable rules.
 
@@ -63,7 +63,7 @@ abstract class MarkupNode {
 ```
 
 - `getRoot` returns the DOM node representing this node's position. It may be an anchor text node.
-- `isMounted` should be true while the node is attached to a parent (including a parking fragment used by keep-alive).
+- `isMounted` should be true while the node is attached to a parent (including a detached fragment used by keep-alive).
 - `mount` inserts the node, usually after `after`.
 - `unmount` removes DOM unless `skipDOM` is true, and releases subscriptions, refs, and contexts.
 - `move` repositions the node without remounting when possible; use `moveBefore` when available to preserve DOM state.
@@ -79,7 +79,7 @@ interface MountTarget {
 }
 ```
 
-`Element` and `DocumentFragment` both satisfy it. This is why suspended content can still update while detached.
+`Element` and `DocumentFragment` both satisfy it. This is why hidden content can still update while detached.
 
 ## Exported node classes
 
@@ -94,17 +94,20 @@ These are available for advanced integrations:
 
 Prefer the helpers (`html`, `forEach`, `showIf`, `createPortal`) unless you are building a custom rendering primitive.
 
-## Keep-alive internals
+## Visibility internals
 
-`keepAlive(content)` returns a `KeepAlive` marker. The conditional owner (`showIf`/`hideIf`) detects the marker, creates a per-side suspension scope, and parks the DOM in a `DocumentFragment` when hidden.
+`keepAlive(content)` returns a `KeepAlive` marker. The conditional owner (`showIf`, `hideIf`, or `branch`) detects the marker and hides the DOM by moving it into a detached `DocumentFragment`.
 
 Use the public hooks rather than reaching into the scope directly:
 
-- `onSuspend(context, fn)`
-- `onResume(context, fn)`
-- `isSuspended(context)`
+- `onHide(context, fn)`
+- `onShow(context, fn)`
+- `isMounted(context)`
+- `isVisible(context)`
 
-See [Suspension hooks](./hooks.md#suspension-hooks) and [Keep-alive](./components.md#control-flow-helpers).
+`isMounted(context)` is the lifecycle check that replaced the old context field. `isVisible(context)` adds keep-alive visibility to it. The `MarkupNode.isMounted()` method above is a different concept: it describes whether the render node is attached to a parent, not whether the context is visible.
+
+See [Visibility hooks](./hooks.md#visibility-hooks) and [Keep-alive](./components.md#control-flow-helpers).
 
 ## Stability
 
