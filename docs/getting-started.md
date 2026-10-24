@@ -199,7 +199,7 @@ Plugins may be async; `mount` waits for them.
 
 **My app doesn't mount.** `mount` is async. Use `await createRoot(...).mount(...)`, and check that the selector matches an element.
 
-**My styles are missing.** A `css` template must be attached to an element through `class` (or through `styled`), not just created. See [CSS](./css.md).
+**My styles are missing.** A `css` template must be attached to an element through `class`, not just created. See [CSS](./css.md).
 
 **My JSX doesn't compile.** Check `jsx` and `jsxImportSource` in `tsconfig.json`, or the `esbuild` settings in `vite.config.js`.
 

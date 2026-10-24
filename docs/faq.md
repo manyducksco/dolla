@@ -117,7 +117,7 @@ See [Router](./../src/router/README.md) and [Translate](./../src/translate/READM
 
 ### How do I style a component?
 
-Use the `css` helper with `class`, or create a styled view with `styled.*`:
+Use a plain class string, a CSS module class name, or the optional `css` helper:
 
 ```jsx
 const card = css`
@@ -127,7 +127,7 @@ const card = css`
 <div class={card}>...</div>;
 ```
 
-See [CSS](./css.md).
+To style a component, attach the class inside its view. See [CSS](./css.md).
 
 ### Is there a virtual DOM?
 

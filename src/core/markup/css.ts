@@ -1,5 +1,5 @@
 import { MaybeGetter, onCleanup } from "..";
-import type { Interpolation } from "./styled.js";
+import type { Getter } from "../signals";
 import { isFunction, uniqueId } from "../../utils";
 import { Context, onEffect } from "../context";
 
@@ -9,6 +9,55 @@ const IS_CONDITIONAL_TEMPLATE = Symbol.for("$_IS_CONDITIONAL_TEMPLATE");
 /*============================*\
 ||           Types            ||
 \*============================*/
+
+export type CoreCSSSyntax =
+  | "*"
+  | "<length>"
+  | "<percentage>"
+  | "<length-percentage>"
+  | "<color>"
+  | "<image>"
+  | "<url>"
+  | "<integer>"
+  | "<number>"
+  | "<angle>"
+  | "<time>"
+  | "<resolution>"
+  | "<transform-function>"
+  | "<transform-list>"
+  | "<custom-ident>";
+
+export type CSSSyntaxDescriptor = CoreCSSSyntax | (string & {});
+
+type SyntaxValueType<T extends CSSSyntaxDescriptor> = T extends "<number>" | "<integer>"
+  ? number
+  : T extends "<color>" | "<angle>" | "<length>" | "<percentage>"
+    ? string
+    : string | number;
+
+/**
+ * A Houdini `@property` config object passed as a template interpolation.
+ * Registers a typed custom property with the browser and binds its value
+ * from the given getter (or static `value`).
+ *
+ * ```ts
+ * ${{ syntax: "<color>", value: () => hue(), initialValue: "red", inherits: false }}
+ * ```
+ */
+export type PropertyConfig<Syntax extends CSSSyntaxDescriptor> = {
+  syntax: Syntax;
+  value: Getter<InterpolationValue> | InterpolationValue;
+  initialValue?: SyntaxValueType<Syntax>;
+  inherits?: boolean;
+};
+
+export type InterpolationValue = string | number | null | undefined;
+
+export type Interpolation<Props = {}> =
+  | InterpolationValue
+  | Getter<InterpolationValue>
+  | PropertyConfig<any>
+  | CSSTemplate;
 
 /**
  * A getter bound to a CSS variable name.
@@ -35,18 +84,8 @@ export type CSSTemplate = {
   [IS_CSS_TEMPLATE]: true;
   className: string;
 
-  named(name: string): CSSTemplate;
   attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): void;
   when(condition: MaybeGetter<any>): ConditionalTemplate;
-
-  /**
-   * Inserts the static class rule into the shared stylesheet without binding
-   * any per-instance reactive values to an element. Useful when the rule must
-   * be in the sheet at module-evaluation time so that later templates can
-   * override it via stylesheet order (e.g. `styled(MyButton)\`...\``).
-   * Safe to call multiple times; the registry dedups by className.
-   */
-  preinsert(): void;
 
   toString(): string;
 };
@@ -63,14 +102,8 @@ export function isConditionalTemplate(value: any): value is ConditionalTemplate 
   return value != null && value[IS_CONDITIONAL_TEMPLATE] === true;
 }
 
-export function isStyledComponent(value: any): boolean {
-  return typeof value === "function" && (value as any).__cssTemplate != null;
-}
-
 function getTemplateClassName(value: any): string | undefined {
-  if (isCSSTemplate(value)) return value.className;
-  if (isStyledComponent(value)) return (value as any).__cssTemplate.className;
-  return undefined;
+  return isCSSTemplate(value) ? value.className : undefined;
 }
 
 function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): string {
@@ -84,8 +117,8 @@ function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): str
 
       const className = getTemplateClassName(expr);
       if (className != null) {
-        // Nested CSSTemplate / StyledView: include its className so equivalent
-        // templates dedup (e.g. `${base} { ... }` vs `${baseCopy} { ... }`).
+        // Nested CSSTemplate: include its className so equivalent templates
+        // dedup (e.g. `${base} { ... }` vs `${baseCopy} { ... }`).
         statics += `.${className}`;
       } else if (typeof expr === "function") {
         // Reactive getter: the function reference is not part of the rendered
@@ -284,20 +317,6 @@ class StyleRegistry {
 
 const registry = new StyleRegistry();
 
-/**
- * Sanitizes a string so it can be used as a CSS class name prefix.
- * Replaces invalid characters with hyphens, collapses runs, and
- * strips leading/trailing hyphens.
- */
-function sanitizeIdentifier(name: string): string {
-  return (
-    name
-      .replace(/[^a-zA-Z0-9_-]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "") || "css"
-  );
-}
-
 /*============================*\
 ||     Template builder       ||
 \*============================*/
@@ -308,8 +327,8 @@ function sanitizeIdentifier(name: string): string {
  * the list of reactive bindings that need per-instance wiring.
  *
  * Pure: no context, no element, no side effects beyond optional Houdini
- * `@property` registration (deduped by the registry). Used by both
- * `preinsert` (static rule insertion) and `attach` (per-element binding).
+ * `@property` registration (deduped by the registry). Used by `attach` for
+ * per-element binding.
  */
 function buildStyles(
   className: string,
@@ -374,8 +393,8 @@ function buildStyles(
   return { styles, bindings };
 }
 
-function createTemplate(prefix: string, strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
-  const className = `${prefix}-${hashTemplate(strings, interpolations)}`;
+function createTemplate(strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
+  const className = `css-${hashTemplate(strings, interpolations)}`;
 
   const template: CSSTemplate = {
     [IS_CSS_TEMPLATE]: true,
@@ -384,17 +403,6 @@ function createTemplate(prefix: string, strings: TemplateStringsArray, interpola
 
     toString() {
       return this.className;
-    },
-
-    named(name: string): CSSTemplate {
-      const safe = sanitizeIdentifier(name);
-      const hash = this.className.slice(this.className.indexOf("-") + 1);
-      return { ...this, className: `${safe}-${hash}` };
-    },
-
-    preinsert() {
-      const { styles } = buildStyles(this.className, strings, interpolations);
-      registry.insertClass(this.className, styles);
     },
 
     attach(c, element, condition = true) {
@@ -440,12 +448,5 @@ function createTemplate(prefix: string, strings: TemplateStringsArray, interpola
 \*============================*/
 
 export function css<P = {}>(strings: TemplateStringsArray, ...interpolations: Interpolation<P>[]): CSSTemplate {
-  return createTemplate("css", strings, interpolations);
-}
-
-export namespace css {
-  export function named<P = {}>(name: string): (strings: TemplateStringsArray, ...interpolations: Interpolation<P>[]) => CSSTemplate {
-    const safe = sanitizeIdentifier(name);
-    return (strings, ...interpolations) => createTemplate(safe, strings, interpolations);
-  }
+  return createTemplate(strings, interpolations);
 }

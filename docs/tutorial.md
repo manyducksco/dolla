@@ -282,10 +282,10 @@ See [Hooks](./hooks.md) and [Effects](./effects.md).
 
 ## 8. Add CSS
 
-Dolla has two CSS helpers. `css` creates a scoped class; `styled` creates a component with the class attached.
+Dolla's `css` helper creates a scoped class.
 
 ```jsx
-import { css, styled } from "@manyducks.co/dolla";
+import { css } from "@manyducks.co/dolla";
 
 const page = css`
   max-width: 32rem;
@@ -293,7 +293,7 @@ const page = css`
   font-family: system-ui, sans-serif;
 `;
 
-const Row = styled.li`
+const row = css`
   cursor: pointer;
   padding: 0.5rem 0;
 `;
@@ -308,16 +308,16 @@ Use them in the view:
       store.getItems,
       (item) => item.id,
       (getItem) => (
-        <Row onClick={() => store.toggle(getItem().id)}>
+        <li class={row} onClick={() => store.toggle(getItem().id)}>
           {showIf(() => getItem().done, "✅", "⬜")} {() => getItem().text}
-        </Row>
+        </li>
       ),
     )}
   </ul>
 </section>
 ```
 
-See [CSS](./css.md) and [Styled components](./styled.md).
+See [CSS](./css.md).
 
 ## The complete app
 
@@ -334,7 +334,6 @@ import {
   onEffect,
   onMount,
   showIf,
-  styled,
 } from "@manyducks.co/dolla";
 
 const page = css`
@@ -343,7 +342,7 @@ const page = css`
   font-family: system-ui, sans-serif;
 `;
 
-const Row = styled.li`
+const row = css`
   cursor: pointer;
   padding: 0.5rem 0;
 `;
@@ -414,9 +413,9 @@ function TodoList(props, context) {
           store.getItems,
           (item) => item.id,
           (getItem) => (
-            <Row onClick={() => store.toggle(getItem().id)}>
+            <li class={row} onClick={() => store.toggle(getItem().id)}>
               {showIf(() => getItem().done, "✅", "⬜")} {() => getItem().text}
-            </Row>
+            </li>
           ),
         )}
       </ul>

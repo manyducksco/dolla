@@ -238,7 +238,7 @@ The router has `preload`, `progress`, lazy routes, and `errorView` for route-lev
 
 ## CSS
 
-React commonly uses CSS modules, CSS-in-JS libraries, or utility classes. Dolla includes two helpers:
+React commonly uses CSS modules, CSS-in-JS libraries, or utility classes. You can keep using CSS modules or plain class strings; the `css` helper is optional. Here is the convenience helper:
 
 ```jsx
 const card = css`
@@ -249,10 +249,16 @@ const card = css`
 <section class={card}>...</section>;
 ```
 
+To style a component, attach the class in a view:
+
 ```jsx
-const Button = styled.button`
+const button = css`
   padding: 8px 12px;
 `;
+
+function Button(props) {
+  return <button class={[button, props.class]} onClick={props.onClick}>{props.children}</button>;
+}
 
 <Button onClick={save}>Save</Button>;
 ```

@@ -20,15 +20,13 @@ export { branch, createPortal, forEach, hideIf, repeat, showIf } from "./markup/
 export type { BranchTuple } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
-export { styled } from "./markup/styled.js";
 export type {
   CoreCSSSyntax,
   CSSSyntaxDescriptor,
   Interpolation,
   InterpolationValue,
   PropertyConfig,
-  StyledView,
-} from "./markup/styled.js";
+} from "./markup/css.js";
 export { createMarkup, render } from "./markup/utils.js";
 export { transition } from "./markup/transition.js";
 export { DOMNode } from "./markup/nodes/dom.js";

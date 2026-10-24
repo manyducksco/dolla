@@ -90,7 +90,7 @@ Attribute values are reactive when you pass a getter. The framework decides how 
 
 ### Classes
 
-`class` and `className` accept a string, an object of class names to booleans, an array of either, or one or more CSS templates:
+`class` and `className` accept a string, an object of class names to booleans, an array of either, or one or more CSS templates. Plain strings and CSS module class names work as usual; the `css` helper is optional:
 
 ```jsx
 const [getIsActive] = createAtom(false);
@@ -100,7 +100,7 @@ const [getIsActive] = createAtom(false);
 <div class={cardTemplate}></div>;
 ```
 
-Object values can be getters when the class should toggle reactively. See [CSS](./css.md) for `css` templates, reactive variables, and `styled` components.
+Object values can be getters when the class should toggle reactively. See [CSS](./css.md) for `css` templates and reactive variables.
 
 ### Styles
 

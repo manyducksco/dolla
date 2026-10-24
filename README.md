@@ -13,7 +13,7 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - 📦 **Views** — reusable UI components that run once and update via signals
 - 🧩 **Context** — each view exposes a context object that inherits values from the parent context
 - 💾 **Stores** — shared-state-on-rails via the context tree
-- 🎨 **CSS-in-JS** — a `css` helper for quick inline classes and `styled.*` elements for easy composition
+- 🎨 **CSS-in-JS** — a `css` helper for easy inline classes without a separate stylesheet
 - 🏗 **Buildless templates** — use the `html` helper instead of JSX, with no template compiler
 - 🐛 **Debug logging** — colored, taggable, filterable
 - ⏱ **Temporal helpers** — `debounce` and `throttle`
@@ -68,57 +68,56 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 
 ### Start here
 
-| Page | Description |
-| --- | --- |
+| Page                                         | Description                                                   |
+| -------------------------------------------- | ------------------------------------------------------------- |
 | [Getting started](./docs/getting-started.md) | Install, project setup, first app, JSX configuration, plugins |
-| [Build your first app](./docs/tutorial.md) | A 10-minute todo app that introduces one idea at a time |
-| [Mental model](./docs/concepts.md) | Signals, run-once views, context, update timing |
-| [Templates](./docs/templates.md) | JSX syntax, props, children, events, attributes |
-| [Reactivity](./docs/reactivity.md) | Signals — atoms, compose, effects, batch, peek |
-| [Coming from React](./docs/from-react.md) | Side-by-side mappings and gotchas |
+| [Build your first app](./docs/tutorial.md)   | A 10-minute todo app that introduces one idea at a time       |
+| [Mental model](./docs/concepts.md)           | Signals, run-once views, context, update timing               |
+| [Templates](./docs/templates.md)             | JSX syntax, props, children, events, attributes               |
+| [Reactivity](./docs/reactivity.md)           | Signals — atoms, compose, effects, batch, peek                |
+| [Coming from React](./docs/from-react.md)    | Side-by-side mappings and gotchas                             |
 
 ### Build
 
-| Page | Description |
-| --- | --- |
-| [Components](./docs/components.md) | Views, stores, control-flow helpers, context, portals |
-| [Hooks](./docs/hooks.md) | Lifecycle, context, and store hooks |
-| [Effects](./docs/effects.md) | `onEffect`, auto-tracking, deps arrays, cleanup |
-| [CSS](./docs/css.md) | CSS-in-JS with scoped classes, reactive variables, composition |
-| [Styled components](./docs/styled.md) | `styled.*`, naming, `as`, composition, props |
-| [Transitions](./docs/transitions.md) | Enter/exit animations with the Web Animations API |
-| [Refs](./docs/refs.md) | Direct DOM access with `createRef` |
-| [Router](./src/router/README.md) | Client-side SPA routing with nested routes, guards, lazy loading |
-| [Translate](./src/translate/README.md) | i18n with pluralization, formatting, async loading |
-| [HTTP client](./src/http/README.md) | Middleware-based HTTP client |
-| [Virtual list](./src/virtual/README.md) | High-performance virtual scrolling with sticky headers |
+| Page                                    | Description                                                      |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| [Components](./docs/components.md)      | Views, stores, control-flow helpers, context, portals            |
+| [Hooks](./docs/hooks.md)                | Lifecycle, context, and store hooks                              |
+| [Effects](./docs/effects.md)            | `onEffect`, auto-tracking, deps arrays, cleanup                  |
+| [CSS](./docs/css.md)                    | CSS-in-JS with scoped classes, reactive variables, composition   |
+| [Transitions](./docs/transitions.md)    | Enter/exit animations with the Web Animations API                |
+| [Refs](./docs/refs.md)                  | Direct DOM access with `createRef`                               |
+| [Router](./src/router/README.md)        | Client-side SPA routing with nested routes, guards, lazy loading |
+| [Translate](./src/translate/README.md)  | i18n with pluralization, formatting, async loading               |
+| [HTTP client](./src/http/README.md)     | Middleware-based HTTP client                                     |
+| [Virtual list](./src/virtual/README.md) | High-performance virtual scrolling with sticky headers           |
 
 ### Reference
 
-| Page | Description |
-| --- | --- |
-| [Cheatsheet](./docs/cheatsheet.md) | Task → code lookups for common jobs |
-| [HTML templates](./docs/html.md) | The buildless `html` helper and JSX equivalents |
-| [App root](./docs/root.md) | `createRoot`, plugins, async mount, unmount |
-| [Debugging](./docs/debugging.md) | Loggers, levels, filters, and debug mode |
-| [Utilities](./docs/utilities.md) | debounce, throttle, sleep |
-| [FAQ](./docs/faq.md) | Common questions and gotchas |
-| [Glossary](./docs/glossary.md) | Definitions for the terms used throughout the docs |
-| [Advanced internals](./docs/advanced.md) | Types, `createMarkup`/`render`, custom nodes |
-| [HMR](./docs/hmr.md) | Hot module replacement with Vite |
+| Page                                        | Description                                            |
+| ------------------------------------------- | ------------------------------------------------------ |
+| [Cheatsheet](./docs/cheatsheet.md)          | Task → code lookups for common jobs                    |
+| [HTML templates](./docs/html.md)            | The buildless `html` helper and JSX equivalents        |
+| [App root](./docs/root.md)                  | `createRoot`, plugins, async mount, unmount            |
+| [Debugging](./docs/debugging.md)            | Loggers, levels, filters, and debug mode               |
+| [Utilities](./docs/utilities.md)            | debounce, throttle, sleep                              |
+| [FAQ](./docs/faq.md)                        | Common questions and gotchas                           |
+| [Glossary](./docs/glossary.md)              | Definitions for the terms used throughout the docs     |
+| [Advanced internals](./docs/advanced.md)    | Types, `createMarkup`/`render`, custom nodes           |
+| [HMR](./docs/hmr.md)                        | Hot module replacement with Vite                       |
 | [Docs contributing](./docs/contributing.md) | Conventions for examples, terminology, and docs checks |
 
 ## Sub-packages
 
 Dolla is modular. Import only what you need:
 
-| Import path | Includes |
-| --- | --- |
-| `@manyducks.co/dolla` | Core — signals, markup, components, lifecycle, CSS, utilities |
-| `@manyducks.co/dolla/router` | Client-side router with nested routes |
-| `@manyducks.co/dolla/translate` | i18n translation system |
-| `@manyducks.co/dolla/http` | Middleware-based HTTP client |
-| `@manyducks.co/dolla/virtual` | Virtual scrolling list |
+| Import path                     | Includes                                                      |
+| ------------------------------- | ------------------------------------------------------------- |
+| `@manyducks.co/dolla`           | Core — signals, markup, components, lifecycle, CSS, utilities |
+| `@manyducks.co/dolla/router`    | Client-side router with nested routes                         |
+| `@manyducks.co/dolla/translate` | i18n translation system                                       |
+| `@manyducks.co/dolla/http`      | Middleware-based HTTP client                                  |
+| `@manyducks.co/dolla/virtual`   | Virtual scrolling list                                        |
 
 See [bundlephobia](https://bundlephobia.com/package/@manyducks.co/dolla) for current package sizes.
 
@@ -169,15 +168,7 @@ A few rules to remember:
 A Store shares state across views in the same subtree. Parent calls `addStore` to create it, children call `getStore` to retrieve it.
 
 ```jsx
-import {
-  addStore,
-  compose,
-  createAtom,
-  createRoot,
-  repeat,
-  getStore,
-  showIf,
-} from "@manyducks.co/dolla";
+import { addStore, compose, createAtom, createRoot, repeat, getStore, showIf } from "@manyducks.co/dolla";
 
 function TodoStore() {
   const [getItems, setItems] = createAtom([
@@ -187,13 +178,10 @@ function TodoStore() {
 
   const getRemaining = compose(() => getItems().filter((item) => !item.done).length);
 
-  const addItem = (text) =>
-    setItems((items) => [...items, { id: Date.now(), text, done: false }]);
+  const addItem = (text) => setItems((items) => [...items, { id: Date.now(), text, done: false }]);
 
   const toggle = (id) =>
-    setItems((items) =>
-      items.map((item) => (item.id === id ? { ...item, done: !item.done } : item)),
-    );
+    setItems((items) => items.map((item) => (item.id === id ? { ...item, done: !item.done } : item)));
 
   return { getItems, getRemaining, addItem, toggle };
 }
@@ -249,11 +237,7 @@ function Converter() {
 
   return (
     <div>
-      <input
-        type="number"
-        value={getCelsius}
-        onInput={(event) => setCelsius(event.target.valueAsNumber)}
-      />
+      <input type="number" value={getCelsius} onInput={(event) => setCelsius(event.target.valueAsNumber)} />
       <p>Celsius: {getCelsius}°C</p>
       <p>Fahrenheit: {getFahrenheit}°F</p>
       <p>Condition: {getDescription}</p>

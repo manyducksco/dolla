@@ -1,8 +1,33 @@
 # CSS
 
-Dolla includes a CSS-in-JS solution via the `css` tagged template. It generates scoped class names, registers styles in a shared `CSSStyleSheet`, and supports reactive variable bindings.
+Dolla does not require CSS-in-JS. You can style with CSS modules, a plain stylesheet, or a plain class string. The `css` tagged template is an optional convenience: it generates scoped class names, registers styles in a shared `CSSStyleSheet`, and supports reactive variable bindings.
 
 Examples use `class` in JSX; `className` also works. See [Templates](./templates.md#classes).
+
+## Plain CSS and CSS modules
+
+A classic stylesheet works exactly as you would expect:
+
+```css
+.card {
+  padding: 16px;
+  border: 1px solid #ddd;
+}
+```
+
+```jsx
+<div class="card">...</div>;
+```
+
+If your bundler supports CSS modules, pass the imported class name through:
+
+```jsx
+import styles from "./card.module.css";
+
+<div class={styles.card}>...</div>;
+```
+
+The `class` prop accepts plain strings, class maps, arrays, and `css` templates. Use whichever fits your project; the rest of this page covers the optional `css` helper.
 
 ```js
 import { css } from "@manyducks.co/dolla";
@@ -137,34 +162,21 @@ const [getIsActive] = createAtom(false);
 
 `getIsActive` is a getter, so the class is attached and detached as it changes. A plain boolean also works, but is evaluated once.
 
-## Named templates
+## Styling a component
 
-Use `css.named(name)` or `template.named(name)` to control the class prefix:
-
-```js
-const sidebar = css.named("sidebar")`
-  width: 240px;
-`;
-
-sidebar.className; // "sidebar-<hash>"
-
-const renamed = sidebar.named("nav");
-renamed.className; // "nav-<hash>"
-```
-
-The hash is unchanged, so equivalent styles still deduplicate in the shared sheet.
-
-## Styled components
-
-For component-level composition, use [`styled`](./styled.md):
+Use a `css` template as the component's class. Merge a caller-supplied `class` when needed:
 
 ```jsx
-const Button = styled.button`
+const button = css`
   padding: 8px 12px;
 `;
 
-<Button onClick={save}>Save</Button>;
+function Button(props) {
+  return <button class={[button, props.class]}>{props.children}</button>;
+}
 ```
+
+Class names always use the `css-` prefix and a hash of the template contents. Identical templates share the same class and stylesheet rule.
 
 ## API
 
@@ -175,18 +187,11 @@ Returns a `CSSTemplate`:
 | Member | Description |
 | --- | --- |
 | `className` | The generated scoped class name |
-| `named(name)` | Returns a copy with a different class prefix |
 | `when(condition)` | Returns a conditional template that is attached only when the condition is truthy |
 | `attach(context, element, condition?)` | Applies the class and reactive bindings to an element. Called internally by the framework. |
-| `preinsert()` | Inserts the static rule into the sheet without binding reactive values. Used internally by `styled`. |
 | `toString()` | Returns `className` |
-
-### ``css.named(name)`...` ``
-
-Creates a template with a custom class prefix. Special characters are sanitized; an empty sanitized name falls back to the default `css-` prefix.
 
 ## Next steps
 
-- [Styled components](./styled.md) — `styled.*`, naming, `as`, composition
 - [Templates](./templates.md#classes) — the `class` prop
 - [Cheatsheet](./cheatsheet.md) — quick lookups

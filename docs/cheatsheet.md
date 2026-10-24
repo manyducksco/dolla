@@ -152,12 +152,16 @@ const card = css`
 <section class={card}>...</section>;
 ```
 
-## Create a styled component
+## Style a component
 
 ```jsx
-const Button = styled.button`
+const button = css`
   padding: 8px 12px;
 `;
+
+function Button(props) {
+  return <button class={[button, props.class]}>{props.children}</button>;
+}
 
 <Button onClick={save}>Save</Button>;
 ```
@@ -248,7 +252,7 @@ async function loadUser() {
 | `this` is undefined | Arrow function used with `this` | Use `(props, context)` or a function declaration |
 | Route params never update | `{router.params().id}` | `{() => router.params().id}` |
 | App renders nothing | `mount` not awaited or selector missing | `await createRoot("#app").mount(App)` |
-| Styles are missing | `css` template created but not attached | Pass it to `class` or use `styled` |
+| Styles are missing | `css` template created but not attached | Pass it to `class` |
 
 ## More
 
