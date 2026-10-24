@@ -14,7 +14,7 @@ export type { Context } from "./context.js";
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
-export { branch, createPortal, forEach, hideIf, repeat, showIf } from "./markup/helpers.js";
+export { branch, createPortal, hideIf, repeat, showIf } from "./markup/helpers.js";
 export type { BranchTuple } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";

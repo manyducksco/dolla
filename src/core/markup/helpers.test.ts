@@ -1,13 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { createContext } from "../context.js";
 import { createAtom } from "../signals.js";
-import { flushPendingUpdates } from "./scheduler.js";
+import { branch, createPortal, hideIf, repeat, showIf } from "./helpers.js";
 import { BranchNode } from "./nodes/branch.js";
-import { DynamicNode } from "./nodes/dynamic.js";
 import { PortalNode } from "./nodes/portal.js";
 import { RepeatNode } from "./nodes/repeat.js";
+import { flushPendingUpdates } from "./scheduler.js";
 import { createMarkup, render } from "./utils.js";
-import { branch, createPortal, forEach, hideIf, repeat, showIf } from "./helpers.js";
 
 function setup() {
   const context = createContext(null);
@@ -17,20 +16,30 @@ function setup() {
 
 describe("repeat", () => {
   test("static items returns an array of rendered content", () => {
-    const result = repeat([1, 2, 3], (item: number) => String(item), (item, index) => `${item()}:${index()}`);
+    const result = repeat(
+      [1, 2, 3],
+      (item: number) => String(item),
+      (item, index) => `${item()}:${index()}`,
+    );
     expect(Array.isArray(result)).toBe(true);
     expect(result).toEqual(["1:0", "2:1", "3:2"]);
   });
 
   test("static empty array returns empty array", () => {
-    const result = repeat([], (item: number) => String(item), (item, index) => `${item()}:${index()}`);
+    const result = repeat(
+      [],
+      (item: number) => String(item),
+      (item, index) => `${item()}:${index()}`,
+    );
     expect(result).toEqual([]);
   });
 
   test("reactive items returns markup with RepeatNode", () => {
     const [items] = createAtom([1, 2]);
-    const result = repeat(items, (item: number) => String(item), (item, index) =>
-      createMarkup("span", { children: () => `${item()}:${index()}` }),
+    const result = repeat(
+      items,
+      (item: number) => String(item),
+      (item, index) => createMarkup("span", { children: () => `${item()}:${index()}` }),
     );
     expect(result).toBeDefined();
     expect(typeof result).toBe("object");
@@ -41,8 +50,10 @@ describe("repeat", () => {
   test("reactive items renders in DOM", () => {
     const { context, container } = setup();
     const [items] = createAtom([10, 20]);
-    const content = repeat(items, (item: number) => String(item), (item, index) =>
-      createMarkup("span", { children: () => `${item()}:${index()}` }),
+    const content = repeat(
+      items,
+      (item: number) => String(item),
+      (item, index) => createMarkup("span", { children: () => `${item()}:${index()}` }),
     );
     const node = render(content, context);
     node.mount(container);
@@ -55,8 +66,10 @@ describe("repeat", () => {
   test("reactive items updates reactively", () => {
     const { context, container } = setup();
     const [items, setItems] = createAtom([1]);
-    const content = repeat(items, (item: number) => String(item), (item, index) =>
-      createMarkup("span", { children: () => `${item()}:${index()}` }),
+    const content = repeat(
+      items,
+      (item: number) => String(item),
+      (item, index) => createMarkup("span", { children: () => `${item()}:${index()}` }),
     );
     const node = render(content, context);
     node.mount(container);
@@ -64,10 +77,6 @@ describe("repeat", () => {
     setItems([1, 2]);
     flushPendingUpdates();
     expect(container.querySelectorAll("span").length).toBe(2);
-  });
-
-  test("forEach remains as a deprecated alias", () => {
-    expect(forEach).toBe(repeat);
   });
 });
 

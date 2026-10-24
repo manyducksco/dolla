@@ -30,9 +30,6 @@ export function repeat<T>(
   }
 }
 
-/** @deprecated Use `repeat` instead. */
-export const forEach: typeof repeat = repeat;
-
 /**
  * Displays content conditionally. When `condition` is truthy, display `content`. When `condition` is falsy, display `fallback`.
  *
