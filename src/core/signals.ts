@@ -691,40 +691,12 @@ export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T), o
   return () => computedGetter(node);
 }
 
-function _depsGetter(deps: MaybeGetter<any>[], fn: (...values: any[]) => void) {
-  const values = deps.map((dep) => unwrap(dep));
-  return peek(() => fn(...values));
-}
-
-export type Unwrapped<T> = {
-  [K in keyof T]: T[K] extends () => infer R ? R : T[K];
-};
-
 /**
  * Creates an effect with auto-tracking for getters called within its callback.
  */
-export function createEffect(fn: () => void, options?: { name?: string }): () => void;
-
-/**
- * Creates an effect that tracks getters in its `deps` array.
- * Unwrapped values from `deps` are passed as arguments to the callback.
- * For backwards compatibility, `options` can also be a bare deps array.
- */
-export function createEffect<const T extends readonly any[]>(
-  fn: (...values: Unwrapped<T>) => void,
-  options?: T | { deps?: T; name?: string },
-): () => void;
-
-export function createEffect(
-  fn: (...values: any[]) => void,
-  options?: any[] | { deps?: any[]; name?: string },
-): () => void {
-  if (Array.isArray(options)) options = { deps: options };
-  const deps = options?.deps;
-  const optsName = options?.name;
-
+export function createEffect(fn: () => void, options?: { name?: string }): () => void {
   const e: EffectNode = {
-    _fn: deps ? () => _depsGetter(deps, fn) : fn,
+    _fn: fn,
     _cleanup: undefined,
     _subs: undefined,
     _subsTail: undefined,
@@ -732,7 +704,7 @@ export function createEffect(
     _depsTail: undefined,
     _flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
   };
-  setNodeDebug(e, "effect", fn, optsName);
+  setNodeDebug(e, "effect", fn, options?.name);
   const prevSub = setActiveSub(e);
   if (prevSub !== undefined) {
     link(e, prevSub, 0);

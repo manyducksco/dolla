@@ -184,7 +184,7 @@ await createRoot("#app")
   .plugin(createRouter({
     routes: [
       { path: "/", view: HomePage },
-      { path: "/users/{#id}", view: UserPage },
+      { path: "/users/:id", view: UserPage },
     ],
   }))
   .mount(App);

@@ -79,15 +79,7 @@ function Timer(props, context) {
 }
 ```
 
-`onEffect` auto-tracks the getters read inside it. A deps-array form exists for explicit control:
-
-```js
-onEffect(context, (count, name) => {
-  console.log(count, name);
-}, [getCount, getName]);
-```
-
-Inside a view or store, `onEffect` is the usual choice. For effects outside the context tree, see [Standalone effects](./advanced.md#standalone-effects).
+`onEffect` auto-tracks the getters read inside it. Inside a view or store, it is the usual choice. For effects outside the context tree, see [Standalone effects](./advanced.md#standalone-effects).
 
 ## Context
 

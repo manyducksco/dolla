@@ -1,6 +1,8 @@
 # Advanced internals
 
-This page covers public exports that are lower-level than the normal helpers. They are useful for integrations and custom nodes, but they are **advanced APIs** and may change more readily than `html`, `showIf`, `createAtom`, and the other user-facing helpers.
+This page covers exports that are lower-level than the normal helpers. They are useful for integrations and custom nodes, but they are **advanced APIs** and may change more readily than `html`, `showIf`, `createAtom`, and the other user-facing helpers.
+
+Runtime helpers, node classes, `Markup`/`MarkupNode`, and the low-level CSS types on this page are imported from `@manyducks.co/dolla/internals`. Core types such as `Renderable`, `Getter`, and `View` remain available from the main package.
 
 ## Core types
 
@@ -23,7 +25,7 @@ See [Templates](./templates.md#what-can-be-rendered) for the user-facing rendera
 Creates a `Markup` description without rendering it:
 
 ```js
-import { createMarkup } from "@manyducks.co/dolla";
+import { createMarkup } from "@manyducks.co/dolla/internals";
 
 const heading = createMarkup("h1", { children: "Hello" });
 const view = createMarkup(MyView, { name: "Alice" });
@@ -37,7 +39,7 @@ For intrinsic tags, `type` is the tag string and `props` are the element props. 
 Converts a `Renderable` into a single `MarkupNode`:
 
 ```jsx
-import { createContext, render } from "@manyducks.co/dolla";
+import { createContext, render } from "@manyducks.co/dolla/internals";
 
 const context = createContext(null);
 const node = render(<p>Hello</p>, context);
@@ -79,7 +81,7 @@ interface MountTarget {
 
 ## Exported node classes
 
-These are available for advanced integrations:
+These are available from `@manyducks.co/dolla/internals` for advanced integrations:
 
 - `DOMNode` — wrapper for a plain DOM node.
 - `ElementNode` — an HTML/SVG element.
@@ -95,7 +97,8 @@ Prefer the helpers (JSX, `html`, `repeat`, `showIf`, `createPortal`) unless you 
 `createEffect` is the advanced counterpart to `onEffect`. Use it when you need an effect outside the normal context tree — a module-level integration, a test harness, or a plain signal setup with no view or store.
 
 ```js
-import { createAtom, createEffect } from "@manyducks.co/dolla";
+import { createAtom } from "@manyducks.co/dolla";
+import { createEffect } from "@manyducks.co/dolla/internals";
 
 const [getCount, setCount] = createAtom(0);
 
@@ -122,19 +125,8 @@ const stop = createEffect(() => {
 });
 ```
 
-A deps-array form is available for explicit control. The callback receives the unwrapped values:
-
-```js
-createEffect(
-  (count, name) => {
-    console.log(`${name}: ${count}`);
-  },
-  [getCount, getName],
-);
-```
-
 Prefer [`onEffect(context, ...)`](./effects.md) inside views and stores. `createEffect` is the backup for code that has no context.
 
 ## Stability
 
-The helpers documented in Getting Started, Templates, Reactivity, Components, CSS, Refs, and Hooks are the stable surface. The classes and functions on this page are exported for flexibility, but their contracts may change between minor versions as the rendering internals evolve.
+The helpers documented in Getting Started, Templates, Reactivity, Components, CSS, Refs, and Hooks are the stable surface. The classes and functions on this page are exported from `@manyducks.co/dolla/internals` for flexibility, but their contracts may change between minor versions as the rendering internals evolve.

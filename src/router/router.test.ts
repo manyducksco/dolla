@@ -130,39 +130,6 @@ describe("Router Engine", () => {
     });
   });
 
-  it("blocks navigation if guard returns false", async () => {
-    const router = createRouter({
-      routes: [
-        { path: "/", view: () => {} },
-        { path: "/form", view: () => {} },
-      ],
-    });
-
-    await withRouter(router, async (context) => {
-      const store = getRouter(context);
-
-      store.push("/form");
-      await new Promise(process.nextTick);
-
-      // Add a blocker
-      const unblock = store.block(() => true);
-
-      // Attempt to navigate away
-      store.push("/");
-      await new Promise(process.nextTick);
-
-      // Navigation should have failed
-      expect(store.path()).toBe("/form");
-
-      // Remove blocker and try again
-      unblock();
-      store.push("/");
-      await new Promise(process.nextTick);
-
-      expect(store.path()).toBe("/");
-    });
-  });
-
   it("updates query parameters reactively without unmounting", async () => {
     const router = createRouter({
       routes: [{ path: "/search", view: () => {} }],

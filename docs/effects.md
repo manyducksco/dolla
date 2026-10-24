@@ -36,22 +36,6 @@ onEffect(context, () => {
 });
 ```
 
-## Deps-array effect
-
-Pass an array of getters as the third argument to avoid auto-tracking. The callback receives the unwrapped values:
-
-```jsx
-onEffect(
-  context,
-  (count, name) => {
-    console.log(`${name}: ${count}`);
-  },
-  [getCount, getName],
-);
-```
-
-The effect only re-runs when the values of the listed getters change.
-
 ## When it runs
 
 `onEffect` registers the effect on mount, after the view's DOM is mounted. It is the usual choice inside a view or store.

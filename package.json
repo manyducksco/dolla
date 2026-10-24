@@ -24,6 +24,10 @@
       "import": "./dist/index.js",
       "types": "./dist/core/index.d.ts"
     },
+    "./internals": {
+      "import": "./dist/internals.js",
+      "types": "./dist/internals.d.ts"
+    },
     "./router": {
       "import": "./dist/router.js",
       "types": "./dist/router/index.d.ts"

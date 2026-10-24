@@ -144,14 +144,12 @@ export function mergeQueryParams(
 
 class RouteNode {
   staticChildren = new Map<string, RouteNode>();
-  numericChild: RouteNode | null = null;
   paramChild: RouteNode | null = null;
   wildcardChild: RouteNode | null = null;
 
   // Set if this node represents the end of a valid path
   route?: RoutePayload;
   paramName?: string;
-  numericName?: string;
 }
 
 export function buildRouteTree(routes: Route[]): RouteNode {
@@ -165,16 +163,11 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     for (const part of parts) {
       if (part === "*") {
         current = current.wildcardChild ??= new RouteNode();
-      } else if (part.charCodeAt(0) === 123) {
-        // {
-        if (part.charCodeAt(1) === 35) {
-          // #
-          current = current.numericChild ??= new RouteNode();
-          current.numericName = part.slice(2, -1);
-        } else {
-          current = current.paramChild ??= new RouteNode();
-          current.paramName = part.slice(1, -1);
-        }
+      } else if (part.startsWith(":")) {
+        const name = part.slice(1);
+        assert(/^[A-Za-z0-9_]+$/.test(name), `Invalid route param: ${part}`);
+        current = current.paramChild ??= new RouteNode();
+        current.paramName = name;
       } else {
         const key = part.toLowerCase();
         let next = current.staticChildren.get(key);
@@ -193,7 +186,10 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     const meta = parent && route.meta ? { ...parent.meta, ...route.meta } : route.meta || {};
 
     const rawPattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
-    const patterns = expandOptionalPaths(rawPattern);
+    assert(
+      !/\{[#A-Za-z0-9_]+\??\}/.test(rawPattern),
+      `Route params use ":name" syntax: ${route.path}`,
+    );
 
     if (route.redirect) {
       assert(!route.routes && !route.view, "Route cannot mix redirect with view/routes");
@@ -204,11 +200,9 @@ export function buildRouteTree(routes: Route[]): RouteNode {
         if (!redirect.startsWith("/")) redirect = "/" + redirect;
       }
 
-      for (const pattern of patterns) {
-        const payload: RoutePayload = { pattern, meta, redirect };
-        insertIntoTree(pattern, payload);
-        if (isString(redirect)) redirectsToValidate.push(payload);
-      }
+      const payload: RoutePayload = { pattern: rawPattern, meta, redirect };
+      insertIntoTree(rawPattern, payload);
+      if (isString(redirect)) redirectsToValidate.push(payload);
 
       return;
     }
@@ -231,17 +225,14 @@ export function buildRouteTree(routes: Route[]): RouteNode {
       };
       for (const subroute of route.routes) parse(subroute, [...parents, route], [...layers, layer]);
     } else {
-      // For leaf nodes, register every permutation as a valid endpoint
-      for (const pattern of patterns) {
-        const layer: RouteLayer = {
-          id: uniqueId(),
-          pattern, // Use the specific expanded pattern for this layer
-          view,
-          preload: route.preload,
-          errorView: route.errorView,
-        };
-        insertIntoTree(pattern, { pattern, meta, layers: [...layers, layer] });
-      }
+      const layer: RouteLayer = {
+        id: uniqueId(),
+        pattern: rawPattern,
+        view,
+        preload: route.preload,
+        errorView: route.errorView,
+      };
+      insertIntoTree(rawPattern, { pattern: rawPattern, meta, layers: [...layers, layer] });
     }
   }
 
@@ -298,13 +289,6 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
     if (staticNode) {
       const result = search(staticNode, index + 1);
       if (result) return result;
-    }
-
-    if (node.numericChild && !isNaN(Number(part))) {
-      paramState[node.numericChild.numericName!] = part;
-      const result = search(node.numericChild, index + 1);
-      if (result) return result;
-      delete paramState[node.numericChild.numericName!];
     }
 
     if (node.paramChild) {
@@ -411,30 +395,7 @@ export function catchLinks(
   return () => root.removeEventListener("click", handler as any);
 }
 
-function expandOptionalPaths(path: string): string[] {
-  const parts = splitPath(path);
-  const permutations: string[][] = [[]];
-
-  for (const part of parts) {
-    // Strictly enforces the inside style: {param?} or {#param?}
-    const isOptional = part.endsWith("?}");
-    const cleanPart = isOptional ? part.replace("?", "") : part;
-
-    if (isOptional) {
-      const withPart = permutations.map((p) => [...p, cleanPart]);
-      permutations.push(...withPart);
-    } else {
-      for (const p of permutations) {
-        p.push(cleanPart);
-      }
-    }
-  }
-
-  return permutations.map((p) => "/" + p.join("/")).map((p) => (p === "/" ? p : p.replace(/\/$/, "")));
-}
-
-const PARAM_RE = /\{(#)?([a-zA-Z0-9_]+)(\?)?\}/g;
-const OPTIONAL_RE = /\{#?[a-zA-Z0-9_]+\?\}/g;
+const PARAM_RE = /:([A-Za-z0-9_]+)/g;
 const MULTISLASH_RE = /\/+/g;
 
 /**
@@ -444,8 +405,7 @@ export function replaceParams(path: string, params: Record<string, string | numb
   const paramMap: Record<string, string> = {};
   for (const key in params) paramMap[key] = String(params[key]);
 
-  path = path.replace(PARAM_RE, (_, _numeric, name) => paramMap[name] ?? "");
-  path = path.replace(OPTIONAL_RE, "");
+  path = path.replace(PARAM_RE, (_, name) => paramMap[name] ?? "");
   path = path.replace(MULTISLASH_RE, "/");
 
   if (path.length > 1 && path.endsWith("/")) {
@@ -459,16 +419,13 @@ export interface HistoryAdapter {
   getPath(): string;
   getSearch(): string;
   getKey(): string;
-  getIndex(): number;
   push(url: string): void;
   replace(url: string): void;
 }
 
 export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
-  let currentIndex = window.history.state?.index || 0;
-
-  if (window.history.state?.index === undefined) {
-    window.history.replaceState({ ...window.history.state, key: Date.now().toString(), index: currentIndex }, "");
+  if (window.history.state?.key === undefined) {
+    window.history.replaceState({ ...window.history.state, key: Date.now().toString() }, "");
   }
 
   const getPath = useHash ? () => window.location.hash.slice(1).split("?")[0] || "/" : () => window.location.pathname;
@@ -481,21 +438,18 @@ export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
     : () => window.location.search;
 
   const getKey = () => window.history.state?.key || "root";
-  const getIndex = () => window.history.state?.index || 0;
 
   return {
     getPath,
     getSearch,
     getKey,
-    getIndex,
     push: (url) => {
-      currentIndex++;
       const prefix = useHash ? "/#" : "";
-      window.history.pushState({ key: uniqueId(), index: currentIndex }, "", prefix + url);
+      window.history.pushState({ key: uniqueId() }, "", prefix + url);
     },
     replace: (url) => {
       const prefix = useHash ? "/#" : "";
-      window.history.replaceState({ key: getKey(), index: currentIndex }, "", prefix + url);
+      window.history.replaceState({ key: getKey() }, "", prefix + url);
     },
   };
 }

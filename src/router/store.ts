@@ -18,7 +18,6 @@ export interface RouterStoreProps {
   progress: Getter<number>;
   history: HistoryAdapter;
   updateRoute: () => void;
-  guards: Set<() => boolean | Promise<boolean>>;
 }
 
 export function RouterStore(props: RouterStoreProps, c: Context): Router {
@@ -26,13 +25,9 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
 
   const console = getDebug(c);
 
-  const { currentMatch, setCurrentMatch, progress, history, updateRoute, guards } = props;
+  const { currentMatch, setCurrentMatch, progress, history, updateRoute } = props;
 
-  async function navigate(path: string, replace: boolean) {
-    for (const guard of guards) {
-      if (await guard()) return;
-    }
-
+  function navigate(path: string, replace: boolean) {
     console.info(`🗺️ navigating to '${path}'${replace ? " (replace)" : ""}`);
 
     const resolved = resolvePath(history.getPath(), path);
@@ -66,11 +61,6 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
 
     push: (path) => navigate(path, false),
     replace: (path) => navigate(path, true),
-
-    block: (guard) => {
-      guards.add(guard);
-      return () => guards.delete(guard);
-    },
 
     isActive(path: MaybeGetter<string>, exact = false) {
       return compose(() => {

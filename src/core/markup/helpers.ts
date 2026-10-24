@@ -1,5 +1,6 @@
-import { createMarkup, MaybeGetter, Renderable } from "..";
+import { MaybeGetter, Renderable } from "..";
 import { isArray, isFunction } from "../../utils";
+import { createMarkup } from "./utils";
 import { type Getter } from "../signals";
 import { BranchNode, type BranchEntry } from "./nodes/branch";
 import { PortalNode } from "./nodes/portal";

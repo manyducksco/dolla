@@ -119,6 +119,8 @@ function Greeting(props) {
 If you need to react to changes in the value of a signal outside of a template/view context, you can use the `subscribe` helper:
 
 ```js
+import { subscribe } from "@manyducks.co/dolla/internals";
+
 const unsubscribe = subscribe(getCount, (value) => {
   console.log("count changed to", value);
 });
@@ -149,7 +151,7 @@ setCount((current) => String(current + 1)); // getCount() == 3
 
 ## Next steps
 
-- [Effects](./effects.md) — `onEffect`, auto-tracking, deps arrays, cleanup
+- [Effects](./effects.md) — `onEffect`, auto-tracking, cleanup
 - [Templates](./templates.md) — interpolation and props
 - [Components](./components.md) — views, stores, and control flow
 - [Cheatsheet](./cheatsheet.md) — quick lookups

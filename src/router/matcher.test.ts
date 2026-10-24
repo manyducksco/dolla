@@ -7,9 +7,8 @@ describe("Radix Tree Routing Algorithm", () => {
   const routes = [
     { path: "/", view: dummyView },
     { path: "/users", view: dummyView },
-    { path: "/users/{id}", view: dummyView },
-    { path: "/users/{id}/settings", view: dummyView },
-    { path: "/users/{#id}", view: dummyView },
+    { path: "/users/:id", view: dummyView },
+    { path: "/users/:id/settings", view: dummyView },
     { path: "/users/new", view: dummyView },
     { path: "/files/*", view: dummyView },
   ];
@@ -27,21 +26,19 @@ describe("Radix Tree Routing Algorithm", () => {
     expect(match?.pattern).toBe("/users/new");
   });
 
-  it("enforces numeric parameters", () => {
-    const match = matchRoute(tree, "/users/123");
-    expect(match?.pattern).toBe("/users/{#id}");
-    expect(match?.params.id).toBe("123");
-  });
+  it("matches parameters as strings", () => {
+    const numeric = matchRoute(tree, "/users/123");
+    expect(numeric?.pattern).toBe("/users/:id");
+    expect(numeric?.params.id).toBe("123");
 
-  it("falls back to string parameters if numeric fails", () => {
-    const match = matchRoute(tree, "/users/alice");
-    expect(match?.pattern).toBe("/users/{id}");
-    expect(match?.params.id).toBe("alice");
+    const text = matchRoute(tree, "/users/alice");
+    expect(text?.pattern).toBe("/users/:id");
+    expect(text?.params.id).toBe("alice");
   });
 
   it("decodes URL parameters", () => {
     const match = matchRoute(tree, "/users/john%20doe/settings");
-    expect(match?.pattern).toBe("/users/{id}/settings");
+    expect(match?.pattern).toBe("/users/:id/settings");
     expect(match?.params.id).toBe("john doe");
   });
 

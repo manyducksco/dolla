@@ -1,6 +1,6 @@
 # Router
 
-A client-side router with nested routes, lazy loading, auth guards, and async data fetching.
+A client-side router with nested routes, lazy loading, and async data fetching.
 
 ```jsx
 import { createRoot } from "@manyducks.co/dolla";
@@ -45,8 +45,8 @@ createRouter({
       view: UsersLayout,
       routes: [
         { path: "/", view: UsersList },
-        { path: "/{#id}", view: UserDetail },
-        { path: "/{#id}/edit", view: UserEdit },
+        { path: "/:id", view: UserDetail },
+        { path: "/:id/edit", view: UserEdit },
       ],
     },
   ],
@@ -69,10 +69,10 @@ function UsersLayout(props) {
 | Pattern | Description | Example |
 | --- | --- | --- |
 | `/users` | Static — matches exactly `/users` | `/users` |
-| `/users/{#id}` | Numeric param — matches only numbers | `/users/123` |
-| `/users/{name}` | String param — matches any non-slash segment | `/users/alice` |
-| `/artists/{#artistId?}` | Optional param — matches even if the segment is absent | `/artists` or `/artists/42` |
+| `/users/:id` | Param — matches any non-slash segment; value is a string | `/users/123` |
 | `/files/*` | Wildcard — matches everything after `/files/` | `/files/a/b` |
+
+Route params are always strings. Convert explicitly when needed, for example `Number(router.params().id)`.
 
 ### Reading route state
 
@@ -168,7 +168,7 @@ Routes can define a `preload` function that fetches data before the view renders
 
 ```js
 {
-  path: "/user/{#id}",
+  path: "/user/:id",
   view: UserDetail,
   preload: (match) => fetch(`/api/users/${match.params.id}`).then((response) => response.json()),
 }
@@ -207,7 +207,7 @@ Dynamic redirects using a function:
 
 ```js
 {
-  path: "/user/{#id}",
+  path: "/user/:id",
   redirect: (match) =>
     fetch(`/api/users/${match.params.id}`)
       .then((response) => response.json())
@@ -247,23 +247,10 @@ Access the router with `getRouter(context)`:
 | `forward(steps?)` | Go forward in history |
 | `setQuery(params)` | Update query params without changing route. Pass `null` to delete a key |
 | `isActive(path, exact?)` | Returns a `Getter<boolean>` — true when the current route matches `path` |
-| `block(guard)` | Register a navigation guard. Returns an unsubscribe function |
 
-## Navigation guards
+## Protected routes
 
-Prevent navigation with a guard:
-
-```js
-const unblock = router.block(() => {
-  return confirm("Are you sure you want to leave?");
-});
-```
-
-Guards can be async. Navigation is blocked while any guard returns `true`.
-
-### Protected routes
-
-For authentication, redirect from `preload` instead of blocking silently:
+For authentication, redirect from `preload`:
 
 ```js
 import { RedirectError } from "@manyducks.co/dolla/router";
@@ -276,16 +263,6 @@ import { RedirectError } from "@manyducks.co/dolla/router";
   },
 }
 ```
-
-`block` is for confirmation-style guards:
-
-```js
-const unblock = router.block(async () => {
-  return await hasUnsavedChanges();
-});
-```
-
-When guards are registered, the router also warns on tab close via `beforeunload`. Call `unblock()` to remove the guard.
 
 ## Navigation
 

@@ -12,6 +12,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, "src/core/index.ts"),
+        internals: resolve(__dirname, "src/internals.ts"),
         http: resolve(__dirname, "src/http/index.ts"),
         router: resolve(__dirname, "src/router/index.ts"),
         translate: resolve(__dirname, "src/translate/index.ts"),

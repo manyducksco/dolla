@@ -3,38 +3,22 @@ export { createRoot } from "./root.js";
 export type { DollaPlugin } from "./root.js";
 
 // Signals
-export { batch, compose, createAtom, createEffect, createSetter, peek, subscribe, unwrap } from "./signals.js";
+export { batch, compose, createAtom, createSetter, peek, unwrap } from "./signals.js";
 export type { Getter, MaybeGetter, Setter } from "./signals.js";
 
 // Hooks
-export { addStore, getNearestViewNode, getRootElement, getStore, hasOwnStore, hasStore, isMounted, onCleanup, onEffect, onMount } from "./context.js";
-export { createContext, mountContext, cleanupContext } from "./context.js";
+export { addStore, getStore, hasOwnStore, hasStore, isMounted, onCleanup, onEffect, onMount } from "./context.js";
 export type { Context } from "./context.js";
 
 // Debug
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
-export type { Markup, MarkupNode } from "./markup/types.js";
 export { branch, createPortal, forEach, hideIf, repeat, showIf } from "./markup/helpers.js";
 export type { BranchTuple } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
-export type {
-  CoreCSSSyntax,
-  CSSSyntaxDescriptor,
-  Interpolation,
-  InterpolationValue,
-  PropertyConfig,
-} from "./markup/css.js";
-export { createMarkup, render } from "./markup/utils.js";
 export { transition } from "./markup/transition.js";
-export { DOMNode } from "./markup/nodes/dom.js";
-export { DynamicNode } from "./markup/nodes/dynamic.js";
-export { ElementNode } from "./markup/nodes/element.js";
-export { PortalNode } from "./markup/nodes/portal.js";
-export { RepeatNode } from "./markup/nodes/repeat.js";
-export { ViewNode } from "./markup/nodes/view.js";
 
 // Ref
 export { createRef } from "./ref.js";
@@ -46,13 +30,7 @@ export { throttle } from "./throttle.js";
 export { sleep } from "../utils.js";
 
 // Other types
-export type {
-  CSSProperties,
-  InputType,
-  Renderable,
-  Store,
-  View,
-} from "../types.js";
+export type { Renderable, Store, View } from "../types.js";
 
 import type { IntrinsicElements as Elements } from "../types.js";
 declare global {

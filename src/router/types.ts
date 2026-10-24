@@ -1,5 +1,6 @@
-import type { Setter, Getter, MarkupNode, Renderable, View, MaybeGetter } from "../core";
+import type { Setter, Getter, Renderable, View, MaybeGetter } from "../core";
 import type { Context } from "../core/context";
+import type { MarkupNode } from "../core/markup/types";
 import type { Match } from "./utils";
 
 export type Stringable = { toString(): string };
@@ -107,7 +108,7 @@ export interface Router {
    */
   path: Getter<string>;
   /**
-   * The route pattern that was matched (e.g. `/users/{#id}/edit`), or undefined if no route is currently matched.
+   * The route pattern that was matched (e.g. `/users/:id/edit`), or undefined if no route is currently matched.
    */
   pattern: Getter<string | undefined>;
   /**
@@ -155,11 +156,6 @@ export interface Router {
    * Replace the current route in the page history and navigate to it.
    */
   replace(path: string): void;
-
-  /**
-   * Prevents attempted navigations if the condition returns true.
-   */
-  block(guard: () => boolean | Promise<boolean>): () => void;
 
   /**
    * Contains `true` when the current route matches `path`.

@@ -13,7 +13,6 @@ Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unl
 | `onMount(context, callback)` | Registers a callback to run when the component is mounted into the DOM. |
 | `onCleanup(context, callback)` | Registers a callback to run when the component is removed from the DOM. |
 | `onEffect(context, callback)` | Creates an auto-tracking effect scoped to the component lifecycle. Re-runs whenever tracked signals change. `callback` may return a cleanup function. |
-| `onEffect(context, callback, deps)` | Creates a deps-array effect — `callback` receives the unwrapped dependency values and re-runs only when deps change. |
 
 Effects created with `onEffect` are automatically cleaned up when the component unmounts. Hooks should be registered while the view is being constructed; registering them later may miss the lifecycle event. See [When updates run](./concepts.md#when-updates-run) for ordering.
 
@@ -69,6 +68,8 @@ function Counter(props, context) {
 | `getNearestViewNode(context)` | Returns the `ViewNode` of the nearest view up the context chain. |
 | `getRootElement(context)` | Returns the parent DOM element of the root the component is mounted in. |
 
+`createContext`, `mountContext`, `cleanupContext`, `getNearestViewNode`, and `getRootElement` are imported from `@manyducks.co/dolla/internals`. `isMounted` remains available from the main package.
+
 ## Store Hooks
 
 | Hook | Description |
@@ -88,6 +89,6 @@ See [Debugging](./debugging.md) for log levels, filters, and debug mode.
 
 ## Next steps
 
-- [Effects](./effects.md) — `onEffect`, auto-tracking, deps arrays, cleanup
+- [Effects](./effects.md) — `onEffect`, auto-tracking, cleanup
 - [Components](./components.md) — views, stores, control flow
 - [Mental model](./concepts.md#when-updates-run) — hook ordering

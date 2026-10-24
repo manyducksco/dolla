@@ -375,20 +375,6 @@ describe("error enhancement", () => {
     expect(err.message).toContain('effect "MyEffect"');
   });
 
-  test("createEffect accepts bare deps array for backwards compat", () => {
-    const [a, setA] = createAtom(0);
-    let result = 0;
-
-    createEffect(
-      (v: number) => { result = v; },
-      [a],
-    );
-
-    expect(result).toBe(0);
-    setA(42);
-    expect(result).toBe(42);
-  });
-
   test("includes component name via push/pop", () => {
     pushComponentName("UserProfile");
 

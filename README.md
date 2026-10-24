@@ -20,7 +20,7 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 
 ### Modules
 
-- 🔀 **Router** — nested routes, lazy loading, guards, preload, error views
+- 🔀 **Router** — nested routes, lazy loading, preload, error views
 - 🌍 **i18n** — pluralization, formatting, async translation loading
 - 📡 **HTTP client** — middleware pipeline, typed responses
 - 📜 **Virtual list** — recycled DOM pool, infinite scroll, sticky headers
@@ -83,11 +83,11 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 | --------------------------------------- | ---------------------------------------------------------------- |
 | [Components](./docs/components.md)      | Views, stores, control-flow helpers, context, portals            |
 | [Hooks](./docs/hooks.md)                | Lifecycle, context, and store hooks                              |
-| [Effects](./docs/effects.md)            | `onEffect`, auto-tracking, deps arrays, cleanup                  |
+| [Effects](./docs/effects.md)            | `onEffect`, auto-tracking, cleanup                               |
 | [CSS](./docs/css.md)                    | CSS-in-JS with scoped classes, reactive variables, composition   |
 | [Transitions](./docs/transitions.md)    | Enter/exit animations with the Web Animations API                |
 | [Refs](./docs/refs.md)                  | Direct DOM access with `createRef`                               |
-| [Router](./src/router/README.md)        | Client-side SPA routing with nested routes, guards, lazy loading |
+| [Router](./src/router/README.md)        | Client-side SPA routing with nested routes, lazy loading         |
 | [Translate](./src/translate/README.md)  | i18n with pluralization, formatting, async loading               |
 | [HTTP client](./src/http/README.md)     | Middleware-based HTTP client                                     |
 | [Virtual list](./src/virtual/README.md) | High-performance virtual scrolling with sticky headers           |
@@ -103,7 +103,7 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 | [Utilities](./docs/utilities.md)            | debounce, throttle, sleep                              |
 | [FAQ](./docs/faq.md)                        | Common questions and gotchas                           |
 | [Glossary](./docs/glossary.md)              | Definitions for the terms used throughout the docs     |
-| [Advanced internals](./docs/advanced.md)    | Types, `createMarkup`/`render`, custom nodes           |
+| [Advanced internals](./docs/advanced.md)    | `@manyducks.co/dolla/internals`, custom nodes          |
 | [HMR](./docs/hmr.md)                        | Hot module replacement with Vite                       |
 | [Docs contributing](./docs/contributing.md) | Conventions for examples, terminology, and docs checks |
 
@@ -114,6 +114,7 @@ Dolla is modular. Import only what you need:
 | Import path                     | Includes                                                      |
 | ------------------------------- | ------------------------------------------------------------- |
 | `@manyducks.co/dolla`           | Core — signals, markup, components, lifecycle, CSS, utilities |
+| `@manyducks.co/dolla/internals` | Advanced rendering/context internals for integrations         |
 | `@manyducks.co/dolla/router`    | Client-side router with nested routes                         |
 | `@manyducks.co/dolla/translate` | i18n translation system                                       |
 | `@manyducks.co/dolla/http`      | Middleware-based HTTP client                                  |

@@ -1,20 +1,20 @@
 import {
-  DollaPlugin,
-  DynamicNode,
-  ViewNode,
   addStore,
   batch,
   createAtom,
   createDebug,
-  createMarkup,
-  getRootElement,
   onCleanup,
   onMount,
   peek,
   type Context,
-  type MarkupNode,
+  type DollaPlugin,
   type View,
 } from "../core/index.js";
+import { getRootElement } from "../core/context.js";
+import { DynamicNode } from "../core/markup/nodes/dynamic.js";
+import { ViewNode } from "../core/markup/nodes/view.js";
+import type { MarkupNode } from "../core/markup/types.js";
+import { createMarkup } from "../core/markup/utils.js";
 
 import { RouterStore } from "./store.js";
 import type { ActiveLayer, LazyLoader, LazyView, RouterOptions } from "./types.js";
@@ -68,8 +68,6 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
     const [progress, setProgress] = createAtom(0);
     const routeTree = buildRouteTree(options.routes);
-
-    const guards = new Set<() => boolean | Promise<boolean>>();
 
     const console = createDebug("dolla:router");
     const [rootSlot, setRootSlot] = createAtom<MarkupNode>();
@@ -247,72 +245,17 @@ export function createRouter(options: RouterOptions): DollaPlugin {
       progress,
       history,
       updateRoute,
-      guards,
     });
 
     onMount(context, () => {
-      let isReverting = false;
-      let isReplaying = false;
-      let lastIndex = history.getIndex();
-
-      const removePop = addListener(window, "popstate", async () => {
-        // If this popstate is the result of us reverting the URL, ignore it.
-        if (isReverting) {
-          isReverting = false;
-          return;
-        }
-
-        // If this popstate is the result of us replaying an allowed navigation, accept it.
-        if (isReplaying) {
-          isReplaying = false;
-          lastIndex = history.getIndex();
-          updateRoute();
-          return;
-        }
-
-        const newIndex = history.getIndex();
-        const delta = lastIndex - newIndex; // Positive if user clicked Back
-
-        // If guards exist, revert synchronously first
-        if (guards.size > 0) {
-          isReverting = true;
-          window.history.go(delta); // Restores the URL immediately
-
-          // Run guards while the URL is back in its original state
-          let blocked = false;
-          for (const guard of guards) {
-            if (await guard()) {
-              blocked = true;
-              break;
-            }
-          }
-
-          // If guards passed, replay the intended navigation
-          if (!blocked) {
-            isReplaying = true;
-            window.history.go(-delta);
-          }
-          return;
-        }
-
-        // Normal flow (no guards)
-        lastIndex = newIndex;
+      const removePop = addListener(window, "popstate", () => {
         updateRoute();
-      });
-
-      // Block tab closure/reload if guards exist
-      const removeUnload = addListener(window, "beforeunload", (e: BeforeUnloadEvent) => {
-        if (guards.size > 0) {
-          e.preventDefault();
-          e.returnValue = ""; // Triggers the native browser warning dialog
-        }
       });
 
       const removeClick = catchLinks(getRootElement(context), api.push);
 
       onCleanup(context, () => {
         removePop();
-        removeUnload();
         removeClick();
       });
 
