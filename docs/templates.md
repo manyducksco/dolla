@@ -229,6 +229,28 @@ If you pass a plain value, it stays static:
 
 Because children do not re-render, replacing a static prop requires creating a new child. Use a conditional (`showIf`) or a keyed list (`forEach`) so the old instance is removed and a new one is mounted.
 
+### TypeScript props
+
+Wrap the props type in `ReactiveProps` so callers can pass either plain values or getters:
+
+```tsx
+type GreetingProps = {
+  name: string;
+  onSave: () => void;
+};
+
+function Greeting(props: ReactiveProps<GreetingProps>) {
+  return <p>Hello, {props.name}!</p>;
+}
+
+<Greeting name="Alice" onSave={save} />;
+<Greeting name={getUserName} onSave={save} />;
+```
+
+`onSave` stays a callable function. To keep a plain-value key from accepting a getter, pass it as the second type argument: `ReactiveProps<GreetingProps, "id">`.
+
+A prop explicitly typed as `Getter<T>` stays a getter and does not accept a plain value.
+
 Use the context argument for lifecycle hooks and context data:
 
 ```jsx

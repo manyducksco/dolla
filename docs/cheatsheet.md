@@ -139,6 +139,8 @@ function Child(props) {
 
 For logic, use `unwrap(props.name)`.
 
+In TypeScript, type the props as `ReactiveProps<Props>`. Use `ReactiveProps<Props, "id">` to keep `id` plain. Function-typed props stay callable.
+
 ## Add a CSS class
 
 ```jsx

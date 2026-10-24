@@ -286,6 +286,8 @@ function Hello(props) {
 }
 ```
 
+TypeScript users can type props as `ReactiveProps<Props>` so plain values and getters are both accepted. Function-typed props stay callable; see [TypeScript props](./docs/templates.md#typescript-props).
+
 See [Templates](./docs/templates.md) for props, children, events, attributes, and the run-once model.
 
 ## No build step

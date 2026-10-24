@@ -10,6 +10,7 @@ Terms used throughout the Dolla docs.
 | **Context** | The prototype-inherited object passed to views and stores as the second argument. It carries lifecycle state, stores, debug settings, and arbitrary data down the tree. See [Mental model](./concepts.md#context-as-the-wiring-harness). |
 | **Context argument** | The `context` parameter in `function View(props, context)`. Prefer it over `this` in new code. |
 | **Props** | The object passed to a View or Store. Props are captured when the component mounts; pass getters for reactive props. See [Templates](./templates.md#props-and-the-run-once-model). |
+| **Reactive props** | A props type wrapped in `ReactiveProps<T>` so plain values may also be getters. Function-typed props and excluded keys stay as typed. See [TypeScript props](./templates.md#typescript-props). |
 | **Children** | A special prop containing the renderable content placed between component tags. See [Templates](./templates.md#components). |
 | **Signal** | A reactive value primitive. In Dolla, atoms and composed getters are signals. |
 | **Atom** | A mutable signal created with `createAtom`. Returns `[getter, setter]`. |

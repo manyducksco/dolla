@@ -8,6 +8,7 @@ This page covers public exports that are lower-level than the normal helpers. Th
 | --- | --- |
 | `Renderable` | Everything accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, `null`/`false`/`undefined`, and keep-alive markers. |
 | `MaybeGetter<T>` | `T` or `() => T`. |
+| `ReactiveProps<T, Plain>` | Props mapped so plain values may also be getters. Function-typed props and `Plain` keys stay as typed. See [TypeScript props](./templates.md#typescript-props). |
 | `Getter<T>` | A function returning the current value and registering a dependency when read in a tracking context. |
 | `Setter<T>` | A function that writes a value or an updater function. |
 | `View<Props>` | `(this: Context, props: Props, context: Context) => Renderable`. |

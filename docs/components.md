@@ -112,17 +112,20 @@ A store instance is available to all components in its subtree. Check existence 
 `createView` and `createStore` are identity functions used for type inference. They return the function you pass in unchanged.
 
 ```tsx
-const Greeting = createView(function (props: { name: string }) {
+const Greeting = createView(function (props: ReactiveProps<{ name: string }>) {
   return <p>{props.name}</p>;
 });
 
-const CounterStore = createStore(function (props: { initial: number }) {
-  const [getCount, setCount] = createAtom(props.initial);
+const CounterStore = createStore(function (props: ReactiveProps<{ initial: number }>) {
+  const initial = unwrap(props.initial);
+  const [getCount, setCount] = createAtom(initial);
   return { getCount, increment: () => setCount((count) => count + 1) };
 });
 ```
 
-They infer `this` and `context` as `Context` and type the props argument. They do not change runtime behavior. For props that may be getters, type them as `T | Getter<T>` or use `MaybeGetter<T>`. See [Advanced internals](./advanced.md#core-types).
+They infer `this` and `context` as `Context` and type the props argument. They do not change runtime behavior.
+
+Use `ReactiveProps` when the component accepts getter props. Function-typed props stay callable; pass a second type argument to exclude specific keys, for example `ReactiveProps<Props, "id">`. A prop explicitly typed as `Getter<T>` stays a getter and does not accept a plain value. See [Advanced internals](./advanced.md#core-types).
 
 ## Lifecycle
 

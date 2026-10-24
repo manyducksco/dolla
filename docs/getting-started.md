@@ -135,22 +135,42 @@ See [Mental model](./concepts.md) and [Templates](./templates.md) for the full e
 
 ## TypeScript
 
-Dolla ships with TypeScript types. Use `.tsx` files and the `tsconfig.json` above. For reactive props, remember that a prop may be a getter:
+Dolla ships with TypeScript types. Use `.tsx` files and the `tsconfig.json` above. For reactive props, wrap the props type in `ReactiveProps` so callers can pass either a plain value or a getter:
 
 ```tsx
-import type { Getter } from "@manyducks.co/dolla";
+import type { ReactiveProps } from "@manyducks.co/dolla";
 
 type Props = {
-  name: string | Getter<string>;
+  name: string;
+  onSave: () => void;
 };
 
-function Greeting(props: Props) {
-  // Interpolate the getter directly to stay reactive.
+function Greeting(props: ReactiveProps<Props>) {
+  // `name` may be a plain string or a getter.
   return <p>Hello, {props.name}!</p>;
+}
+
+<Greeting name="Alice" onSave={save} />;
+<Greeting name={getUserName} onSave={save} />;
+```
+
+Function-typed props such as `onSave` stay callable. When you need a value in logic, use `unwrap(props.name)`.
+
+To keep a key from accepting a getter, pass it as the second type argument:
+
+```tsx
+type RowProps = {
+  id: string;
+  name: string;
+};
+
+function Row(props: ReactiveProps<RowProps, "id">) {
+  // `id` is always a string; `name` may be a getter.
+  return <p>{props.id}: {props.name}</p>;
 }
 ```
 
-When you need the value in logic, use `unwrap(props.name)`.
+A prop explicitly typed as `Getter<T>` stays a getter and does not accept a plain value.
 
 See [Templates](./templates.md) and [Advanced internals](./advanced.md#core-types).
 

@@ -146,6 +146,7 @@ html`<${Card}><p>Hello</p></>`
 - Pass getters as props and read them inside a getter or `compose` in the child.
 - Event handlers may call getters because they run later, outside the initial render.
 - Remember that any function passed as content or as an attribute value is treated as a getter. Use `unwrap` when you need the value in logic.
+- For typed props that accept getters, use `ReactiveProps<T>`. Function-typed props stay callable; `ReactiveProps<T, "id">` keeps `id` plain.
 
 ## Terminology
 

@@ -52,6 +52,63 @@ export type Store<Props, Value, State = Record<string | symbol, any>> = (
 
 export type MaybeGetter<T> = Getter<T> | T;
 
+/**
+ * The reactive form of a single prop.
+ *
+ * Plain values may also be passed as getters. Function-typed props are left
+ * alone so callbacks stay callable. A prop explicitly typed as `Getter<T>`
+ * stays a getter and does not accept a plain value.
+ */
+// The tuple wrapper prevents the conditional from distributing over unions,
+// so optional props stay clean and pure callbacks are not turned into getters.
+type ReactiveProperty<T> = [T] extends [(...args: any[]) => any] ? T : MaybeGetter<T>;
+
+/**
+ * Transforms a props type so plain values may also be passed as getters.
+ *
+ * Use this for views and stores that read props in a tracking context. It is
+ * shallow: only the prop itself may be a getter, not its nested properties.
+ *
+ * Function-typed props are unchanged, so callbacks remain callable. Props
+ * explicitly typed as `Getter<T>` remain getters and do not accept plain
+ * values.
+ *
+ * The second type parameter excludes specific keys from the transformation.
+ * Excluded keys keep their original type exactly, which is useful for plain
+ * values that should never accept a getter.
+ *
+ * @example
+ * type Props = {
+ *   name: string;
+ *   onSave: (value: string) => void;
+ * };
+ *
+ * function Greeting(props: ReactiveProps<Props>) {
+ *   return <p>{props.name}</p>;
+ * }
+ *
+ * <Greeting name="Alice" onSave={save} />;
+ * <Greeting name={getName} onSave={save} />;
+ *
+ * @example
+ * // Keep `id` as a plain string; only `name` may be a getter.
+ * type RowProps = {
+ *   id: string;
+ *   name: string;
+ * };
+ *
+ * function Row(props: ReactiveProps<RowProps, "id">) {
+ *   return <p>{props.id}: {props.name}</p>;
+ * }
+ *
+ * @example
+ * // Use `unwrap` when you need the value in logic.
+ * const name = unwrap(props.name);
+ */
+export type ReactiveProps<T, Plain extends keyof T = never> = {
+  [K in keyof T]: K extends Plain ? T[K] : ReactiveProperty<T[K]>;
+};
+
 /*==================================*\
 ||            JSX Types             ||
 \*==================================*/
