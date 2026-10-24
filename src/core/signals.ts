@@ -66,8 +66,6 @@ let activeSub: ReactiveNode | undefined;
 
 const queued: (EffectNode | undefined)[] = [];
 
-
-
 function link(dep: ReactiveNode, sub: ReactiveNode, version: number): void {
   const prevDep = sub._depsTail;
   if (prevDep !== undefined && prevDep._dep === dep) {
@@ -366,10 +364,15 @@ function updateComputed(c: ComputedNode): boolean {
   c._depsTail = undefined;
   c._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
   const prevSub = setActiveSub(c);
-  return withReactiveScope(c, prevSub, () => {
-    const oldValue = c._value;
-    return oldValue !== (c._value = c._getter(oldValue));
-  }, true);
+  return withReactiveScope(
+    c,
+    prevSub,
+    () => {
+      const oldValue = c._value;
+      return oldValue !== (c._value = c._getter(oldValue));
+    },
+    true,
+  );
 }
 
 function updateValue(v: ValueNode): boolean {
@@ -533,12 +536,6 @@ function valueSetter<T>(node: ValueNode<T>, next: SetterAction<T>): T {
   return value;
 }
 
-function customSetter<T>(getter: Getter<T>, callback: (current: T) => T | void, value: SetterAction<T>): T {
-  const next = typeof value === "function" ? (value as (current: T) => T)(peek(getter)) : value;
-  const returned = callback(next);
-  return returned ?? next;
-}
-
 function effectCleanup(node: ReactiveNode): void {
   node._depsTail = undefined;
   node._flags = ReactiveFlags.None;
@@ -664,7 +661,11 @@ export function createAtom<T>(value?: T, options?: { name?: string }) {
  * The callback receives the current value and should return the new value.
  */
 export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T | void): Setter<T> {
-  return (value: SetterAction<T>) => customSetter(getter, callback as any, value);
+  return (value: SetterAction<T>) => {
+    const next = typeof value === "function" ? (value as (current: T) => T)(peek(getter)) : value;
+    const returned = callback(next);
+    return returned ?? next;
+  };
 }
 
 /**

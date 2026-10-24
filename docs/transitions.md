@@ -27,7 +27,7 @@ transition({
 - When `when` becomes truthy, the content is mounted and the `enter` keyframes run (if provided).
 - When `when` becomes falsy, the `exit` keyframes run (if provided), and the content is unmounted after the animation finishes.
 - If `enter` is omitted, the content appears immediately. If `exit` is omitted, it is removed immediately.
-- The exit unmounts the content, so local component state resets. Use a store or a `keepAlive` ancestor if you need state to survive hiding.
+- The exit unmounts the content, so local component state resets. Move state that should survive into a store or an atom outside the transition.
 
 Animations use `fill: "forwards"`. On entering finish, the final styles are committed before the animation is cancelled, so the element does not jump back.
 
@@ -74,11 +74,10 @@ transition({
 
 - Requires `Element.prototype.animate` (Web Animations API) in the browser.
 - The wrapper `<div>` is an extra DOM element. Style the child directly or target the wrapper through its child.
-- `transition` is not `keepAlive`. It controls mount/unmount animation; `keepAlive` controls whether hidden content is retained.
 - Consider respecting `prefers-reduced-motion` in your app and skipping keyframes when the user requests reduced motion.
 
 ## Next steps
 
-- [Components](./components.md#control-flow-helpers) — `showIf`, `keepAlive`, and friends
+- [Components](./components.md#control-flow-helpers) — `showIf`, `branch`, and friends
 - [CSS](./css.md) — styling the content
 - [Cheatsheet](./cheatsheet.md) — quick lookups

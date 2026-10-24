@@ -1,7 +1,5 @@
 import { createMarkup, MaybeGetter, Renderable } from "..";
-import type { KeepAlive } from "../../types";
 import { isArray, isFunction } from "../../utils";
-import { KEEP_ALIVE } from "../symbols";
 import { type Getter } from "../signals";
 import { BranchNode, type BranchEntry } from "./nodes/branch";
 import { PortalNode } from "./nodes/portal";
@@ -14,7 +12,7 @@ import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
  * @param keyFn - Takes (item, index) as plain values and returns a unique key to identify that item (usually the item's ID).
  * @param renderFn - Takes (item, index) as Reactive values and returns content to display for that item.
  */
-export function forEach<T>(
+export function repeat<T>(
   items: Getter<Iterable<T>> | Iterable<T>,
   keyFn: KeyFn<T>,
   renderFn: RenderFn<T>,
@@ -30,6 +28,9 @@ export function forEach<T>(
     );
   }
 }
+
+/** @deprecated Use `repeat` instead. */
+export const forEach: typeof repeat = repeat;
 
 /**
  * Displays content conditionally. When `condition` is truthy, display `content`. When `condition` is falsy, display `fallback`.
@@ -71,8 +72,7 @@ function toPropertyKey(value: unknown): PropertyKey {
  * including objects (by identity), while the object form uses normal object
  * property keys.
  *
- * When no case matches, `fallback` is rendered. Cases and the fallback support
- * `keepAlive()`.
+ * When no case matches, `fallback` is rendered.
  *
  * @param value - Value to match. Can be reactive.
  * @param cases - Object of cases or array of `[value, content]` tuples.
@@ -118,24 +118,7 @@ export function branch<T>(
 }
 
 /**
- * Marks a conditional branch side as keep-alive. When hidden by `showIf`,
- * `hideIf`, or `branch`, the content is hidden instead of unmounted, preserving
- * its signals, DOM, refs, and effects.
- *
- * `keepAlive` must wrap the entire branch side:
- *
- * ```js
- * showIf(condition, keepAlive(SomeView))
- * ```
- */
-export function keepAlive(content: Renderable): KeepAlive {
-  return { [KEEP_ALIVE]: true, content };
-}
-
-/**
  * Shows content if `condition` is **truthy**. Otherwise shows `fallback` content.
- *
- * @alias hideUnless
  *
  * @param condition - Condition to hide or show content on.
  * @param content - Content to display when condition is truthy.
@@ -148,40 +131,12 @@ export function showIf(condition: MaybeGetter<any>, content: Renderable, fallbac
 /**
  * Shows content if `condition` is **falsy**. Otherwise shows `fallback` content.
  *
- * @alias hideIf
- *
- * @param condition - Condition to hide or show content on.
- * @param content - Content if condition is falsy.
- * @param fallback - Content if condition is truthy.
- */
-export function showUnless(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
-  return _conditional(condition, fallback, content);
-}
-
-/**
- * Shows content if `condition` is **falsy**. Otherwise shows `fallback` content.
- *
- * @alias showUnless
- *
  * @param condition - Condition to hide or show content on.
  * @param content - Content if condition is falsy.
  * @param fallback - Content if condition is truthy.
  */
 export function hideIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
   return _conditional(condition, fallback, content);
-}
-
-/**
- * Shows content if `condition` is **truthy**. Otherwise shows `fallback` content.
- *
- * @alias showIf
- *
- * @param condition - Condition to hide or show content on.
- * @param content - Content if condition is truthy.
- * @param fallback - Content if condition is falsy.
- */
-export function hideUnless(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
-  return _conditional(condition, content, fallback);
 }
 
 /**

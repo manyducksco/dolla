@@ -107,25 +107,9 @@ function Counter(props, context) {
 
 A store instance is available to all components in its subtree. Check existence with `hasStore(context, store)` or `hasOwnStore(context, store)`. See [Stores vs Views](./concepts.md#stores-vs-views) for the conceptual difference.
 
-## Type helpers
+## TypeScript
 
-`createView` and `createStore` are identity functions used for type inference. They return the function you pass in unchanged.
-
-```tsx
-const Greeting = createView(function (props: ReactiveProps<{ name: string }>) {
-  return <p>{props.name}</p>;
-});
-
-const CounterStore = createStore(function (props: ReactiveProps<{ initial: number }>) {
-  const initial = unwrap(props.initial);
-  const [getCount, setCount] = createAtom(initial);
-  return { getCount, increment: () => setCount((count) => count + 1) };
-});
-```
-
-They infer `this` and `context` as `Context` and type the props argument. They do not change runtime behavior.
-
-Use `ReactiveProps` when the component accepts getter props. Function-typed props stay callable; pass a second type argument to exclude specific keys, for example `ReactiveProps<Props, "id">`. A prop explicitly typed as `Getter<T>` stays a getter and does not accept a plain value. See [Advanced internals](./advanced.md#core-types).
+Type view and store functions directly. Type reactive props as `Getter<T>`; use `MaybeGetter<T>` when a prop accepts either a plain value or a getter. See [TypeScript props](./templates.md#typescript-props) for examples.
 
 ## Lifecycle
 
@@ -149,7 +133,7 @@ function Example(props, context) {
 }
 ```
 
-See [Hooks](./hooks.md) for the full lifecycle and visibility hook reference.
+See [Hooks](./hooks.md) for the full lifecycle hook reference.
 
 ## Control flow helpers
 
@@ -165,27 +149,7 @@ Conditionally render content:
 
 Conditions can be getters (reactive) or plain values (evaluated once).
 
-By default, hidden content is unmounted. Wrap a branch side in `keepAlive` to hide it without unmounting:
-
-```jsx
-import { keepAlive, showIf } from "@manyducks.co/dolla";
-
-{showIf(getActiveTab, keepAlive(<Editor />))}
-```
-
-A hidden side keeps its signals, stores, DOM, refs, listeners, and effects alive; only its DOM is detached. This is useful for tabs, panels, and forms where losing state would be disruptive.
-
-Things to know:
-
-- `keepAlive` must wrap the **entire branch side**, not a nested child.
-- Effects, timers, and fetches keep running while hidden. Use `onHide` / `onShow` (see [Hooks](./hooks.md)) to pause work explicitly.
-- `onCleanup` does **not** run when content is hidden; it runs when the owner unmounts.
-- Hidden content is absent from the document, so `querySelector` won't find it and it is hidden from assistive technology.
-- Focus and text selection are lost. Media and iframe state may reset on show.
-- Memory is retained until the conditional owner unmounts. There is one retained instance per branch side.
-- `keepAlive` is only meaningful inside a helper that supports it, such as `showIf` / `hideIf`.
-
-See [Keep-alive caveats](./advanced.md#keep-alive-caveats) for the edge cases.
+Hidden content is unmounted. Use a store to keep state alive across mounts (recommended), or keep the atom outside the conditional content.
 
 ### `branch`
 
@@ -219,19 +183,14 @@ const tabs = [
 - Object keys follow normal object property rules, so numeric and boolean values match their string keys.
 - There is no fallthrough; only the first matching case is rendered.
 - Pass the fallback as the third argument. Without one, an unmatched value renders nothing.
-- Cases and the fallback support `keepAlive`, so hidden branch content can retain its state.
 
-### `showUnless` / `hideUnless`
-
-`showUnless` and `hideUnless` are aliases of `hideIf` and `showIf`. Prefer `showIf` / `hideIf` in new code; the aliases exist for readability in some templates.
-
-### `forEach`
+### `repeat`
 
 Render a dynamic, keyed list:
 
 ```jsx
 <ul>
-  {forEach(
+  {repeat(
     getItems,
     (item) => item.id,
     (getItem, getIndex) => (
@@ -243,13 +202,15 @@ Render a dynamic, keyed list:
 </ul>
 ```
 
-`forEach` takes a list or a getter for a list:
+`repeat` takes a list or a getter for a list:
 
 - The key function receives plain `(item, index)` values.
 - The render function receives `item` and `index` as **getters**.
 - Read those getters inside another getter or `compose` to stay reactive. Writing `{getItem().name}` evaluates once.
 - Items with the same key reuse their existing DOM node when the list changes.
-- For a static array that never changes, a plain `.map()` is fine. Use `forEach` when the list is reactive.
+- For a static array that never changes, a plain `.map()` is fine. Use `repeat` when the list is reactive.
+
+`forEach` is a deprecated alias of `repeat`. Use `repeat` in new code.
 
 ### `createPortal`
 
@@ -266,7 +227,7 @@ function Modal() {
 }
 ```
 
-Portal content is physically outside the logical parent. Make sure the target exists, and manage focus and ARIA relationships manually when moving dialogs or menus outside the tree. Portals participate in `keepAlive` visibility: their content is retained and removed from the target while the branch is hidden.
+Portal content is physically outside the logical parent. Make sure the target exists, and manage focus and ARIA relationships manually when moving dialogs or menus outside the tree.
 
 ## Context
 

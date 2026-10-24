@@ -1,7 +1,6 @@
 import type { Renderable } from "../../../types.js";
-import { Context } from "../../context.js";
-import { VISIBILITY_SCOPE, VisibilityScope } from "../../visibility.js";
-import { MarkupNode, MountTarget } from "../types.js";
+import type { Context } from "../../context.js";
+import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter, render } from "../utils.js";
 
 /**
@@ -15,10 +14,6 @@ export class PortalNode extends MarkupNode {
   #value: Renderable;
   #parent: MountTarget;
   #childNode?: MarkupNode;
-
-  #scope?: VisibilityScope;
-  #detachedFragment: DocumentFragment | null = null;
-  #hidden = false;
 
   constructor(context: Context, value: Renderable, parent: MountTarget) {
     super();
@@ -41,30 +36,15 @@ export class PortalNode extends MarkupNode {
       this.#anchor = createTextNode("");
       addChild(logicalParent, this.#anchor, after);
 
-      this.#scope = (this.#context as any)[VISIBILITY_SCOPE] as VisibilityScope | undefined;
-
-      // Render the content and mount it to the portal target. If the nearest
-      // keep-alive scope is already hidden, mount directly into the detached
-      // fragment so the content never flashes in the target.
+      // Render the content and mount it to the portal target
       if (!this.#childNode) {
         this.#childNode = render(this.#value, this.#context);
       }
-
-      if (this.#scope?.hidden) {
-        this.#hidden = true;
-        this.#childNode.mount(this.#getDetachedFragment());
-      } else {
-        this.#childNode.mount(this.#parent);
-      }
-
-      this.#scope?.addResource(this);
+      this.#childNode.mount(this.#parent);
     }
   }
 
   override unmount(skipDOM = false) {
-    this.#scope?.deleteResource(this);
-    this.#scope = undefined;
-
     if (this.isMounted()) {
       if (!skipDOM) {
         this.#anchor!.parentNode?.removeChild(this.#anchor!);
@@ -75,33 +55,6 @@ export class PortalNode extends MarkupNode {
         this.#childNode.unmount(false);
       }
     }
-
-    this.#hidden = false;
-    this.#detachedFragment = null;
-  }
-
-  /**
-   * Called by the nearest keep-alive scope. Moves portal content out of its
-   * target without unmounting it.
-   */
-  hide() {
-    if (this.#hidden || !this.#childNode) return;
-    this.#hidden = true;
-    this.#childNode.move(this.#getDetachedFragment());
-  }
-
-  /**
-   * Called by the nearest keep-alive scope. Restores portal content to its
-   * target.
-   */
-  show() {
-    if (!this.#hidden || !this.#childNode) return;
-    this.#hidden = false;
-    this.#childNode.move(this.#parent);
-  }
-
-  #getDetachedFragment() {
-    return (this.#detachedFragment ??= document.createDocumentFragment());
   }
 
   override move(logicalParent: MountTarget, after?: Node) {

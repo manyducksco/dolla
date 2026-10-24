@@ -74,7 +74,7 @@ function Panel(props, context) {
 
 ```jsx
 <ul>
-  {forEach(
+  {repeat(
     getItems,
     (item) => item.id,
     (getItem, getIndex) => (
@@ -139,7 +139,7 @@ function Child(props) {
 
 For logic, use `unwrap(props.name)`.
 
-In TypeScript, type the props as `ReactiveProps<Props>`. Use `ReactiveProps<Props, "id">` to keep `id` plain. Function-typed props stay callable.
+In TypeScript, type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter.
 
 ## Add a CSS class
 

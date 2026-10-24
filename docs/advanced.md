@@ -6,9 +6,8 @@ This page covers public exports that are lower-level than the normal helpers. Th
 
 | Type | Meaning |
 | --- | --- |
-| `Renderable` | Everything accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, `null`/`false`/`undefined`, and keep-alive markers. |
+| `Renderable` | Everything accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, and `null`/`false`/`undefined`. |
 | `MaybeGetter<T>` | `T` or `() => T`. |
-| `ReactiveProps<T, Plain>` | Props mapped so plain values may also be getters. Function-typed props and `Plain` keys stay as typed. See [TypeScript props](./templates.md#typescript-props). |
 | `Getter<T>` | A function returning the current value and registering a dependency when read in a tracking context. |
 | `Setter<T>` | A function that writes a value or an updater function. |
 | `View<Props>` | `(this: Context, props: Props, context: Context) => Renderable`. |
@@ -16,7 +15,6 @@ This page covers public exports that are lower-level than the normal helpers. Th
 | `Context` | The prototype-inherited object passed to views and stores. |
 | `Markup` | A description of an element/component: `{ type, props }` with the internal `IS_MARKUP` marker. |
 | `MarkupNode` | The runtime object that mounts, updates, moves, and unmounts markup. |
-| `KeepAlive` | The branded descriptor returned by `keepAlive()`; normally consumed by `showIf`, `hideIf`, or `branch`. |
 
 See [Templates](./templates.md#what-can-be-rendered) for the user-facing renderable rules.
 
@@ -63,7 +61,7 @@ abstract class MarkupNode {
 ```
 
 - `getRoot` returns the DOM node representing this node's position. It may be an anchor text node.
-- `isMounted` should be true while the node is attached to a parent (including a detached fragment used by keep-alive).
+- `isMounted` should be true while the node is attached to a parent.
 - `mount` inserts the node, usually after `after`.
 - `unmount` removes DOM unless `skipDOM` is true, and releases subscriptions, refs, and contexts.
 - `move` repositions the node without remounting when possible; use `moveBefore` when available to preserve DOM state.
@@ -79,8 +77,6 @@ interface MountTarget {
 }
 ```
 
-`Element` and `DocumentFragment` both satisfy it. This is why hidden content can still update while detached.
-
 ## Exported node classes
 
 These are available for advanced integrations:
@@ -88,39 +84,11 @@ These are available for advanced integrations:
 - `DOMNode` — wrapper for a plain DOM node.
 - `ElementNode` — an HTML/SVG element.
 - `ViewNode` — a mounted View.
-- `RepeatNode` — keyed list rendering used by `forEach`.
+- `RepeatNode` — keyed list rendering used by `repeat`.
 - `DynamicNode` — renders any renderable and updates it when its getter changes.
 - `PortalNode` — renders content into another DOM parent.
 
-Prefer the helpers (JSX, `html`, `forEach`, `showIf`, `createPortal`) unless you are building a custom rendering primitive.
-
-## Visibility internals
-
-`keepAlive(content)` returns a `KeepAlive` marker. The conditional owner (`showIf`, `hideIf`, or `branch`) detects the marker and hides the DOM by moving it into a detached `DocumentFragment`.
-
-Use the public hooks rather than reaching into the scope directly:
-
-- `onHide(context, fn)`
-- `onShow(context, fn)`
-- `isMounted(context)`
-- `isVisible(context)`
-
-`isMounted(context)` is the lifecycle check that replaced the old context field. `isVisible(context)` adds keep-alive visibility to it. The `MarkupNode.isMounted()` method above is a different concept: it describes whether the render node is attached to a parent, not whether the context is visible.
-
-## Keep-alive caveats
-
-- `keepAlive` must wrap the **entire branch side**, not a nested child.
-- Effects, timers, and fetches keep running while hidden. Use `onHide` / `onShow` to pause them.
-- `onCleanup` does not run when content is hidden; it runs when the owner unmounts.
-- Hidden content is absent from the document, so `querySelector` won't find it and it is hidden from assistive technology.
-- Focus and text selection are lost. Media and iframe state may reset on show.
-- Memory is retained until the conditional owner unmounts. There is one retained instance per branch side.
-- `keepAlive` is only meaningful inside a helper that supports it, such as `showIf`, `hideIf`, or `branch`.
-- Portal content is retained, but removed from its target while the branch is hidden.
-- Nested keep-alive scopes inherit visibility from their nearest scope.
-- `isVisible(context)` is a plain boolean read, not a reactive getter.
-
-See [Visibility hooks](./hooks.md#visibility-hooks) and [Keep-alive](./components.md#control-flow-helpers).
+Prefer the helpers (JSX, `html`, `repeat`, `showIf`, `createPortal`) unless you are building a custom rendering primitive.
 
 ## Standalone effects
 

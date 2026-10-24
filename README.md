@@ -14,7 +14,6 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - 🧩 **Context** — each view exposes a context object that inherits values from the parent context
 - 💾 **Stores** — shared-state-on-rails via the context tree
 - 🎨 **CSS-in-JS** — a `css` helper for quick inline classes and `styled.*` elements for easy composition
-- 🧊 **Keep-alive conditionals** — optionally hide content instead of unmounting it
 - 🏗 **Buildless templates** — use the `html` helper instead of JSX, with no template compiler
 - 🐛 **Debug logging** — colored, taggable, filterable
 - ⏱ **Temporal helpers** — `debounce` and `throttle`
@@ -83,7 +82,7 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 | Page | Description |
 | --- | --- |
 | [Components](./docs/components.md) | Views, stores, control-flow helpers, context, portals |
-| [Hooks](./docs/hooks.md) | Lifecycle, context, store, and visibility hooks |
+| [Hooks](./docs/hooks.md) | Lifecycle, context, and store hooks |
 | [Effects](./docs/effects.md) | `onEffect`, auto-tracking, deps arrays, cleanup |
 | [CSS](./docs/css.md) | CSS-in-JS with scoped classes, reactive variables, composition |
 | [Styled components](./docs/styled.md) | `styled.*`, naming, `as`, composition, props |
@@ -175,7 +174,7 @@ import {
   compose,
   createAtom,
   createRoot,
-  forEach,
+  repeat,
   getStore,
   showIf,
 } from "@manyducks.co/dolla";
@@ -211,7 +210,7 @@ function TodoList(props, context) {
     <section>
       <p>{store.getRemaining} remaining</p>
       <ul>
-        {forEach(
+        {repeat(
           store.getItems,
           (item) => item.id,
           (getItem) => (
@@ -286,7 +285,7 @@ function Hello(props) {
 }
 ```
 
-TypeScript users can type props as `ReactiveProps<Props>` so plain values and getters are both accepted. Function-typed props stay callable; see [TypeScript props](./docs/templates.md#typescript-props).
+TypeScript users can type reactive props as `Getter<T>`, or `MaybeGetter<T>` when a prop accepts either a plain value or a getter. See [TypeScript props](./docs/templates.md#typescript-props).
 
 See [Templates](./docs/templates.md) for props, children, events, attributes, and the run-once model.
 

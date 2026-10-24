@@ -7,7 +7,7 @@ import { DynamicNode } from "./nodes/dynamic.js";
 import { PortalNode } from "./nodes/portal.js";
 import { RepeatNode } from "./nodes/repeat.js";
 import { createMarkup, render } from "./utils.js";
-import { branch, createPortal, forEach, hideIf, showIf, showUnless } from "./helpers.js";
+import { branch, createPortal, forEach, hideIf, repeat, showIf } from "./helpers.js";
 
 function setup() {
   const context = createContext(null);
@@ -15,21 +15,21 @@ function setup() {
   return { context, container };
 }
 
-describe("forEach", () => {
+describe("repeat", () => {
   test("static items returns an array of rendered content", () => {
-    const result = forEach([1, 2, 3], (item: number) => String(item), (item, index) => `${item()}:${index()}`);
+    const result = repeat([1, 2, 3], (item: number) => String(item), (item, index) => `${item()}:${index()}`);
     expect(Array.isArray(result)).toBe(true);
     expect(result).toEqual(["1:0", "2:1", "3:2"]);
   });
 
   test("static empty array returns empty array", () => {
-    const result = forEach([], (item: number) => String(item), (item, index) => `${item()}:${index()}`);
+    const result = repeat([], (item: number) => String(item), (item, index) => `${item()}:${index()}`);
     expect(result).toEqual([]);
   });
 
   test("reactive items returns markup with RepeatNode", () => {
     const [items] = createAtom([1, 2]);
-    const result = forEach(items, (item: number) => String(item), (item, index) =>
+    const result = repeat(items, (item: number) => String(item), (item, index) =>
       createMarkup("span", { children: () => `${item()}:${index()}` }),
     );
     expect(result).toBeDefined();
@@ -41,7 +41,7 @@ describe("forEach", () => {
   test("reactive items renders in DOM", () => {
     const { context, container } = setup();
     const [items] = createAtom([10, 20]);
-    const content = forEach(items, (item: number) => String(item), (item, index) =>
+    const content = repeat(items, (item: number) => String(item), (item, index) =>
       createMarkup("span", { children: () => `${item()}:${index()}` }),
     );
     const node = render(content, context);
@@ -55,7 +55,7 @@ describe("forEach", () => {
   test("reactive items updates reactively", () => {
     const { context, container } = setup();
     const [items, setItems] = createAtom([1]);
-    const content = forEach(items, (item: number) => String(item), (item, index) =>
+    const content = repeat(items, (item: number) => String(item), (item, index) =>
       createMarkup("span", { children: () => `${item()}:${index()}` }),
     );
     const node = render(content, context);
@@ -65,9 +65,13 @@ describe("forEach", () => {
     flushPendingUpdates();
     expect(container.querySelectorAll("span").length).toBe(2);
   });
+
+  test("forEach remains as a deprecated alias", () => {
+    expect(forEach).toBe(repeat);
+  });
 });
 
-describe("showIf / hideIf / showUnless / hideUnless", () => {
+describe("showIf / hideIf", () => {
   describe("showIf", () => {
     test("static truthy returns content", () => {
       expect(showIf(true, "shown")).toBe("shown");
@@ -146,28 +150,6 @@ describe("showIf / hideIf / showUnless / hideUnless", () => {
       const { context, container } = setup();
       const [cond, setCond] = createAtom(true);
       const content = hideIf(cond, "content", "fallback");
-      const node = render(content, context);
-      node.mount(container);
-      expect(container.textContent).toBe("fallback");
-      setCond(false);
-      flushPendingUpdates();
-      expect(container.textContent).toBe("content");
-    });
-  });
-
-  describe("showUnless", () => {
-    test("static truthy returns fallback (inverted)", () => {
-      expect(showUnless(true, "shown", "fallback")).toBe("fallback");
-    });
-
-    test("static falsy returns content (inverted)", () => {
-      expect(showUnless(false, "shown", "fallback")).toBe("shown");
-    });
-
-    test("reactive truthy shows fallback, falsy shows content", () => {
-      const { context, container } = setup();
-      const [cond, setCond] = createAtom(true);
-      const content = showUnless(cond, "content", "fallback");
       const node = render(content, context);
       node.mount(container);
       expect(container.textContent).toBe("fallback");

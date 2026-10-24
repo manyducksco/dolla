@@ -42,7 +42,6 @@ These values can be interpolated or returned from a view:
 | Getter (`() => value`) | Tracked and rendered reactively |
 | Array | Each item is processed, in order |
 | `null`, `undefined`, `false` | Rendered as nothing |
-| `keepAlive(...)` | Rendered as its content outside a keep-alive-aware helper such as `showIf` or `branch` |
 
 A view can return multiple root nodes, either as an array or as a fragment:
 
@@ -227,29 +226,28 @@ If you pass a plain value, it stays static:
 // props.name() would throw; props.name is the string "Alice"
 ```
 
-Because children do not re-render, replacing a static prop requires creating a new child. Use a conditional (`showIf`) or a keyed list (`forEach`) so the old instance is removed and a new one is mounted.
+Because children do not re-render, replacing a static prop requires creating a new child. Use a conditional (`showIf`) or a keyed list (`repeat`) so the old instance is removed and a new one is mounted.
 
 ### TypeScript props
 
-Wrap the props type in `ReactiveProps` so callers can pass either plain values or getters:
+Type props explicitly. A static prop uses its plain type; a reactive prop is typed as `Getter<T>` and receives a getter:
 
 ```tsx
+import type { Getter } from "@manyducks.co/dolla";
+
 type GreetingProps = {
-  name: string;
+  name: Getter<string>;
   onSave: () => void;
 };
 
-function Greeting(props: ReactiveProps<GreetingProps>) {
+function Greeting(props: GreetingProps) {
   return <p>Hello, {props.name}!</p>;
 }
 
-<Greeting name="Alice" onSave={save} />;
 <Greeting name={getUserName} onSave={save} />;
 ```
 
-`onSave` stays a callable function. To keep a plain-value key from accepting a getter, pass it as the second type argument: `ReactiveProps<GreetingProps, "id">`.
-
-A prop explicitly typed as `Getter<T>` stays a getter and does not accept a plain value.
+If a prop accepts either a plain value or a getter, type it as `MaybeGetter<T>` and use `unwrap()` when you need the value in logic.
 
 Use the context argument for lifecycle hooks and context data:
 
@@ -267,11 +265,11 @@ function Panel(props, context) {
 
 ## Lists and conditionals
 
-Use `showIf`, `hideIf`, `branch`, and `forEach` from [Components](./components.md#control-flow-helpers). `forEach` receives item and index **getters**, so read them inside a getter:
+Use `showIf`, `hideIf`, `branch`, and `repeat` from [Components](./components.md#control-flow-helpers). `repeat` receives item and index **getters**, so read them inside a getter:
 
 ```jsx
 <ul>
-  {forEach(
+  {repeat(
     getItems,
     (item) => item.id,
     (getItem, getIndex) => (

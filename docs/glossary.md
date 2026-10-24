@@ -10,7 +10,6 @@ Terms used throughout the Dolla docs.
 | **Context** | The prototype-inherited object passed to views and stores as the second argument. It carries lifecycle state, stores, debug settings, and arbitrary data down the tree. See [Mental model](./concepts.md#context-as-the-wiring-harness). |
 | **Context argument** | The `context` parameter in `function View(props, context)`. Prefer it over `this` in new code. |
 | **Props** | The object passed to a View or Store. Props are captured when the component mounts; pass getters for reactive props. See [Templates](./templates.md#props-and-the-run-once-model). |
-| **Reactive props** | A props type wrapped in `ReactiveProps<T>` so plain values may also be getters. Function-typed props and excluded keys stay as typed. See [TypeScript props](./templates.md#typescript-props). |
 | **Children** | A special prop containing the renderable content placed between component tags. See [Templates](./templates.md#components). |
 | **Signal** | A reactive value primitive. In Dolla, atoms and composed getters are signals. |
 | **Atom** | A mutable signal created with `createAtom`. Returns `[getter, setter]`. |
@@ -24,15 +23,12 @@ Terms used throughout the Dolla docs.
 | **HTML helper** | The buildless `html` tagged template. It produces the same `Markup` objects as JSX without a compiler. See [HTML templates](./html.md). |
 | **Markup** | The lightweight description produced by JSX, `html`, or `createMarkup`. It describes elements/components but is not itself a DOM node. |
 | **MarkupNode** | The runtime object that mounts, updates, moves, and unmounts a piece of markup. |
-| **Renderable** | Any value accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, `null`, `false`, and keep-alive markers. See [Templates](./templates.md#what-can-be-rendered). |
+| **Renderable** | Any value accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, `null`, and `false`. See [Templates](./templates.md#what-can-be-rendered). |
 | **Mount / Unmount** | Mounting creates DOM and starts subscriptions. Unmounting removes DOM and disposes contexts, effects, refs, and listeners. |
-| **Hide / Show** | The visibility lifecycle. Hiding detaches a `keepAlive` branch's DOM while keeping its signals, contexts, refs, and effects alive; showing reattaches it. Hidden content is not unmounted. See [Keep-alive](./components.md#control-flow-helpers). |
 | **isMounted** | `isMounted(context)` reports whether the context lifecycle is mounted. Replaces the old `context.isMounted` field. |
-| **isVisible** | `isVisible(context)` reports whether a mounted context is currently visible. False while hidden by `keepAlive`. |
-| **Keep-alive** | The opt-in behavior enabled by `keepAlive(content)` on a conditional branch side. |
 | **Portal** | Content that is logically part of the current tree but rendered into a different DOM parent. See [Portals](./components.md#createportal). |
 | **Ref** | A callable container for a DOM node, created with `createRef`, or a callback passed to `ref`. See [Refs](./refs.md). |
-| **Key** | A stable identity returned from the key function passed to `forEach`. Items with the same key reuse their DOM nodes. |
+| **Key** | A stable identity returned from the key function passed to `repeat`. Items with the same key reuse their DOM nodes. |
 | **Batch** | `batch(fn)` groups signal writes so dependent effects run once at the end. |
 | **Microtask flush** | The scheduled pass that applies coalesced DOM updates after signal changes. See [When updates run](./concepts.md#when-updates-run). |
 | **HMR** | Hot Module Replacement. During development, a changed view function is re-executed and its output replaced. See [HMR](./hmr.md). |

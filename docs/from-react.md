@@ -162,23 +162,23 @@ function Greeting(props) {
 
 `props.name` is a getter in the child because the parent passed a getter. If you need the value in logic, use `unwrap(props.name)`.
 
-In TypeScript, type the props as `ReactiveProps<Props>` so the child accepts both plain values and getters. Function-typed props stay callable. See [TypeScript props](./templates.md#typescript-props).
+In TypeScript, type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter. See [TypeScript props](./templates.md#typescript-props).
 
 If the parent passes a plain value (`name="Alice"`), the child receives a string. Calling `props.name()` would throw.
 
-Because children do not re-render, replacing a static prop means creating a new child. Use `showIf` or a keyed `forEach` so the old instance is removed and a new one is mounted.
+Because children do not re-render, replacing a static prop means creating a new child. Use `showIf` or a keyed `repeat` so the old instance is removed and a new one is mounted.
 
 ## Lists
 
 | React | Dolla |
 |---|---|
-| `items.map(item => <li key={item.id}>{item.text}</li>)` | `forEach(getItems, item => item.id, getItem => <li>{() => getItem().text}</li>)` |
+| `items.map(item => <li key={item.id}>{item.text}</li>)` | `repeat(getItems, item => item.id, getItem => <li>{() => getItem().text}</li>)` |
 | `key` prop | Key function argument |
 | Item is the value | Item is a getter |
 
 ```jsx
 <ul>
-  {forEach(
+  {repeat(
     getItems,
     (item) => item.id,
     (getItem) => <li>{() => getItem().text}</li>,
@@ -295,7 +295,7 @@ function Todo() {
 ### Dolla
 
 ```jsx
-import { createAtom, createRoot, forEach } from "@manyducks.co/dolla";
+import { createAtom, createRoot, repeat } from "@manyducks.co/dolla";
 
 function Todo(props, context) {
   const [getItems, setItems] = createAtom([
@@ -312,7 +312,7 @@ function Todo(props, context) {
   return (
     <main>
       <ul>
-        {forEach(
+        {repeat(
           getItems,
           (item) => item.id,
           (getItem) => <li>{() => getItem().text}</li>,
@@ -338,8 +338,7 @@ await createRoot("#app").mount(Todo);
 | Reading `props.name` in logic | It may be a getter; use `unwrap(props.name)` |
 | Using `this` inside an arrow view | Use `(props, context)` instead |
 | Expecting effects after paint | `onEffect` runs when the context mounts, then on tracked changes |
-| Expecting hidden content to stop | `keepAlive` content keeps running; use `onHide`/`onShow` to pause work |
-| Passing `key` as a prop | Pass a key function to `forEach` |
+| Passing `key` as a prop | Pass a key function to `repeat` |
 | Using `className`/`htmlFor` | `class`/`for` are the defaults; both forms work |
 
 ## Next steps

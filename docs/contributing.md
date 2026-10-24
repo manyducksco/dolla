@@ -48,7 +48,7 @@ Do not name a getter like a value. Avoid `const [count, setCount]` in new exampl
 For list render callbacks, name the item and index getters:
 
 ```jsx
-{forEach(
+{repeat(
   getItems,
   (item) => item.id,
   (getItem, getIndex) => <li>{getIndex}: {() => getItem().text}</li>,
@@ -146,7 +146,7 @@ html`<${Card}><p>Hello</p></>`
 - Pass getters as props and read them inside a getter or `compose` in the child.
 - Event handlers may call getters because they run later, outside the initial render.
 - Remember that any function passed as content or as an attribute value is treated as a getter. Use `unwrap` when you need the value in logic.
-- For typed props that accept getters, use `ReactiveProps<T>`. Function-typed props stay callable; `ReactiveProps<T, "id">` keeps `id` plain.
+- Type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter.
 
 ## Terminology
 
@@ -155,13 +155,11 @@ Use the [Glossary](./glossary.md) as the authority:
 - **View** for functions returning markup.
 - **Store** for functions returning state/logic.
 - **Component** only as the umbrella term.
-- **Getter**, **signal**, **atom**, **markup**, **mount/unmount**, and **show/hide/visibility** consistently.
+- **Getter**, **signal**, **atom**, **markup**, and **mount/unmount** consistently.
 - **Context argument** for `context`; mention `this` only as optional sugar.
 - **JSX** for the default template syntax; **`html` helper** for the buildless tagged template.
-- Use **`keepAlive`** for the helper and **keep-alive** as the adjective.
-- Use **detach / reattach** only for the DOM mechanism.
-- Use **`isMounted(context)`** for lifecycle state and **`isVisible(context)`** for visibility.
-- Do **not** use park, suspend, or resume for this feature. Reserve capitalized **React Suspense** for React's async feature.
+- Use **`isMounted(context)`** for lifecycle state.
+- Reserve capitalized **React Suspense** for React's async feature.
 
 ## Checks
 
@@ -183,4 +181,4 @@ It runs alongside `tsc`, tests, and the build.
 
 ## Status notes
 
-Speculative or unimplemented designs belong in `docs/rfc/` with a clear status banner, not next to user guides. See [the docs rewrite plan](./rfc/docs-rewrite.md) for an example.
+Speculative or unimplemented designs belong in `docs/rfc/` with a clear status banner, not next to user guides.

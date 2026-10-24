@@ -49,9 +49,8 @@ for (const file of files) {
 const linkPattern = /\]\(([^)\s]+)\)/g;
 const forbiddenTerms = [
   [/\bpark(?:ed|ing)?\b/i, "use hide/show terminology, not park"],
-  [/\bonSuspend\b|\bonResume\b|\bisSuspended\b/, "use onHide/onShow/isVisible"],
-  [/suspend-aware/i, "say 'a helper that supports keepAlive'"],
-  [/Suspension Hooks/, "use 'Visibility Hooks'"],
+  [/\bonSuspend\b|\bonResume\b|\bisSuspended\b/, "use mount/cleanup terminology"],
+  [/Suspension Hooks/, "use 'lifecycle hooks'"],
   [/\bsuspend(?:ed|s|ing|sion)?\b/, "use hide/show terminology, not suspend"],
 ];
 let problems = 0;

@@ -281,7 +281,7 @@ html`${branch(getStatus, {
 ```js
 html`
   <ul>
-    ${forEach(
+    ${repeat(
       getItems,
       (item) => item.id,
       (getItem, getIndex) => html`
@@ -290,12 +290,6 @@ html`
     )}
   </ul>
 `;
-```
-
-### Keep-alive
-
-```js
-html`${showIf(getActiveTab, keepAlive(html`<${Editor} />`))}`;
 ```
 
 ## JSX ↔ `html` equivalents
@@ -315,7 +309,7 @@ html`${showIf(getActiveTab, keepAlive(html`<${Editor} />`))}`;
 | Ref | `<input ref={inputRef} />` | `` html`<input ref=${inputRef} />` `` |
 | Fragment | `<><Header /><Main /></>` | `` html`<${Header} /><${Main} />` `` |
 | Conditional | `{showIf(getOpen, <p>Open</p>)}` | `` html`${showIf(getOpen, html`<p>Open</p>`)}` `` |
-| List | `{forEach(getItems, keyFn, renderFn)}` | `` html`${forEach(getItems, keyFn, renderFn)}` `` |
+| List | `{repeat(getItems, keyFn, renderFn)}` | `` html`${repeat(getItems, keyFn, renderFn)}` `` |
 | Spread props | `<button {...buttonProps}>` | `` html`<button ...${buttonProps}>` `` |
 | Boolean attribute | `<button disabled>` | `` html`<button disabled>` `` |
 | Comment | `{/* ignored */}` | `` html`<!-- ignored -->` `` |
@@ -327,7 +321,7 @@ html`${showIf(getActiveTab, keepAlive(html`<${Editor} />`))}`;
 - **No editor type-checking.** Tagged templates are strings to TypeScript. JSX gives you prop checking and autocomplete; `html` does not.
 - **No prop types for components.** A component's props are not checked at the call site.
 - **Component closing tags use `</>`.** Write `<${Card}>...</>`, not `</Card>`. The older `<//>` shorthand is supported but not recommended.
-- **No `key` prop.** Use the key function passed to `forEach`.
+- **No `key` prop.** Use the key function passed to `repeat`.
 - **No JSX fragments.** Multiple roots are already supported; return an array or a template with multiple top-level nodes.
 - **Tooling.** Syntax highlighting and formatting inside tagged templates depend on your editor. JSX has broader support.
 

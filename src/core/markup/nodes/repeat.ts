@@ -168,7 +168,6 @@ export class RepeatNode<T> extends MarkupNode {
     this.#connectedItems = nextItems;
 
     // Forward pass to insert or move nodes.
-    // Use parentNode so updates work while hidden in a DocumentFragment.
     const parent = this.#root.parentNode as MountTarget | null;
     if (!parent) return;
     let referenceNode: Node = this.#root;

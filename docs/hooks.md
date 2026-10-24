@@ -15,7 +15,7 @@ Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unl
 | `onEffect(context, callback)` | Creates an auto-tracking effect scoped to the component lifecycle. Re-runs whenever tracked signals change. `callback` may return a cleanup function. |
 | `onEffect(context, callback, deps)` | Creates a deps-array effect — `callback` receives the unwrapped dependency values and re-runs only when deps change. |
 
-Effects created with `onEffect` are automatically cleaned up when the component unmounts. Hooks should be registered while the view is being constructed; registering them later may miss the lifecycle event. `onCleanup` is **not** called when a `keepAlive` branch is hidden; see [Visibility Hooks](#visibility-hooks). See [When updates run](./concepts.md#when-updates-run) for ordering.
+Effects created with `onEffect` are automatically cleaned up when the component unmounts. Hooks should be registered while the view is being constructed; registering them later may miss the lifecycle event. See [When updates run](./concepts.md#when-updates-run) for ordering.
 
 Use `onEffect` inside views and stores. For code outside the context tree, see [Standalone effects](./advanced.md#standalone-effects).
 
@@ -50,53 +50,13 @@ function Counter(props, context) {
 }
 ```
 
-## Visibility Hooks
-
-Visibility hooks are paired transitions. They work for any context, not only inside `keepAlive`:
-
-| Hook | Description |
-| --- | --- |
-| `onShow(context, callback)` | Runs after the content becomes visible. Fires on initial visible mount and after each restore from hidden. The DOM is attached when it runs. |
-| `onHide(context, callback)` | Runs when content becomes hidden. For `keepAlive`, this is before its DOM is detached. Fires only after a previous `onShow`. On unmount, it runs only if the content is currently visible, before `onCleanup`. |
-| `isVisible(context)` | Returns `true` when the context is mounted and not hidden. A plain boolean read, not reactive. |
-
-`onShow` and `onHide` alternate. Content that mounts hidden gets neither hook until it is shown. Content unmounted while hidden gets `onCleanup` only. `isMounted(context)` remains true while content is hidden.
-
-"Visible" here means mounted and not hidden by `keepAlive`; it does not check whether the root element is attached to the browser document. If you mount into a detached container, `isVisible` can be true.
-
-Hiding is not unmounting. Effects and timers keep running while hidden, so use these hooks to pause polling, playback, or other background work:
-
-```jsx
-function Poller(props, context) {
-  let timer;
-  const [getData, setData] = createAtom("...");
-
-  const refresh = () => setData("updated");
-  const stop = () => clearInterval(timer);
-  const start = () => {
-    timer = setInterval(refresh, 5000);
-  };
-
-  onShow(context, start);
-  onHide(context, stop);
-
-  return <p>{getData}</p>;
-}
-```
-
-Start visibility-dependent work in `onShow`, not `onMount`. If setup must happen regardless of visibility, use `onMount` and guard it with `isVisible(context)`.
-
-Register hooks while the view is being constructed. If you register `onShow` after the content is already visible, it runs immediately; hooks registered while hidden wait until the next show.
-
 ### Which lifecycle hook?
 
 | Need | Hook |
 | --- | --- |
 | Run once when the context is mounted | `onMount` |
 | Run once when the context is disposed | `onCleanup` |
-| Start work whenever content becomes visible | `onShow` |
-| Stop work whenever content becomes hidden | `onHide` |
-| Keep a resource for the whole lifetime, but pause it while hidden | Create in `onMount`, pause in `onHide`, continue in `onShow`, destroy in `onCleanup` |
+| Run whenever tracked signals change | `onEffect` |
 
 ## Context Hooks
 

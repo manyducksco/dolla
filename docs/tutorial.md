@@ -79,10 +79,10 @@ await createRoot("#app").mount(App);
 
 ## 4. Render a list
 
-Use `forEach` for a reactive, keyed list. The render callback receives item and index **getters**.
+Use `repeat` for a reactive, keyed list. The render callback receives item and index **getters**.
 
 ```jsx
-import { compose, createAtom, createRoot, forEach, showIf } from "@manyducks.co/dolla";
+import { compose, createAtom, createRoot, repeat, showIf } from "@manyducks.co/dolla";
 
 function App() {
   const [getItems, setItems] = createAtom([
@@ -102,7 +102,7 @@ function App() {
       <h1>Todo</h1>
       <p>{getRemaining} remaining</p>
       <ul>
-        {forEach(
+        {repeat(
           getItems,
           (item) => item.id,
           (getItem) => (
@@ -121,7 +121,7 @@ await createRoot("#app").mount(App);
 
 The key function receives plain values. The render function receives getters, so read them inside another getter: `{() => getItem().text}`. Writing `{getItem().text}` would evaluate once.
 
-**Why it works:** items with the same key reuse their DOM nodes when the list changes. See [`forEach`](./components.md#foreach).
+**Why it works:** items with the same key reuse their DOM nodes when the list changes. See [`repeat`](./components.md#repeat).
 
 ## 5. Share state with a store
 
@@ -133,7 +133,7 @@ import {
   compose,
   createAtom,
   createRoot,
-  forEach,
+  repeat,
   getStore,
   showIf,
 } from "@manyducks.co/dolla";
@@ -162,7 +162,7 @@ function TodoList(props, context) {
       <h1>Todo</h1>
       <p>{store.getRemaining} remaining</p>
       <ul>
-        {forEach(
+        {repeat(
           store.getItems,
           (item) => item.id,
           (getItem) => (
@@ -304,7 +304,7 @@ Use them in the view:
 ```jsx
 <section class={page}>
   <ul>
-    {forEach(
+    {repeat(
       store.getItems,
       (item) => item.id,
       (getItem) => (
@@ -329,7 +329,7 @@ import {
   createRef,
   createRoot,
   css,
-  forEach,
+  repeat,
   getStore,
   onEffect,
   onMount,
@@ -410,7 +410,7 @@ function TodoList(props, context) {
       <h1>Todo</h1>
       <Remaining count={store.getRemaining} />
       <ul>
-        {forEach(
+        {repeat(
           store.getItems,
           (item) => item.id,
           (getItem) => (
@@ -436,7 +436,7 @@ await createRoot("#app").mount(App);
 ## Where next
 
 - [Components](./components.md) — views, stores, and control flow in depth
-- [Hooks](./hooks.md) — lifecycle, context, and visibility hooks
+- [Hooks](./hooks.md) — lifecycle, context, and store hooks
 - [Router](./../src/router/README.md) — add pages and layouts
 - [Translate](./../src/translate/README.md) — add another language
 - [HTTP client](./../src/http/README.md) — load data from an API

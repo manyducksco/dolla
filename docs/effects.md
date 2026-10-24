@@ -68,6 +68,6 @@ If you need an effect where there is no view or store context — for example, i
 
 ## Next steps
 
-- [Hooks](./hooks.md) — lifecycle and visibility hooks
+- [Hooks](./hooks.md) — lifecycle hooks
 - [Reactivity](./reactivity.md) — atoms, `compose`, `batch`, `peek`
 - [Mental model](./concepts.md#when-updates-run) — update timing

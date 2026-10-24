@@ -34,15 +34,15 @@ function Child(props) {
 <Child name={getUserName} />;
 ```
 
-If a prop must be replaced as a plain value, create a new child with `showIf` or a keyed `forEach`. See [Props and the run-once model](./templates.md#props-and-the-run-once-model).
+If a prop must be replaced as a plain value, create a new child with `showIf` or a keyed `repeat`. See [Props and the run-once model](./templates.md#props-and-the-run-once-model).
 
 ### How do I update a list?
 
-Use `forEach` for reactive lists. The render callback receives getters:
+Use `repeat` for reactive lists. The render callback receives getters:
 
 ```jsx
 <ul>
-  {forEach(
+  {repeat(
     getItems,
     (item) => item.id,
     (getItem) => <li>{() => getItem().name}</li>,
@@ -50,7 +50,7 @@ Use `forEach` for reactive lists. The render callback receives getters:
 </ul>
 ```
 
-Use a plain `.map()` only for an array that never changes. See [`forEach`](./components.md#foreach).
+Use a plain `.map()` only for an array that never changes. See [`repeat`](./components.md#repeat).
 
 ### How do I do async data? Is there React-style Suspense?
 
@@ -61,11 +61,7 @@ const [getUser, setUser] = createAtom(null);
 const [getLoading, setLoading] = createAtom(true);
 
 <div>
-  {showIf(
-    getLoading,
-    <p>Loading...</p>,
-    keepAlive(<UserView user={getUser} />), // optional: preserve the loaded view
-  )}
+  {showIf(getLoading, <p>Loading...</p>, <UserView user={getUser} />)}
 </div>;
 ```
 
@@ -76,12 +72,6 @@ The router has `preload`, `progress`, lazy routes, and `errorView` for route-lev
 Inside a view or store, use `onEffect`; it runs after the view's DOM is mounted. `onMount` also runs after mount, but it does not re-run when state changes.
 
 See [When updates run](./concepts.md#when-updates-run) and [Effects](./effects.md).
-
-### Why doesn't `onCleanup` run when content is hidden?
-
-If the content is a `keepAlive` branch side, hiding it keeps it alive instead of unmounting it. `onCleanup` runs only when the owner is disposed. Use `onHide` / `onShow` to pause work while hidden.
-
-See [Visibility hooks](./hooks.md#visibility-hooks).
 
 ### How do I access a DOM node?
 
@@ -141,7 +131,7 @@ See [CSS](./css.md).
 
 ### Is there a virtual DOM?
 
-No. Updates target the exact DOM node that depends on the changed signal. Keyed lists reuse nodes and `keepAlive` can hide a branch, but there is no general diff or re-render cycle.
+No. Updates target the exact DOM node that depends on the changed signal. Keyed lists reuse nodes, but there is no general diff or re-render cycle.
 
 ### Can a view return multiple root nodes?
 

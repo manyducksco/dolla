@@ -4,20 +4,19 @@ export type { DollaPlugin } from "./root.js";
 
 // Signals
 export { batch, compose, createAtom, createEffect, createSetter, peek, subscribe, unwrap } from "./signals.js";
-export type { Getter, Setter } from "./signals.js";
+export type { Getter, MaybeGetter, Setter } from "./signals.js";
 
 // Hooks
 export { addStore, getNearestViewNode, getRootElement, getStore, hasOwnStore, hasStore, isMounted, onCleanup, onEffect, onMount } from "./context.js";
 export { createContext, mountContext, cleanupContext } from "./context.js";
 export type { Context } from "./context.js";
-export { isVisible, onHide, onShow } from "./visibility.js";
 
 // Debug
 export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 
 // Markup
 export type { Markup, MarkupNode } from "./markup/types.js";
-export { branch, createPortal, forEach, hideIf, hideUnless, keepAlive, showIf, showUnless } from "./markup/helpers.js";
+export { branch, createPortal, forEach, hideIf, repeat, showIf } from "./markup/helpers.js";
 export type { BranchTuple } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
 export { css } from "./markup/css.js";
@@ -48,17 +47,10 @@ export { debounce } from "./debounce.js";
 export { throttle } from "./throttle.js";
 export { sleep } from "../utils.js";
 
-// Type Helpers
-export { createView, createStore } from "./helpers.js";
-
 // Other types
 export type {
   CSSProperties,
-  Env,
   InputType,
-  KeepAlive,
-  MaybeGetter,
-  ReactiveProps,
   Renderable,
   Store,
   View,
