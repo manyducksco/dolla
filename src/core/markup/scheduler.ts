@@ -97,7 +97,7 @@ function flushUpdates() {
           .map(([label, labelCount]) => `  ${label}: ${labelCount}`)
           .join("\n");
     }
-    console.warn(`[dolla] flusher ran ${count} updates in ${ms.toFixed(1)}ms${breakdown}`);
+    console.warn(`[dolla] flushed ${count} update(s) in ${ms.toFixed(1)}ms${breakdown}`);
   }
 }
 
