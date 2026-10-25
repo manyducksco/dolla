@@ -80,7 +80,7 @@ Attribute values are reactive when you pass a getter. The framework decides how 
 - Boolean properties also set or remove the attribute.
 - Everything else is set as an attribute.
 - Keys starting with `prop:` are always set as properties.
-- Keys starting with `attr:` are always set as attributes (lowercased). In `html` templates, a leading `:` is shorthand for `attr:`.
+- Keys starting with `attr:` are always set as attributes (lowercased).
 - `for` is assigned to `htmlFor`.
 
 ```jsx

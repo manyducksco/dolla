@@ -83,10 +83,6 @@ type OnEventProps<E extends EventTarget, M> = {
   [K in keyof M & string as K extends `on${infer Rest}` ? `on:${Lowercase<Rest>}` : never]?:
     | EventHandler<TargetEvent<M[K] & Event, E>>
     | EventHandlerObject<TargetEvent<M[K] & Event, E>>;
-} & {
-  [K in keyof M & string as K extends `on${infer Rest}` ? `@${Lowercase<Rest>}` : never]?:
-    | EventHandler<TargetEvent<M[K] & Event, E>>
-    | EventHandlerObject<TargetEvent<M[K] & Event, E>>;
 };
 
 /*====================================*\

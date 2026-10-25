@@ -80,8 +80,6 @@ export class ElementNode extends MarkupNode {
   #childNodes: MarkupNode[] = [];
   #unsubscribers = new Set<() => void>();
 
-  #styleClasses: string[] | undefined;
-
   #refCleanup?: () => void;
 
   constructor(context: Context, tag: string, props: Record<string, any>) {
@@ -112,7 +110,7 @@ export class ElementNode extends MarkupNode {
       this.#root = document.createElement(tag);
     }
 
-    // Add view name as a data attribute debug mode.
+    // Add view name as a data attribute in debug mode.
     if (this.#context[DEBUG]) {
       const view = getNearestViewNode(this.#context);
       if (view) {
@@ -309,8 +307,8 @@ export class ElementNode extends MarkupNode {
       return;
     }
 
-    if (key.startsWith("attr:") || key[0] === ":") {
-      const name = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
+    if (key.startsWith("attr:")) {
+      const name = key.substring(5).toLowerCase();
       setAttribute(element, name, value);
       return;
     }
@@ -350,8 +348,8 @@ export class ElementNode extends MarkupNode {
       return;
     }
 
-    if (key.startsWith("attr:") || key[0] === ":") {
-      const name = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
+    if (key.startsWith("attr:")) {
+      const name = key.substring(5).toLowerCase();
       this.#subscribe(getter, (value) => setAttribute(element, name, value), `element:${key}`);
       return;
     }
@@ -359,11 +357,7 @@ export class ElementNode extends MarkupNode {
     if (key in element && !isSvg) {
       // Set as property if the element has one.
       if (typeof element[key] === "boolean") {
-        this.#subscribe(
-          getter,
-          (value) => applyBooleanProperty(element, key, value),
-          `element:${key}`,
-        );
+        this.#subscribe(getter, (value) => applyBooleanProperty(element, key, value), `element:${key}`);
       } else {
         this.#subscribe(getter, (value) => setProp(element, key, value), `element:${key}`);
       }

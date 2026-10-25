@@ -172,23 +172,7 @@ describe("ElementNode", () => {
       expect(el.getAttribute("data-value")).toBe("42");
     });
 
-    test("sets attributes via : prefix shorthand", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", { ":aria-label": "close" });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.getAttribute("aria-label")).toBe("close");
-    });
-
     test("sets properties via prop: prefix", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", { "prop:innerHTML": "<span>hello</span>" });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.innerHTML).toBe("<span>hello</span>");
-    });
-
-    test("sets properties via . prefix shorthand", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", { "prop:innerHTML": "<span>hello</span>" });
       node.mount(container);

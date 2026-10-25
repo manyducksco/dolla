@@ -245,13 +245,12 @@ Dolla chooses how to apply each prop:
 - Boolean properties also set or remove the attribute.
 - Everything else is set as an attribute.
 - Keys starting with `prop:` are always set as properties.
-- Keys starting with `attr:` or `:` are always set as attributes (lowercased).
+- Keys starting with `attr:` are always set as attributes (lowercased).
 - `for` is assigned to `htmlFor`.
 
 ```js
 html`<input prop:value=${getText} />`;
 html`<div attr:data-id=${getId}></div>`;
-html`<div :data-id=${getId}></div>`;
 ```
 
 ## Control flow
