@@ -577,6 +577,57 @@ describe("ElementNode", () => {
       expect(el.classList.contains("bar")).toBe(true);
     });
 
+    test("reactively replaces string classes via the class attribute", () => {
+      const { context, container } = setup();
+      const [classes, setClasses] = createAtom("foo bar");
+      const node = new ElementNode(context, "div", { class: classes });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains("foo")).toBe(true);
+      expect(el.classList.contains("bar")).toBe(true);
+      setClasses("baz");
+      flushPendingUpdates();
+      expect(el.classList.contains("foo")).toBe(false);
+      expect(el.classList.contains("bar")).toBe(false);
+      expect(el.classList.contains("baz")).toBe(true);
+    });
+
+    test("keeps static classes that persist when the class object has reactive entries", () => {
+      const { context, container } = setup();
+      const [getSuffix, setSuffix] = createAtom("a");
+      const [isActive] = createAtom(true);
+      const node = new ElementNode(context, "div", {
+        class: () => {
+          getSuffix();
+          return { foo: true, active: isActive };
+        },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains("foo")).toBe(true);
+      expect(el.classList.contains("active")).toBe(true);
+      setSuffix("b");
+      flushPendingUpdates();
+      expect(el.classList.contains("foo")).toBe(true);
+      expect(el.classList.contains("active")).toBe(true);
+    });
+
+    test("removes stale static classes when the value becomes template-only", () => {
+      const { context, container } = setup();
+      const [classes, setClasses] = createAtom<any>({ foo: true });
+      const tpl = css`
+        color: red;
+      `;
+      const node = new ElementNode(context, "div", { class: classes });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains("foo")).toBe(true);
+      setClasses(tpl);
+      flushPendingUpdates();
+      expect(el.classList.contains("foo")).toBe(false);
+      expect(el.classList.contains(tpl.className)).toBe(true);
+    });
+
     test("sets classes via CSSTemplate alone", () => {
       const { context, container } = setup();
       const tpl = css`
@@ -721,6 +772,17 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLElement;
       expect(el.style.color).toBe("blue");
       expect(el.style.fontSize).toBe("14px");
+    });
+
+    test("sets kebab-case style object keys", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: { "font-size": "14px", "background-color": "red" },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.fontSize).toBe("14px");
+      expect(el.style.backgroundColor).toBe("red");
     });
 
     test("appends px to numeric values for length-based properties", () => {

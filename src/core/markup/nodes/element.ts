@@ -291,7 +291,7 @@ export class ElementNode extends MarkupNode {
         // Use the attribute rather than `className`, which is an
         // SVGAnimatedString on SVG elements.
         element.setAttribute("class", value);
-      } else if (hasReactiveValue(value)) {
+      } else if (hasReactiveClassValue(value)) {
         this.#applyClasses(element, value);
       } else {
         this.#applyStaticClasses(element, value);
@@ -383,7 +383,7 @@ export class ElementNode extends MarkupNode {
         if (value == null) continue;
 
         const name = key.startsWith("--") ? key : camelToKebab(key);
-        element.style.setProperty(name, formatValue(name, value));
+        setStyleValue(element, name, getStyleProperty(element, key), value);
       }
       return;
     }
@@ -391,19 +391,22 @@ export class ElementNode extends MarkupNode {
     const mapped = getStyleMap(styles);
     for (const [name, { value, priority }] of Object.entries(mapped)) {
       if (value != null) {
-        element.style.setProperty(name, formatValue(name, value), priority);
+        setStyleValue(element, name, undefined, value, priority);
       }
     }
   }
 
   #applyStaticClasses(element: HTMLElement | SVGElement, classes: unknown) {
-    const map = getClassMap(classes);
+    const names = new Set<string>();
+    const templates = new Set<CSSTemplate>();
+    const conditions = new Map<CSSTemplate, boolean>();
+    collectStaticClasses(classes, names, templates, conditions);
 
-    for (const name in map) {
-      if (name === "undefined") continue;
-      // The element has no prior classes during its first mount, so false
-      // entries can be skipped instead of toggled off.
-      if (map[name]) element.classList.add(name);
+    if (names.size > 0) element.setAttribute("class", Array.from(names).join(" "));
+
+    for (const tpl of templates) tpl.attach(this.#context, element);
+    for (const [tpl, active] of conditions) {
+      element.classList.toggle(tpl.className, active);
     }
   }
 
@@ -416,13 +419,13 @@ export class ElementNode extends MarkupNode {
       assertNotTemplate(current, "style", this.#context.name);
 
       const nextNames = new Set<string>();
-      const reactive: { name: string; value: Getter<unknown>; priority?: string }[] = [];
+      const reactive: { name: string; value: Getter<unknown>; priority?: string; property?: string }[] = [];
 
-      const add = (name: string, value: unknown, priority?: string) => {
+      const add = (name: string, value: unknown, priority?: string, property?: string) => {
         if (isFunction(value)) {
-          reactive.push({ name, value: value as Getter<unknown>, priority });
+          reactive.push({ name, value: value as Getter<unknown>, priority, property });
         } else if (value != null) {
-          element.style.setProperty(name, formatValue(name, value), priority);
+          setStyleValue(element, name, property, value, priority);
           nextNames.add(name);
         }
       };
@@ -434,7 +437,7 @@ export class ElementNode extends MarkupNode {
           // properties set by CSS templates or other inline styles.
           for (const key in current) {
             const name = key.startsWith("--") ? key : camelToKebab(key);
-            add(name, (current as Record<string, unknown>)[key]);
+            add(name, (current as Record<string, unknown>)[key], undefined, getStyleProperty(element, key));
           }
         } else {
           const mapped = getStyleMap(current);
@@ -456,11 +459,11 @@ export class ElementNode extends MarkupNode {
       appliedNames.clear();
       for (const name of nextNames) appliedNames.add(name);
 
-      for (const { name, value, priority } of reactive) {
+      for (const { name, value, priority, property } of reactive) {
         const unsub = this.#subscribe(
           value,
           (v) => {
-            if (v) element.style.setProperty(name, formatValue(name, v), priority);
+            if (v) setStyleValue(element, name, property, v, priority);
             else element.style.removeProperty(name);
           },
           `element:style:${name}`,
@@ -482,34 +485,81 @@ export class ElementNode extends MarkupNode {
     const apply = (current: unknown) => {
       this.#clearLocalSubs(localUnsubs);
 
-      const prevStaticClasses = new Set(staticClasses);
-      staticClasses.clear();
-
       const { templates: currentTemplates, conditions, remaining: processedValue } = this.#extractTemplates(current);
 
       this.#syncTemplates(currentTemplates, attachedTemplates, element);
       this.#applyConditions(conditions, currentTemplates, attachedTemplates, conditionSubs, element);
 
-      if (processedValue === undefined) return;
-      current = processedValue;
+      if (processedValue === undefined) {
+        const prevStaticClasses = new Set(staticClasses);
+        staticClasses.clear();
+        for (const name of prevStaticClasses) {
+          element.classList.remove(name);
+        }
+        return;
+      }
 
-      const mapped = getClassMap(current);
+      const canReplaceClassAttribute =
+        currentTemplates.size === 0 && attachedTemplates.size === 0 && conditionSubs.size === 0;
+
+      // Fast path when this value owns the entire class attribute: no
+      // templates, conditions, or reactive entries. Replacing the attribute
+      // avoids DOMTokenList add/remove churn on every update.
+      if (canReplaceClassAttribute && isString(processedValue)) {
+        if (processedValue !== "undefined" && processedValue.indexOf(" ") === -1) {
+          element.setAttribute("class", processedValue);
+          staticClasses.clear();
+          if (processedValue) staticClasses.add(processedValue);
+          return;
+        }
+
+        const names = new Set<string>();
+        for (const name of processedValue.split(" ")) {
+          if (name && name !== "undefined") names.add(name);
+        }
+        element.setAttribute("class", Array.from(names).join(" "));
+        staticClasses.clear();
+        for (const name of names) staticClasses.add(name);
+        return;
+      }
+
+      const mapped = getClassMap(processedValue);
+      const names: string[] = [];
       const reactive: { name: string; value: Getter<unknown> }[] = [];
 
       for (const [name, value] of Object.entries(mapped)) {
         if (name === "undefined") continue;
 
         if (isFunction(value)) {
-          prevStaticClasses.delete(name);
           reactive.push({ name, value: value as Getter<unknown> });
         } else if (value) {
-          element.classList.add(name);
-          staticClasses.add(name);
+          names.push(name);
         }
       }
 
+      if (canReplaceClassAttribute && reactive.length === 0) {
+        element.setAttribute("class", names.join(" "));
+        staticClasses.clear();
+        for (const name of names) staticClasses.add(name);
+        return;
+      }
+
+      const prevStaticClasses = new Set(staticClasses);
+      staticClasses.clear();
+      for (const name of names) staticClasses.add(name);
+
+      // A reactive class is applied by its subscription below and must not be
+      // removed as if it were a stale static class.
+      for (const { name } of reactive) {
+        prevStaticClasses.delete(name);
+      }
+
       for (const name of prevStaticClasses) {
-        element.classList.remove(name);
+        if (!staticClasses.has(name)) element.classList.remove(name);
+      }
+
+      for (const name of names) {
+        element.classList.add(name);
       }
 
       // Subscribe after static classes are applied so a reactive `false`
@@ -687,6 +737,68 @@ export class ElementNode extends MarkupNode {
   }
 }
 
+function hasReactiveClassValue(value: unknown): boolean {
+  if (isFunction(value)) return true;
+  if (isConditionalTemplate(value)) return isFunction(value.condition);
+  if (isCSSTemplate(value)) return false;
+
+  if (isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (hasReactiveClassValue(value[i])) return true;
+    }
+    return false;
+  }
+
+  if (isObject(value)) {
+    for (const key in value) {
+      if (isFunction((value as Record<string, unknown>)[key])) return true;
+    }
+  }
+
+  return false;
+}
+
+function collectStaticClasses(
+  value: unknown,
+  names: Set<string>,
+  templates: Set<CSSTemplate>,
+  conditions: Map<CSSTemplate, boolean>,
+): void {
+  if (value == null || value === false) return;
+
+  if (isCSSTemplate(value)) {
+    templates.add(value);
+    return;
+  }
+
+  if (isConditionalTemplate(value)) {
+    templates.add(value.template);
+    conditions.set(value.template, Boolean(value.condition));
+    return;
+  }
+
+  if (isString(value)) {
+    for (const name of value.split(" ")) {
+      if (name && name !== "undefined") names.add(name);
+    }
+    return;
+  }
+
+  if (isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      collectStaticClasses(value[i], names, templates, conditions);
+    }
+    return;
+  }
+
+  if (isObject(value)) {
+    for (const key in value) {
+      if (key === "undefined") continue;
+      if ((value as Record<string, unknown>)[key]) names.add(key);
+    }
+  }
+}
+
 function hasReactiveValue(value: unknown): boolean {
   if (isFunction(value) || isCSSTemplate(value) || isConditionalTemplate(value)) return true;
 
@@ -855,6 +967,26 @@ function normalizeAttributeName(key: string): string {
     return "aria-" + key.slice(4).toLowerCase();
   } else {
     return key;
+  }
+}
+
+function getStyleProperty(element: HTMLElement | SVGElement, key: string): string | undefined {
+  if (key === "cssText" || key.startsWith("--") || key.indexOf("-") !== -1) return undefined;
+  return typeof (element.style as any)[key] === "string" ? key : undefined;
+}
+
+function setStyleValue(
+  element: HTMLElement | SVGElement,
+  name: string,
+  property: string | undefined,
+  value: unknown,
+  priority?: string,
+): void {
+  const formatted = formatValue(name, value);
+  if (property !== undefined && !priority) {
+    (element.style as any)[property] = formatted;
+  } else {
+    element.style.setProperty(name, formatted, priority);
   }
 }
 
