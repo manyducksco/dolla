@@ -79,18 +79,18 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 
 ### Build
 
-| Page                                    | Description                                                      |
-| --------------------------------------- | ---------------------------------------------------------------- |
-| [Components](./docs/components.md)      | Views, stores, control-flow helpers, context, portals            |
-| [Hooks](./docs/hooks.md)                | Lifecycle, context, and store hooks                              |
-| [Effects](./docs/effects.md)            | `onEffect`, auto-tracking, cleanup                               |
-| [CSS](./docs/css.md)                    | CSS-in-JS with scoped classes, reactive variables, composition   |
-| [Transitions](./docs/transitions.md)    | Enter/exit animations with the Web Animations API                |
-| [Refs](./docs/refs.md)                  | Direct DOM access with `createRef`                               |
-| [Router](./src/router/README.md)        | Client-side SPA routing with nested routes, lazy loading         |
-| [Translate](./src/translate/README.md)  | i18n with pluralization, formatting, async loading               |
-| [HTTP client](./src/http/README.md)     | Middleware-based HTTP client                                     |
-| [Virtual list](./src/virtual/README.md) | High-performance virtual scrolling with sticky headers           |
+| Page                                    | Description                                                    |
+| --------------------------------------- | -------------------------------------------------------------- |
+| [Components](./docs/components.md)      | Views, stores, control-flow helpers, context, portals          |
+| [Hooks](./docs/hooks.md)                | Lifecycle, context, and store hooks                            |
+| [Effects](./docs/effects.md)            | `onEffect`, auto-tracking, cleanup                             |
+| [CSS](./docs/css.md)                    | CSS-in-JS with scoped classes, reactive variables, composition |
+| [Transitions](./docs/transitions.md)    | Enter/exit animations with the Web Animations API              |
+| [Refs](./docs/refs.md)                  | Direct DOM access with `createRef`                             |
+| [Router](./src/router/README.md)        | Client-side SPA routing with nested routes, lazy loading       |
+| [Translate](./src/translate/README.md)  | i18n with pluralization, formatting, async loading             |
+| [HTTP client](./src/http/README.md)     | Middleware-based HTTP client                                   |
+| [Virtual list](./src/virtual/README.md) | High-performance virtual scrolling with sticky headers         |
 
 ### Reference
 
@@ -99,7 +99,7 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 | [Cheatsheet](./docs/cheatsheet.md)          | Task → code lookups for common jobs                    |
 | [HTML templates](./docs/html.md)            | The buildless `html` helper and JSX equivalents        |
 | [App root](./docs/root.md)                  | `createRoot`, plugins, async mount, unmount            |
-| [Errors](./docs/errors.md)                  | Effect error reporting and `SignalError`              |
+| [Errors](./docs/errors.md)                  | Effect error reporting and `SignalError`               |
 | [Debugging](./docs/debugging.md)            | Loggers, levels, filters, and debug mode               |
 | [Utilities](./docs/utilities.md)            | debounce, throttle, sleep                              |
 | [FAQ](./docs/faq.md)                        | Common questions and gotchas                           |
@@ -116,7 +116,7 @@ Dolla is modular. Import only what you need:
 | ------------------------------- | ------------------------------------------------------------- |
 | `@manyducks.co/dolla`           | Core — signals, markup, components, lifecycle, CSS, utilities |
 | `@manyducks.co/dolla/internals` | Advanced rendering/context internals for integrations         |
-| `@manyducks.co/dolla/router`    | Client-side router with nested routes                         |
+| `@manyducks.co/dolla/router`    | Client-side router                                            |
 | `@manyducks.co/dolla/translate` | i18n translation system                                       |
 | `@manyducks.co/dolla/http`      | Middleware-based HTTP client                                  |
 | `@manyducks.co/dolla/virtual`   | Virtual scrolling list                                        |
