@@ -354,57 +354,52 @@ export class ElementNode extends MarkupNode {
 
   #applyStyles(element: HTMLElement | SVGElement, styles: unknown) {
     const localUnsubs = new Set<() => void>();
-    const prevStyles = new Map<string, string>();
+    const appliedNames = new Set<string>();
 
     const apply = (current: unknown) => {
       this.#clearLocalSubs(localUnsubs);
       assertNotTemplate(current, "style", this.#context.name);
-      if (current == null || current === false) {
-        if (prevStyles.size > 0) {
-          element.style.cssText = "";
-          prevStyles.clear();
-        }
-        return;
-      }
 
-      if (isString(current)) {
-        element.style.cssText = current;
-        prevStyles.clear();
-        return;
-      }
-
-      const mapped = getStyleMap(current);
-      const cssTextParts: string[] = [];
-      const removed: string[] = [];
+      const nextNames = new Set<string>();
       const reactive: { name: string; value: Getter<unknown>; priority?: string }[] = [];
 
-      for (const [name, { value, priority }] of Object.entries(mapped)) {
+      const add = (name: string, value: unknown, priority?: string) => {
         if (isFunction(value)) {
-          prevStyles.delete(name);
           reactive.push({ name, value: value as Getter<unknown>, priority });
         } else if (value != null) {
-          const formatted = formatValue(name, value);
-          if (prevStyles.get(name) !== formatted) {
-            cssTextParts.push(`${name}: ${formatted}${priority ? " !" + priority : ""}`);
+          element.style.setProperty(name, formatValue(name, value), priority);
+          nextNames.add(name);
+        }
+      };
+
+      if (current != null && current !== false) {
+        if (isObject(current)) {
+          // Fast path for plain style objects: no intermediate normalized map,
+          // no second pass, and no `cssText` rewrite that would wipe custom
+          // properties set by CSS templates or other inline styles.
+          for (const key in current) {
+            const name = key.startsWith("--") ? key : camelToKebab(key);
+            add(name, (current as Record<string, unknown>)[key]);
           }
-          prevStyles.set(name, formatted);
+        } else {
+          const mapped = getStyleMap(current);
+          for (const [name, { value, priority }] of Object.entries(mapped)) {
+            add(name, value, priority);
+          }
         }
       }
 
-      for (const name of prevStyles.keys()) {
-        if (!(name in mapped)) removed.push(name);
+      for (const { name } of reactive) {
+        nextNames.add(name);
       }
 
-      // Write static styles first. `cssText` replaces the whole inline style,
-      // so reactive properties must be subscribed to afterwards or their
-      // initial values would be wiped out.
-      if (cssTextParts.length > 0) {
-        element.style.cssText = cssTextParts.join("; ");
+      // Remove properties that were managed by the previous style value but
+      // are no longer present.
+      for (const name of appliedNames) {
+        if (!nextNames.has(name)) element.style.removeProperty(name);
       }
-      if (removed.length > 0) {
-        for (const name of removed) element.style.removeProperty(name);
-      }
-      prevStyles.clear();
+      appliedNames.clear();
+      for (const name of nextNames) appliedNames.add(name);
 
       for (const { name, value, priority } of reactive) {
         const unsub = this.#subscribe(

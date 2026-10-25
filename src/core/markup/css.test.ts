@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { cleanupContext, createContext, mountContext } from "../context.js";
+import { createAtom } from "../signals.js";
 import { css, isConditionalTemplate, isCSSTemplate } from "./css.js";
 
 describe("css tagged template", () => {
@@ -44,6 +45,29 @@ describe("css tagged template", () => {
     `;
     expect(String(tpl)).toBe(tpl.className);
     expect(`${tpl}`).toBe(tpl.className);
+  });
+
+  test("equivalent static templates share one instance", () => {
+    const first = css`
+      display: flex;
+      align-items: center;
+    `;
+    const second = css`
+      display: flex;
+      align-items: center;
+    `;
+    expect(first).toBe(second);
+  });
+
+  test("dynamic templates with the same hash are not shared", () => {
+    const first = css`
+      color: ${() => "red"};
+    `;
+    const second = css`
+      color: ${() => "blue"};
+    `;
+    expect(first.className).toBe(second.className);
+    expect(first).not.toBe(second);
   });
 
   test("attach adds className to element", () => {
@@ -116,37 +140,113 @@ describe("css tagged template", () => {
   });
 });
 
-describe("instance rule cleanup", () => {
-  test("removes instance rule from stylesheet after context cleanup", () => {
+describe("dynamic CSS bindings", () => {
+  test("sets and updates inline custom properties", () => {
     const ctx = createContext(null);
     const el = document.createElement("div");
-    const color = () => "red";
+    const [color, setColor] = createAtom("red");
     const tpl = css`
-      color: ${color};
+      color: ${() => color()};
+    `;
+    const varName = `--${tpl.className}-0`;
+
+    tpl.attach(ctx, el);
+    mountContext(ctx);
+
+    expect(el.classList.contains(tpl.className)).toBe(true);
+    expect(el.style.getPropertyValue(varName)).toBe("red");
+
+    setColor("blue");
+    expect(el.style.getPropertyValue(varName)).toBe("blue");
+
+    cleanupContext(ctx);
+    expect(el.style.getPropertyValue(varName)).toBe("");
+  });
+
+  test("does not insert per-instance stylesheet rules", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const tpl = css`
+      color: ${() => "red"};
     `;
 
     const sheets = document.adoptedStyleSheets;
     const sheet = sheets[sheets.length - 1];
-    const beforeLength = sheet.cssRules.length;
 
     tpl.attach(ctx, el);
-
-    expect(sheet.cssRules.length).toBe(beforeLength + 2);
 
     const instanceRules = Array.from(sheet.cssRules).filter((r) =>
       (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
     );
-    expect(instanceRules.length).toBe(1);
+    expect(instanceRules.length).toBe(0);
+  });
 
+  test("removes the custom property when the value equals initialValue", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const [color, setColor] = createAtom("red");
+    const tpl = css`
+      color: ${{ syntax: "<color>", value: () => color(), initialValue: "red" }};
+    `;
+    const varName = `--${tpl.className}-0`;
+
+    tpl.attach(ctx, el);
     mountContext(ctx);
-    cleanupContext(ctx);
+    expect(el.style.getPropertyValue(varName)).toBe("");
 
-    expect(sheet.cssRules.length).toBe(beforeLength + 1);
+    setColor("blue");
+    expect(el.style.getPropertyValue(varName)).toBe("blue");
 
-    const remaining = Array.from(sheet.cssRules).filter((r) =>
-      (r as CSSStyleRule).selectorText?.startsWith(".css-instance-"),
-    );
-    expect(remaining.length).toBe(0);
+    setColor("red");
+    expect(el.style.getPropertyValue(varName)).toBe("");
+  });
+
+  test("caches a template shape without sharing getters between instances", () => {
+    const make = (getter: () => string) => css`
+      color: ${getter};
+    `;
+
+    const red = make(() => "red");
+    const blue = make(() => "blue");
+    expect(red.className).toBe(blue.className);
+    expect(red).not.toBe(blue);
+
+    const ctxA = createContext(null);
+    const elA = document.createElement("div");
+    const ctxB = createContext(null);
+    const elB = document.createElement("div");
+    const varName = `--${red.className}-0`;
+
+    red.attach(ctxA, elA);
+    blue.attach(ctxB, elB);
+    mountContext(ctxA);
+    mountContext(ctxB);
+
+    expect(elA.style.getPropertyValue(varName)).toBe("red");
+    expect(elB.style.getPropertyValue(varName)).toBe("blue");
+  });
+
+  test("conditional templates still toggle the class and update values", () => {
+    const ctx = createContext(null);
+    const el = document.createElement("div");
+    const [active, setActive] = createAtom(true);
+    const [color, setColor] = createAtom("red");
+    const tpl = css`
+      color: ${() => color()};
+    `;
+    const varName = `--${tpl.className}-0`;
+
+    tpl.attach(ctx, el, () => active());
+    mountContext(ctx);
+
+    expect(el.classList.contains(tpl.className)).toBe(true);
+    expect(el.style.getPropertyValue(varName)).toBe("red");
+
+    setActive(false);
+    expect(el.classList.contains(tpl.className)).toBe(false);
+
+    setColor("blue");
+    expect(el.style.getPropertyValue(varName)).toBe("blue");
   });
 
   test("static class rule remains after cleanup of dynamic template", () => {

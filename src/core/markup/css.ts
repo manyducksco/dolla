@@ -1,4 +1,4 @@
-import { isFunction, uniqueId } from "../../utils";
+import { isFunction } from "../../utils";
 import type { MaybeGetter } from "../../types.js";
 import { onCleanup, onEffect, type Context } from "../context";
 import type { Getter } from "../signals";
@@ -252,24 +252,6 @@ class StyleRegistry {
     this.classes.add(className);
   }
 
-  createInstanceRule(className: string): [CSSStyleDeclaration, () => void] {
-    const index = this.sheet.cssRules.length;
-    this.sheet.insertRule(`.${className}{}`, index);
-    const style = (this.sheet.cssRules[index] as CSSStyleRule).style;
-    return [
-      style,
-      () => {
-        const rules = this.sheet.cssRules;
-        for (let i = 0; i < rules.length; i++) {
-          if ((rules[i] as CSSStyleRule).style === style) {
-            this.sheet.deleteRule(i);
-            return;
-          }
-        }
-      },
-    ];
-  }
-
   addProperty(name: string, syntax: string, initialValue: any, inherits: boolean) {
     if (this.properties.has(name) || syntax === "*") return;
 
@@ -359,8 +341,76 @@ function buildStyles(
   return { styles, bindings };
 }
 
+type FunctionTemplateShape = {
+  className: string;
+  styles: string;
+  bindings: { index: number; varName: string; initialValue: any }[];
+  registered: boolean;
+};
+
+// Template literals keep the same `strings` object per call site, so these
+// caches let inline `css` calls in views reuse work across mounts.
+const staticTemplatesByStrings = new WeakMap<TemplateStringsArray, CSSTemplate>();
+const staticTemplates = new Map<string, CSSTemplate>();
+const functionTemplatesByStrings = new WeakMap<TemplateStringsArray, FunctionTemplateShape>();
+
 function createTemplate(strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
-  const className = `css-${hashTemplate(strings, interpolations)}`;
+  if (interpolations.length === 0) {
+    const cached = staticTemplatesByStrings.get(strings);
+    if (cached) return cached;
+  }
+
+  const allFunctions = interpolations.length > 0 && interpolations.every((expr) => isFunction(expr));
+  let functionShape = allFunctions ? functionTemplatesByStrings.get(strings) : undefined;
+  let className: string;
+  let isStatic = false;
+
+  if (functionShape) {
+    className = functionShape.className;
+  } else {
+    className = `css-${hashTemplate(strings, interpolations)}`;
+    isStatic = interpolations.every((expr) => !isFunction(expr) && !isPropertyConfig(expr));
+
+    if (isStatic) {
+      const cached = staticTemplates.get(className);
+      if (cached) return cached;
+    }
+
+    if (allFunctions) {
+      const shapeBuilt = buildStyles(className, strings, interpolations);
+      functionShape = {
+        className,
+        styles: shapeBuilt.styles,
+        bindings: shapeBuilt.bindings.map(({ varName, initialValue }, index) => ({
+          index,
+          varName,
+          initialValue,
+        })),
+        registered: false,
+      };
+      functionTemplatesByStrings.set(strings, functionShape);
+    }
+  }
+
+  let built: { styles: string; bindings: CSSTemplateBinding[] } | undefined;
+  const getBuilt = () => {
+    if (built) return built;
+
+    if (functionShape) {
+      return (built = {
+        styles: functionShape.styles,
+        bindings: functionShape.bindings.map(({ index, varName, initialValue }) => ({
+          varName,
+          getter: interpolations[index],
+          initialValue,
+        })),
+      });
+    }
+
+    return (built = buildStyles(className, strings, interpolations));
+  };
+
+  let registered = false;
 
   const template: CSSTemplate = {
     [IS_CSS_TEMPLATE]: true,
@@ -374,30 +424,36 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
     attach(c, element, condition = true) {
       if (!attachClass(c, this.className, element, condition)) return;
 
-      const { styles, bindings } = buildStyles(this.className, strings, interpolations);
+      const { styles, bindings } = getBuilt();
 
-      registry.insertClass(this.className, styles);
+      if (functionShape) {
+        if (!functionShape.registered) {
+          registry.insertClass(this.className, styles);
+          functionShape.registered = true;
+        }
+      } else if (!registered) {
+        registry.insertClass(this.className, styles);
+        registered = true;
+      }
 
       if (bindings.length > 0) {
-        const instanceClassName = `css-instance-${uniqueId()}`;
-
-        attachClass(c, instanceClassName, element, condition);
-
-        const [styleRef, cleanupStyleRef] = registry.createInstanceRule(instanceClassName);
-
         onEffect(c, () => {
-          bindings.forEach(({ varName, getter, initialValue }) => {
+          for (const { varName, getter, initialValue } of bindings) {
             const val = getter();
 
             if (val === null || val === undefined || val === initialValue) {
-              styleRef.removeProperty(varName);
+              element.style.removeProperty(varName);
             } else {
-              styleRef.setProperty(varName, val);
+              element.style.setProperty(varName, val);
             }
-          });
+          }
         });
 
-        onCleanup(c, cleanupStyleRef);
+        onCleanup(c, () => {
+          for (const { varName } of bindings) {
+            element.style.removeProperty(varName);
+          }
+        });
       }
     },
 
@@ -405,6 +461,13 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
       return { [IS_CONDITIONAL_TEMPLATE]: true, template: this, condition };
     },
   };
+
+  if (isStatic) {
+    staticTemplates.set(className, template);
+    if (interpolations.length === 0) {
+      staticTemplatesByStrings.set(strings, template);
+    }
+  }
 
   return template;
 }

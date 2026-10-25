@@ -21,7 +21,7 @@ for (const key of globals) {
   globalThis[key] = key === "window" ? window : key === "document" ? window.document : window[key];
 }
 
-const { createAtom, createRoot } = await import("../dist/index.js");
+const { createAtom, createRoot, css } = await import("../dist/index.js");
 const { createMarkup, DynamicNode } = await import("../dist/internals.js");
 
 const COUNT = Number(process.argv[2] ?? 800);
@@ -62,6 +62,49 @@ function staticPage(count) {
   return () => createMarkup("div", { children });
 }
 
+function styleObjectPage(count) {
+  return () => {
+    const children = [];
+    for (let i = 0; i < count; i++) {
+      children.push(
+        createMarkup("div", {
+          id: `item-${i}`,
+          style: { color: "red", display: "flex", width: "10px" },
+          children: "text",
+        }),
+      );
+    }
+    return createMarkup("div", { children });
+  };
+}
+
+function inlineCssPage(count, dynamic) {
+  const [getColor] = createAtom("red");
+
+  return () => {
+    const children = [];
+    for (let i = 0; i < count; i++) {
+      const template = dynamic
+        ? css`
+            color: ${() => getColor()};
+            display: flex;
+            padding: 0 16px;
+          `
+        : css`
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            height: 57px;
+            border-bottom: 1px solid var(--theme-border);
+            justify-content: space-between;
+            padding: 0 16px;
+          `;
+      children.push(createMarkup("div", { class: template }));
+    }
+    return createMarkup("div", { children });
+  };
+}
+
 async function bestOf(label, fn) {
   let best = Infinity;
 
@@ -88,6 +131,9 @@ async function measureMount(page) {
 
 await bestOf(`mount static x${COUNT}`, () => measureMount(staticPage(COUNT)));
 await bestOf(`mount reactive x${COUNT}`, () => measureMount(reactivePage(COUNT)));
+await bestOf(`style object x${COUNT}`, () => measureMount(styleObjectPage(COUNT)));
+await bestOf(`inline css static x${COUNT}`, () => measureMount(inlineCssPage(COUNT, false)));
+await bestOf(`inline css dynamic x${COUNT}`, () => measureMount(inlineCssPage(COUNT, true)));
 
 // Approximate a router page swap: a DynamicNode slot is changed, which mounts
 // the new page inside the next scheduler flush.

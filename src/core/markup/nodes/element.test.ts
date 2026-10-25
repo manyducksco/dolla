@@ -774,6 +774,83 @@ describe("ElementNode", () => {
       expect(el.style.fontSize).toBe("16px");
     });
 
+    test("removes static style properties that disappear from a reactive style object", () => {
+      const { context, container } = setup();
+      const [width, setWidth] = createAtom<string | undefined>("10px");
+      const node = new ElementNode(context, "div", {
+        style: () => ({ color: "red", width: width() }),
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+      expect(el.style.width).toBe("10px");
+
+      setWidth(undefined);
+      flushPendingUpdates();
+      expect(el.style.color).toBe("red");
+      expect(el.style.width).toBe("");
+    });
+
+    test("preserves custom properties", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: { "--accent": "teal", color: "red" },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.getPropertyValue("--accent")).toBe("teal");
+      expect(el.style.color).toBe("red");
+    });
+
+    test("preserves CSS template custom properties across style updates", () => {
+      const { context, container } = setup();
+      const [color, setColor] = createAtom("red");
+      const tpl = css`
+        color: ${() => "template"};
+      `;
+      const node = new ElementNode(context, "div", {
+        class: tpl,
+        style: () => ({ color: color() }),
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      const varName = `--${tpl.className}-0`;
+      expect(el.style.getPropertyValue(varName)).toBe("template");
+
+      setColor("blue");
+      flushPendingUpdates();
+      expect(el.style.color).toBe("blue");
+      expect(el.style.getPropertyValue(varName)).toBe("template");
+    });
+
+    test("applies style arrays", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        style: ["color: red", { width: 10, fontSize: "14px" }],
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+      expect(el.style.width).toBe("10px");
+      expect(el.style.fontSize).toBe("14px");
+    });
+
+    test("reactively applies style strings", () => {
+      const { context, container } = setup();
+      const [styles, setStyles] = createAtom("color: red; width: 10px");
+      const node = new ElementNode(context, "div", { style: styles });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+      expect(el.style.width).toBe("10px");
+
+      setStyles("color: blue; height: 20px");
+      flushPendingUpdates();
+      expect(el.style.color).toBe("blue");
+      expect(el.style.width).toBe("");
+      expect(el.style.height).toBe("20px");
+    });
+
     test("handles CSS values containing colons (e.g. url())", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", {
