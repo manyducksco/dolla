@@ -9,7 +9,7 @@ import {
   subscribe,
   type Getter,
 } from "./signals";
-import { pushComponentName, popComponentName } from "./signal-debug";
+import { pushComponentName, popComponentName, setSignalDebug } from "./signal-debug";
 import { SignalError, isSignalError, setErrorHandler } from "./errors";
 
 test("basic composition & tracking", () => {
@@ -295,6 +295,7 @@ describe("error enhancement", () => {
 
   afterEach(() => {
     setErrorHandler(null);
+    setSignalDebug(false);
   });
 
   test("enhances error in composed getter (lazy eval)", () => {
@@ -448,7 +449,20 @@ describe("error enhancement", () => {
     expect((err.cause as Error).stack).toBeDefined();
   });
 
-  test("includes creation frame in reactive context", () => {
+  test("omits creation frame when signal debug is disabled", () => {
+    const err = catchError(() => {
+      const getter = compose(() => {
+        throw new Error("frame test");
+      });
+      getter();
+    });
+
+    expect(err.message).not.toContain("created at");
+  });
+
+  test("includes creation frame when signal debug is enabled", () => {
+    setSignalDebug(true);
+
     const err = catchError(() => {
       const getter = compose(() => {
         throw new Error("frame test");

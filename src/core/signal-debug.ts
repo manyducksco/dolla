@@ -16,6 +16,17 @@ const componentNameStack: string[] = [];
 const reactiveScopeStack: ReactiveNode[] = [];
 const nodeDebug = new WeakMap<ReactiveNode, ReactiveNodeDebug>();
 
+let collectCreationStacks = false;
+
+/**
+ * Enables creation-stack capture for signals. This is expensive because it
+ * constructs an `Error` for every effect and computed value, so it is opt-in.
+ * `createRoot(..., { debug: true })` enables it automatically.
+ */
+export function setSignalDebug(enabled: boolean): void {
+  collectCreationStacks = enabled;
+}
+
 export function pushComponentName(name: string): void {
   componentNameStack.push(name);
 }
@@ -36,7 +47,7 @@ function setNodeDebug(
   nodeDebug.set(node, {
     type,
     name: componentName ? `${componentName} → ${fnName}` : fnName,
-    creationStack: new Error().stack,
+    creationStack: collectCreationStacks ? new Error().stack : undefined,
   });
 }
 

@@ -5,7 +5,7 @@ import { type Getter, subscribe } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { DEBUG } from "../../symbols.js";
 import { isConditionalTemplate, isCSSTemplate, type ConditionalTemplate, type CSSTemplate } from "../css-template.js";
-import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, runUpdate, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import type { MaybeGetter } from "../../../types.js";
 import { addChild, camelToKebab, moveAfter, toMarkupNodes } from "../utils.js";
@@ -194,20 +194,36 @@ export class ElementNode extends MarkupNode {
     moveAfter(parent, this.#root, after);
   }
 
+  /**
+   * Subscribes to a reactive value and applies the latest value on each
+   * update. The initial value is applied synchronously during mount, then
+   * subsequent values share a stable update function so repeated changes
+   * before a flush are coalesced into a single DOM write.
+   */
+  #subscribe<T>(getter: Getter<T>, callback: (value: T) => void, name: string, label: string) {
+    let latest: T;
+    let initialized = false;
+    const meta = { label, context: this.#context };
+    const run = () => callback(latest);
+
+    return subscribe(
+      getter,
+      (current) => {
+        latest = current;
+        if (initialized) {
+          scheduleUpdate(run, meta);
+        } else {
+          initialized = true;
+          runUpdate(run, meta);
+        }
+      },
+      { name, context: this.#context },
+    );
+  }
+
   #attach<T>(value: Getter<T> | T, callback: (value: T) => void, label: string) {
     if (isFunction<Getter<T>>(value)) {
-      this.#unsubscribers.add(
-        subscribe(
-          value,
-          (current) => {
-            scheduleUpdate(() => callback(current), {
-              label: "ElementNode",
-              context: this.#context,
-            });
-          },
-          { name: label, context: this.#context },
-        ),
-      );
+      this.#unsubscribers.add(this.#subscribe(value, callback, label, label));
     } else {
       // No need to schedule since DOM node is not connected yet.
       callback(value);
@@ -234,9 +250,21 @@ export class ElementNode extends MarkupNode {
       const value = props[key];
 
       if (key === "style") {
-        this.#applyStyles(element, value);
+        if (isString(value)) {
+          // Static CSS text can be assigned directly; the browser parser does
+          // everything `getStyleMap` would otherwise do manually.
+          element.style.cssText = value;
+        } else {
+          this.#applyStyles(element, value);
+        }
       } else if (key === "class" || key === "className") {
-        this.#applyClasses(element, value);
+        if (isString(value)) {
+          // Use the attribute rather than `className`, which is an
+          // SVGAnimatedString on SVG elements.
+          element.setAttribute("class", value);
+        } else {
+          this.#applyClasses(element, value);
+        }
       } else if (key === "for") {
         this.#attach(
           value,
@@ -339,28 +367,21 @@ export class ElementNode extends MarkupNode {
         return;
       }
 
+      if (isString(current)) {
+        element.style.cssText = current;
+        prevStyles.clear();
+        return;
+      }
+
       const mapped = getStyleMap(current);
       const cssTextParts: string[] = [];
       const removed: string[] = [];
+      const reactive: { name: string; value: Getter<unknown>; priority?: string }[] = [];
 
       for (const [name, { value, priority }] of Object.entries(mapped)) {
         if (isFunction(value)) {
           prevStyles.delete(name);
-          const unsub = subscribe(
-            value,
-            (v) => {
-              scheduleUpdate(
-                () => {
-                  if (v) element.style.setProperty(name, formatValue(name, v), priority);
-                  else element.style.removeProperty(name);
-                },
-                { label: "ElementNode", context: this.#context },
-              );
-            },
-            { name: `element:style:${name}`, context: this.#context },
-          );
-          this.#unsubscribers.add(unsub);
-          localUnsubs.add(unsub);
+          reactive.push({ name, value: value as Getter<unknown>, priority });
         } else if (value != null) {
           const formatted = formatValue(name, value);
           if (prevStyles.get(name) !== formatted) {
@@ -374,6 +395,9 @@ export class ElementNode extends MarkupNode {
         if (!(name in mapped)) removed.push(name);
       }
 
+      // Write static styles first. `cssText` replaces the whole inline style,
+      // so reactive properties must be subscribed to afterwards or their
+      // initial values would be wiped out.
       if (cssTextParts.length > 0) {
         element.style.cssText = cssTextParts.join("; ");
       }
@@ -381,6 +405,20 @@ export class ElementNode extends MarkupNode {
         for (const name of removed) element.style.removeProperty(name);
       }
       prevStyles.clear();
+
+      for (const { name, value, priority } of reactive) {
+        const unsub = this.#subscribe(
+          value,
+          (v) => {
+            if (v) element.style.setProperty(name, formatValue(name, v), priority);
+            else element.style.removeProperty(name);
+          },
+          `element:style:${name}`,
+          `element:style:${name}`,
+        );
+        this.#unsubscribers.add(unsub);
+        localUnsubs.add(unsub);
+      }
     };
 
     this.#attach(styles, (current) => apply(current), "element:style");
@@ -407,28 +445,14 @@ export class ElementNode extends MarkupNode {
       current = processedValue;
 
       const mapped = getClassMap(current);
+      const reactive: { name: string; value: Getter<unknown> }[] = [];
 
       for (const [name, value] of Object.entries(mapped)) {
         if (name === "undefined") continue;
 
         if (isFunction(value)) {
           prevStaticClasses.delete(name);
-          const unsub = subscribe(
-            value,
-            (isActive) => {
-              scheduleUpdate(() => element.classList.toggle(name, !!isActive), {
-                label: "ElementNode",
-                context: this.#context,
-              });
-            },
-            { name: `element:class:${name}`, context: this.#context },
-          );
-          const wrapper = () => {
-            element.classList.remove(name);
-            unsub();
-          };
-          this.#unsubscribers.add(wrapper);
-          localUnsubs.add(wrapper);
+          reactive.push({ name, value: value as Getter<unknown> });
         } else if (value) {
           element.classList.add(name);
           staticClasses.add(name);
@@ -437,6 +461,23 @@ export class ElementNode extends MarkupNode {
 
       for (const name of prevStaticClasses) {
         element.classList.remove(name);
+      }
+
+      // Subscribe after static classes are applied so a reactive `false`
+      // always wins when a name appears in both forms.
+      for (const { name, value } of reactive) {
+        const unsub = this.#subscribe(
+          value,
+          (isActive) => element.classList.toggle(name, !!isActive),
+          `element:class:${name}`,
+          `element:class:${name}`,
+        );
+        const wrapper = () => {
+          element.classList.remove(name);
+          unsub();
+        };
+        this.#unsubscribers.add(wrapper);
+        localUnsubs.add(wrapper);
       }
     };
 
@@ -575,15 +616,11 @@ export class ElementNode extends MarkupNode {
       if (!currentTemplates.has(tpl)) continue;
       if (isFunction(condition)) {
         if (!conditionSubs.has(tpl)) {
-          const unsub = subscribe(
+          const unsub = this.#subscribe(
             condition,
-            (val) => {
-              scheduleUpdate(() => element.classList.toggle(tpl.className, Boolean(val)), {
-                label: "ElementNode",
-                context: this.#context,
-              });
-            },
-            { name: "element:condition", context: this.#context },
+            (val) => element.classList.toggle(tpl.className, Boolean(val)),
+            `element:class:${tpl.className}`,
+            `element:class:${tpl.className}`,
           );
           conditionSubs.set(tpl, unsub);
           this.#unsubscribers.add(unsub);

@@ -419,6 +419,25 @@ describe("ElementNode", () => {
       expect(el.getAttribute("href")).toBe("/updated");
     });
 
+    test("coalesces multiple signal writes into one DOM write", () => {
+      const { context, container } = setup();
+      const [val, setVal] = createAtom("a");
+      const node = new ElementNode(context, "div", { "data-test": val });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      const setAttribute = vi.spyOn(el, "setAttribute");
+
+      setVal("b");
+      setVal("c");
+      setVal("d");
+
+      expect(el.getAttribute("data-test")).toBe("a");
+      flushPendingUpdates();
+      expect(el.getAttribute("data-test")).toBe("d");
+      expect(setAttribute).toHaveBeenCalledTimes(1);
+      expect(setAttribute).toHaveBeenCalledWith("data-test", "d");
+    });
+
     test("removes attribute when signal becomes null", () => {
       const { context, container } = setup();
       const [val, setVal] = createAtom<string | null>("hello");
@@ -531,6 +550,17 @@ describe("ElementNode", () => {
       setIsActive(false);
       flushPendingUpdates();
       expect(el.classList.contains("active")).toBe(false);
+    });
+
+    test("reactive false class overrides static class with the same name", () => {
+      const { context, container } = setup();
+      const [isActive] = createAtom(false);
+      const node = new ElementNode(context, "div", {
+        class: ["foo", { foo: isActive }],
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains("foo")).toBe(false);
     });
 
     test("reactively swaps class object via signal", () => {
@@ -716,6 +746,18 @@ describe("ElementNode", () => {
       setColor("green");
       flushPendingUpdates();
       expect(el.style.color).toBe("green");
+    });
+
+    test("applies reactive style entries after static cssText", () => {
+      const { context, container } = setup();
+      const [color] = createAtom("red");
+      const node = new ElementNode(context, "div", {
+        style: { width: "10px", color },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.width).toBe("10px");
+      expect(el.style.color).toBe("red");
     });
 
     test("reactively swaps style object via signal", () => {
@@ -1062,9 +1104,7 @@ describe("ElementNode", () => {
       return document.adoptedStyleSheets[document.adoptedStyleSheets.length - 1];
     }
     function ruleIndex(selector: string): number {
-      return Array.from(sheet().cssRules).findIndex(
-        (r) => (r as CSSStyleRule).selectorText === selector,
-      );
+      return Array.from(sheet().cssRules).findIndex((r) => (r as CSSStyleRule).selectorText === selector);
     }
 
     test("plain then conditional: conditional rule comes AFTER plain rule in sheet", () => {
@@ -1180,9 +1220,5 @@ describe("ElementNode", () => {
       flushPendingUpdates();
       expect(el.classList.contains(t3.className)).toBe(false);
     });
-
-
   });
-
-
 });

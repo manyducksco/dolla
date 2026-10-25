@@ -12,6 +12,7 @@ import { ViewNode } from "./markup/nodes/view.js";
 import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
 import { runSafely, type SignalError } from "./errors.js";
+import { setSignalDebug } from "./signal-debug.js";
 import { DEBUG, ERROR_HANDLER, PARENT_ELEMENT } from "./symbols.js";
 
 // Marks an element that already hosts a dolla root, so a subsequent mount into
@@ -28,7 +29,8 @@ export type DollaPlugin = (context: Context) => any;
 
 export interface DollaRootOptions {
   /**
-   * Adds additional view info to the DOM to help with debugging.
+   * Adds view info to the DOM and records signal creation locations for error
+   * messages. Stack capture is expensive, so it is disabled by default.
    */
   debug?: boolean;
 
@@ -75,6 +77,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   context[PARENT_ELEMENT] = element;
   context[DEBUG] = Boolean(options?.debug);
   context[ERROR_HANDLER] = options?.onError;
+  setSignalDebug(context[DEBUG]);
 
   let rootNode: MarkupNode | null = null;
 

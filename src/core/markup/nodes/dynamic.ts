@@ -2,7 +2,7 @@ import { isArray } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { subscribe, type Getter } from "../../signals.js";
 import { runSafely } from "../../errors.js";
-import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, toMarkupNodes } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -18,12 +18,19 @@ export class DynamicNode extends MarkupNode {
   #context: Context;
   #slot: Getter<any>;
   #unsubscribe?: () => void;
+  #pendingContent: any;
+  readonly #meta: UpdateMeta;
 
   constructor(context: Context, slot: Getter<any>) {
     super();
     this.#context = context;
     this.#slot = slot;
+    this.#meta = { label: "DynamicNode", context };
   }
+
+  #updatePending = () => {
+    this.#update(this.#pendingContent);
+  };
 
   override getRoot() {
     return this.#root ?? undefined;
@@ -37,18 +44,24 @@ export class DynamicNode extends MarkupNode {
     if (!this.isMounted()) {
       this.#root = createTextNode("");
       addChild(parent, this.#root, after);
+      let initial = true;
+      let hasInitial = false;
       this.#unsubscribe = subscribe(
         this.#slot,
         (content) => {
-          scheduleUpdate(
-            () => {
-              this.#update(content);
-            },
-            { label: "DynamicNode", context: this.#context },
-          );
+          this.#pendingContent = content;
+          if (initial) {
+            hasInitial = true;
+            return;
+          }
+          scheduleUpdate(this.#updatePending, this.#meta);
         },
         { name: "dynamic", context: this.#context },
       );
+      initial = false;
+      // Apply the initial value after the subscription is registered so the
+      // node can be safely torn down from inside its own content.
+      if (hasInitial) runUpdate(this.#updatePending, this.#meta);
       flushPendingUpdates();
     }
   }

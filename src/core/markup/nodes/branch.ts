@@ -2,7 +2,7 @@ import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { type Getter, peek, subscribe } from "../../signals.js";
 import { runSafely } from "../../errors.js";
-import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter, render } from "../utils.js";
 
@@ -30,12 +30,14 @@ export class BranchNode extends MarkupNode {
   #node?: MarkupNode;
   #mounted = false;
   #unsubscribe?: () => void;
+  readonly #meta: UpdateMeta;
 
   constructor(context: Context, selector: Getter<unknown>, branches: readonly BranchEntry[], fallback?: Renderable) {
     super();
     this.#context = context;
     this.#selector = selector;
     this.#branches = branches.map(([key, content]) => ({ key, content }));
+    this.#meta = { label: "BranchNode", context };
     if (fallback !== undefined) {
       this.#fallback = { key: undefined, content: fallback };
     }
@@ -56,10 +58,26 @@ export class BranchNode extends MarkupNode {
     this.#mounted = true;
     addChild(parent, this.#anchor, after);
 
-    this.#unsubscribe = subscribe(this.#selector, this.#onChange, {
-      name: "branch:selector",
-      context: this.#context,
-    });
+    let initial = true;
+    let hasInitial = false;
+    this.#unsubscribe = subscribe(
+      this.#selector,
+      () => {
+        if (initial) {
+          hasInitial = true;
+          return;
+        }
+        this.#onChange();
+      },
+      {
+        name: "branch:selector",
+        context: this.#context,
+      },
+    );
+    initial = false;
+    // Sync the initial branch after the subscription is registered so the
+    // node can be safely torn down from inside its own content.
+    if (hasInitial) runUpdate(this.#sync, this.#meta);
     flushPendingUpdates();
   }
 
@@ -90,7 +108,7 @@ export class BranchNode extends MarkupNode {
   }
 
   #onChange = () => {
-    scheduleUpdate(this.#sync, { label: "BranchNode", context: this.#context });
+    scheduleUpdate(this.#sync, this.#meta);
   };
 
   #sync = () => {

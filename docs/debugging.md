@@ -66,6 +66,8 @@ await createRoot("#app", { debug: true }).mount(App);
 
 In debug mode, elements receive a `data-view` attribute containing the nearest view's context name. This is useful for inspecting the DOM and building view-related tooling.
 
+Debug mode also records where each effect and computed value was created, so reported errors include `created at ...` source locations. This stack capture is intentionally disabled otherwise because it adds significant overhead to creating every effect and computed value.
+
 ## Notes
 
 - Loggers are cheap no-ops when the level or filter excludes them, but the call sites still execute.

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createContext, onCleanup, onEffect } from "../core/context.js";
-import { setErrorHandler } from "./errors.js";
-import { createAtom } from "./signals.js";
+import { setErrorHandler, isSignalError } from "./errors.js";
+import { compose, createAtom } from "./signals.js";
+import { setSignalDebug } from "./signal-debug.js";
 import { createRoot } from "./root.js";
 import { createRouter, Outlet } from "../router/router.js";
 import { createMarkup } from "./markup/utils.js";
@@ -18,6 +19,7 @@ describe("createRoot", () => {
 
   afterEach(() => {
     document.body.removeChild(container);
+    setSignalDebug(false);
   });
 
   test("accepts an Element target", () => {
@@ -31,6 +33,22 @@ describe("createRoot", () => {
   test("accepts a CSS selector string target", () => {
     const root = createRoot("#test-root");
     expect(root).toBeDefined();
+  });
+
+  test("debug mode records signal creation frames", () => {
+    createRoot(container, { debug: true });
+
+    const getter = compose(() => {
+      throw new Error("debug frame");
+    });
+
+    try {
+      getter();
+      throw new Error("did not throw");
+    } catch (error) {
+      expect(isSignalError(error)).toBe(true);
+      expect((error as Error).message).toContain("created at");
+    }
   });
 
   test("mount renders content into the target element", async () => {

@@ -50,6 +50,37 @@ describe("scheduler", () => {
     expect(order).toEqual([1, 3, 2]);
   });
 
+  test("coalesces repeated schedules of the same update", () => {
+    const order: number[] = [];
+    const update = () => order.push(1);
+
+    scheduleUpdate(update);
+    scheduleUpdate(update);
+    scheduleUpdate(update);
+    flushPendingUpdates();
+
+    expect(order).toEqual([1]);
+  });
+
+  test("reports a label breakdown for slow flushes", () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(20);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    scheduleUpdate(() => {}, { label: "A" });
+    scheduleUpdate(() => {}, { label: "B" });
+    scheduleUpdate(() => {}, { label: "A" });
+    flushPendingUpdates();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0][0]);
+    expect(message).toContain("3 updates");
+    expect(message).toContain("A: 2");
+    expect(message).toContain("B: 1");
+
+    now.mockRestore();
+    warn.mockRestore();
+  });
+
   test("does not flush when nothing is scheduled", () => {
     // No throw, no work; just confirms the early-return path is safe.
     expect(() => flushPendingUpdates()).not.toThrow();
@@ -115,5 +146,6 @@ describe("scheduler", () => {
 
   afterEach(() => {
     setErrorHandler(null);
+    vi.restoreAllMocks();
   });
 });

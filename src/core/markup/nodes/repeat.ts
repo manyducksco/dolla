@@ -2,7 +2,7 @@ import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
 import { runSafely } from "../../errors.js";
-import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
+import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, render } from "../utils.js";
 
@@ -38,6 +38,8 @@ export class RepeatNode<T> extends MarkupNode {
 
   #unsubscribe: (() => void) | null = null;
   #connectedItems: Map<Key, ConnectedItem<T>> = new Map();
+  #pendingItems?: Iterable<T>;
+  readonly #meta: UpdateMeta;
 
   constructor(context: Context, items: Getter<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>) {
     super();
@@ -46,7 +48,14 @@ export class RepeatNode<T> extends MarkupNode {
     this.#items = items;
     this.#key = key;
     this.#render = render;
+    this.#meta = { label: "RepeatNode", context };
   }
+
+  #updatePending = () => {
+    const items = this.#pendingItems;
+    this.#pendingItems = undefined;
+    if (items !== undefined) this._update(Array.from(items));
+  };
 
   override getRoot() {
     return this.#root ?? undefined;
@@ -61,18 +70,24 @@ export class RepeatNode<T> extends MarkupNode {
       this.#root = createTextNode("");
       addChild(parent, this.#root, after);
 
+      let initial = true;
+      let hasInitial = false;
       this.#unsubscribe = subscribe(
         this.#items,
         (items) => {
-          scheduleUpdate(
-            () => {
-              this._update(Array.from(items));
-            },
-            { label: "RepeatNode", context: this.#context },
-          );
+          this.#pendingItems = items;
+          if (initial) {
+            hasInitial = true;
+            return;
+          }
+          scheduleUpdate(this.#updatePending, this.#meta);
         },
         { name: "repeat:items", context: this.#context },
       );
+      initial = false;
+      // Apply the initial value after the subscription is registered so the
+      // node can be safely torn down from inside its own items.
+      if (hasInitial) runUpdate(this.#updatePending, this.#meta);
       flushPendingUpdates();
     }
   }

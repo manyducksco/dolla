@@ -54,6 +54,8 @@ The message answers three questions:
 - **What reactive code was running** — the effect and computed names and where they were created.
 - **What triggered it** — the setter or event-handler frame that initiated the flush.
 
+The `created at ...` locations are collected only when the root is created with `debug: true`. Capturing them requires a stack trace for every effect and computed value, so it is disabled by default for performance.
+
 ## `SignalError`
 
 `SignalError` wraps the original error without mutating it:
