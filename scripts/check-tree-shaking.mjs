@@ -97,7 +97,8 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
     ${counter}
     createRoot(document.body, () => jsx("main", { children: [counter()] }));
   `);
-  expectGzipBelow(result, 8.9 * KB, "minimal component app");
+  // Budget includes the static-prop/style/class fast paths.
+  expectGzipBelow(result, 9.2 * KB, "minimal component app");
   for (const name of [
     "/src/core/markup/css.ts",
     "/src/core/markup/html.ts",

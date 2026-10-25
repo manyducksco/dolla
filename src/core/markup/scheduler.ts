@@ -13,6 +13,15 @@ let pendingUpdates = new Map<() => void, UpdateMeta | undefined>();
 let flushingUpdates = new Map<() => void, UpdateMeta | undefined>();
 let isScheduled = false;
 let isFlushing = false;
+let collectUpdateStats = false;
+
+/**
+ * Enables flush timing and update-label statistics. Enabled by `createRoot`
+ * in debug mode; disabled by default so production flushes do no extra work.
+ */
+export function setUpdateStats(enabled: boolean): void {
+  collectUpdateStats = enabled;
+}
 
 /**
  * Runs an update and reports any error through the signal error pipeline.
@@ -36,9 +45,13 @@ export function runUpdate(updateFn: () => void, meta?: UpdateMeta): void {
 function flushUpdates() {
   if (isFlushing) return;
   isFlushing = true;
-  const t0 = performance.now();
+
+  const stats = collectUpdateStats;
+  let t0 = 0;
   let count = 0;
   let labels: Record<string, number> | undefined;
+
+  if (stats) t0 = performance.now();
 
   try {
     // Snapshot the updates so any updates added during the flush are also
@@ -52,12 +65,14 @@ function flushUpdates() {
       flushingUpdates = wave;
 
       for (const [fn, meta] of wave) {
-        count++;
-        const label = meta?.label;
-        if (label) {
-          if (labels === undefined) labels = Object.create(null) as Record<string, number>;
-          const current = labels[label];
-          labels[label] = current === undefined ? 1 : current + 1;
+        if (stats) {
+          count++;
+          const label = meta?.label;
+          if (label) {
+            if (labels === undefined) labels = Object.create(null) as Record<string, number>;
+            const current = labels[label];
+            labels[label] = current === undefined ? 1 : current + 1;
+          }
         }
         runUpdate(fn, meta);
       }
@@ -68,6 +83,8 @@ function flushUpdates() {
     isScheduled = false;
     isFlushing = false;
   }
+
+  if (!stats) return;
 
   const ms = performance.now() - t0;
   if (ms > 10) {

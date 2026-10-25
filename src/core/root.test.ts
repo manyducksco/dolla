@@ -4,6 +4,7 @@ import { setErrorHandler, isSignalError } from "./errors.js";
 import { compose, createAtom } from "./signals.js";
 import { setSignalDebug } from "./signal-debug.js";
 import { createRoot } from "./root.js";
+import { flushPendingUpdates, scheduleUpdate, setUpdateStats } from "./markup/scheduler.js";
 import { createRouter, Outlet } from "../router/router.js";
 import { createMarkup } from "./markup/utils.js";
 import { __dolla_export, __dolla_apply } from "./hmr.js";
@@ -20,6 +21,8 @@ describe("createRoot", () => {
   afterEach(() => {
     document.body.removeChild(container);
     setSignalDebug(false);
+    setUpdateStats(false);
+    vi.restoreAllMocks();
   });
 
   test("accepts an Element target", () => {
@@ -49,6 +52,22 @@ describe("createRoot", () => {
       expect(isSignalError(error)).toBe(true);
       expect((error as Error).message).toContain("created at");
     }
+  });
+
+  test("debug mode enables slow-flush statistics", () => {
+    createRoot(container, { debug: true });
+
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(20);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    scheduleUpdate(() => {}, { label: "debug flush" });
+    flushPendingUpdates();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("debug flush: 1");
+
+    now.mockRestore();
+    warn.mockRestore();
   });
 
   test("mount renders content into the target element", async () => {

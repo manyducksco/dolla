@@ -25,7 +25,7 @@ await createRoot(app).mount(App);
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `debug` | `boolean` | Adds `data-view` attributes and records signal creation locations for error messages. See [Debugging](./debugging.md). |
+| `debug` | `boolean` | Adds `data-view` attributes, records signal creation locations for error messages, and enables flush timing and slow-flush label breakdowns. See [Debugging](./debugging.md). |
 
 ## `mount(content)`
 

@@ -78,6 +78,22 @@ function styleObjectPage(count) {
   };
 }
 
+function classObjectPage(count) {
+  return () => {
+    const children = [];
+    for (let i = 0; i < count; i++) {
+      children.push(
+        createMarkup("div", {
+          id: `item-${i}`,
+          class: { item: true, active: false, selected: i % 2 === 0 },
+          children: "text",
+        }),
+      );
+    }
+    return createMarkup("div", { children });
+  };
+}
+
 function inlineCssPage(count, dynamic) {
   const [getColor] = createAtom("red");
 
@@ -132,6 +148,7 @@ async function measureMount(page) {
 await bestOf(`mount static x${COUNT}`, () => measureMount(staticPage(COUNT)));
 await bestOf(`mount reactive x${COUNT}`, () => measureMount(reactivePage(COUNT)));
 await bestOf(`style object x${COUNT}`, () => measureMount(styleObjectPage(COUNT)));
+await bestOf(`class object x${COUNT}`, () => measureMount(classObjectPage(COUNT)));
 await bestOf(`inline css static x${COUNT}`, () => measureMount(inlineCssPage(COUNT, false)));
 await bestOf(`inline css dynamic x${COUNT}`, () => measureMount(inlineCssPage(COUNT, true)));
 

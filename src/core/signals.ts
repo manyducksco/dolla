@@ -9,6 +9,9 @@ export interface ReactiveNode {
   _subs?: Link;
   _subsTail?: Link;
   _flags: ReactiveFlags;
+  _debugType?: "composed" | "effect";
+  _debugName?: string;
+  _debugStack?: string;
 }
 
 interface EffectNode extends ReactiveNode {

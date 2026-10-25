@@ -200,7 +200,7 @@ export class ElementNode extends MarkupNode {
    * subsequent values share a stable update function so repeated changes
    * before a flush are coalesced into a single DOM write.
    */
-  #subscribe<T>(getter: Getter<T>, callback: (value: T) => void, name: string, label: string) {
+  #subscribe<T>(getter: Getter<T>, callback: (value: T) => void, label: string) {
     let latest: T;
     let initialized = false;
     const meta = { label, context: this.#context };
@@ -217,13 +217,13 @@ export class ElementNode extends MarkupNode {
           runUpdate(run, meta);
         }
       },
-      { name, context: this.#context },
+      { name: label, context: this.#context },
     );
   }
 
   #attach<T>(value: Getter<T> | T, callback: (value: T) => void, label: string) {
     if (isFunction<Getter<T>>(value)) {
-      this.#unsubscribers.add(this.#subscribe(value, callback, label, label));
+      this.#unsubscribers.add(this.#subscribe(value, callback, label));
     } else {
       // No need to schedule since DOM node is not connected yet.
       callback(value);
@@ -244,111 +244,166 @@ export class ElementNode extends MarkupNode {
   }
 
   #applyProps(element: any, props: Record<string, unknown>) {
+    const isSvg = Boolean(this.#context[IS_SVG]);
+
     for (const key in props) {
       if (key === "ref" || key === "children") continue;
 
+      // Event props are listeners, not getters, so classify them before the
+      // static/reactive split.
+      if (key.startsWith("on:")) {
+        this.#attachListener(element, key.substring(3), props[key]);
+        continue;
+      }
+
+      if (key.startsWith("on")) {
+        const eventName = key.slice(2).toLowerCase();
+        if (eventName) this.#attachListener(element, eventName, props[key]);
+        continue;
+      }
+
       const value = props[key];
 
-      if (key === "style") {
-        if (isString(value)) {
-          // Static CSS text can be assigned directly; the browser parser does
-          // everything `getStyleMap` would otherwise do manually.
-          element.style.cssText = value;
-        } else {
-          this.#applyStyles(element, value);
-        }
-      } else if (key === "class" || key === "className") {
-        if (isString(value)) {
-          // Use the attribute rather than `className`, which is an
-          // SVGAnimatedString on SVG elements.
-          element.setAttribute("class", value);
-        } else {
-          this.#applyClasses(element, value);
-        }
-      } else if (key === "for") {
-        this.#attach(
-          value,
-          (current) => {
-            if (current == null) {
-              element.removeAttribute("for");
-            } else {
-              element.htmlFor = current;
-            }
-          },
-          "element:for",
-        );
-      } else if (key.startsWith("prop:")) {
-        // Keys starting with `prop:` are set as props.
-        const _key = key.substring(5);
-        this.#attach(
-          value,
-          (current) => {
-            setProp(element, _key, current);
-          },
-          `element:${key}`,
-        );
-      } else if (key.startsWith("attr:") || key[0] === ":") {
-        // Keys starting with `attr:` or `:` are set as attributes.
-        const _key = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
-        this.#attach(
-          value,
-          (current) => {
-            setAttribute(element, _key, current);
-          },
-          `element:${key}`,
-        );
-      } else if (key.startsWith("on:")) {
-        this.#attachListener(element, key.substring(3), value);
-      } else if (key.startsWith("on")) {
-        const eventName = key.slice(2).toLowerCase();
-        if (eventName) this.#attachListener(element, eventName, value);
-      } else if (key in element && !this.#context[IS_SVG]) {
-        // Set as property if the element has one.
-        if (typeof element[key] === "boolean") {
-          this.#attach(
-            value,
-            (current) => {
-              const isTrue = Boolean(current);
-              element[key] = isTrue;
-              if (isTrue) {
-                element.setAttribute(key, "");
-              } else {
-                element.removeAttribute(key);
-              }
-            },
-            `element:${key}`,
-          );
-        } else {
-          this.#attach(
-            value,
-            (current) => {
-              setProp(element, key, current);
-            },
-            `element:${key}`,
-          );
-        }
+      if (isFunction(value)) {
+        this.#applyDynamicProp(element, key, value as Getter<unknown>, isSvg);
       } else {
-        // Fall back to attributes.
-        // SVG presentation attributes must use kebab-case (e.g. `fill-opacity`)
-        // while JSX conventionally uses camelCase (`fillOpacity`). ARIA
-        // attributes also require kebab-case (e.g. `aria-hidden`); any key
-        // starting with "aria" followed by an uppercase letter is converted
-        // by lowercasing the remainder and inserting a hyphen.
-        let attrName = key;
-        if (SVG_PRESENTATION_ATTRS.has(key)) {
-          attrName = camelToKebab(key);
-        } else if (/^aria[A-Z]/.test(key)) {
-          attrName = "aria-" + key.slice(4).toLowerCase();
-        }
+        this.#applyStaticProp(element, key, value, isSvg);
+      }
+    }
+  }
 
-        this.#attach(
-          value,
-          (current) => {
-            setAttribute(element, attrName, current);
-          },
+  #applyStaticProp(element: any, key: string, value: unknown, isSvg: boolean) {
+    if (key === "style") {
+      if (isString(value)) {
+        // Static CSS text can be assigned directly; the browser parser does
+        // everything `getStyleMap` would otherwise do manually.
+        element.style.cssText = value;
+      } else if (hasReactiveValue(value)) {
+        this.#applyStyles(element, value);
+      } else {
+        this.#applyStaticStyles(element, value);
+      }
+      return;
+    }
+
+    if (key === "class" || key === "className") {
+      if (isString(value)) {
+        // Use the attribute rather than `className`, which is an
+        // SVGAnimatedString on SVG elements.
+        element.setAttribute("class", value);
+      } else if (hasReactiveValue(value)) {
+        this.#applyClasses(element, value);
+      } else {
+        this.#applyStaticClasses(element, value);
+      }
+      return;
+    }
+
+    if (key === "for") {
+      applyFor(element, value);
+      return;
+    }
+
+    if (key.startsWith("prop:")) {
+      setProp(element, key.substring(5), value);
+      return;
+    }
+
+    if (key.startsWith("attr:") || key[0] === ":") {
+      const name = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
+      setAttribute(element, name, value);
+      return;
+    }
+
+    if (key in element && !isSvg) {
+      // Set as property if the element has one.
+      if (typeof element[key] === "boolean") {
+        applyBooleanProperty(element, key, value);
+      } else {
+        setProp(element, key, value);
+      }
+      return;
+    }
+
+    setAttribute(element, normalizeAttributeName(key), value);
+  }
+
+  #applyDynamicProp(element: any, key: string, getter: Getter<unknown>, isSvg: boolean) {
+    if (key === "style") {
+      this.#applyStyles(element, getter);
+      return;
+    }
+
+    if (key === "class" || key === "className") {
+      this.#applyClasses(element, getter);
+      return;
+    }
+
+    if (key === "for") {
+      this.#subscribe(getter, (value) => applyFor(element, value), "element:for");
+      return;
+    }
+
+    if (key.startsWith("prop:")) {
+      const name = key.substring(5);
+      this.#subscribe(getter, (value) => setProp(element, name, value), `element:${key}`);
+      return;
+    }
+
+    if (key.startsWith("attr:") || key[0] === ":") {
+      const name = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
+      this.#subscribe(getter, (value) => setAttribute(element, name, value), `element:${key}`);
+      return;
+    }
+
+    if (key in element && !isSvg) {
+      // Set as property if the element has one.
+      if (typeof element[key] === "boolean") {
+        this.#subscribe(
+          getter,
+          (value) => applyBooleanProperty(element, key, value),
           `element:${key}`,
         );
+      } else {
+        this.#subscribe(getter, (value) => setProp(element, key, value), `element:${key}`);
       }
+      return;
+    }
+
+    const name = normalizeAttributeName(key);
+    this.#subscribe(getter, (value) => setAttribute(element, name, value), `element:${key}`);
+  }
+
+  #applyStaticStyles(element: HTMLElement | SVGElement, styles: unknown) {
+    assertNotTemplate(styles, "style", this.#context.name);
+
+    if (isObject(styles)) {
+      for (const key in styles) {
+        const value = (styles as Record<string, unknown>)[key];
+        if (value == null) continue;
+
+        const name = key.startsWith("--") ? key : camelToKebab(key);
+        element.style.setProperty(name, formatValue(name, value));
+      }
+      return;
+    }
+
+    const mapped = getStyleMap(styles);
+    for (const [name, { value, priority }] of Object.entries(mapped)) {
+      if (value != null) {
+        element.style.setProperty(name, formatValue(name, value), priority);
+      }
+    }
+  }
+
+  #applyStaticClasses(element: HTMLElement | SVGElement, classes: unknown) {
+    const map = getClassMap(classes);
+
+    for (const name in map) {
+      if (name === "undefined") continue;
+      // The element has no prior classes during its first mount, so false
+      // entries can be skipped instead of toggled off.
+      if (map[name]) element.classList.add(name);
     }
   }
 
@@ -409,7 +464,6 @@ export class ElementNode extends MarkupNode {
             else element.style.removeProperty(name);
           },
           `element:style:${name}`,
-          `element:style:${name}`,
         );
         this.#unsubscribers.add(unsub);
         localUnsubs.add(unsub);
@@ -464,7 +518,6 @@ export class ElementNode extends MarkupNode {
         const unsub = this.#subscribe(
           value,
           (isActive) => element.classList.toggle(name, !!isActive),
-          `element:class:${name}`,
           `element:class:${name}`,
         );
         const wrapper = () => {
@@ -615,7 +668,6 @@ export class ElementNode extends MarkupNode {
             condition,
             (val) => element.classList.toggle(tpl.className, Boolean(val)),
             `element:class:${tpl.className}`,
-            `element:class:${tpl.className}`,
           );
           conditionSubs.set(tpl, unsub);
           this.#unsubscribers.add(unsub);
@@ -633,6 +685,25 @@ export class ElementNode extends MarkupNode {
     });
     localUnsubs.clear();
   }
+}
+
+function hasReactiveValue(value: unknown): boolean {
+  if (isFunction(value) || isCSSTemplate(value) || isConditionalTemplate(value)) return true;
+
+  if (isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      if (hasReactiveValue(value[i])) return true;
+    }
+    return false;
+  }
+
+  if (isObject(value)) {
+    for (const key in value) {
+      if (isFunction((value as Record<string, unknown>)[key])) return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -751,6 +822,39 @@ function formatValue(name: string, value: any): string {
     return `${value}px`;
   } else {
     return String(value);
+  }
+}
+
+function applyFor(element: any, value: unknown) {
+  if (value == null) {
+    element.removeAttribute("for");
+  } else {
+    element.htmlFor = value;
+  }
+}
+
+function applyBooleanProperty(element: any, key: string, value: unknown) {
+  const isTrue = Boolean(value);
+  element[key] = isTrue;
+  if (isTrue) {
+    element.setAttribute(key, "");
+  } else {
+    element.removeAttribute(key);
+  }
+}
+
+function normalizeAttributeName(key: string): string {
+  // SVG presentation attributes must use kebab-case (e.g. `fill-opacity`)
+  // while JSX conventionally uses camelCase (`fillOpacity`). ARIA attributes
+  // also require kebab-case (e.g. `aria-hidden`); any key starting with "aria"
+  // followed by an uppercase letter is converted by lowercasing the remainder
+  // and inserting a hyphen.
+  if (SVG_PRESENTATION_ATTRS.has(key)) {
+    return camelToKebab(key);
+  } else if (/^aria[A-Z]/.test(key)) {
+    return "aria-" + key.slice(4).toLowerCase();
+  } else {
+    return key;
   }
 }
 

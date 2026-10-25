@@ -34,11 +34,18 @@ export function isMarkup<T extends string | View<any> | (new (...args: any[]) =>
   return value?.[IS_MARKUP] ?? false;
 }
 
+const kebabCaseCache = new Map<string, string>();
+
 /**
  * Converts a camelCase string to kebab-case.
  */
 export function camelToKebab(value: string): string {
-  return value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
+  let result = kebabCaseCache.get(value);
+  if (result !== undefined) return result;
+
+  result = value.replace(/[A-Z]+(?![a-z])|[A-Z]/g, ($, ofs) => (ofs ? "-" : "") + $.toLowerCase());
+  kebabCaseCache.set(value, result);
+  return result;
 }
 
 export function isMarkupNode(value: any): value is MarkupNode {

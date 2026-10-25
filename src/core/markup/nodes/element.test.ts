@@ -823,6 +823,22 @@ describe("ElementNode", () => {
       expect(el.style.getPropertyValue(varName)).toBe("template");
     });
 
+    test("keeps CSS template custom properties when applying a static style object", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: ${() => "template"};
+      `;
+      const node = new ElementNode(context, "div", {
+        class: tpl,
+        style: { color: "red", width: 10 },
+      });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.color).toBe("red");
+      expect(el.style.width).toBe("10px");
+      expect(el.style.getPropertyValue(`--${tpl.className}-0`)).toBe("template");
+    });
+
     test("applies style arrays", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", {

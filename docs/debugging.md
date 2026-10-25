@@ -68,6 +68,8 @@ In debug mode, elements receive a `data-view` attribute containing the nearest v
 
 Debug mode also records where each effect and computed value was created, so reported errors include `created at ...` source locations. This stack capture is intentionally disabled otherwise because it adds significant overhead to creating every effect and computed value.
 
+It also enables flush statistics: DOM updates are timed, and flushes that take longer than 10ms log a warning with an update-label breakdown. Timing and label collection are skipped entirely when debug mode is off.
+
 ## Notes
 
 - Loggers are cheap no-ops when the level or filter excludes them, but the call sites still execute.

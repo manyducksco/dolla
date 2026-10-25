@@ -5,7 +5,20 @@ import { DOMNode } from "./nodes/dom";
 import { DynamicNode } from "./nodes/dynamic";
 import { ElementNode } from "./nodes/element";
 import { ViewNode } from "./nodes/view";
-import { createMarkup, isMarkup, isMarkupNode, toMarkupNodes } from "./utils";
+import { createMarkup, isMarkup, isMarkupNode, toMarkupNodes, camelToKebab } from "./utils";
+
+describe("camelToKebab", () => {
+  test("converts camelCase names", () => {
+    expect(camelToKebab("fontSize")).toBe("font-size");
+    expect(camelToKebab("backgroundColor")).toBe("background-color");
+    expect(camelToKebab("borderTopLeftRadius")).toBe("border-top-left-radius");
+  });
+
+  test("returns stable results for repeated calls", () => {
+    expect(camelToKebab("fillOpacity")).toBe("fill-opacity");
+    expect(camelToKebab("fillOpacity")).toBe("fill-opacity");
+  });
+});
 
 describe("type checking", () => {
   test("isMarkup", () => {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { setErrorHandler, type SignalError } from "../errors.js";
-import { flushPendingUpdates, scheduleUpdate } from "./scheduler.js";
+import { flushPendingUpdates, scheduleUpdate, setUpdateStats } from "./scheduler.js";
 
 describe("scheduler", () => {
   test("schedules and flushes updates in order", async () => {
@@ -63,6 +63,7 @@ describe("scheduler", () => {
   });
 
   test("reports a label breakdown for slow flushes", () => {
+    setUpdateStats(true);
     const now = vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(20);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -76,6 +77,20 @@ describe("scheduler", () => {
     expect(message).toContain("3 updates");
     expect(message).toContain("A: 2");
     expect(message).toContain("B: 1");
+
+    now.mockRestore();
+    warn.mockRestore();
+  });
+
+  test("does not time or label flushes when stats are disabled", () => {
+    const now = vi.spyOn(performance, "now");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    scheduleUpdate(() => {}, { label: "A" });
+    flushPendingUpdates();
+
+    expect(now).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
 
     now.mockRestore();
     warn.mockRestore();
@@ -146,6 +161,7 @@ describe("scheduler", () => {
 
   afterEach(() => {
     setErrorHandler(null);
+    setUpdateStats(false);
     vi.restoreAllMocks();
   });
 });
