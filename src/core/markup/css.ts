@@ -68,12 +68,13 @@ export type Interpolation<Props = {}> =
   | CSSTemplate;
 
 /**
- * A getter bound to a CSS variable name.
+ * A value bound to a CSS variable name.
  */
 export type CSSTemplateBinding = {
+  index: number;
   varName: string;
-  getter: () => any;
   initialValue: any;
+  read: (interpolations: any[]) => any;
 };
 
 /*============================*\
@@ -314,9 +315,8 @@ function buildStyles(
           initialValue?: any;
           inherits?: boolean;
         };
-        const { syntax, value, initialValue, inherits } = config;
+        const { syntax, initialValue, inherits } = config;
         const varName = `--${className}-${i}`;
-        const getter = typeof value === "function" ? value : () => value;
 
         if (initialValue != null) {
           styles += `var(${varName}, ${initialValue})`;
@@ -327,11 +327,24 @@ function buildStyles(
           styles += `var(${varName})`;
         }
 
-        bindings.push({ varName, getter, initialValue });
+        bindings.push({
+          index: i,
+          varName,
+          initialValue,
+          read: (interpolations) => {
+            const value = interpolations[i].value;
+            return typeof value === "function" ? value() : value;
+          },
+        });
       } else if (typeof expr === "function") {
         const varName = `--${className}-${i}`;
         styles += `var(${varName})`;
-        bindings.push({ varName, getter: expr, initialValue: null });
+        bindings.push({
+          index: i,
+          varName,
+          initialValue: null,
+          read: (interpolations) => interpolations[i](),
+        });
       } else {
         styles += expr;
       }
@@ -341,10 +354,10 @@ function buildStyles(
   return { styles, bindings };
 }
 
-type FunctionTemplateShape = {
+type TemplateShape = {
   className: string;
   styles: string;
-  bindings: { index: number; varName: string; initialValue: any }[];
+  bindings: CSSTemplateBinding[];
   registered: boolean;
 };
 
@@ -352,7 +365,63 @@ type FunctionTemplateShape = {
 // caches let inline `css` calls in views reuse work across mounts.
 const staticTemplatesByStrings = new WeakMap<TemplateStringsArray, CSSTemplate>();
 const staticTemplates = new Map<string, CSSTemplate>();
-const functionTemplatesByStrings = new WeakMap<TemplateStringsArray, FunctionTemplateShape>();
+const shapesByClassName = new Map<string, TemplateShape>();
+const shapesByStrings = new WeakMap<TemplateStringsArray, TemplateShape>();
+
+class CSSFactoryTemplate implements CSSTemplate {
+  readonly [IS_CSS_TEMPLATE] = true;
+  readonly className: string;
+
+  #shape: TemplateShape;
+  #interpolations: any[];
+
+  constructor(shape: TemplateShape, interpolations: any[]) {
+    this.className = shape.className;
+    this.#shape = shape;
+    this.#interpolations = interpolations;
+  }
+
+  toString(): string {
+    return this.className;
+  }
+
+  attach(c: Context, element: HTMLElement | SVGElement, condition: MaybeGetter<any> = true): void {
+    if (!attachClass(c, this.className, element, condition)) return;
+
+    const shape = this.#shape;
+
+    if (!shape.registered) {
+      registry.insertClass(this.className, shape.styles);
+      shape.registered = true;
+    }
+
+    if (shape.bindings.length > 0) {
+      const interpolations = this.#interpolations;
+
+      onEffect(c, () => {
+        for (const binding of shape.bindings) {
+          const value = binding.read(interpolations);
+
+          if (value === null || value === undefined || value === binding.initialValue) {
+            element.style.removeProperty(binding.varName);
+          } else {
+            element.style.setProperty(binding.varName, value);
+          }
+        }
+      });
+
+      onCleanup(c, () => {
+        for (const binding of shape.bindings) {
+          element.style.removeProperty(binding.varName);
+        }
+      });
+    }
+  }
+
+  when(condition: MaybeGetter<any>): ConditionalTemplate {
+    return { [IS_CONDITIONAL_TEMPLATE]: true, template: this, condition };
+  }
+}
 
 function createTemplate(strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
   if (interpolations.length === 0) {
@@ -361,12 +430,12 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
   }
 
   const allFunctions = interpolations.length > 0 && interpolations.every((expr) => isFunction(expr));
-  let functionShape = allFunctions ? functionTemplatesByStrings.get(strings) : undefined;
+  let shape = allFunctions ? shapesByStrings.get(strings) : undefined;
   let className: string;
   let isStatic = false;
 
-  if (functionShape) {
-    className = functionShape.className;
+  if (shape) {
+    className = shape.className;
   } else {
     className = `css-${hashTemplate(strings, interpolations)}`;
     isStatic = interpolations.every((expr) => !isFunction(expr) && !isPropertyConfig(expr));
@@ -376,91 +445,25 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
       if (cached) return cached;
     }
 
-    if (allFunctions) {
-      const shapeBuilt = buildStyles(className, strings, interpolations);
-      functionShape = {
+    shape = shapesByClassName.get(className);
+
+    if (!shape) {
+      const built = buildStyles(className, strings, interpolations);
+      shape = {
         className,
-        styles: shapeBuilt.styles,
-        bindings: shapeBuilt.bindings.map(({ varName, initialValue }, index) => ({
-          index,
-          varName,
-          initialValue,
-        })),
+        styles: built.styles,
+        bindings: built.bindings,
         registered: false,
       };
-      functionTemplatesByStrings.set(strings, functionShape);
+      shapesByClassName.set(className, shape);
+    }
+
+    if (allFunctions) {
+      shapesByStrings.set(strings, shape);
     }
   }
 
-  let built: { styles: string; bindings: CSSTemplateBinding[] } | undefined;
-  const getBuilt = () => {
-    if (built) return built;
-
-    if (functionShape) {
-      return (built = {
-        styles: functionShape.styles,
-        bindings: functionShape.bindings.map(({ index, varName, initialValue }) => ({
-          varName,
-          getter: interpolations[index],
-          initialValue,
-        })),
-      });
-    }
-
-    return (built = buildStyles(className, strings, interpolations));
-  };
-
-  let registered = false;
-
-  const template: CSSTemplate = {
-    [IS_CSS_TEMPLATE]: true,
-
-    className,
-
-    toString() {
-      return this.className;
-    },
-
-    attach(c, element, condition = true) {
-      if (!attachClass(c, this.className, element, condition)) return;
-
-      const { styles, bindings } = getBuilt();
-
-      if (functionShape) {
-        if (!functionShape.registered) {
-          registry.insertClass(this.className, styles);
-          functionShape.registered = true;
-        }
-      } else if (!registered) {
-        registry.insertClass(this.className, styles);
-        registered = true;
-      }
-
-      if (bindings.length > 0) {
-        onEffect(c, () => {
-          for (const { varName, getter, initialValue } of bindings) {
-            const val = getter();
-
-            if (val === null || val === undefined || val === initialValue) {
-              element.style.removeProperty(varName);
-            } else {
-              element.style.setProperty(varName, val);
-            }
-          }
-        });
-
-        onCleanup(c, () => {
-          for (const { varName } of bindings) {
-            element.style.removeProperty(varName);
-          }
-        });
-      }
-    },
-
-    when(condition: MaybeGetter<any>): ConditionalTemplate {
-      return { [IS_CONDITIONAL_TEMPLATE]: true, template: this, condition };
-    },
-  };
+  const template = new CSSFactoryTemplate(shape, interpolations);
 
   if (isStatic) {
     staticTemplates.set(className, template);

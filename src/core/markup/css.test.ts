@@ -210,6 +210,8 @@ describe("dynamic CSS bindings", () => {
     const blue = make(() => "blue");
     expect(red.className).toBe(blue.className);
     expect(red).not.toBe(blue);
+    expect(red.attach).toBe(blue.attach);
+    expect(red.when).toBe(blue.when);
 
     const ctxA = createContext(null);
     const elA = document.createElement("div");
@@ -224,6 +226,31 @@ describe("dynamic CSS bindings", () => {
 
     expect(elA.style.getPropertyValue(varName)).toBe("red");
     expect(elB.style.getPropertyValue(varName)).toBe("blue");
+  });
+
+  test("PropertyConfig templates share a shape without sharing values", () => {
+    const make = (value: string) => css`
+      color: ${{ syntax: "<color>", value, initialValue: "red" }};
+    `;
+
+    const blue = make("blue");
+    const green = make("green");
+    expect(blue.className).toBe(green.className);
+    expect(blue).not.toBe(green);
+
+    const ctxA = createContext(null);
+    const elA = document.createElement("div");
+    const ctxB = createContext(null);
+    const elB = document.createElement("div");
+    const varName = `--${blue.className}-0`;
+
+    blue.attach(ctxA, elA);
+    green.attach(ctxB, elB);
+    mountContext(ctxA);
+    mountContext(ctxB);
+
+    expect(elA.style.getPropertyValue(varName)).toBe("blue");
+    expect(elB.style.getPropertyValue(varName)).toBe("green");
   });
 
   test("conditional templates still toggle the class and update values", () => {
