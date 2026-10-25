@@ -19,7 +19,7 @@ interface EffectNode extends ReactiveNode {
 
 interface ComputedNode<T = any> extends ReactiveNode {
   _value: T | undefined;
-  _getter: (previousValue?: T) => T;
+  _getter: (previousValue?: T) => MaybeGetter<T>;
   _error?: unknown;
 }
 
@@ -343,15 +343,6 @@ function setActiveSub(sub?: ReactiveNode) {
   return prevSub;
 }
 
-function untracked<T>(fn: () => T): T {
-  const prevSub = setActiveSub(undefined);
-  try {
-    return fn();
-  } finally {
-    setActiveSub(prevSub);
-  }
-}
-
 function withReactiveScope<T>(
   node: ReactiveNode,
   prevSub: ReactiveNode | undefined,
@@ -373,6 +364,14 @@ function withReactiveScope<T>(
   }
 }
 
+function evaluateComputed<T>(c: ComputedNode<T>): boolean {
+  const previous = c._value;
+  const next = get(c._getter(previous));
+  c._value = next;
+  c._error = undefined;
+  return previous !== next;
+}
+
 function updateComputed(c: ComputedNode): boolean {
   ++cycle;
   c._depsTail = undefined;
@@ -383,9 +382,7 @@ function updateComputed(c: ComputedNode): boolean {
 
   let succeeded = false;
   try {
-    const oldValue = c._value;
-    const changed = oldValue !== (c._value = c._getter(oldValue));
-    c._error = undefined;
+    const changed = evaluateComputed(c);
     succeeded = true;
     return changed;
   } catch (error) {
@@ -438,10 +435,7 @@ function run(e: EffectNode): void {
     let shouldRun = false;
 
     try {
-      shouldRun = Boolean(
-        flags & ReactiveFlags.Dirty ||
-          (flags & ReactiveFlags.Pending && checkDirty(e._deps!, e)),
-      );
+      shouldRun = Boolean(flags & ReactiveFlags.Dirty || (flags & ReactiveFlags.Pending && checkDirty(e._deps!, e)));
     } catch (error) {
       // A dependency threw while checking dirtiness. Keep the effect able to
       // retry on the next relevant change instead of leaving it Pending.
@@ -462,10 +456,7 @@ function run(e: EffectNode): void {
         try {
           cleanup();
         } catch (error) {
-          reportSignalError(
-            toSignalError(error, effectErrorInfo(e, "effect-cleanup")),
-            e._context,
-          );
+          reportSignalError(toSignalError(error, effectErrorInfo(e, "effect-cleanup")), e._context);
         }
       }
 
@@ -573,8 +564,7 @@ function computedGetter(node: ComputedNode) {
 
       let succeeded = false;
       try {
-        node._value = unwrap(node._getter());
-        node._error = undefined;
+        evaluateComputed(node);
         succeeded = true;
       } catch (error) {
         node._error = error;
@@ -679,10 +669,7 @@ function effectCleanup(node: ReactiveNode): void {
   try {
     cleanup();
   } catch (error) {
-    reportSignalError(
-      toSignalError(error, effectErrorInfo(effect, "effect-cleanup")),
-      effect._context,
-    );
+    reportSignalError(toSignalError(error, effectErrorInfo(effect, "effect-cleanup")), effect._context);
   } finally {
     reactiveScopeStack.length = scopeLen;
   }
@@ -699,7 +686,7 @@ export type Getter<T> = () => T;
 
 /**
  * A value that may be a static value or a getter function.
- * Can be converted to a plain value with `unwrap`.
+ * Can be converted to a plain value with `get`.
  */
 export type MaybeGetter<T> = Getter<T> | T;
 
@@ -811,11 +798,16 @@ export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T |
 /**
  * Creates a derived/computed signal from a function that tracks dependencies.
  * Returns a lazy getter that only recomputes when a dependency changes.
- * Also accepts a plain value to create a constant getter (reverse unwrap).
+ * The callback may return a value or a getter; returned getters are read with
+ * `get`, so they are unwrapped and tracked.
+ * Also accepts a plain value to create a constant getter (reverse `get`).
  */
-export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T), options?: { name?: string }): Getter<T> {
+export function compose<T>(
+  getter: T | ((previousValue?: T) => MaybeGetter<T>),
+  options?: { name?: string },
+): Getter<T> {
   if (!isFunction(getter)) {
-    // Creates a getter out of a plain value; reverse unwrap.
+    // Creates a getter out of a plain value; reverse `get`.
     return () => getter as T;
   }
   const node: ComputedNode = {
@@ -834,10 +826,7 @@ export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T), o
 /**
  * Creates an effect with auto-tracking for getters called within its callback.
  */
-export function createEffect(
-  fn: () => void,
-  options?: { name?: string; context?: Context },
-): () => void {
+export function createEffect(fn: () => void, options?: { name?: string; context?: Context }): () => void {
   const e: EffectNode = {
     _fn: fn,
     _cleanup: undefined,
@@ -878,11 +867,11 @@ export function createEffect(
 }
 
 /**
- * Unwraps a `MaybeGetter<T>` into a plain `T`.
- * Tracks the value if it is a getter.
- * Use the non-tracking `peek` if you're being stealthy.
+ * Returns the value of a MaybeGetter<T>.
+ * Tracks the value if it is a getter; returns the value verbatim if it's not.
+ * Use the non-tracking `peek` to get the value without tracking.
  */
-export function unwrap<T>(value: T | Getter<T>): T {
+export function get<T>(value: T | Getter<T>): T {
   if (isFunction<Getter<T>>(value)) {
     return value();
   } else {
@@ -891,12 +880,21 @@ export function unwrap<T>(value: T | Getter<T>): T {
 }
 
 /**
+ * Unwraps a `MaybeGetter<T>` into a plain `T`.
+ * Tracks the value if it is a getter.
+ * Use the non-tracking `peek` if you're being stealthy.
+ *
+ * @deprecated Use `get` instead.
+ */
+export const unwrap: typeof get = get;
+
+/**
  * Unwraps a `MaybeGetter<T>` into a plain `T`. Will _not_ track if the value is a getter.
  */
 export function peek<T>(value: T | Getter<T>): T {
   const prevSub = setActiveSub(undefined);
   try {
-    return unwrap(value);
+    return get(value);
   } catch (error) {
     throw toSignalError(error, { phase: "computed" });
   } finally {
@@ -925,10 +923,7 @@ export function batch(callback: () => void): void {
       flush();
     } catch (error) {
       if (callbackFailed) {
-        throw new AggregateError(
-          [callbackError, error],
-          "batch callback and flush both failed",
-        );
+        throw new AggregateError([callbackError, error], "batch callback and flush both failed");
       }
       throw error;
     }
@@ -947,7 +942,15 @@ export function subscribe<T>(
   options?: { name?: string; context?: Context },
 ): () => void {
   return createEffect(() => {
+    // Track the value.
     const value = target();
-    untracked(() => fn(value));
+
+    // Run callback outside of tracking context to avoid tracking inner signals.
+    const prevSub = setActiveSub(undefined);
+    try {
+      return fn(value);
+    } finally {
+      setActiveSub(prevSub);
+    }
   }, options);
 }

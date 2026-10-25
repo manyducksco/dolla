@@ -11,7 +11,7 @@ You probably called the getter:
 <p>{getCount}</p>;   // tracked and reactive
 ```
 
-See [Templates](./templates.md#interpolation).
+See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ### Why is my value static?
 
@@ -21,6 +21,8 @@ Same cause: a getter was called in the template or in an attribute. Pass the get
 <p>{() => getCount() * 2}</p>;
 <p>{compose(() => getCount() * 2)}</p>;
 ```
+
+See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ### Why don't my props update?
 
@@ -34,7 +36,7 @@ function Child(props) {
 <Child name={getUserName} />;
 ```
 
-If a prop must be replaced as a plain value, create a new child with `showIf` or a keyed `repeat`. See [Props and the run-once model](./templates.md#props-and-the-run-once-model).
+See [Props and the run-once model](./templates.md#props-and-the-run-once-model) for how run-once views receive props.
 
 ### How do I update a list?
 

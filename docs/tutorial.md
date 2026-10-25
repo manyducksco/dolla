@@ -210,9 +210,9 @@ function TodoList(props, context) {
 }
 ```
 
-`props.count` is a getter because the parent passed `store.getRemaining`. Interpolating `{props.count}` stays reactive. If you need the value in logic, use `unwrap(props.count)`.
+`props.count` is a getter because the parent passed `store.getRemaining`. Interpolating `{props.count}` stays reactive. If you need the value in logic, call the getter (`props.count()`); for a prop typed `MaybeGetter<T>`, use `get(props.count)`.
 
-If the parent passes a plain value (`count={0}`), the child receives a number. Calling `props.count()` would throw. See [Props and the run-once model](./templates.md#props-and-the-run-once-model).
+If the parent passes a plain value (`count={0}`), the child receives a number. Calling `props.count()` would throw. See [Props and the run-once model](./templates.md#props-and-the-run-once-model) and [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ## 7. Run code on mount and when state changes
 

@@ -161,7 +161,7 @@ Notice that `getCount` is passed directly into the JSX. We're not calling the fu
 A few rules to remember:
 
 - The component function runs once (no re-renders). All runtime changes happen through atoms.
-- Pass getters, not values. Writing `{getCount}` stays reactive; writing `{getCount()}` is evaluated once and won't update.
+- Pass getters, not values. Writing `{getCount}` stays reactive; writing `{getCount()}` is evaluated once and won't update. See [Values flow through getters](./docs/concepts.md#values-flow-through-getters).
 - DOM updates are batched as a microtask. Use [`batch`](./docs/reactivity.md) to group signal changes and trigger a single update.
 - Getters are tracked inside `compose`, `onEffect`, and template interpolation. Use [`peek`](./docs/reactivity.md) to read without tracking.
 
@@ -271,7 +271,7 @@ function Hello(props) {
 }
 ```
 
-TypeScript users can type reactive props as `Getter<T>`, or `MaybeGetter<T>` when a prop accepts either a plain value or a getter. See [TypeScript props](./docs/templates.md#typescript-props).
+TypeScript users can type reactive props as `Getter<T>`, or `MaybeGetter<T>` when a prop accepts either a plain value or a getter; read `MaybeGetter<T>` props with `get()` in logic. See [TypeScript props](./docs/templates.md#typescript-props).
 
 See [Templates](./docs/templates.md) for props, children, events, attributes, and the run-once model.
 

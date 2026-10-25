@@ -9,11 +9,11 @@ Terms used throughout the Dolla docs.
 | **Component** | Umbrella term for a View or a Store. |
 | **Context** | The prototype-inherited object passed to views and stores as the second argument. It carries lifecycle state, stores, debug settings, and arbitrary data down the tree. See [Mental model](./concepts.md#context-as-the-wiring-harness). |
 | **Context argument** | The `context` parameter in `function View(props, context)`. Prefer it over `this` in new code. |
-| **Props** | The object passed to a View or Store. Props are captured when the component mounts; pass getters for reactive props. See [Templates](./templates.md#props-and-the-run-once-model). |
+| **Props** | The object passed to a View or Store. Props are captured when the component mounts. A prop has whatever type the view declares — `T`, `Getter<T>`, or `MaybeGetter<T>`. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types). |
 | **Children** | A special prop containing the renderable content placed between component tags. See [Templates](./templates.md#components). |
 | **Signal** | A reactive value primitive. In Dolla, atoms and composed getters are signals. |
 | **Atom** | A mutable signal created with `createAtom`. Returns `[getter, setter]`. |
-| **Getter** | A function that returns a value and registers itself as a dependency when read inside a tracking context. Docs name getters with a `get` prefix, such as `getCount`. |
+| **Getter** | A function that returns a value and registers itself as a dependency when read inside a tracking context. Docs name getters with a `get` prefix, such as `getCount`. Use `get(value)` to read a `MaybeGetter<T>`. |
 | **Setter** | The write half of an atom. Accepts a replacement value or an updater function. |
 | **Composed getter** | A lazy derived getter created with `compose`. It recomputes when a dependency changes and is read. |
 | **Effect** | Side-effect code that re-runs when tracked getters change. `onEffect(context, fn)` is scoped to a component lifecycle. See [Effects](./effects.md). |

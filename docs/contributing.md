@@ -110,7 +110,7 @@ Use the simpler, HTML-compatible names:
 
 `className` and `htmlFor` also work. Event names are case-insensitive, so `onclick` works too; use `onClick` in examples.
 
-Reactive interpolation follows the same rule as `html`: pass the getter, not the result.
+Reactive interpolation follows the same rule as `html`: pass the getter, not the result. See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ```jsx
 <p>{getCount}</p>;          {/* reactive */}
@@ -139,13 +139,15 @@ html`<${Card}><p>Hello</p></>`
 
 ## Getter rules
 
+The canonical explanation is [Values flow through getters](./concepts.md#values-flow-through-getters). These are the rules to apply when writing examples:
+
 - Do not use `&&`, `||`, or ternaries directly on getters inside a template; they evaluate the getter once.
 - Do not call a getter in an interpolation or attribute unless the static value is intentional. If it is intentional, label it as static in the example.
 - Derive values with `compose`.
 - Use `.when(getter)` or `{ class: getter }` for conditional classes.
-- Pass getters as props and read them inside a getter or `compose` in the child.
+- Pass getters for `Getter<T>` props and read them inside a getter or `compose` in the child. For `MaybeGetter<T>` props, use `get(...)` in logic.
 - Event handlers may call getters because they run later, outside the initial render.
-- Remember that any function passed as content or as an attribute value is treated as a getter. Use `unwrap` when you need the value in logic.
+- Remember that any function passed as content or as an attribute value is treated as a getter. Use `get` when you need the value in logic.
 - Type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter.
 
 ## Terminology

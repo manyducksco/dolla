@@ -1,6 +1,6 @@
 # Effects
 
-Effects run side-effect code in response to state changes. Inside a view or store, use `onEffect(context, callback)`. It tracks the getters read in the callback, re-runs when they change, and is cleaned up automatically when the context unmounts.
+Effects run side-effect code in response to state changes. Inside a view or store, use `onEffect(context, callback)`. It tracks the getters read in the callback, re-runs when they change, and is cleaned up automatically when the context unmounts. See [Values flow through getters](./concepts.md#values-flow-through-getters) for how tracking works.
 
 Examples assume the relevant helpers are imported from `@manyducks.co/dolla` unless an import is shown.
 

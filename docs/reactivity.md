@@ -40,7 +40,7 @@ setCount(25);
 getDoubled(); // → 50 (recomputed)
 ```
 
-`compose` returns a getter. It's lazy — it only recomputes when read and a dependency has changed.
+`compose` returns a getter. It's lazy — it only recomputes when read and a dependency has changed. The callback may return a value or a getter; a returned getter is read with `get`, so nested getters are unwrapped and tracked.
 
 ## Using signals in JSX
 
@@ -67,7 +67,7 @@ For a property access, wrap it in a getter:
 <p>{() => getUser().name}</p>;
 ```
 
-See [Templates](./templates.md#interpolation) for the full rule.
+See [Values flow through getters](./concepts.md#values-flow-through-getters) for the full rule, including attributes, props, and logic.
 
 ## Effects
 
@@ -96,23 +96,24 @@ batch(() => {
 });
 ```
 
-## `unwrap`
+## `get`
 
-Unwraps a `MaybeGetter<T>` into a plain value. Tracks if the value is a getter. Use `peek` (above) to read without tracking.
+Returns the value of a `MaybeGetter<T>`. If the value is a getter, `get` reads it and tracks it; otherwise it returns the value unchanged. Use it when a prop or parameter accepts either form. For a value already typed `Getter<T>`, calling it directly is enough. Use `peek` (above) to read without tracking.
 
 ```js
-unwrap(42); // 42
-unwrap(getCount); // calls getCount() and tracks it
+get(42); // 42
+get(getCount); // calls getCount() and tracks it
 ```
-
-This is useful for props, which may be getters or plain values:
 
 ```jsx
 function Greeting(props) {
-  const getInitial = compose(() => unwrap(props.name).charAt(0));
+  // `props.name` is typed as MaybeGetter<string>.
+  const getInitial = compose(() => get(props.name).charAt(0));
   return <p>{getInitial}: {props.name}</p>;
 }
 ```
+
+`unwrap` is a deprecated alias for `get`. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types) for how prop types determine what you should read.
 
 ## Subscribing to changes
 

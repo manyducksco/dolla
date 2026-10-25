@@ -119,6 +119,8 @@ If you call a getter yourself, wrap it in another getter when you need reactivit
 <p>{() => getCount() * 2}</p>;
 ```
 
+See [Values flow through getters](./concepts.md#values-flow-through-getters) for the full rule, including props, attributes, and logic.
+
 Name getters with a `get` prefix. It makes the difference obvious:
 
 ```jsx
@@ -152,7 +154,7 @@ function Greeting(props: Props) {
 <Greeting name={getUserName} onSave={save} />;
 ```
 
-If a prop accepts either a plain value or a getter, type it as `MaybeGetter<T>` and use `unwrap()` where you need the value in logic.
+If a prop accepts either a plain value or a getter, type it as `MaybeGetter<T>` and use `get()` where you need the value in logic. The framework does not wrap or unwrap props for you; see [Props follow their declared types](./concepts.md#props-follow-their-declared-types).
 
 See [Templates](./templates.md) and [Advanced internals](./advanced.md#core-types).
 
@@ -195,7 +197,7 @@ Plugins may be async; `mount` waits for them.
 
 ## Troubleshooting
 
-**My value never updates.** You probably called the getter: `{getCount()}` instead of `{getCount}`. See [Templates](./templates.md#interpolation).
+**My value never updates.** You probably called the getter: `{getCount()}` instead of `{getCount}`. See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 **My app doesn't mount.** `mount` is async. Use `await createRoot(...).mount(...)`, and check that the selector matches an element.
 

@@ -9,8 +9,8 @@ Runtime helpers, node classes, `Markup`/`MarkupNode`, and the low-level CSS type
 | Type | Meaning |
 | --- | --- |
 | `Renderable` | Everything accepted as content: strings, numbers, DOM nodes, markup, getters, arrays, and `null`/`false`/`undefined`. |
-| `MaybeGetter<T>` | `T` or `() => T`. |
-| `Getter<T>` | A function returning the current value and registering a dependency when read in a tracking context. |
+| `MaybeGetter<T>` | `T` or `() => T`. Read with `get` when the value may be either. |
+| `Getter<T>` | A function returning the current value and registering a dependency when read in a tracking context. Call it directly, or read it with `get`. |
 | `Setter<T>` | A function that writes a value or an updater function. |
 | `View<Props>` | `(this: Context, props: Props, context: Context) => Renderable`. |
 | `Store<Props, Value>` | A function returning shared state/logic, usually registered with `addStore`. |

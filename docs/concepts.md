@@ -35,7 +35,14 @@ return <p>{getCount()}</p>;
 return <p>{() => getCount() * 2}</p>;
 ```
 
-The same rule applies everywhere — `compose`, `onEffect`, `showIf`, CSS template functions, and any markup interpolation. If you pass a getter, the framework tracks it. If you pass a plain value, it's used once.
+The same rule applies everywhere — `compose`, `onEffect`, `showIf`/`branch`, CSS template functions, attributes, and props. If you pass a getter, the framework tracks it. If you pass a plain value, it is used once.
+
+| You write | Result |
+| --- | --- |
+| `{getCount}` | The getter is tracked; the DOM updates |
+| `{getCount()}` | The current value is read once and baked in |
+| `{() => getCount() * 2}` | A new getter is tracked; the DOM updates |
+| `{compose(() => getCount() * 2)}` | A cached getter is tracked; the DOM updates |
 
 ```js
 compose(() => getCount() * 2);  // tracks getCount — reactive
@@ -44,6 +51,60 @@ compose(getCount() * 2);        // plain number — static
 showIf(() => getUser().isLoggedIn, ...); // reactive
 showIf(getUser().isLoggedIn, ...);       // static
 ```
+
+### Functions are getters in markup
+
+In markup, _any_ function value is treated as a getter and called with no arguments. That includes interpolation, attributes, `class` and `style` object values, CSS template interpolations, and the `repeat` render callback's item and index. Event props (`onClick`, `on:click`) and `ref` are the exceptions: they are listeners and refs, not getters.
+
+The framework cannot tell a getter from a plain callback by looking at it. Pass a getter when you want tracking; pass a plain value when you do not.
+
+### Props follow their declared types
+
+The framework does not wrap or unwrap props for you. A prop is whatever the view types it as, and the parent must pass that shape:
+
+| Child prop type | Parent passes | Read it with |
+| --- | --- | --- |
+| `title: string` | `title="Hello"` | `props.title` |
+| `name: Getter<string>` | `name={getUserName}` | `props.name()` in logic, or `{props.name}` in markup |
+| `label: MaybeGetter<string>` | either a string or a getter | `get(props.label)` in logic, or `{props.label}` in markup |
+
+```tsx
+type CardProps = {
+  title: string;
+  name: Getter<string>;
+  label: MaybeGetter<string>;
+};
+
+function Card(props: CardProps) {
+  const getInitial = compose(() => get(props.label).charAt(0));
+  return (
+    <article>
+      <h2>{props.title}</h2>
+      <p>{props.name}</p>
+      <p>{props.label}</p>
+      <small>{getInitial}</small>
+    </article>
+  );
+}
+
+// Parent
+<Card title="Profile" name={getUserName} label={getStatus} />;
+```
+
+If the child declares `Getter<T>` and the parent passes a plain value, the child receives a plain value at runtime and calling it throws. TypeScript catches the mismatch when both sides are typed.
+
+### Reading values in logic
+
+`get(value)` is the helper for a `MaybeGetter<T>`: if the value is a getter it reads and tracks it; otherwise it returns the value unchanged. Use it when the declared type is `MaybeGetter<T>`.
+
+```js
+const getInitial = compose(() => get(props.label).charAt(0));
+```
+
+- For a prop typed `Getter<T>`, calling it directly (`props.name()`) is enough.
+- For a prop typed `T`, use it directly.
+- `peek(value)` reads a getter without tracking it.
+- `unwrap` is a deprecated alias for `get`.
 
 ### Signals and effects
 
@@ -64,7 +125,7 @@ Getters are only tracked when called inside a **tracking context**:
 - A getter interpolated in JSX (`{someGetter}`)
 - The condition function of `showIf` / `hideIf`
 - A function value in a `css` template
-- Reactive attributes and props (`value={getValue}`)
+- Reactive attributes (`value={getValue}`) and getter-typed props
 
 Outside these, calling a getter returns the current value without registering a dependency. Use `peek(getter)` to explicitly read without tracking even inside a tracking context.
 
@@ -76,7 +137,7 @@ This is the single most important thing to internalize. A view function is calle
 function Welcome(props) {
   // This runs once. `props.name` is a getter because the parent passed
   // name={getUserName} instead of a plain string.
-  const getGreeting = compose(() => `Hello, ${unwrap(props.name)}!`);
+  const getGreeting = compose(() => `Hello, ${get(props.name)}!`);
 
   return <p>{getGreeting}</p>;
 }

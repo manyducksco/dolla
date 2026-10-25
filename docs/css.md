@@ -101,7 +101,7 @@ const tpl = css`
 
 ## Reactive variables
 
-Pass a getter to bind a CSS custom property. When the signal changes, the property updates on the element without rebuilding the stylesheet:
+Pass a getter to bind a CSS custom property. When the signal changes, the property updates on the element without rebuilding the stylesheet. This is the same getter rule described in [Values flow through getters](./concepts.md#values-flow-through-getters):
 
 ```js
 const [getColor, setColor] = createAtom("blue");
@@ -160,7 +160,7 @@ const [getIsActive] = createAtom(false);
 <div class={card.when(getIsActive)}>...</div>;
 ```
 
-`getIsActive` is a getter, so the class is attached and detached as it changes. A plain boolean also works, but is evaluated once.
+`getIsActive` is a getter, so the class is attached and detached as it changes. A plain boolean also works, but is evaluated once. See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ## Styling a component
 

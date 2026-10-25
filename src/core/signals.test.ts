@@ -5,6 +5,7 @@ import {
   compose,
   createAtom,
   createEffect,
+  get,
   peek,
   subscribe,
   type Getter,
@@ -38,6 +39,50 @@ test("basic composition & tracking", () => {
   expect(fn).toBeCalledTimes(2);
 
   stop();
+});
+
+test("compose unwraps and tracks a getter returned by the callback", () => {
+  const [getCount, setCount] = createAtom(1);
+  const getInner = compose(() => getCount() * 2);
+  const getOuter = compose(() => getInner);
+
+  expect(getOuter()).toBe(2);
+  setCount(2);
+  expect(getOuter()).toBe(4);
+});
+
+test("compose reads a returned function as a getter on every evaluation", () => {
+  const [getCount, setCount] = createAtom(0);
+  const getFn = compose(() => () => getCount() + 1);
+
+  expect(getFn()).toBe(1);
+  setCount(1);
+  expect(getFn()).toBe(2);
+});
+
+test("compose passes the previous value on re-evaluation", () => {
+  const [getCount, setCount] = createAtom(1);
+  const seen: Array<number | undefined> = [];
+  const getDoubled = compose<number>((previous) => {
+    seen.push(previous);
+    return getCount() * 2;
+  });
+
+  getDoubled();
+  setCount(2);
+  getDoubled();
+
+  expect(seen).toEqual([undefined, 2]);
+});
+
+test("get reads plain values and tracks getters", () => {
+  const [getCount, setCount] = createAtom(1);
+  const getDoubled = compose(() => get(getCount) * 2);
+
+  expect(get(5)).toBe(5);
+  expect(getDoubled()).toBe(2);
+  setCount(2);
+  expect(getDoubled()).toBe(4);
 });
 
 test("setters return the new value", () => {

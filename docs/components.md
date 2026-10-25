@@ -54,7 +54,7 @@ function App() {
 }
 ```
 
-Pass a getter (`name={getUserName}`) to keep the prop reactive. Pass a plain value (`name="Alice"`) when it never changes. A child does not re-render when its parent's state changes; see [Props and the run-once model](./templates.md#props-and-the-run-once-model) for the full explanation and patterns.
+Pass a getter (`name={getUserName}`) to keep the prop reactive. Pass a plain value (`name="Alice"`) when it never changes. A child does not re-render when its parent's state changes; the prop's declared type determines what the child receives. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types) and [Props and the run-once model](./templates.md#props-and-the-run-once-model).
 
 Children are passed between the component tags and are available as `props.children`:
 
@@ -109,7 +109,7 @@ A store instance is available to all components in its subtree. See [Stores vs V
 
 ## TypeScript
 
-Type view and store functions directly. Type reactive props as `Getter<T>`; use `MaybeGetter<T>` when a prop accepts either a plain value or a getter. See [TypeScript props](./templates.md#typescript-props) for examples.
+Type view and store functions directly. Type reactive props as `Getter<T>`; use `MaybeGetter<T>` when a prop accepts either a plain value or a getter, and read it with `get()` in logic. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types) and [TypeScript props](./templates.md#typescript-props) for examples.
 
 ## Lifecycle
 
@@ -136,6 +136,8 @@ function Example(props, context) {
 See [Hooks](./hooks.md) for the full lifecycle hook reference.
 
 ## Control flow helpers
+
+Conditions and list items follow the getter rule: pass a getter when the value should update, or a plain value when it is static. See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ### `showIf` / `hideIf`
 

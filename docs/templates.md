@@ -29,6 +29,8 @@ If you need to transform the value, wrap the work in a getter or use `compose`:
 <p>{compose(() => getCount() * 2)}</p>;
 ```
 
+For the full rule — including attributes, props, `compose`, and logic — see [Values flow through getters](./concepts.md#values-flow-through-getters).
+
 ## What can be rendered
 
 These values can be interpolated or returned from a view:
@@ -190,7 +192,7 @@ A view may return multiple root nodes, either as a fragment or as an array. See 
 
 This is the biggest difference from React-style frameworks.
 
-A view runs **once** when it mounts. Its `props` object is captured at that moment. If the parent's state changes, the parent does not re-run, so it cannot pass a new static prop to an existing child.
+A view runs **once** when it mounts. Its `props` object is captured at that moment. If the parent's state changes, the parent does not re-run, so a prop passed as a plain value stays frozen. Pass a getter for a prop that needs to change.
 
 There are two ways to pass dynamic data:
 
@@ -208,46 +210,57 @@ function App() {
 }
 ```
 
-When you need the value in logic, use `unwrap(props.name)`:
+When you need the value in logic, use `get(props.name)` if the prop is typed `MaybeGetter<T>`. If it is typed `Getter<T>`, call it directly. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types).
 
 ```jsx
 function Greeting(props) {
-  const getInitial = compose(() => unwrap(props.name).charAt(0));
+  const getInitial = compose(() => get(props.name).charAt(0));
   return <p>{getInitial}: {props.name}</p>;
 }
 ```
 
 2. **Use a store or context** when many descendants need shared state. See [Components](./components.md#stores).
 
-If you pass a plain value, it stays static:
+Pass a plain value only for data that never changes:
 
 ```jsx
 <Greeting name="Alice" />;
-// props.name() would throw; props.name is the string "Alice"
+// props.name is the string "Alice"; props.name() would throw.
+// For a prop typed MaybeGetter<string>, use get(props.name) instead.
 ```
-
-Because children do not re-render, replacing a static prop requires creating a new child. Use a conditional (`showIf`) or a keyed list (`repeat`) so the old instance is removed and a new one is mounted.
 
 ### TypeScript props
 
-Type props explicitly. A static prop uses its plain type; a reactive prop is typed as `Getter<T>` and receives a getter:
+Type props explicitly. The prop type is the contract: a static prop uses its plain type, a reactive prop is a `Getter<T>`, and a prop that accepts either is a `MaybeGetter<T>`.
+
+| Prop type | Parent passes | Child reads it with |
+| --- | --- | --- |
+| `string` | `name="Alice"` | `props.name` |
+| `Getter<string>` | `name={getUserName}` | `props.name()` in logic, or `{props.name}` in markup |
+| `MaybeGetter<string>` | either form | `get(props.name)` in logic, or `{props.name}` in markup |
 
 ```tsx
-import type { Getter } from "@manyducks.co/dolla";
+import type { Getter, MaybeGetter } from "@manyducks.co/dolla";
 
 type GreetingProps = {
   name: Getter<string>;
+  label: MaybeGetter<string>;
   onSave: () => void;
 };
 
 function Greeting(props: GreetingProps) {
-  return <p>Hello, {props.name}!</p>;
+  const getInitial = compose(() => get(props.label).charAt(0));
+  return (
+    <p>
+      Hello, {props.name}! {getInitial}
+    </p>
+  );
 }
 
-<Greeting name={getUserName} onSave={save} />;
+<Greeting name={getUserName} label={getStatus} onSave={save} />;
 ```
 
-If a prop accepts either a plain value or a getter, type it as `MaybeGetter<T>` and use `unwrap()` when you need the value in logic.
+If a prop accepts either a plain value or a getter, type it as `MaybeGetter<T>` and use `get()` when you need the value in logic. The framework does not wrap or unwrap props for you; see [Props follow their declared types](./concepts.md#props-follow-their-declared-types) for the full explanation.
 
 Use the context argument for lifecycle hooks and context data:
 
@@ -293,11 +306,13 @@ See [HTML templates](./html.md) for the full syntax, the JSX ↔ `html` equivale
 
 ## Common mistakes
 
+These symptoms all come from the same rule. For the full explanation, see [Values flow through getters](./concepts.md#values-flow-through-getters).
+
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Value never updates | `{getCount()}` | `{getCount}` or `{() => getCount()}` |
 | List item text never updates | `{getItem().text}` | `{() => getItem().text}` |
-| Prop getter throws | Parent passed a static value, child calls `props.name()` | Pass `name={getUserName}` or use `unwrap(props.name)` |
+| Prop getter throws | Prop is typed `Getter<T>` but the parent passed a static value | Pass a getter, type the prop as `MaybeGetter<T>`, and use `get(props.name)` |
 | `this` is undefined in a view | View is an arrow function | Use `(props, context)` or `function View() {}` |
 | Route params never update | `{router.params().id}` | `{() => router.params().id}` |
 | App renders nothing | `mount` not awaited or selector missing | `await createRoot("#app").mount(App)` |

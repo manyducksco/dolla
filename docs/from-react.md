@@ -152,13 +152,11 @@ function Greeting(props) {
 }
 ```
 
-`props.name` is a getter in the child because the parent passed a getter. If you need the value in logic, use `unwrap(props.name)`.
+`props.name` is a getter in the child because the parent passed a getter. If you need the value in logic, call it when the prop is typed `Getter<T>`, or use `get(props.name)` when it is typed `MaybeGetter<T>`.
 
-In TypeScript, type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter. See [TypeScript props](./templates.md#typescript-props).
+In TypeScript, type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter, and read it with `get()` in logic. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types) and [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 If the parent passes a plain value (`name="Alice"`), the child receives a string. Calling `props.name()` would throw.
-
-Because children do not re-render, replacing a static prop means creating a new child. Use `showIf` or a keyed `repeat` so the old instance is removed and a new one is mounted.
 
 ## Lists
 
@@ -333,7 +331,7 @@ await createRoot("#app").mount(Todo);
 |---|---|
 | Writing `{count}` after `const [count, setCount] = useState(0)` | `{getCount}` after `const [getCount, setCount] = createAtom(0)` |
 | Calling the getter in the template | Evaluates once and loses reactivity |
-| Reading `props.name` in logic | It may be a getter; use `unwrap(props.name)` |
+| Reading `props.name` in logic | It may be a getter; use `props.name()` for `Getter<T>`, or `get(props.name)` for `MaybeGetter<T>` |
 | Using `this` inside an arrow view | Use `(props, context)` instead |
 | Expecting effects after paint | `onEffect` runs when the context mounts, then on tracked changes |
 | Passing `key` as a prop | Pass a key function to `repeat` |

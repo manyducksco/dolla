@@ -51,7 +51,7 @@ throttler.call(() => console.log("hello"));
 
 ## Reactivity helpers
 
-`peek`, `batch`, `unwrap`, `subscribe`, and `createSetter` are documented in [Reactivity](./reactivity.md).
+`peek`, `batch`, `get`, `subscribe`, and `createSetter` are documented in [Reactivity](./reactivity.md).
 
 ## `sleep`
 

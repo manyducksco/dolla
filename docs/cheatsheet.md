@@ -137,7 +137,7 @@ function Child(props) {
 <Child name={getUserName} />;
 ```
 
-For logic, use `unwrap(props.name)`.
+For logic, call `props.name()` if the prop is typed `Getter<T>`, or use `get(props.name)` if it is typed `MaybeGetter<T>`. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types).
 
 In TypeScript, type reactive props as `Getter<T>`. Use `MaybeGetter<T>` when a prop accepts either a plain value or a getter.
 
@@ -248,7 +248,7 @@ async function loadUser() {
 |---|---|---|
 | Value never updates | `{getCount()}` | `{getCount}` or `{() => getCount()}` |
 | List item text never updates | `{getItem().text}` | `{() => getItem().text}` |
-| Prop getter throws | Parent passed a static value, child calls `props.name()` | Pass `name={getUserName}` or use `unwrap(props.name)` |
+| Prop getter throws | Prop is typed `Getter<T>` but the parent passed a static value | Pass a getter, or type the prop as `MaybeGetter<T>` and use `get(props.name)` |
 | `this` is undefined | Arrow function used with `this` | Use `(props, context)` or a function declaration |
 | Route params never update | `{router.params().id}` | `{() => router.params().id}` |
 | App renders nothing | `mount` not awaited or selector missing | `await createRoot("#app").mount(App)` |

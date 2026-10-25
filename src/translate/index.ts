@@ -1,6 +1,6 @@
 import type { Context } from "../core/context.js";
 import type { DollaPlugin } from "../core/root.js";
-import { unwrap, compose, createAtom, type Getter } from "../core/signals.js";
+import { compose, createAtom, get, type Getter } from "../core/signals.js";
 import { isFunction } from "../utils.js";
 
 // ----- Types ----- //
@@ -205,7 +205,7 @@ function createTranslator(options: TranslatorOptions): Translator {
       throw new Error(`Unknown format: ${name}`);
     }
 
-    return compose(() => callback(currentLocale(), unwrap(value), options ?? {}));
+    return compose(() => callback(currentLocale(), get(value), options ?? {}));
   }
 
   return {
@@ -254,7 +254,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_ordinal_" + getPluralRules(true).select(unwrap(options.count));
+            selector += "_ordinal_" + getPluralRules(true).select(get(options.count));
           }
         } else {
           // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
@@ -262,7 +262,7 @@ async function createLookup(
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_" + getPluralRules(false).select(unwrap(options.count));
+            selector += "_" + getPluralRules(false).select(get(options.count));
           }
         }
       }
@@ -367,7 +367,7 @@ export function parseTemplate(template: string): CompiledTemplate {
       segments.push((options, formatters, locale) => {
         // Evaluate and track the specific option at runtime.
         // This code runs in the t() computed context.
-        let value = options ? unwrap(options[name]) : undefined;
+        let value = options ? get(options[name]) : undefined;
 
         for (let k = 0; k < parsedFormats.length; k++) {
           const fmt = parsedFormats[k];

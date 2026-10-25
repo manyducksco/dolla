@@ -1,6 +1,6 @@
 import { getStore, type Context } from "../core/context.js";
 import { getDebug } from "../core/debug.js";
-import { compose, peek, unwrap, type Getter, type MaybeGetter, type Setter } from "../core/signals.js";
+import { compose, get, peek, type Getter, type MaybeGetter, type Setter } from "../core/signals.js";
 import type { Router } from "./types";
 import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 
@@ -56,7 +56,7 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
 
     isActive(path: MaybeGetter<string>, exact = false) {
       return compose(() => {
-        const _path = unwrap(path);
+        const _path = get(path);
         const target = _path === "/" ? "/" : _path.replace(/\/$/, "");
         const targetSlash = target === "/" ? "/" : target + "/";
 

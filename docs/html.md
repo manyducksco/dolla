@@ -39,7 +39,7 @@ Dynamic attributes use `${...}`:
 html`<input value=${getEmail} onInput=${(event) => setEmail(event.target.value)} />`;
 ```
 
-Pass a getter (`getEmail`) to keep the attribute reactive. Pass the result (`getEmail()`) only when you want a static value.
+Pass a getter (`getEmail`) to keep the attribute reactive. Pass the result (`getEmail()`) only when you want a static value. See [Values flow through getters](./concepts.md#values-flow-through-getters).
 
 ### Boolean attributes
 
@@ -60,7 +60,7 @@ html`<p>Hello, ${getFirstName} ${getLastName}!</p>`;
 
 ## Reactivity
 
-The getter rule is the same as in JSX:
+The getter rule is the same as in JSX (see [Values flow through getters](./concepts.md#values-flow-through-getters)):
 
 ```js
 const [getCount, setCount] = createAtom(0);
@@ -347,7 +347,7 @@ Use `html` when you want a no-compiler setup, a quick prototype, or a buildless 
 | List item text never updates | `${getItem().text}` | `${() => getItem().text}` |
 | Component renders nothing | Missing `<${}` around the component | `<${Card} />`, not `<Card />` |
 | Closing tag error | Using `</Card>` | Use `</>` |
-| Prop getter throws | Parent passed a static value, child calls `props.name()` | Pass `name=${getUserName}` or use `unwrap(props.name)` |
+| Prop getter throws | Prop is typed `Getter<T>` but the parent passed a static value | Pass a getter, or type the prop as `MaybeGetter<T>` and use `get(props.name)` |
 | `this` is undefined | Arrow function used with `this` | Use `(props, context)` or a function declaration |
 
 ## Complete example

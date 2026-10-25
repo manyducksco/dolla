@@ -7,7 +7,7 @@ export { SignalError, isSignalError } from "./errors.js";
 export type { ReactiveScopeInfo } from "./errors.js";
 
 // Signals
-export { batch, compose, createAtom, createSetter, peek, unwrap } from "./signals.js";
+export { batch, compose, createAtom, createSetter, get, peek, unwrap } from "./signals.js";
 export type { Getter, MaybeGetter, Setter } from "./signals.js";
 
 // Hooks
@@ -40,8 +40,7 @@ import type { IntrinsicElements as Elements } from "../types.js";
 declare global {
   namespace JSX {
     interface IntrinsicElements extends Elements {
-      [tag: `${string}-${string}`]: any; // Catch all for custom elements
-      [tag: string]: any; // Catch-all for as-yet-undefined elements (SVG)
+      [tag: `${string}-${string}`]: any; // Catchall for custom elements
     }
   }
 }
