@@ -1,4 +1,4 @@
-import { View } from "../types.js";
+import type { View } from "../types.js";
 import { assert, isArray, isFunction, isObject, isString, uniqueId } from "../utils.js";
 import type { JourneyStep, Route, RouteLayer, Stringable } from "./types.js";
 

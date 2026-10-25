@@ -1,5 +1,5 @@
 import { isFunction } from "../utils";
-import { Context, onCleanup } from "./context";
+import { onCleanup, type Context } from "./context";
 
 export type Debouncer = {
   /**

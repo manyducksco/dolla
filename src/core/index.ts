@@ -7,7 +7,7 @@ export { batch, compose, createAtom, createSetter, peek, unwrap } from "./signal
 export type { Getter, MaybeGetter, Setter } from "./signals.js";
 
 // Hooks
-export { addStore, getStore, hasOwnStore, hasStore, isMounted, onCleanup, onEffect, onMount } from "./context.js";
+export { addStore, getStore, isMounted, onCleanup, onEffect, onMount } from "./context.js";
 export type { Context } from "./context.js";
 
 // Debug

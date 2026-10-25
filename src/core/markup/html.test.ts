@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { Renderable } from "../../types";
+import type { Renderable } from "../../types";
 import { html } from "./html.js";
 import { createMarkup as m } from "./utils.js";
 

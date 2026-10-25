@@ -1,10 +1,17 @@
-import { MaybeGetter, Renderable } from "..";
-import { isArray, isFunction } from "../../utils";
-import { createMarkup } from "./utils";
-import { type Getter } from "../signals";
-import { BranchNode, type BranchEntry } from "./nodes/branch";
-import { PortalNode } from "./nodes/portal";
-import { KeyFn, RenderFn, RepeatNode } from "./nodes/repeat";
+import type { MaybeGetter, Renderable } from "../../types.js";
+import { isArray, isFunction } from "../../utils.js";
+import { createMarkup } from "./utils.js";
+import { type Getter } from "../signals.js";
+import { BranchNode, type BranchEntry } from "./nodes/branch.js";
+import { PortalNode } from "./nodes/portal.js";
+import { RepeatNode, type KeyFn, type RenderFn } from "./nodes/repeat.js";
+
+/**
+ * Creates a portal that renders `content` into another element on the page.
+ **/
+export function createPortal(parent: Element, content: Renderable) {
+  return createMarkup(PortalNode, { args: [content, parent] });
+}
 
 /**
  * Displays a dynamic list. Items will be added and removed as the list is updated.
@@ -28,6 +35,28 @@ export function repeat<T>(
       ),
     );
   }
+}
+
+/**
+ * Shows content if `condition` is **truthy**. Otherwise shows `fallback` content.
+ *
+ * @param condition - Condition to hide or show content on.
+ * @param content - Content to display when condition is truthy.
+ * @param fallback - Content to display when condition is falsy.
+ */
+export function showIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
+  return _conditional(condition, content, fallback);
+}
+
+/**
+ * Shows content if `condition` is **falsy**. Otherwise shows `fallback` content.
+ *
+ * @param condition - Condition to hide or show content on.
+ * @param content - Content if condition is falsy.
+ * @param fallback - Content if condition is truthy.
+ */
+export function hideIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
+  return _conditional(condition, fallback, content);
 }
 
 /**
@@ -113,33 +142,4 @@ export function branch<T>(
   return createMarkup(BranchNode, {
     args: [selector, entries, fallback],
   });
-}
-
-/**
- * Shows content if `condition` is **truthy**. Otherwise shows `fallback` content.
- *
- * @param condition - Condition to hide or show content on.
- * @param content - Content to display when condition is truthy.
- * @param fallback - Content to display when condition is falsy.
- */
-export function showIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
-  return _conditional(condition, content, fallback);
-}
-
-/**
- * Shows content if `condition` is **falsy**. Otherwise shows `fallback` content.
- *
- * @param condition - Condition to hide or show content on.
- * @param content - Content if condition is falsy.
- * @param fallback - Content if condition is truthy.
- */
-export function hideIf(condition: MaybeGetter<any>, content: Renderable, fallback?: Renderable): Renderable {
-  return _conditional(condition, fallback, content);
-}
-
-/**
- * Creates a portal that renders `content` into another element on the page.
- **/
-export function createPortal(parent: Element, content: Renderable) {
-  return createMarkup(PortalNode, { args: [content, parent] });
 }

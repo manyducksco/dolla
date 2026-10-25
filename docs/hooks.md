@@ -76,8 +76,6 @@ function Counter(props, context) {
 | --- | --- |
 | `addStore(context, store, props?)` | Creates a store instance on the context and returns its value. |
 | `getStore(context, store)` | Retrieves the nearest store instance from the context chain. |
-| `hasStore(context, store)` | Checks if a store instance is available on this context or up the chain. |
-| `hasOwnStore(context, store)` | Checks if a store instance is on this exact context. |
 
 ## Debug
 

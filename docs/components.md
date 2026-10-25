@@ -105,7 +105,7 @@ function Counter(props, context) {
 }
 ```
 
-A store instance is available to all components in its subtree. Check existence with `hasStore(context, store)` or `hasOwnStore(context, store)`. See [Stores vs Views](./concepts.md#stores-vs-views) for the conceptual difference.
+A store instance is available to all components in its subtree. See [Stores vs Views](./concepts.md#stores-vs-views) for the conceptual difference.
 
 ## TypeScript
 

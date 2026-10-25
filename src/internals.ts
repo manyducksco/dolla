@@ -14,6 +14,8 @@ export {
   cleanupContext,
   getNearestViewNode,
   getRootElement,
+  hasOwnStore,
+  hasStore,
 } from "./core/context.js";
 
 // Signals

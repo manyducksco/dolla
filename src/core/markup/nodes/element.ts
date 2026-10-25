@@ -1,11 +1,11 @@
 import { isArray, isFunction, isNumber, isObject, isString } from "../../../utils.js";
-import { cleanupContext, Context, createContext, getNearestViewNode, mountContext } from "../../context.js";
-import { Ref } from "../../ref.js";
+import { cleanupContext, createContext, getNearestViewNode, mountContext, type Context } from "../../context.js";
+import type { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
 import { DEBUG } from "../../symbols.js";
-import { ConditionalTemplate, CSSTemplate, isConditionalTemplate, isCSSTemplate } from "../css.js";
+import { isConditionalTemplate, isCSSTemplate, type ConditionalTemplate, type CSSTemplate } from "../css-template.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
-import { MarkupNode, MountTarget } from "../types.js";
+import { MarkupNode, type MountTarget } from "../types.js";
 import type { MaybeGetter } from "../../../types.js";
 import { addChild, camelToKebab, moveAfter, toMarkupNodes } from "../utils.js";
 
@@ -407,9 +407,11 @@ export class ElementNode extends MarkupNode {
    *
    * Both forms (top-level or nested inside an array) are handled identically.
    */
-  #extractTemplates(
-    current: unknown,
-  ): { templates: Set<CSSTemplate>; conditions: Map<CSSTemplate, MaybeGetter<any>>; remaining: unknown } {
+  #extractTemplates(current: unknown): {
+    templates: Set<CSSTemplate>;
+    conditions: Map<CSSTemplate, MaybeGetter<any>>;
+    remaining: unknown;
+  } {
     if (!isArray(current) && !isCSSTemplate(current) && !isConditionalTemplate(current)) {
       return { templates: EMPTY_TEMPLATE_SET, conditions: EMPTY_TEMPLATE_MAP, remaining: current };
     }

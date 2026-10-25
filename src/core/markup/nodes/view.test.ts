@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createContext, onCleanup, onEffect, onMount, REPLACING } from "../../context.js";
-import { View } from "../../index.js";
+import type { View } from "../../index.js";
 import { createMarkup } from "../utils.js";
 import { VIEW, ViewNode } from "./view.js";
 

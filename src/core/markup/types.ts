@@ -1,5 +1,5 @@
 import type { IntrinsicElements, View } from "../../types.js";
-import { Context } from "../index.js";
+import type { Context } from "../context.js";
 
 /**
  * Determines the type of the `props` object for any kind of Markup type.

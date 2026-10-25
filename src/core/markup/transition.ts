@@ -1,10 +1,9 @@
-import type { Renderable, View } from "../../types.js";
-import { createMarkup } from "./utils.js";
-import { createAtom, type Getter } from "../signals.js";
-import { onCleanup, onEffect } from "../context.js";
-import { html } from "./html.js";
+import type { Renderable } from "../../types.js";
 import type { Context } from "../context.js";
+import { onCleanup, onEffect } from "../context.js";
+import { createAtom, type Getter } from "../signals.js";
 import type { Markup } from "./types.js";
+import { createMarkup } from "./utils.js";
 
 type Easing = string | [number, number, number, number];
 
@@ -128,24 +127,24 @@ function TransitionView(this: Context, props: TransitionProps): Renderable {
 
   return () => {
     if (isMounted()) {
-      return html`
-        <div
-          ref=${(el: HTMLElement) => {
-            wrapperEl = el;
-            if (pendingEnter) {
-              pendingEnter = false;
-              startEnter();
-            }
-          }}
-        >
-          ${props.children}
-        </div>
-      `;
+      return createMarkup("div", {
+        ref: (el: HTMLElement) => {
+          wrapperEl = el;
+          if (pendingEnter) {
+            pendingEnter = false;
+            startEnter();
+          }
+          return () => {
+            wrapperEl = null;
+          };
+        },
+        children: props.children,
+      });
     }
     return null;
   };
 }
 
 export function transition(props: TransitionProps): Markup {
-  return createMarkup(TransitionView as View<TransitionProps>, props);
+  return createMarkup(TransitionView, props);
 }

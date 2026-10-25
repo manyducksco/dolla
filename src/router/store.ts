@@ -1,14 +1,6 @@
-import {
-  compose,
-  Context,
-  getDebug,
-  getStore,
-  peek,
-  unwrap,
-  type Getter,
-  type MaybeGetter,
-  type Setter,
-} from "../core";
+import { getStore, type Context } from "../core/context.js";
+import { getDebug } from "../core/debug.js";
+import { compose, peek, unwrap, type Getter, type MaybeGetter, type Setter } from "../core/signals.js";
 import type { Router } from "./types";
 import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
 

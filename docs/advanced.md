@@ -127,6 +127,10 @@ const stop = createEffect(() => {
 
 Prefer [`onEffect(context, ...)`](./effects.md) inside views and stores. `createEffect` is the backup for code that has no context.
 
+## Store inspection
+
+`hasStore(context, Store)` and `hasOwnStore(context, Store)` are exported from `@manyducks.co/dolla/internals` for inspecting a context without `getStore`'s error. `hasStore` checks this context and its ancestors; `hasOwnStore` checks only this exact context. Both return `false` if the store has not been registered anywhere yet.
+
 ## Stability
 
 The helpers documented in Getting Started, Templates, Reactivity, Components, CSS, Refs, and Hooks are the stable surface. The classes and functions on this page are exported from `@manyducks.co/dolla/internals` for flexibility, but their contracts may change between minor versions as the rendering internals evolve.

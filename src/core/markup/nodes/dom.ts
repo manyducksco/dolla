@@ -1,4 +1,4 @@
-import { Context } from "../../context.js";
+import type { Context } from "../../context.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, moveAfter } from "../utils.js";
 

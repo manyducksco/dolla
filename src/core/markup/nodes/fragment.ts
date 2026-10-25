@@ -1,4 +1,4 @@
-import { MarkupNode, MountTarget } from "../types.js";
+import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter } from "../utils.js";
 
 /**

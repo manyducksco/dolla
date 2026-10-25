@@ -1,5 +1,5 @@
 import type { View } from "../../../types.js";
-import { Context, createContext, mountContext, cleanupContext, REPLACING, isMounted } from "../../context.js";
+import { createContext, mountContext, cleanupContext, REPLACING, isMounted, type Context } from "../../context.js";
 import { peek } from "../../signals.js";
 import { pushComponentName, popComponentName } from "../../signal-debug.js";
 import { MarkupNode, type MountTarget } from "../types.js";

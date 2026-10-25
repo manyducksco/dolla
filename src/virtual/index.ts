@@ -2,7 +2,7 @@ import { onEffect } from "../core/context.js";
 import { showIf } from "../core/markup/helpers.js";
 import { createMarkup } from "../core/markup/utils.js";
 import { batch, compose, createAtom, peek, type Getter } from "../core/signals.js";
-import { View } from "../types.js";
+import type { View } from "../types.js";
 
 export interface VirtualListAPI<T> {
   scrollToBottom: (smooth?: boolean) => void;

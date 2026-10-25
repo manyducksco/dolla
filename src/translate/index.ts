@@ -1,5 +1,5 @@
-import { Context } from "../core/context.js";
-import { DollaPlugin } from "../core/root.js";
+import type { Context } from "../core/context.js";
+import type { DollaPlugin } from "../core/root.js";
 import { unwrap, compose, createAtom, type Getter } from "../core/signals.js";
 import { isFunction } from "../utils.js";
 

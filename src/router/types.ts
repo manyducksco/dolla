@@ -1,6 +1,7 @@
-import type { Setter, Getter, Renderable, View, MaybeGetter } from "../core";
-import type { Context } from "../core/context";
-import type { MarkupNode } from "../core/markup/types";
+import type { Context } from "../core/context.js";
+import type { MarkupNode } from "../core/markup/types.js";
+import type { Getter, MaybeGetter, Setter } from "../core/signals.js";
+import type { Renderable, View } from "../types.js";
 import type { Match } from "./utils";
 
 export type Stringable = { toString(): string };

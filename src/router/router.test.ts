@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Context, createContext, mountContext } from "../core/context.js";
-import { DollaPlugin } from "../core/index.js";
+import { createContext, mountContext, type Context } from "../core/context.js";
+import type { DollaPlugin } from "../core/index.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
 import { PARENT_ELEMENT } from "../core/symbols.js";
 

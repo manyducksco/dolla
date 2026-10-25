@@ -80,8 +80,9 @@
     "build:esbuild": "tsc && node build.js",
     "build": "vite build && tsc",
     "docs:check": "node scripts/check-docs.mjs",
+    "bundle:check": "node scripts/check-tree-shaking.mjs",
     "start": "tsc --watch",
-    "prepublishOnly": "NODE_ENV=production npm run build"
+    "prepublishOnly": "NODE_ENV=production npm run build && npm run bundle:check"
   },
   "sideEffects": false,
   "type": "module",

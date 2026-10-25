@@ -2,7 +2,7 @@ import type * as CSS from "csstype";
 import type { Context, GenericState } from "./core/context.js";
 import type { Markup, MarkupNode } from "./core/markup/types.js";
 import type { Getter, MaybeGetter } from "./core/signals.js";
-import { CSSTemplate } from "./core/markup/css.js";
+import type { CSSTemplate } from "./core/markup/css-template.js";
 
 export type { MaybeGetter };
 

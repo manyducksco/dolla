@@ -1,13 +1,21 @@
 import type { Renderable, View } from "../../types.js";
 import { isArray, isFunction, isNumber, isString } from "../../utils.js";
-import { Context, createContext } from "../context.js";
+import { createContext, type Context } from "../context.js";
 import { getDebug } from "../debug.js";
 import { DOMNode } from "./nodes/dom.js";
 import { DynamicNode } from "./nodes/dynamic.js";
 import { ElementNode } from "./nodes/element.js";
 import { FragmentNode } from "./nodes/fragment.js";
 import { ViewNode } from "./nodes/view.js";
-import { IS_MARKUP, IS_MARKUP_NODE, IS_MARKUP_NODE_CLASS, Markup, MarkupNode, MountTarget, PropsOf } from "./types.js";
+import {
+  IS_MARKUP,
+  IS_MARKUP_NODE,
+  IS_MARKUP_NODE_CLASS,
+  MarkupNode,
+  type Markup,
+  type MountTarget,
+  type PropsOf,
+} from "./types.js";
 
 export function createMarkup<Type extends string | View<any> | (new (...args: any[]) => MarkupNode)>(
   type: Type,

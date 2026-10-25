@@ -1,10 +1,18 @@
-import { MaybeGetter, onCleanup } from "..";
-import type { Getter } from "../signals";
 import { isFunction, uniqueId } from "../../utils";
-import { Context, onEffect } from "../context";
+import type { MaybeGetter } from "../../types.js";
+import { onCleanup, onEffect, type Context } from "../context";
+import type { Getter } from "../signals";
+import {
+  IS_CONDITIONAL_TEMPLATE,
+  IS_CSS_TEMPLATE,
+  isConditionalTemplate,
+  isCSSTemplate,
+  type ConditionalTemplate,
+  type CSSTemplate,
+} from "./css-template.js";
 
-const IS_CSS_TEMPLATE = Symbol.for("$_IS_CSS_TEMPLATE");
-const IS_CONDITIONAL_TEMPLATE = Symbol.for("$_IS_CONDITIONAL_TEMPLATE");
+export { isConditionalTemplate, isCSSTemplate };
+export type { ConditionalTemplate, CSSTemplate };
 
 /*============================*\
 ||           Types            ||
@@ -68,39 +76,9 @@ export type CSSTemplateBinding = {
   initialValue: any;
 };
 
-/**
- * A wrapper around a CSSTemplate that conditionally applies it.
- */
-export type ConditionalTemplate = {
-  [IS_CONDITIONAL_TEMPLATE]: true;
-  template: CSSTemplate;
-  condition: MaybeGetter<any>;
-};
-
-/**
- * A template for a CSS snippet. Built when applied to an element.
- */
-export type CSSTemplate = {
-  [IS_CSS_TEMPLATE]: true;
-  className: string;
-
-  attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): void;
-  when(condition: MaybeGetter<any>): ConditionalTemplate;
-
-  toString(): string;
-};
-
 /*============================*\
 ||           Helpers          ||
 \*============================*/
-
-export function isCSSTemplate(value: any): value is CSSTemplate {
-  return value != null && value[IS_CSS_TEMPLATE] === true;
-}
-
-export function isConditionalTemplate(value: any): value is ConditionalTemplate {
-  return value != null && value[IS_CONDITIONAL_TEMPLATE] === true;
-}
 
 function getTemplateClassName(value: any): string | undefined {
   return isCSSTemplate(value) ? value.className : undefined;
@@ -148,13 +126,7 @@ function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): str
 }
 
 function isPropertyConfig(value: any): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "syntax" in value &&
-    "value" in value
-  );
+  return typeof value === "object" && value !== null && !Array.isArray(value) && "syntax" in value && "value" in value;
 }
 
 function attachClass(c: Context, className: string, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>) {
@@ -353,13 +325,7 @@ function buildStyles(
       // PropertyConfig: a Houdini @property descriptor. The runtime
       // registers a typed custom property and binds its value from
       // the `value` (getter or static).
-      if (
-        typeof expr === "object" &&
-        expr !== null &&
-        !Array.isArray(expr) &&
-        "syntax" in expr &&
-        "value" in expr
-      ) {
+      if (typeof expr === "object" && expr !== null && !Array.isArray(expr) && "syntax" in expr && "value" in expr) {
         const config = expr as {
           syntax: string;
           value: (() => any) | any;

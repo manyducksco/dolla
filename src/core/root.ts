@@ -1,6 +1,13 @@
 import type { Renderable, View } from "../types.js";
 import { assert, isFunction, isString } from "../utils.js";
-import { type Context, createContext, GenericState, mountContext, cleanupContext, isMounted } from "./context.js";
+import {
+  createContext,
+  mountContext,
+  cleanupContext,
+  isMounted,
+  type Context,
+  type GenericState,
+} from "./context.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";

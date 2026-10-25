@@ -1,5 +1,5 @@
-import { Context } from "./context";
-import { MaybeGetter, peek } from "./signals";
+import type { Context } from "./context";
+import { peek, type MaybeGetter } from "./signals";
 
 export const noOp = () => {};
 
