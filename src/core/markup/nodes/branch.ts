@@ -1,6 +1,7 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { type Getter, peek, subscribe } from "../../signals.js";
+import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter, render } from "../utils.js";
@@ -55,7 +56,10 @@ export class BranchNode extends MarkupNode {
     this.#mounted = true;
     addChild(parent, this.#anchor, after);
 
-    this.#unsubscribe = subscribe(this.#selector, this.#onChange);
+    this.#unsubscribe = subscribe(this.#selector, this.#onChange, {
+      name: "branch:selector",
+      context: this.#context,
+    });
     flushPendingUpdates();
   }
 
@@ -71,7 +75,10 @@ export class BranchNode extends MarkupNode {
       this.#anchor = null;
     }
 
-    this.#node?.unmount(skipDOM);
+    runSafely(() => this.#node?.unmount(skipDOM), {
+      phase: "unmount",
+      context: this.#context,
+    });
     this.#node = undefined;
     this.#active = null;
   }
@@ -83,7 +90,7 @@ export class BranchNode extends MarkupNode {
   }
 
   #onChange = () => {
-    scheduleUpdate(this.#sync);
+    scheduleUpdate(this.#sync, { label: "BranchNode", context: this.#context });
   };
 
   #sync = () => {
@@ -92,7 +99,10 @@ export class BranchNode extends MarkupNode {
     const branch = this.#findBranch(peek(this.#selector));
     if (branch === this.#active) return;
 
-    this.#node?.unmount();
+    runSafely(() => this.#node?.unmount(), {
+      phase: "unmount",
+      context: this.#context,
+    });
     this.#node = undefined;
 
     // Key by the branch config rather than its selector value so fallback and

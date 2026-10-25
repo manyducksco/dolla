@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createContext } from "../../context.js";
+import { setErrorHandler, type SignalError } from "../../errors.js";
+import { MarkupNode, type MountTarget } from "../types.js";
 import { DOMNode } from "./dom.js";
 import { FragmentNode } from "./fragment.js";
 
@@ -11,6 +13,29 @@ function setup() {
 
 function createChildren(context: ReturnType<typeof createContext>) {
   return [new DOMNode(context, document.createTextNode("a")), new DOMNode(context, document.createTextNode("b"))];
+}
+
+class ThrowingNode extends MarkupNode {
+  #mounted = false;
+
+  getRoot(): Node | undefined {
+    return undefined;
+  }
+
+  isMounted() {
+    return this.#mounted;
+  }
+
+  mount(_parent: MountTarget, _after?: Node | null) {
+    this.#mounted = true;
+  }
+
+  unmount() {
+    this.#mounted = false;
+    throw new Error("unmount boom");
+  }
+
+  move() {}
 }
 
 describe("FragmentNode", () => {
@@ -72,6 +97,24 @@ describe("FragmentNode", () => {
       const { context } = setup();
       const node = new FragmentNode(context, []);
       expect(() => node.unmount()).not.toThrow();
+    });
+
+    test("continues unmounting siblings after a child throws", () => {
+      const { context, container } = setup();
+      const errors: SignalError[] = [];
+      setErrorHandler((error) => errors.push(error));
+
+      const throwing = new ThrowingNode();
+      const sibling = new DOMNode(context, document.createTextNode("sibling"));
+      const node = new FragmentNode(context, [throwing, sibling]);
+      node.mount(container);
+
+      expect(() => node.unmount()).not.toThrow();
+      expect(sibling.getRoot()?.parentNode).toBeNull();
+      expect(errors).toHaveLength(1);
+      expect(errors[0].phase).toBe("unmount");
+
+      setErrorHandler(null);
     });
   });
 

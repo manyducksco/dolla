@@ -89,6 +89,17 @@ export function isPromise<T = unknown>(value: unknown): value is Promise<T> {
 }
 
 /**
+ * Returns true if `value` is promise-like (has a callable `then` method).
+ */
+export function isThenable<T = unknown>(value: unknown): value is PromiseLike<T> {
+  return (
+    value != null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as any).then === "function"
+  );
+}
+
+/**
  * Returns true if `value` is a plain JavaScript object.
  */
 export function isObject<T = Record<string | number | symbol, unknown>>(value: unknown): value is T {

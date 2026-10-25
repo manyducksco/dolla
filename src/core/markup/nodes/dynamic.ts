@@ -1,6 +1,7 @@
 import { isArray } from "../../../utils.js";
 import type { Context } from "../../context.js";
 import { subscribe, type Getter } from "../../signals.js";
+import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, toMarkupNodes } from "../utils.js";
@@ -36,11 +37,18 @@ export class DynamicNode extends MarkupNode {
     if (!this.isMounted()) {
       this.#root = createTextNode("");
       addChild(parent, this.#root, after);
-      this.#unsubscribe = subscribe(this.#slot, (content) => {
-        scheduleUpdate(() => {
-          this.#update(content);
-        });
-      });
+      this.#unsubscribe = subscribe(
+        this.#slot,
+        (content) => {
+          scheduleUpdate(
+            () => {
+              this.#update(content);
+            },
+            { label: "DynamicNode", context: this.#context },
+          );
+        },
+        { name: "dynamic", context: this.#context },
+      );
       flushPendingUpdates();
     }
   }
@@ -89,7 +97,10 @@ export class DynamicNode extends MarkupNode {
 
   #cleanup(skipDOM: boolean) {
     for (let i = 0; i < this.#children.length; i++) {
-      this.#children[i].unmount(skipDOM);
+      runSafely(() => this.#children[i].unmount(skipDOM), {
+        phase: "unmount",
+        context: this.#context,
+      });
     }
     this.#children.length = 0;
   }

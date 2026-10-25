@@ -1,6 +1,7 @@
 import type { View } from "../../../types.js";
 import { createContext, mountContext, cleanupContext, REPLACING, isMounted, type Context } from "../../context.js";
 import { peek } from "../../signals.js";
+import { runSafely } from "../../errors.js";
 import { pushComponentName, popComponentName } from "../../signal-debug.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { createTextNode, render } from "../utils.js";
@@ -60,7 +61,10 @@ export class ViewNode<P> extends MarkupNode {
   }
 
   unmount(skipDOM = false) {
-    this.#node?.unmount(skipDOM);
+    runSafely(() => this.#node?.unmount(skipDOM), {
+      phase: "unmount",
+      context: this.context,
+    });
     cleanupContext(this.context);
     unregisterViewInstance(this.#view, this);
   }
@@ -86,7 +90,10 @@ export class ViewNode<P> extends MarkupNode {
     const parent = oldRoot?.parentNode as MountTarget | undefined;
     const after = oldRoot?.previousSibling;
 
-    this.#node?.unmount();
+    runSafely(() => this.#node?.unmount(), {
+      phase: "unmount",
+      context: this.context,
+    });
 
     if (oldRoot && oldRoot.parentNode) {
       oldRoot.parentNode.removeChild(oldRoot);

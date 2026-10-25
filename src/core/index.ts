@@ -1,6 +1,10 @@
 // Root
 export { createRoot } from "./root.js";
-export type { DollaPlugin } from "./root.js";
+export type { DollaPlugin, DollaRootOptions } from "./root.js";
+
+// Errors
+export { SignalError, isSignalError } from "./errors.js";
+export type { ReactiveScopeInfo } from "./errors.js";
 
 // Signals
 export { batch, compose, createAtom, createSetter, peek, unwrap } from "./signals.js";

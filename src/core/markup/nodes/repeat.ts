@@ -1,6 +1,7 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
+import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, render } from "../utils.js";
@@ -60,11 +61,18 @@ export class RepeatNode<T> extends MarkupNode {
       this.#root = createTextNode("");
       addChild(parent, this.#root, after);
 
-      this.#unsubscribe = subscribe(this.#items, (items) => {
-        scheduleUpdate(() => {
-          this._update(Array.from(items));
-        });
-      });
+      this.#unsubscribe = subscribe(
+        this.#items,
+        (items) => {
+          scheduleUpdate(
+            () => {
+              this._update(Array.from(items));
+            },
+            { label: "RepeatNode", context: this.#context },
+          );
+        },
+        { name: "repeat:items", context: this.#context },
+      );
       flushPendingUpdates();
     }
   }
@@ -114,7 +122,10 @@ export class RepeatNode<T> extends MarkupNode {
 
   private _cleanup(skipDOM: boolean) {
     for (const item of this.#connectedItems.values()) {
-      item._node.unmount(skipDOM);
+      runSafely(() => item._node.unmount(skipDOM), {
+        phase: "unmount",
+        context: this.#context,
+      });
     }
     this.#connectedItems.clear();
   }
@@ -160,7 +171,10 @@ export class RepeatNode<T> extends MarkupNode {
       // Unmount deleted items using the new key map for O(1) lookup.
       for (const [key, connected] of this.#connectedItems.entries()) {
         if (!nextItems.has(key)) {
-          connected._node.unmount(false);
+          runSafely(() => connected._node.unmount(false), {
+            phase: "unmount",
+            context: this.#context,
+          });
         }
       }
     });

@@ -11,7 +11,8 @@ import {
 import { ViewNode } from "./markup/nodes/view.js";
 import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
-import { DEBUG, PARENT_ELEMENT } from "./symbols.js";
+import { runSafely, type SignalError } from "./errors.js";
+import { DEBUG, ERROR_HANDLER, PARENT_ELEMENT } from "./symbols.js";
 
 // Marks an element that already hosts a dolla root, so a subsequent mount into
 // the same element can tear down the previous instance instead of stacking a
@@ -30,6 +31,13 @@ export interface DollaRootOptions {
    * Adds additional view info to the DOM to help with debugging.
    */
   debug?: boolean;
+
+  /**
+   * Receives errors raised by signal effects and DOM updates.
+   *
+   * Render and setter-update errors still throw normally.
+   */
+  onError?: (error: SignalError) => void;
 }
 
 export interface DollaRoot {
@@ -66,6 +74,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
   context[PARENT_ELEMENT] = element;
   context[DEBUG] = Boolean(options?.debug);
+  context[ERROR_HANDLER] = options?.onError;
 
   let rootNode: MarkupNode | null = null;
 
@@ -88,9 +97,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     // the same way — only one root per element is valid.)
     const existing = (element as any)?.[ROOT_MARKER];
     if (existing && existing !== rootNode) {
-      try {
-        existing.unmount?.();
-      } catch {}
+      runSafely(() => existing.unmount?.(), { phase: "unmount", context });
       if (element!.firstChild != null) element!.replaceChildren();
     }
 
@@ -108,15 +115,22 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     // the old content stacked in #app — producing the duplicated-Workspace
     // symptom. `rootNode.unmount(false)` is safe to call when already
     // unmounted, and `cleanupContext` no-ops when already cleaned up.
-    rootNode?.unmount(false);
+    const node = rootNode;
     rootNode = null;
+
+    if (node) {
+      runSafely(() => node.unmount(false), { phase: "unmount", context });
+    }
 
     cleanupContext(context);
 
     if (element && (element as any)[ROOT_MARKER]) {
-      try {
-        delete (element as any)[ROOT_MARKER];
-      } catch {}
+      runSafely(
+        () => {
+          delete (element as any)[ROOT_MARKER];
+        },
+        { phase: "unmount", context },
+      );
     }
   }
 

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createContext, mountContext, onEffect, cleanupContext } from "./context";
 import {
   batch,
@@ -10,6 +10,7 @@ import {
   type Getter,
 } from "./signals";
 import { pushComponentName, popComponentName } from "./signal-debug";
+import { SignalError, isSignalError, setErrorHandler } from "./errors";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = createAtom(5);
@@ -286,6 +287,16 @@ describe("error enhancement", () => {
     }
   }
 
+  function captureErrors(): SignalError[] {
+    const errors: SignalError[] = [];
+    setErrorHandler((error) => errors.push(error));
+    return errors;
+  }
+
+  afterEach(() => {
+    setErrorHandler(null);
+  });
+
   test("enhances error in composed getter (lazy eval)", () => {
     const err = catchError(() => {
       const getter = compose(() => {
@@ -295,7 +306,7 @@ describe("error enhancement", () => {
     });
 
     expect(err).toBeInstanceOf(Error);
-    expect(err.message).toContain("--- Reactive context ---");
+    expect(err.message).toContain("Reactive context");
     expect(err.message).toContain('composed "(anonymous)"');
   });
 
@@ -320,23 +331,34 @@ describe("error enhancement", () => {
     setA(2);
 
     const err = catchError(() => bad());
-    expect(err.message).toContain("--- Reactive context ---");
+    expect(err.message).toContain("Reactive context");
     expect(err.message).toContain('composed "bad"');
     expect(err.message).toContain("two is bad");
   });
 
-  test("enhances error in effect initial execution", () => {
-    const err = catchError(() => {
+  test("reports error in effect initial execution and detaches the effect", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(0);
+    const runs: number[] = [];
+
+    expect(() => {
       createEffect(() => {
+        runs.push(a());
         throw new Error("effect boom");
       });
-    });
+    }).not.toThrow();
 
-    expect(err.message).toContain("--- Reactive context ---");
-    expect(err.message).toContain('effect "(anonymous)"');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(SignalError);
+    expect(errors[0].message).toContain("Reactive context");
+    expect(errors[0].message).toContain('effect "(anonymous)"');
+
+    setA(1);
+    expect(runs).toEqual([0]);
   });
 
-  test("enhances error in effect on re-run", () => {
+  test("reports error in effect on re-run without throwing from the setter", () => {
+    const errors = captureErrors();
     const [a, setA] = createAtom(1);
 
     createEffect(() => {
@@ -344,9 +366,11 @@ describe("error enhancement", () => {
       if (a() === 2) throw new Error("re-run boom");
     });
 
-    const err = catchError(() => setA(2));
-    expect(err.message).toContain("--- Reactive context ---");
-    expect(err.message).toContain('effect "(anonymous)"');
+    expect(() => setA(2)).not.toThrow();
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("Reactive context");
+    expect(errors[0].message).toContain('effect "(anonymous)"');
+    expect(errors[0].trigger.length).toBeGreaterThan(0);
   });
 
   test("uses options.name override for compose", () => {
@@ -368,11 +392,14 @@ describe("error enhancement", () => {
   });
 
   test("uses options.name override for createEffect", () => {
-    const err = catchError(() => {
-      createEffect(() => { throw new Error("effect named"); }, { name: "MyEffect" });
-    });
+    const errors = captureErrors();
 
-    expect(err.message).toContain('effect "MyEffect"');
+    expect(() => {
+      createEffect(() => { throw new Error("effect named"); }, { name: "MyEffect" });
+    }).not.toThrow();
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain('effect "MyEffect"');
   });
 
   test("includes component name via push/pop", () => {
@@ -402,7 +429,7 @@ describe("error enhancement", () => {
     });
 
     // Message should contain the reactive context exactly once
-    const matches = err.message.match(/--- Reactive context ---/g);
+    const matches = err.message.match(/Reactive context/g);
     expect(matches).toHaveLength(1);
     expect(err.message).toContain('composed "inner"');
     expect(err.message).toContain('composed "outer"');
@@ -442,7 +469,7 @@ describe("error enhancement", () => {
     });
 
     const err = catchError(() => outer());
-    expect(err.message).toContain("--- Reactive context ---");
+    expect(err.message).toContain("Reactive context");
     expect(err.message).toContain('composed "inner"');
     expect(err.message).toContain('composed "outer"');
   });
@@ -453,7 +480,7 @@ describe("error enhancement", () => {
     });
 
     const err = catchError(() => peek(() => getter()));
-    expect(err.message).toContain("--- Reactive context ---");
+    expect(err.message).toContain("Reactive context");
     expect(err.message).toContain('composed "(anonymous)"');
   });
 
@@ -491,7 +518,7 @@ describe("error enhancement", () => {
     set(1);
 
     const err = catchError(() => c8());
-    expect(err.message).toContain("--- Reactive context ---");
+    expect(err.message).toContain("Reactive context");
     // first 3
     expect(err.message).toContain('1 → composed "c8"');
     expect(err.message).toContain('2 → composed "c7"');
@@ -502,5 +529,170 @@ describe("error enhancement", () => {
     expect(err.message).toContain('6 → composed "c3"');
     expect(err.message).toContain('7 → composed "c2"');
     expect(err.message).toContain('8 → composed "c1"');
+  });
+
+  test("does not stop other effects when one throws", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(0);
+    const log: string[] = [];
+
+    createEffect(() => {
+      const value = a();
+      log.push(`bad:${value}`);
+      if (value === 1) throw new Error("boom");
+    });
+
+    createEffect(() => {
+      log.push(`good:${a()}`);
+    });
+
+    expect(() => setA(1)).not.toThrow();
+    expect(log).toEqual(["bad:0", "good:0", "bad:1", "good:1"]);
+    expect(errors).toHaveLength(1);
+
+    // The failed effect stays subscribed and retries on the next change.
+    setA(2);
+    expect(log).toEqual(["bad:0", "good:0", "bad:1", "good:1", "bad:2", "good:2"]);
+  });
+
+  test("cleanup errors do not block the new body or orphan the effect", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(0);
+    const log: string[] = [];
+
+    createEffect(() => {
+      const value = a();
+      log.push(`body:${value}`);
+      return () => {
+        log.push(`cleanup:${value}`);
+        if (value === 0) throw new Error("cleanup boom");
+      };
+    });
+
+    expect(() => setA(1)).not.toThrow();
+    setA(2);
+
+    expect(log).toEqual(["body:0", "cleanup:0", "body:1", "cleanup:1", "body:2"]);
+    expect(errors).toHaveLength(1);
+  });
+
+  test("computed errors are sticky until a dependency changes", () => {
+    const [a, setA] = createAtom(0);
+    const value = compose(() => {
+      const current = a();
+      if (current === 1) throw new Error("bad computed");
+      return current;
+    });
+
+    expect(value()).toBe(0);
+    setA(1);
+
+    expect(() => value()).toThrow(SignalError);
+    expect(() => value()).toThrow(SignalError);
+
+    setA(2);
+    expect(value()).toBe(2);
+  });
+
+  test("parent effects retry after a computed recovers", () => {
+    const [a, setA] = createAtom(0);
+    const value = compose(() => {
+      if (a() === 1) throw new Error("no value");
+      return a();
+    });
+
+    const seen: number[] = [];
+    createEffect(() => {
+      try {
+        seen.push(value());
+      } catch {
+        // The effect itself recovers on the next dependency change.
+      }
+    });
+
+    setA(1);
+    setA(2);
+
+    expect(seen).toEqual([0, 2]);
+  });
+
+  test("failed subscribe initial execution detaches and returns a no-op", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(0);
+    const calls: number[] = [];
+
+    const unsubscribe = subscribe(a, (value) => {
+      calls.push(value);
+      throw new Error("subscribe boom");
+    });
+
+    expect(calls).toEqual([0]);
+    expect(errors).toHaveLength(1);
+
+    setA(1);
+    expect(calls).toEqual([0]);
+    unsubscribe();
+  });
+
+  test("reports async effect callbacks as unsupported", () => {
+    const errors = captureErrors();
+
+    createEffect(async () => {
+      await Promise.resolve();
+    });
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("must be synchronous");
+  });
+
+  test("preserves the batch callback error when an effect also fails", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(0);
+
+    createEffect(() => {
+      if (a() === 1) throw new Error("effect boom");
+    });
+
+    expect(() =>
+      batch(() => {
+        setA(1);
+        throw new Error("callback boom");
+      }),
+    ).toThrow("callback boom");
+
+    expect(errors).toHaveLength(1);
+  });
+
+  test("direct setter updater errors still throw", () => {
+    const [a, setA] = createAtom(0);
+
+    const error = catchError(() =>
+      setA(() => {
+        throw new Error("updater boom");
+      }),
+    );
+
+    expect(error).toBeInstanceOf(SignalError);
+    expect((error as SignalError).phase).toBe("setter");
+    expect(error.message).toContain("updater boom");
+    expect(a()).toBe(0);
+  });
+
+  test("exposes the structured error through SignalError", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(0);
+
+    createEffect(() => {
+      if (a() === 1) throw new RangeError("bad range");
+    });
+
+    setA(1);
+
+    const error = errors[0];
+    expect(isSignalError(error)).toBe(true);
+    expect(error.cause).toBeInstanceOf(RangeError);
+    expect(error.original).toBeInstanceOf(RangeError);
+    expect(error.phase).toBe("effect");
+    expect(error.stack).toContain("bad range");
   });
 });

@@ -99,6 +99,7 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 | [Cheatsheet](./docs/cheatsheet.md)          | Task → code lookups for common jobs                    |
 | [HTML templates](./docs/html.md)            | The buildless `html` helper and JSX equivalents        |
 | [App root](./docs/root.md)                  | `createRoot`, plugins, async mount, unmount            |
+| [Errors](./docs/errors.md)                  | Effect error reporting and `SignalError`              |
 | [Debugging](./docs/debugging.md)            | Loggers, levels, filters, and debug mode               |
 | [Utilities](./docs/utilities.md)            | debounce, throttle, sleep                              |
 | [FAQ](./docs/faq.md)                        | Common questions and gotchas                           |

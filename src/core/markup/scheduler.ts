@@ -1,4 +1,14 @@
-const pendingUpdates = new Set<() => void>();
+import type { Context } from "../context.js";
+import { reportSignalError, toSignalError } from "../errors.js";
+
+interface UpdateMeta {
+  label?: string;
+  context?: Context;
+}
+
+type PendingUpdate = UpdateMeta & { fn: () => void };
+
+const pendingUpdates = new Map<() => void, UpdateMeta>();
 let isScheduled = false;
 let isFlushing = false;
 
@@ -14,14 +24,24 @@ function flushUpdates() {
     // if any update threw — the throw would skip the cleanup and leave
     // the scheduler permanently stuck.
     while (pendingUpdates.size > 0) {
-      const updates = Array.from(pendingUpdates);
+      const updates: PendingUpdate[] = [];
+      for (const [fn, meta] of pendingUpdates) {
+        updates.push({ fn, ...meta });
+      }
       pendingUpdates.clear();
+
       for (const update of updates) {
         count++;
         try {
-          update();
-        } catch (e) {
-          console.error("[dolla] Scheduled update threw an error:", e);
+          update.fn();
+        } catch (error) {
+          const signalError = toSignalError(error, {
+            phase: "update",
+            label: update.label,
+            context: update.context,
+            triggerFrames: [],
+          });
+          reportSignalError(signalError, update.context);
         }
       }
     }
@@ -39,8 +59,8 @@ export function flushPendingUpdates() {
   }
 }
 
-export function scheduleUpdate(updateFn: () => void) {
-  pendingUpdates.add(updateFn);
+export function scheduleUpdate(updateFn: () => void, meta?: UpdateMeta) {
+  pendingUpdates.set(updateFn, meta ?? {});
   if (!isScheduled) {
     isScheduled = true;
     queueMicrotask(flushUpdates);

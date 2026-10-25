@@ -1,5 +1,7 @@
-import { isFunction } from "../utils.js";
-import { reactiveScopeStack, setNodeDebug, enhanceError } from "./signal-debug.js";
+import { isFunction, isThenable } from "../utils.js";
+import { reactiveScopeStack, setNodeDebug } from "./signal-debug.js";
+import { isSignalError, reportSignalError, toSignalError, type SignalErrorInfo } from "./errors.js";
+import type { Context } from "./context.js";
 
 export interface ReactiveNode {
   _deps?: Link;
@@ -12,11 +14,13 @@ export interface ReactiveNode {
 interface EffectNode extends ReactiveNode {
   _fn(): void | (() => void);
   _cleanup?: () => void;
+  _context?: Context;
 }
 
 interface ComputedNode<T = any> extends ReactiveNode {
   _value: T | undefined;
   _getter: (previousValue?: T) => T;
+  _error?: unknown;
 }
 
 interface ValueNode<T = any> extends ReactiveNode {
@@ -339,6 +343,15 @@ function setActiveSub(sub?: ReactiveNode) {
   return prevSub;
 }
 
+function untracked<T>(fn: () => T): T {
+  const prevSub = setActiveSub(undefined);
+  try {
+    return fn();
+  } finally {
+    setActiveSub(prevSub);
+  }
+}
+
 function withReactiveScope<T>(
   node: ReactiveNode,
   prevSub: ReactiveNode | undefined,
@@ -347,14 +360,15 @@ function withReactiveScope<T>(
 ): T {
   const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(node);
+  let succeeded = false;
   try {
-    return fn();
-  } catch (error) {
-    throw enhanceError(error);
+    const result = fn();
+    succeeded = true;
+    return result;
   } finally {
     activeSub = prevSub;
     node._flags &= ~ReactiveFlags.RecursedCheck;
-    if (withPurge) purgeDeps(node);
+    if (withPurge && succeeded) purgeDeps(node);
     reactiveScopeStack.length = scopeLen;
   }
 }
@@ -364,15 +378,25 @@ function updateComputed(c: ComputedNode): boolean {
   c._depsTail = undefined;
   c._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
   const prevSub = setActiveSub(c);
-  return withReactiveScope(
-    c,
-    prevSub,
-    () => {
-      const oldValue = c._value;
-      return oldValue !== (c._value = c._getter(oldValue));
-    },
-    true,
-  );
+  const scopeLen = reactiveScopeStack.length;
+  reactiveScopeStack.push(c);
+
+  let succeeded = false;
+  try {
+    const oldValue = c._value;
+    const changed = oldValue !== (c._value = c._getter(oldValue));
+    c._error = undefined;
+    succeeded = true;
+    return changed;
+  } catch (error) {
+    c._error = error;
+    throw toSignalError(error, { phase: "computed", node: c });
+  } finally {
+    activeSub = prevSub;
+    c._flags &= ~ReactiveFlags.RecursedCheck;
+    if (succeeded) purgeDeps(c);
+    reactiveScopeStack.length = scopeLen;
+  }
 }
 
 function updateValue(v: ValueNode): boolean {
@@ -381,27 +405,86 @@ function updateValue(v: ValueNode): boolean {
   return v._skipEqualValues ? didChange : true;
 }
 
+function effectErrorInfo(e: EffectNode, phase: "effect" | "effect-cleanup"): SignalErrorInfo {
+  return { phase, node: e, context: e._context };
+}
+
+function reportAsyncEffect(e: EffectNode, result: PromiseLike<unknown>): void {
+  const error = new Error(
+    "Effect callbacks must be synchronous. Return a cleanup function instead, or use an AbortController for async work.",
+  );
+
+  reportSignalError(
+    toSignalError(error, {
+      phase: "effect",
+      node: e,
+      context: e._context,
+      triggerFrames: [],
+    }),
+    e._context,
+  );
+
+  // Prevent an unhandled rejection if the async callback fails later.
+  Promise.resolve(result).catch((reason) => {
+    reportSignalError(toSignalError(reason, effectErrorInfo(e, "effect")), e._context);
+  });
+}
+
 function run(e: EffectNode): void {
   const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(e);
   try {
     const flags = e._flags;
-    if (flags & ReactiveFlags.Dirty || (flags & ReactiveFlags.Pending && checkDirty(e._deps!, e))) {
+    let shouldRun = false;
+
+    try {
+      shouldRun = Boolean(
+        flags & ReactiveFlags.Dirty ||
+          (flags & ReactiveFlags.Pending && checkDirty(e._deps!, e)),
+      );
+    } catch (error) {
+      // A dependency threw while checking dirtiness. Keep the effect able to
+      // retry on the next relevant change instead of leaving it Pending.
+      e._flags = ReactiveFlags.Watching;
+      throw toSignalError(error, effectErrorInfo(e, "effect"));
+    }
+
+    if (shouldRun) {
       ++cycle;
       e._depsTail = undefined;
       e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
       const prevSub = setActiveSub(e);
+      let bodyFailed = false;
+
+      const cleanup = e._cleanup;
+      e._cleanup = undefined;
+      if (cleanup) {
+        try {
+          cleanup();
+        } catch (error) {
+          reportSignalError(
+            toSignalError(error, effectErrorInfo(e, "effect-cleanup")),
+            e._context,
+          );
+        }
+      }
+
       try {
-        e._cleanup?.();
-        e._cleanup = undefined;
         const result = e._fn();
-        if (isFunction(result)) e._cleanup = result;
+        if (isFunction(result)) {
+          e._cleanup = result;
+        } else if (isThenable(result)) {
+          reportAsyncEffect(e, result);
+        }
       } catch (error) {
-        throw enhanceError(error);
+        bodyFailed = true;
+        throw toSignalError(error, effectErrorInfo(e, "effect"));
       } finally {
         activeSub = prevSub;
         e._flags &= ~ReactiveFlags.RecursedCheck;
-        purgeDeps(e);
+        // Keep the dependency union after a failure so the effect can retry
+        // when any of its previous or newly-read dependencies change.
+        if (!bodyFailed) purgeDeps(e);
       }
     } else {
       e._flags = ReactiveFlags.Watching;
@@ -416,7 +499,15 @@ function flush(): void {
     while (notifyIndex < queuedLength) {
       const effect = queued[notifyIndex]!;
       queued[notifyIndex++] = undefined;
-      run(effect);
+      try {
+        run(effect);
+      } catch (error) {
+        if (isSignalError(error)) {
+          reportSignalError(error, effect._context);
+        } else {
+          throw error;
+        }
+      }
     }
   } finally {
     while (notifyIndex < queuedLength) {
@@ -443,41 +534,74 @@ function purgeDeps(sub: ReactiveNode) {
 \*==================================*/
 
 function resolveValue<T>(next: SetterAction<T>, current: T): T {
-  if (isFunction(next)) return peek(() => next(current)) as T;
+  if (isFunction(next)) {
+    const prevSub = setActiveSub(undefined);
+    try {
+      return (next as (current: T) => T)(current);
+    } catch (error) {
+      throw toSignalError(error, { phase: "setter" });
+    } finally {
+      setActiveSub(prevSub);
+    }
+  }
   return next as T;
 }
 
 function computedGetter(node: ComputedNode) {
-  const flags = node._flags;
-  if (
-    flags & ReactiveFlags.Dirty ||
-    (flags & ReactiveFlags.Pending &&
-      (checkDirty(node._deps!, node) || ((node._flags = flags & ~ReactiveFlags.Pending), false)))
-  ) {
-    if (updateComputed(node)) {
-      const subs = node._subs;
-      if (subs !== undefined) {
-        shallowPropagate(subs);
+  const sub = activeSub;
+
+  try {
+    const flags = node._flags;
+    if (
+      flags & ReactiveFlags.Dirty ||
+      (flags & ReactiveFlags.Pending &&
+        (checkDirty(node._deps!, node) || ((node._flags = flags & ~ReactiveFlags.Pending), false)))
+    ) {
+      if (updateComputed(node)) {
+        const subs = node._subs;
+        if (subs !== undefined) {
+          shallowPropagate(subs);
+        }
+      }
+    } else if (node._error !== undefined) {
+      throw toSignalError(node._error, { phase: "computed", node });
+    } else if (!node._flags) {
+      node._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
+      const prevSub = setActiveSub(node);
+      const scopeLen = reactiveScopeStack.length;
+      reactiveScopeStack.push(node);
+
+      let succeeded = false;
+      try {
+        node._value = unwrap(node._getter());
+        node._error = undefined;
+        succeeded = true;
+      } catch (error) {
+        node._error = error;
+        throw toSignalError(error, { phase: "computed", node });
+      } finally {
+        activeSub = prevSub;
+        node._flags &= ~ReactiveFlags.RecursedCheck;
+        if (succeeded) purgeDeps(node);
+        reactiveScopeStack.length = scopeLen;
       }
     }
-  } else if (!flags) {
-    node._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
-    const prevSub = setActiveSub(node);
-    withReactiveScope(node, prevSub, () => {
-      node._value = unwrap(node._getter());
-    });
+
+    return node._value!;
+  } finally {
+    // Link even when evaluation throws, so a parent effect retries when the
+    // computed recovers.
+    if (sub !== undefined) {
+      link(node, sub, cycle);
+    }
   }
-  const sub = activeSub;
-  if (sub !== undefined) {
-    link(node, sub, cycle);
-  }
-  return node._value!;
 }
 
 function computedSetter(node: ComputedNode, next: SetterAction<any>) {
   const value = resolveValue(next, node._value);
   if (node._value !== value) {
     node._value = value;
+    node._error = undefined;
 
     node._flags &= ~(ReactiveFlags.Dirty | ReactiveFlags.Pending);
 
@@ -544,8 +668,24 @@ function effectCleanup(node: ReactiveNode): void {
   if (sub !== undefined) {
     unlink(sub);
   }
-  (node as EffectNode)._cleanup?.();
-  (node as EffectNode)._cleanup = undefined;
+
+  const effect = node as EffectNode;
+  const cleanup = effect._cleanup;
+  effect._cleanup = undefined;
+  if (!cleanup) return;
+
+  const scopeLen = reactiveScopeStack.length;
+  reactiveScopeStack.push(node);
+  try {
+    cleanup();
+  } catch (error) {
+    reportSignalError(
+      toSignalError(error, effectErrorInfo(effect, "effect-cleanup")),
+      effect._context,
+    );
+  } finally {
+    reactiveScopeStack.length = scopeLen;
+  }
 }
 
 /*==================================*\
@@ -694,10 +834,14 @@ export function compose<T>(getter: T | ((previousValue?: T) => Getter<T> | T), o
 /**
  * Creates an effect with auto-tracking for getters called within its callback.
  */
-export function createEffect(fn: () => void, options?: { name?: string }): () => void {
+export function createEffect(
+  fn: () => void,
+  options?: { name?: string; context?: Context },
+): () => void {
   const e: EffectNode = {
     _fn: fn,
     _cleanup: undefined,
+    _context: options?.context,
     _subs: undefined,
     _subsTail: undefined,
     _deps: undefined,
@@ -709,10 +853,27 @@ export function createEffect(fn: () => void, options?: { name?: string }): () =>
   if (prevSub !== undefined) {
     link(e, prevSub, 0);
   }
-  withReactiveScope(e, prevSub, () => {
-    const result = e._fn();
-    if (isFunction(result)) e._cleanup = result;
-  });
+
+  try {
+    withReactiveScope(e, prevSub, () => {
+      try {
+        const result = e._fn();
+        if (isFunction(result)) {
+          e._cleanup = result;
+        } else if (isThenable(result)) {
+          reportAsyncEffect(e, result);
+        }
+      } catch (error) {
+        throw toSignalError(error, effectErrorInfo(e, "effect"));
+      }
+    });
+  } catch (error) {
+    const signalError = toSignalError(error, effectErrorInfo(e, "effect"));
+    effectCleanup(e);
+    reportSignalError(signalError, e._context);
+    return () => {};
+  }
+
   return () => effectCleanup(e);
 }
 
@@ -737,7 +898,7 @@ export function peek<T>(value: T | Getter<T>): T {
   try {
     return unwrap(value);
   } catch (error) {
-    throw enhanceError(error);
+    throw toSignalError(error, { phase: "computed" });
   } finally {
     setActiveSub(prevSub);
   }
@@ -749,22 +910,44 @@ export function peek<T>(value: T | Getter<T>): T {
  */
 export function batch(callback: () => void): void {
   ++batchDepth;
+
+  let callbackError: unknown;
+  let callbackFailed = false;
   try {
     callback();
-  } finally {
-    if (!--batchDepth) {
+  } catch (error) {
+    callbackError = error;
+    callbackFailed = true;
+  }
+
+  if (!--batchDepth) {
+    try {
       flush();
+    } catch (error) {
+      if (callbackFailed) {
+        throw new AggregateError(
+          [callbackError, error],
+          "batch callback and flush both failed",
+        );
+      }
+      throw error;
     }
   }
+
+  if (callbackFailed) throw callbackError;
 }
 
 /**
  * Subscribes to a getter and runs the callback whenever its value changes.
  * Returns an unsubscribe function.
  */
-export function subscribe<T>(target: Getter<T>, fn: (value: T) => any): () => void {
+export function subscribe<T>(
+  target: Getter<T>,
+  fn: (value: T) => any,
+  options?: { name?: string; context?: Context },
+): () => void {
   return createEffect(() => {
     const value = target();
-    peek(() => fn(value));
-  });
+    untracked(() => fn(value));
+  }, options);
 }

@@ -1,5 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
+import { runSafely } from "../../errors.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter, render } from "../utils.js";
 
@@ -52,7 +53,10 @@ export class PortalNode extends MarkupNode {
 
       // Portals always force unmount the DOM of their children
       if (this.#childNode?.isMounted()) {
-        this.#childNode.unmount(false);
+        runSafely(() => this.#childNode!.unmount(false), {
+          phase: "unmount",
+          context: this.#context,
+        });
       }
     }
   }

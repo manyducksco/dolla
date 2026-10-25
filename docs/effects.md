@@ -46,6 +46,24 @@ onEffect(context, () => {
 
 See [When updates run](./concepts.md#when-updates-run) for the difference between synchronous effects and microtask DOM updates.
 
+## Errors
+
+Effect errors are reported, not thrown from the setter that triggered them. All other effects still run. Use `createRoot({ onError })` to handle them:
+
+```jsx
+const root = createRoot("#app", {
+  onError(error) {
+    console.error(error);
+  },
+});
+```
+
+`onError` receives a [`SignalError`](./errors.md#signalerror) containing the original error in `cause`, the effect name, and the update that triggered it.
+
+If an effect throws during its initial run, it is detached and the error is reported; the returned unsubscribe function becomes a no-op. Cleanup errors are reported but do not stop the next effect run or the rest of teardown.
+
+See [Errors](./errors.md) for the full model.
+
 ## Outside the context tree
 
 If you need an effect where there is no view or store context — for example, in a module-level integration or a test harness — use the standalone `createEffect` described in [Standalone effects](./advanced.md#standalone-effects). Prefer `onEffect` whenever a context is available.
@@ -54,4 +72,5 @@ If you need an effect where there is no view or store context — for example, i
 
 - [Hooks](./hooks.md) — lifecycle hooks
 - [Reactivity](./reactivity.md) — atoms, `compose`, `batch`, `peek`
+- [Errors](./errors.md) — effect reporting and `SignalError`
 - [Mental model](./concepts.md#when-updates-run) — update timing

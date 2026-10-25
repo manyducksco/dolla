@@ -127,6 +127,19 @@ const stop = createEffect(() => {
 
 Prefer [`onEffect(context, ...)`](./effects.md) inside views and stores. `createEffect` is the backup for code that has no context.
 
+Standalone effects have no root context, so effect errors go to the default reporter. In tests or module-level integrations, install a fallback handler with `setErrorHandler` from `@manyducks.co/dolla/internals`:
+
+```js
+import { setErrorHandler } from "@manyducks.co/dolla/internals";
+
+const errors = [];
+setErrorHandler((error) => errors.push(error));
+// ...run signal code...
+setErrorHandler(null);
+```
+
+See [Errors](./errors.md) for the `SignalError` shape and reporting rules.
+
 ## Store inspection
 
 `hasStore(context, Store)` and `hasOwnStore(context, Store)` are exported from `@manyducks.co/dolla/internals` for inspecting a context without `getStore`'s error. `hasStore` checks this context and its ancestors; `hasOwnStore` checks only this exact context. Both return `false` if the store has not been registered anywhere yet.

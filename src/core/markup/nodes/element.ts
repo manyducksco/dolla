@@ -2,6 +2,7 @@ import { isArray, isFunction, isNumber, isObject, isString } from "../../../util
 import { cleanupContext, createContext, getNearestViewNode, mountContext, type Context } from "../../context.js";
 import type { Ref } from "../../ref.js";
 import { type Getter, subscribe } from "../../signals.js";
+import { runSafely } from "../../errors.js";
 import { DEBUG } from "../../symbols.js";
 import { isConditionalTemplate, isCSSTemplate, type ConditionalTemplate, type CSSTemplate } from "../css-template.js";
 import { flushPendingUpdates, scheduleUpdate } from "../scheduler.js";
@@ -166,19 +167,23 @@ export class ElementNode extends MarkupNode {
     }
 
     for (const child of this.#childNodes) {
-      child.unmount(true); // Skip DOM removal for children
+      runSafely(() => child.unmount(true), { phase: "unmount", context: this.#context });
     }
 
     // Clear reactivity
-    this.#unsubscribers.forEach((unsubscribe) => unsubscribe());
+    const unsubscribers = Array.from(this.#unsubscribers);
     this.#unsubscribers.clear();
+    for (const unsubscribe of unsubscribers) {
+      runSafely(unsubscribe, { phase: "unmount", context: this.#context });
+    }
 
     cleanupContext(this.#context);
 
     // Clear ref
     if (this.#refCleanup) {
-      this.#refCleanup();
+      const refCleanup = this.#refCleanup;
       this.#refCleanup = undefined;
+      runSafely(refCleanup, { phase: "unmount", context: this.#context });
     }
 
     // Release memory
@@ -189,12 +194,19 @@ export class ElementNode extends MarkupNode {
     moveAfter(parent, this.#root, after);
   }
 
-  #attach<T>(value: Getter<T> | T, callback: (value: T) => void) {
+  #attach<T>(value: Getter<T> | T, callback: (value: T) => void, label: string) {
     if (isFunction<Getter<T>>(value)) {
       this.#unsubscribers.add(
-        subscribe(value, (current) => {
-          scheduleUpdate(() => callback(current));
-        }),
+        subscribe(
+          value,
+          (current) => {
+            scheduleUpdate(() => callback(current), {
+              label: "ElementNode",
+              context: this.#context,
+            });
+          },
+          { name: label, context: this.#context },
+        ),
       );
     } else {
       // No need to schedule since DOM node is not connected yet.
@@ -226,25 +238,37 @@ export class ElementNode extends MarkupNode {
       } else if (key === "class" || key === "className") {
         this.#applyClasses(element, value);
       } else if (key === "for") {
-        this.#attach(value, (current) => {
-          if (current == null) {
-            element.removeAttribute("for");
-          } else {
-            element.htmlFor = current;
-          }
-        });
+        this.#attach(
+          value,
+          (current) => {
+            if (current == null) {
+              element.removeAttribute("for");
+            } else {
+              element.htmlFor = current;
+            }
+          },
+          "element:for",
+        );
       } else if (key.startsWith("prop:")) {
         // Keys starting with `prop:` are set as props.
         const _key = key.substring(5);
-        this.#attach(value, (current) => {
-          setProp(element, _key, current);
-        });
+        this.#attach(
+          value,
+          (current) => {
+            setProp(element, _key, current);
+          },
+          `element:${key}`,
+        );
       } else if (key.startsWith("attr:") || key[0] === ":") {
         // Keys starting with `attr:` or `:` are set as attributes.
         const _key = (key.startsWith("attr:") ? key.substring(5) : key.substring(1)).toLowerCase();
-        this.#attach(value, (current) => {
-          setAttribute(element, _key, current);
-        });
+        this.#attach(
+          value,
+          (current) => {
+            setAttribute(element, _key, current);
+          },
+          `element:${key}`,
+        );
       } else if (key.startsWith("on:")) {
         this.#attachListener(element, key.substring(3), value);
       } else if (key.startsWith("on")) {
@@ -253,19 +277,27 @@ export class ElementNode extends MarkupNode {
       } else if (key in element && !this.#context[IS_SVG]) {
         // Set as property if the element has one.
         if (typeof element[key] === "boolean") {
-          this.#attach(value, (current) => {
-            const isTrue = Boolean(current);
-            element[key] = isTrue;
-            if (isTrue) {
-              element.setAttribute(key, "");
-            } else {
-              element.removeAttribute(key);
-            }
-          });
+          this.#attach(
+            value,
+            (current) => {
+              const isTrue = Boolean(current);
+              element[key] = isTrue;
+              if (isTrue) {
+                element.setAttribute(key, "");
+              } else {
+                element.removeAttribute(key);
+              }
+            },
+            `element:${key}`,
+          );
         } else {
-          this.#attach(value, (current) => {
-            setProp(element, key, current);
-          });
+          this.#attach(
+            value,
+            (current) => {
+              setProp(element, key, current);
+            },
+            `element:${key}`,
+          );
         }
       } else {
         // Fall back to attributes.
@@ -281,9 +313,13 @@ export class ElementNode extends MarkupNode {
           attrName = "aria-" + key.slice(4).toLowerCase();
         }
 
-        this.#attach(value, (current) => {
-          setAttribute(element, attrName, current);
-        });
+        this.#attach(
+          value,
+          (current) => {
+            setAttribute(element, attrName, current);
+          },
+          `element:${key}`,
+        );
       }
     }
   }
@@ -310,12 +346,19 @@ export class ElementNode extends MarkupNode {
       for (const [name, { value, priority }] of Object.entries(mapped)) {
         if (isFunction(value)) {
           prevStyles.delete(name);
-          const unsub = subscribe(value, (v) => {
-            scheduleUpdate(() => {
-              if (v) element.style.setProperty(name, formatValue(name, v), priority);
-              else element.style.removeProperty(name);
-            });
-          });
+          const unsub = subscribe(
+            value,
+            (v) => {
+              scheduleUpdate(
+                () => {
+                  if (v) element.style.setProperty(name, formatValue(name, v), priority);
+                  else element.style.removeProperty(name);
+                },
+                { label: "ElementNode", context: this.#context },
+              );
+            },
+            { name: `element:style:${name}`, context: this.#context },
+          );
           this.#unsubscribers.add(unsub);
           localUnsubs.add(unsub);
         } else if (value != null) {
@@ -340,7 +383,7 @@ export class ElementNode extends MarkupNode {
       prevStyles.clear();
     };
 
-    this.#attach(styles, (current) => apply(current));
+    this.#attach(styles, (current) => apply(current), "element:style");
   }
 
   #applyClasses(element: HTMLElement | SVGElement, classes: unknown) {
@@ -370,9 +413,16 @@ export class ElementNode extends MarkupNode {
 
         if (isFunction(value)) {
           prevStaticClasses.delete(name);
-          const unsub = subscribe(value, (isActive) => {
-            scheduleUpdate(() => element.classList.toggle(name, !!isActive));
-          });
+          const unsub = subscribe(
+            value,
+            (isActive) => {
+              scheduleUpdate(() => element.classList.toggle(name, !!isActive), {
+                label: "ElementNode",
+                context: this.#context,
+              });
+            },
+            { name: `element:class:${name}`, context: this.#context },
+          );
           const wrapper = () => {
             element.classList.remove(name);
             unsub();
@@ -390,7 +440,7 @@ export class ElementNode extends MarkupNode {
       }
     };
 
-    this.#attach(classes, (current) => apply(current));
+    this.#attach(classes, (current) => apply(current), "element:class");
   }
 
   /**
@@ -525,9 +575,16 @@ export class ElementNode extends MarkupNode {
       if (!currentTemplates.has(tpl)) continue;
       if (isFunction(condition)) {
         if (!conditionSubs.has(tpl)) {
-          const unsub = subscribe(condition, (val) => {
-            scheduleUpdate(() => element.classList.toggle(tpl.className, Boolean(val)));
-          });
+          const unsub = subscribe(
+            condition,
+            (val) => {
+              scheduleUpdate(() => element.classList.toggle(tpl.className, Boolean(val)), {
+                label: "ElementNode",
+                context: this.#context,
+              });
+            },
+            { name: "element:condition", context: this.#context },
+          );
           conditionSubs.set(tpl, unsub);
           this.#unsubscribers.add(unsub);
         }

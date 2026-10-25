@@ -152,6 +152,7 @@ setCount((current) => String(current + 1)); // getCount() == 3
 ## Next steps
 
 - [Effects](./effects.md) — `onEffect`, auto-tracking, cleanup
+- [Errors](./errors.md) — effect error reporting and `SignalError`
 - [Templates](./templates.md) — interpolation and props
 - [Components](./components.md) — views, stores, and control flow
 - [Cheatsheet](./cheatsheet.md) — quick lookups

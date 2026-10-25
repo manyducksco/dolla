@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { setErrorHandler, type SignalError } from "./errors.js";
 import {
   addStore,
   cleanupContext,
@@ -258,5 +259,29 @@ describe("HMR-stable store identity", () => {
     getStore(ctxA, CounterStore).inc();
     expect(getStore(ctxA, CounterStore).get()).toBe(2);
     expect(getStore(ctxB, CounterStore).get()).toBe(0);
+  });
+
+  test("continues cleanup after a throwing listener", () => {
+    const errors: SignalError[] = [];
+    setErrorHandler((error) => errors.push(error));
+
+    const context = createContext(null);
+    const order: number[] = [];
+    mountContext(context);
+
+    onCleanup(context, () => {
+      order.push(1);
+      throw new Error("cleanup boom");
+    });
+    onCleanup(context, () => {
+      order.push(2);
+    });
+
+    expect(() => cleanupContext(context)).not.toThrow();
+    expect(order).toEqual([1, 2]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].phase).toBe("unmount");
+
+    setErrorHandler(null);
   });
 });

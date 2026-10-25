@@ -81,7 +81,7 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
     const [getCount, setCount] = createAtom(0);
     setCount(getCount() + 1);
   `);
-  expectGzipBelow(result, 2.3 * KB, "signals-only app");
+  expectGzipBelow(result, 3.3 * KB, "signals-only app");
   for (const id of result.modules) {
     if (id.includes("/src/core/markup/")) {
       report(`signals-only app: unexpected rendering module ${id}`);
@@ -97,7 +97,7 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
     ${counter}
     createRoot(document.body, () => jsx("main", { children: [counter()] }));
   `);
-  expectGzipBelow(result, 7.8 * KB, "minimal component app");
+  expectGzipBelow(result, 8.9 * KB, "minimal component app");
   for (const name of [
     "/src/core/markup/css.ts",
     "/src/core/markup/html.ts",

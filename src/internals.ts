@@ -21,6 +21,10 @@ export {
 // Signals
 export { createEffect, subscribe } from "./core/signals.js";
 
+// Errors
+export { SignalError, isSignalError, setErrorHandler } from "./core/errors.js";
+export type { ReactiveScopeInfo } from "./core/errors.js";
+
 // Types
 export type { Markup, MarkupNode } from "./core/markup/types.js";
 export type {

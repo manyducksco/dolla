@@ -1,3 +1,5 @@
+import type { Context } from "../../context.js";
+import { runSafely } from "../../errors.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter } from "../utils.js";
 
@@ -9,9 +11,11 @@ import { addChild, createTextNode, moveAfter } from "../utils.js";
 export class FragmentNode extends MarkupNode {
   #anchor: Text | null = null;
   #children: MarkupNode[];
+  #context: Context;
 
-  constructor(_context: unknown, children: MarkupNode[]) {
+  constructor(context: Context, children: MarkupNode[]) {
     super();
+    this.#context = context;
     this.#children = children;
   }
 
@@ -45,7 +49,7 @@ export class FragmentNode extends MarkupNode {
     }
 
     for (const child of this.#children) {
-      child.unmount(skipDOM);
+      runSafely(() => child.unmount(skipDOM), { phase: "unmount", context: this.#context });
     }
   }
 

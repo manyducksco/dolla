@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createContext } from "../core/context.js";
+import { createContext, onCleanup, onEffect } from "../core/context.js";
+import { setErrorHandler } from "./errors.js";
+import { createAtom } from "./signals.js";
 import { createRoot } from "./root.js";
 import { createRouter, Outlet } from "../router/router.js";
 import { createMarkup } from "./markup/utils.js";
@@ -208,6 +210,115 @@ describe("createRoot", () => {
 
     expect(container.querySelectorAll(".page")).toHaveLength(1);
     expect(container.textContent).toBe("PAGE");
+  });
+
+  test("onError receives errors from effects in mounted views", async () => {
+    const errors: any[] = [];
+    const [count, setCount] = createAtom(0);
+
+    const App = function (this: any) {
+      onEffect(this, () => {
+        if (count() === 1) throw new Error("effect boom");
+      });
+      return "app";
+    };
+
+    const root = createRoot(container, { onError: (error) => errors.push(error) });
+    await root.mount(App);
+
+    expect(() => setCount(1)).not.toThrow();
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toContain("effect boom");
+    expect(errors[0].contextName).toContain("App");
+
+    root.unmount();
+  });
+
+  test("effect errors during mount do not reject mount when handled", async () => {
+    const errors: any[] = [];
+
+    const App = function (this: any) {
+      onEffect(this, () => {
+        throw new Error("mount effect boom");
+      });
+      return "app";
+    };
+
+    const root = createRoot(container, { onError: (error) => errors.push(error) });
+    await expect(root.mount(App)).resolves.toBeUndefined();
+
+    expect(container.textContent).toBe("app");
+    expect(errors).toHaveLength(1);
+
+    root.unmount();
+  });
+
+  test("unmount continues after a cleanup error", async () => {
+    const errors: any[] = [];
+    let secondCleanupRan = false;
+
+    const App = function (this: any) {
+      onCleanup(this, () => {
+        throw new Error("cleanup boom");
+      });
+      onCleanup(this, () => {
+        secondCleanupRan = true;
+      });
+      return "app";
+    };
+
+    const root = createRoot(container, { onError: (error) => errors.push(error) });
+    await root.mount(App);
+
+    expect(() => root.unmount()).not.toThrow();
+    expect(secondCleanupRan).toBe(true);
+    expect(errors).toHaveLength(1);
+    expect(container.textContent).toBe("");
+  });
+
+  test("uses the default reporter when no onError is configured", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const [count, setCount] = createAtom(0);
+
+    const App = function (this: any) {
+      onEffect(this, () => {
+        if (count() === 1) throw new Error("unhandled effect boom");
+      });
+      return "app";
+    };
+
+    const root = createRoot(container);
+    await root.mount(App);
+    setCount(1);
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    root.unmount();
+    consoleError.mockRestore();
+  });
+
+  test("root onError takes precedence over the internals fallback", async () => {
+    const globalErrors: any[] = [];
+    const rootErrors: any[] = [];
+    setErrorHandler((error) => globalErrors.push(error));
+
+    const [count, setCount] = createAtom(0);
+    const App = function (this: any) {
+      onEffect(this, () => {
+        if (count() === 1) throw new Error("boom");
+      });
+      return "app";
+    };
+
+    const root = createRoot(container, { onError: (error) => rootErrors.push(error) });
+    await root.mount(App);
+    setCount(1);
+
+    expect(rootErrors).toHaveLength(1);
+    expect(globalErrors).toHaveLength(0);
+
+    root.unmount();
+    setErrorHandler(null);
   });
 });
 

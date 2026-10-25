@@ -1,4 +1,5 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { setErrorHandler, type SignalError } from "../errors.js";
 import { flushPendingUpdates, scheduleUpdate } from "./scheduler.js";
 
 describe("scheduler", () => {
@@ -86,5 +87,33 @@ describe("scheduler", () => {
 
     expect(order).toEqual([1, 2, 3]);
     errorSpy.mockRestore();
+  });
+
+  test("reports update errors with their label and continues", () => {
+    const errors: SignalError[] = [];
+    setErrorHandler((error) => errors.push(error));
+    const order: number[] = [];
+
+    scheduleUpdate(
+      () => {
+        throw new Error("labeled boom");
+      },
+      { label: "RepeatNode" },
+    );
+    scheduleUpdate(() => order.push(1));
+
+    flushPendingUpdates();
+
+    expect(order).toEqual([1]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].phase).toBe("update");
+    expect(errors[0].label).toBe("RepeatNode");
+    expect(errors[0].message).toContain('update "RepeatNode"');
+
+    setErrorHandler(null);
+  });
+
+  afterEach(() => {
+    setErrorHandler(null);
   });
 });

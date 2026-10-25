@@ -91,7 +91,7 @@ type DollaPlugin = (context: Context) => any;
 
 ## Errors
 
-A rejected plugin promise rejects `mount`. A view that throws during mounting also rejects `mount`. In that case the root may be partially mounted; call `unmount()` before retrying if needed.
+A rejected plugin promise rejects `mount`. A view that throws while rendering also rejects `mount`. In that case the root may be partially mounted; call `unmount()` before retrying if needed.
 
 ```jsx
 try {
@@ -101,8 +101,21 @@ try {
 }
 ```
 
+Errors raised by effects and DOM updates are reported instead of thrown from setters. Pass `onError` to receive them:
+
+```jsx
+const root = createRoot("#app", {
+  onError(error) {
+    console.error(error);
+  },
+});
+```
+
+`onError` receives a [`SignalError`](./errors.md#signalerror). Without a handler, errors go to the default reporter (`reportError()` in browsers, `console.error()` elsewhere). See [Errors](./errors.md) for details.
+
 ## Next steps
 
 - [Getting started](./getting-started.md) — project setup
 - [Components](./components.md) — views and stores
+- [Errors](./errors.md) — effect error reporting and `SignalError`
 - [HMR](./hmr.md) — development-time view replacement

@@ -1,9 +1,15 @@
 import type { ReactiveNode } from "./signals.js";
 
-interface ReactiveNodeDebug {
+export interface ReactiveNodeDebug {
   type: "composed" | "effect";
   name: string;
   creationStack?: string;
+}
+
+export interface ReactiveScopeInfo {
+  type: "effect" | "composed";
+  name: string;
+  creationFrame?: string;
 }
 
 const componentNameStack: string[] = [];
@@ -34,42 +40,19 @@ function setNodeDebug(
   });
 }
 
-function enhanceError(error: unknown): unknown {
-  if (!(error instanceof Error)) return error;
-  if ((error as any)._dollaEnhanced) return error;
+function getNodeDebugInfo(node: ReactiveNode): ReactiveNodeDebug | undefined {
+  return nodeDebug.get(node);
+}
 
-  const scopes = reactiveScopeStack.slice();
-  if (scopes.length === 0) return error;
+function describeNode(node: ReactiveNode): ReactiveScopeInfo | undefined {
+  const info = nodeDebug.get(node);
+  if (!info) return undefined;
 
-  const lines: string[] = ["", "--- Reactive context ---"];
-  const total = scopes.length;
-  const showAll = total <= 6;
-  const headCount = showAll ? total : 3;
-  const tailCount = showAll ? 0 : 3;
-
-  for (let i = 0; i < headCount; i++) {
-    appendScopeLine(lines, i + 1, scopes[i]);
-  }
-
-  if (!showAll) {
-    const hidden = total - headCount - tailCount;
-    lines.push(`  ... (${hidden} more)`);
-
-    for (let i = total - tailCount; i < total; i++) {
-      appendScopeLine(lines, i + 1, scopes[i]);
-    }
-  }
-
-  const originalMessage = error.message;
-  const originalStack = error.stack;
-  (error as any)._dollaEnhanced = true;
-  error.message += "\n" + lines.join("\n");
-  if (!error.cause) {
-    const cause = new Error(originalMessage);
-    cause.stack = originalStack;
-    error.cause = cause;
-  }
-  return error;
+  return {
+    type: info.type,
+    name: info.name,
+    creationFrame: getCreationFrame(info.creationStack),
+  };
 }
 
 function getCreationFrame(stack?: string): string {
@@ -84,17 +67,9 @@ function getCreationFrame(stack?: string): string {
   return "";
 }
 
-function appendScopeLine(lines: string[], number: number, node: ReactiveNode): void {
-  const info = nodeDebug.get(node);
-  if (info) {
-    const frame = getCreationFrame(info.creationStack);
-    const suffix = frame ? ` created at ${frame}` : "";
-    lines.push(`  ${number} → ${info.type} "${info.name}"${suffix}`);
-  }
-}
-
 export {
   reactiveScopeStack,
   setNodeDebug,
-  enhanceError,
+  getNodeDebugInfo,
+  describeNode,
 };

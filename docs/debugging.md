@@ -76,4 +76,5 @@ In debug mode, elements receive a `data-view` attribute containing the nearest v
 
 - [Hooks](./hooks.md) — `getDebug` in the hook reference
 - [App root](./root.md) — `createRoot` options
+- [Errors](./errors.md) — effect error reporting and `SignalError`
 - [Cheatsheet](./cheatsheet.md) — quick lookups

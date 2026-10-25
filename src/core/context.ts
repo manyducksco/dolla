@@ -3,6 +3,7 @@ import { assert } from "../utils.js";
 import { VIEW, type ViewNode } from "./markup/nodes/view.js";
 import { createEffect } from "./signals.js";
 import { pushComponentName, popComponentName } from "./signal-debug.js";
+import { runSafely } from "./errors.js";
 import { MOUNTED, PARENT_ELEMENT } from "./symbols.js";
 
 export type LifecycleListener = () => any;
@@ -48,7 +49,7 @@ export function isMounted(context: Context): boolean {
 export function mountContext(context: Context) {
   if (isMounted(context)) return;
   context[MOUNTED] = true;
-  _callListeners(context, MOUNT_LISTENERS);
+  _callListeners(context, MOUNT_LISTENERS, "mount");
 }
 
 export function cleanupContext(context: Context) {
@@ -59,13 +60,25 @@ export function cleanupContext(context: Context) {
   if (!isMounted(context)) return;
 
   delete context[MOUNTED];
-  _callListeners(context, CLEANUP_LISTENERS);
+  _callListeners(context, CLEANUP_LISTENERS, "unmount");
 }
 
-function _callListeners(context: Context, key: symbol) {
+function _callListeners(
+  context: Context,
+  key: symbol,
+  phase: "mount" | "unmount",
+) {
   if (!Object.hasOwn(context, key)) return;
-  for (const callback of context[key]) callback();
-  context[key].length = 0;
+
+  // Snapshot and detach before invoking so callbacks that register new
+  // listeners do not mutate the list being iterated, and so one throwing
+  // listener cannot leave the rest unrun.
+  const callbacks: LifecycleListener[] = context[key];
+  context[key] = [];
+
+  for (const callback of callbacks) {
+    runSafely(callback, { phase, context });
+  }
 }
 
 /*===================================*\
@@ -94,7 +107,7 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 export function onEffect(context: Context, fn: () => void, options?: { name?: string }): void {
   const runEffect = () => {
     pushComponentName(context.name);
-    const cleanup = createEffect(fn, options);
+    const cleanup = createEffect(fn, { ...options, context });
     popComponentName();
     return cleanup;
   };
