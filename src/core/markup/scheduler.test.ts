@@ -74,7 +74,7 @@ describe("scheduler", () => {
 
     expect(warn).toHaveBeenCalledTimes(1);
     const message = String(warn.mock.calls[0][0]);
-    expect(message).toContain("3 update(s)");
+    expect(message).toContain("3 updates");
     expect(message).toContain("A: 2");
     expect(message).toContain("B: 1");
 
