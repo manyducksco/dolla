@@ -5,7 +5,7 @@ import { DOMNode } from "./nodes/dom";
 import { DynamicNode } from "./nodes/dynamic";
 import { ElementNode } from "./nodes/element";
 import { ViewNode } from "./nodes/view";
-import { createMarkup, isMarkup, isMarkupNode, toMarkupNodes, camelToKebab } from "./utils";
+import { createMarkup, isMarkup, isMarkupNode, render, toMarkupNodes, camelToKebab } from "./utils";
 
 describe("camelToKebab", () => {
   test("converts camelCase names", () => {
@@ -41,7 +41,12 @@ describe("type checking", () => {
   });
 });
 
-// test("render", () => {});
+test("render returns an existing MarkupNode directly", () => {
+  const context = createContext(null);
+  const node = new ElementNode(context, "div", {});
+
+  expect(render(node, context)).toBe(node);
+});
 
 test("toMarkupNodes", () => {
   const [count] = createAtom(5);

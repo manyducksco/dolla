@@ -166,6 +166,20 @@ function Button(props) {
 <Button onClick={save}>Save</Button>;
 ```
 
+## Create a styled component
+
+```jsx
+import { styled } from "@manyducks.co/dolla/styled";
+
+const Button = styled.button`
+  padding: 8px 12px;
+`;
+
+<Button onClick={save}>Save</Button>;
+```
+
+Add `.named("Button")` to set the View name to `Styled(Button)`, shown via `data-view` in debug mode. The class stays `css-<hash>`, so identical styles still dedupe.
+
 ## Navigate with the router
 
 ```jsx
@@ -252,7 +266,7 @@ async function loadUser() {
 | `this` is undefined | Arrow function used with `this` | Use `(props, context)` or a function declaration |
 | Route params never update | `{router.params().id}` | `{() => router.params().id}` |
 | App renders nothing | `mount` not awaited or selector missing | `await createRoot("#app").mount(App)` |
-| Styles are missing | `css` template created but not attached | Pass it to `class` |
+| Styles are missing | `css` template created but not attached | Pass it to `class` or use `styled` |
 
 ## More
 

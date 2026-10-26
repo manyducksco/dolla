@@ -5,14 +5,17 @@ import type { Getter } from "../signals";
 import {
   IS_CONDITIONAL_TEMPLATE,
   IS_CSS_TEMPLATE,
+  IS_STYLED_VIEW,
   isConditionalTemplate,
   isCSSTemplate,
+  isStyledTemplate,
   type ConditionalTemplate,
   type CSSTemplate,
+  type StyledTemplate,
 } from "./css-template.js";
 
-export { isConditionalTemplate, isCSSTemplate };
-export type { ConditionalTemplate, CSSTemplate };
+export { isConditionalTemplate, isCSSTemplate, isStyledTemplate };
+export type { ConditionalTemplate, CSSTemplate, StyledTemplate };
 
 /*============================*\
 ||           Types            ||
@@ -65,7 +68,8 @@ export type Interpolation<Props = {}> =
   | InterpolationValue
   | Getter<InterpolationValue>
   | PropertyConfig<any>
-  | CSSTemplate;
+  | CSSTemplate
+  | StyledTemplate;
 
 /**
  * A value bound to a CSS variable name.
@@ -82,7 +86,17 @@ export type CSSTemplateBinding = {
 \*============================*/
 
 function getTemplateClassName(value: any): string | undefined {
-  return isCSSTemplate(value) ? value.className : undefined;
+  if (isCSSTemplate(value)) return value.className;
+  if (isStyledTemplate(value)) return value[IS_STYLED_VIEW].className;
+  return undefined;
+}
+
+/**
+ * A function interpolation is only reactive when it is a plain getter. Styled
+ * views are callable but represent a static class-name selector.
+ */
+function isReactiveFunction(value: any): value is Getter<InterpolationValue> {
+  return isFunction(value) && !isStyledTemplate(value);
 }
 
 function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): string {
@@ -429,7 +443,7 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
     if (cached) return cached;
   }
 
-  const allFunctions = interpolations.length > 0 && interpolations.every((expr) => isFunction(expr));
+  const allFunctions = interpolations.length > 0 && interpolations.every((expr) => isReactiveFunction(expr));
   let shape = allFunctions ? shapesByStrings.get(strings) : undefined;
   let className: string;
   let isStatic = false;
@@ -438,7 +452,7 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
     className = shape.className;
   } else {
     className = `css-${hashTemplate(strings, interpolations)}`;
-    isStatic = interpolations.every((expr) => !isFunction(expr) && !isPropertyConfig(expr));
+    isStatic = interpolations.every((expr) => !isReactiveFunction(expr) && !isPropertyConfig(expr));
 
     if (isStatic) {
       const cached = staticTemplates.get(className);

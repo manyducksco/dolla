@@ -44,6 +44,10 @@
       "import": "./dist/virtual.js",
       "types": "./dist/virtual/index.d.ts"
     },
+    "./styled": {
+      "import": "./dist/styled.js",
+      "types": "./dist/styled/index.d.ts"
+    },
     "./jsx-runtime": {
       "import": "./dist/jsx-runtime.js",
       "types": "./jsx-runtime.d.ts"

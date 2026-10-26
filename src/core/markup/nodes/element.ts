@@ -289,6 +289,10 @@ export class ElementNode extends MarkupNode {
         // Use the attribute rather than `className`, which is an
         // SVGAnimatedString on SVG elements.
         element.setAttribute("class", value);
+      } else if (isCSSTemplate(value)) {
+        // Fast path for the common single-template case. Avoids building
+        // the name/template/condition collections in #applyStaticClasses.
+        value.attach(this.#context, element);
       } else if (hasReactiveClassValue(value)) {
         this.#applyClasses(element, value);
       } else {

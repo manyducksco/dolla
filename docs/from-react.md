@@ -253,6 +253,18 @@ function Button(props) {
 <Button onClick={save}>Save</Button>;
 ```
 
+If you prefer a styled-components-like API, the optional `styled` submodule builds the same `css-<hash>` classes:
+
+```jsx
+import { styled } from "@manyducks.co/dolla/styled";
+
+const Button = styled.button`
+  padding: 8px 12px;
+`;
+
+<Button onClick={save}>Save</Button>;
+```
+
 ## A full todo list
 
 ### React

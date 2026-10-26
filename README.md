@@ -13,7 +13,7 @@ Dolla is a research framework for trying out ideas. The goal is to create a full
 - 📦 **Views** — reusable UI components that run once and update via signals
 - 🧩 **Context** — each view exposes a context object that inherits values from the parent context
 - 💾 **Stores** — shared-state-on-rails via the context tree
-- 🎨 **CSS-in-JS** — a `css` helper for easy inline classes without a separate stylesheet
+- 🎨 **CSS-in-JS** — a `css` helper for easy inline classes, plus optional `styled` components
 - 🏗 **Buildless templates** — use the `html` helper instead of JSX, with no template compiler
 - 🐛 **Debug logging** — colored, taggable, filterable
 - ⏱ **Temporal helpers** — `debounce` and `throttle`
@@ -85,6 +85,7 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 | [Hooks](./docs/hooks.md)                | Lifecycle, context, and store hooks                            |
 | [Effects](./docs/effects.md)            | `onEffect`, auto-tracking, cleanup                             |
 | [CSS](./docs/css.md)                    | CSS-in-JS with scoped classes, reactive variables, composition |
+| [Styled components](./docs/styled.md)   | Optional `styled` submodule for component-scoped styles        |
 | [Transitions](./docs/transitions.md)    | Enter/exit animations with the Web Animations API              |
 | [Refs](./docs/refs.md)                  | Direct DOM access with `createRef`                             |
 | [Router](./src/router/README.md)        | Client-side SPA routing with nested routes, lazy loading       |
@@ -120,6 +121,7 @@ Dolla is modular. Import only what you need:
 | `@manyducks.co/dolla/translate` | i18n translation system                                       |
 | `@manyducks.co/dolla/http`      | Middleware-based HTTP client                                  |
 | `@manyducks.co/dolla/virtual`   | Virtual scrolling list                                        |
+| `@manyducks.co/dolla/styled`    | Optional styled-component builder                             |
 
 See [bundlephobia](https://bundlephobia.com/package/@manyducks.co/dolla) for current package sizes.
 

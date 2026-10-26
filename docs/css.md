@@ -16,7 +16,7 @@ A classic stylesheet works exactly as you would expect:
 ```
 
 ```jsx
-<div class="card">...</div>;
+<div class="card">...</div>
 ```
 
 If your bundler supports CSS modules, pass the imported class name through:
@@ -144,7 +144,7 @@ This generates a rule like `.css-abc .css-def { font-weight: bold; }`.
 To apply multiple templates to the same element, pass them in a class array:
 
 ```jsx
-<div class={[base, child]}>...</div>;
+<div class={[base, child]}>...</div>
 ```
 
 ## Conditional templates
@@ -178,20 +178,23 @@ function Button(props) {
 
 Class names always use the `css-` prefix and a hash of the template contents. Identical templates share the same class and stylesheet rule.
 
+If you want a component-shaped API instead of wiring the class yourself, use the optional [`styled`](./styled.md) submodule.
+
 ## API
 
 ### ``css`...` ``
 
 Returns a `CSSTemplate`:
 
-| Member | Description |
-| --- | --- |
-| `className` | The generated scoped class name |
-| `when(condition)` | Returns a conditional template that is attached only when the condition is truthy |
+| Member                                 | Description                                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `className`                            | The generated scoped class name                                                            |
+| `when(condition)`                      | Returns a conditional template that is attached only when the condition is truthy          |
 | `attach(context, element, condition?)` | Applies the class and reactive bindings to an element. Called internally by the framework. |
-| `toString()` | Returns `className` |
+| `toString()`                           | Returns `className`                                                                        |
 
 ## Next steps
 
+- [Styled components](./styled.md) — the optional `styled` submodule
 - [Templates](./templates.md#classes) — the `class` prop
 - [Cheatsheet](./cheatsheet.md) — quick lookups

@@ -60,6 +60,10 @@ export function isMarkupNodeClass(value: any): value is new (...args: any[]) => 
  * Takes any `Renderable` value and returns a `MarkupNode` that will display it.
  */
 export function render(content: Renderable, context = createContext(null)): MarkupNode {
+  // Fast path: views may return a MarkupNode directly. Skip the generic
+  // dispatch and the intermediate node array.
+  if (isMarkupNode(content)) return content;
+
   const nodes = toMarkupNodes(context, content);
   if (nodes.length === 1) {
     return nodes[0];

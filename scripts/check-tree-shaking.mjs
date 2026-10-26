@@ -83,7 +83,7 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
   `);
   expectGzipBelow(result, 3.3 * KB, "signals-only app");
   for (const id of result.modules) {
-    if (id.includes("/src/core/markup/")) {
+    if (id.includes("/src/core/markup/") || id.includes("/src/styled/")) {
       report(`signals-only app: unexpected rendering module ${id}`);
     }
   }
@@ -108,6 +108,7 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
     "/src/core/markup/nodes/repeat.ts",
     "/src/core/markup/nodes/branch.ts",
     "/src/core/markup/nodes/portal.ts",
+    "/src/styled/index.ts",
     "/src/core/ref.ts",
   ]) {
     expectModuleAbsent(result, name, "minimal component app");

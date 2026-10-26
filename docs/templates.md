@@ -102,7 +102,7 @@ const [getIsActive] = createAtom(false);
 <div class={cardTemplate}></div>;
 ```
 
-Object values can be getters when the class should toggle reactively. See [CSS](./css.md) for `css` templates and reactive variables.
+Object values can be getters when the class should toggle reactively. See [CSS](./css.md) for `css` templates and reactive variables, or [Styled components](./styled.md) for the optional `styled` submodule.
 
 ### Styles
 
