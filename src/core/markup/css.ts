@@ -482,7 +482,8 @@ function buildStyles(
           initialValue: null,
           read: (interpolations) => interpolations[i](),
         });
-      } else {
+      } else if (expr != null && expr !== false) {
+        // `null`, `undefined` and `false` (e.g. `${cond && "..."}`) emit nothing.
         styles += expr;
       }
     }

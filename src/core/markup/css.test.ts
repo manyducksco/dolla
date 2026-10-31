@@ -657,4 +657,16 @@ describe("at-rule extraction", () => {
       `.${tpl.className}{ color: red; @media (min-width: 600px) { color: blue; } }`,
     ]);
   });
+
+  test("null, undefined and false static interpolations emit nothing", () => {
+    const isLarge = false;
+    const tpl = css`
+      color: red;
+      ${null}
+      ${undefined}
+      ${(isLarge && "font-size: 2em;") as any}
+    `;
+    const rules = insertedRules(tpl);
+    expect(rules).toEqual([`.${tpl.className}{ color: red; }`]);
+  });
 });
