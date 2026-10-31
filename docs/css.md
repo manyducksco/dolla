@@ -147,6 +147,29 @@ To apply multiple templates to the same element, pass them in a class array:
 <div class={[base, child]}>...</div>
 ```
 
+## Animations
+
+A `@keyframes` block written inside a `css` template is registered as written, and its name is global. If two templates declare `@keyframes fade` with different steps, the one registered last is used by both. Give hand-written keyframes names that are unique across the app, or use `keyframes`.
+
+`keyframes` registers the rule under a name generated from its contents and returns that name. Interpolate it wherever an animation name goes:
+
+```js
+import { css, keyframes } from "@manyducks.co/dolla";
+
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to { opacity: 1; }
+`;
+
+const panel = css`
+  animation: ${fadeIn} 200ms ease-out;
+`;
+```
+
+Two different `keyframes` never share a name, so they can't overwrite each other. Identical ones share a single rule. Static values can be interpolated. Getters can't, because keyframes are registered once rather than bound to an element. Animate a custom property set by a reactive variable instead.
+
+The rule is registered when `keyframes` is called, so the name also works outside `css`, for example in an inline `style` or a Web Animations call.
+
 ## Conditional templates
 
 Call `.when(condition)` to return a conditional template:
@@ -192,6 +215,15 @@ Returns a `CSSTemplate`:
 | `when(condition)`                      | Returns a conditional template that is attached only when the condition is truthy          |
 | `attach(context, element, condition?)` | Applies the class and reactive bindings to an element. Called internally by the framework. |
 | `toString()`                           | Returns `className`                                                                        |
+
+### ``keyframes`...` ``
+
+Registers a `@keyframes` rule and returns a `Keyframes` object:
+
+| Member       | Description                                |
+| ------------ | ------------------------------------------ |
+| `name`       | The generated animation name (`kf-<hash>`) |
+| `toString()` | Returns `name`, so it can be interpolated  |
 
 ## Next steps
 

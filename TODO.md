@@ -47,16 +47,6 @@ Recommendation: A, unless a real integration needs outside classes.
 
 ## CSS and styled
 
-### Keyframe names are global
-
-`@keyframes fade` defined in two templates collide: the later one wins. Files: `src/core/markup/css.ts`.
-
-- **A.** Document it and recommend unique names.
-- **B.** Scope names declared in a template automatically (`fade` → `fade-<className>`) and rewrite references in that template's `animation` properties. References from other templates would break.
-- **C.** Add an opt-in helper, e.g. ``${keyframes`...`}``, that returns a scoped name (like styled-components).
-
-Recommendation: C, and A in the meantime.
-
 ### Style rules are never removed
 
 Static interpolations create one class and one stylesheet rule per distinct value, and these are never freed. Per-instance values (lists, animations) make the stylesheet grow without limit. Files: `src/core/markup/css.ts`.

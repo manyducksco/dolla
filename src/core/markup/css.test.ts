@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { cleanupContext, createContext, mountContext } from "../context.js";
 import { createAtom } from "../signals.js";
-import { css, isConditionalTemplate, isCSSTemplate } from "./css.js";
+import { css, isConditionalTemplate, isCSSTemplate, keyframes } from "./css.js";
 import { ElementNode } from "./nodes/element.js";
 import { flushPendingUpdates } from "./scheduler.js";
 
@@ -668,5 +668,71 @@ describe("at-rule extraction", () => {
     `;
     const rules = insertedRules(tpl);
     expect(rules).toEqual([`.${tpl.className}{ color: red; }`]);
+  });
+});
+
+describe("keyframes helper", () => {
+  /** Runs `fn` and returns the rule texts it inserted into the stylesheet. */
+  function rulesInsertedBy(fn: () => void): string[] {
+    const sheets = document.adoptedStyleSheets;
+    const sheet = sheets[sheets.length - 1];
+    const spy = vi.spyOn(sheet, "insertRule");
+    try {
+      fn();
+      return spy.mock.calls.map((call) => call[0].replace(/\s+/g, " ").trim());
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  test("registers a @keyframes rule under a generated name", () => {
+    let fade!: ReturnType<typeof keyframes>;
+    const rules = rulesInsertedBy(() => {
+      fade = keyframes`from { opacity: 0; } to { opacity: 1; }`;
+    });
+
+    expect(fade.name).toMatch(/^kf-[a-z0-9]+(-\d+)?$/);
+    expect(String(fade)).toBe(fade.name);
+    expect(rules).toEqual([`@keyframes ${fade.name}{from { opacity: 0; } to { opacity: 1; }}`]);
+  });
+
+  test("a css template can reference the name", () => {
+    const spin = keyframes`to { transform: rotate(360deg); }`;
+    const tpl = css`
+      animation: ${spin} 1s linear infinite;
+    `;
+    const rules = rulesInsertedBy(() => tpl.attach(createContext(null), document.createElement("div")));
+    expect(rules).toEqual([`.${tpl.className}{ animation: ${spin.name} 1s linear infinite; }`]);
+  });
+
+  test("the same name in two templates no longer collides", () => {
+    const a = keyframes`to { opacity: 0.25; }`;
+    const b = keyframes`to { opacity: 0.75; }`;
+    expect(a.name).not.toBe(b.name);
+
+    const tplA = css`
+      animation: ${a} 1s;
+    `;
+    const tplB = css`
+      animation: ${b} 1s;
+    `;
+    expect(tplA.className).not.toBe(tplB.className);
+  });
+
+  test("identical keyframes share one name and one rule", () => {
+    const rules = rulesInsertedBy(() => {
+      const a = keyframes`to { width: 13px; }`;
+      const b = keyframes`to { width: 13px; }`;
+      expect(a.name).toBe(b.name);
+    });
+    expect(rules).toHaveLength(1);
+  });
+
+  test("static interpolations are part of the keyframes", () => {
+    const to = (px: number) => keyframes`to { height: ${px}px; }`;
+    const small = to(17);
+    const large = to(41);
+    expect(small.name).not.toBe(large.name);
+    expect(to(17).name).toBe(small.name);
   });
 });

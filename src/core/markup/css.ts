@@ -69,8 +69,18 @@ export type Interpolation<Props = {}> =
   | InterpolationValue
   | Getter<InterpolationValue>
   | PropertyConfig<any>
+  | Keyframes
   | CSSTemplate
   | StyledTemplate;
+
+/**
+ * A `@keyframes` rule registered under a generated name. Interpolate it into a
+ * `css` template (or use `name`) wherever an animation name is expected.
+ */
+export interface Keyframes {
+  readonly name: string;
+  toString(): string;
+}
 
 /**
  * A value bound to a CSS variable name.
@@ -146,32 +156,33 @@ function templateKey(strings: TemplateStringsArray, interpolations: any[]): stri
   return key.trim();
 }
 
-const classNamesByKey = new Map<string, string>();
-const claimedClassNames = new Set<string>();
+const namesByKey = new Map<string, string>();
+const claimedNames = new Set<string>();
 
 /**
- * Returns a stable className for a template key. The short hash can collide
+ * Returns a stable `<prefix>-<hash>` name for a key. The short hash can collide
  * for different keys, so a colliding key gets a numbered suffix instead of
- * reusing another template's className.
+ * reusing another key's name.
  */
-function classNameForKey(key: string): string {
-  let className = classNamesByKey.get(key);
-  if (className !== undefined) return className;
+function nameForKey(prefix: string, key: string): string {
+  const fullKey = `${prefix}${SLOT}${key}`;
+  let name = namesByKey.get(fullKey);
+  if (name !== undefined) return name;
 
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = (Math.imul(31, hash) + key.charCodeAt(i)) | 0;
   }
 
-  const base = `css-${Math.abs(hash).toString(36)}`;
-  className = base;
-  for (let n = 1; claimedClassNames.has(className); n++) {
-    className = `${base}-${n}`;
+  const base = `${prefix}-${Math.abs(hash).toString(36)}`;
+  name = base;
+  for (let n = 1; claimedNames.has(name); n++) {
+    name = `${base}-${n}`;
   }
 
-  claimedClassNames.add(className);
-  classNamesByKey.set(key, className);
-  return className;
+  claimedNames.add(name);
+  namesByKey.set(fullKey, name);
+  return name;
 }
 
 function isPropertyConfig(value: any): boolean {
@@ -390,6 +401,14 @@ class StyleRegistry {
     this.classes.add(className);
   }
 
+  insertKeyframes(name: string, body: string): void {
+    if (this.classes.has(name)) return;
+    try {
+      this.sheet.insertRule(`@keyframes ${name}{${body}}`, this.sheet.cssRules.length);
+    } catch (e) {}
+    this.classes.add(name);
+  }
+
   addProperty(name: string, syntax: string, initialValue: any, inherits: boolean) {
     if (this.properties.has(name) || syntax === "*") return;
 
@@ -584,7 +603,7 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
   if (shape) {
     className = shape.className;
   } else {
-    className = classNameForKey(templateKey(strings, interpolations));
+    className = nameForKey("css", templateKey(strings, interpolations));
     isStatic = interpolations.every((expr) => !isReactiveFunction(expr) && !isPropertyConfig(expr));
 
     if (isStatic) {
@@ -628,4 +647,28 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
 
 export function css<P = {}>(strings: TemplateStringsArray, ...interpolations: Interpolation<P>[]): CSSTemplate {
   return createTemplate(strings, interpolations);
+}
+
+/**
+ * Registers a `@keyframes` rule and returns its generated name. Unlike a
+ * `@keyframes` block written inside a `css` template, whose name is global,
+ * the name is derived from the keyframes themselves, so two animations can't
+ * overwrite each other. Identical keyframes share one name and rule.
+ *
+ * ```ts
+ * const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`;
+ * const panel = css`animation: ${fadeIn} 200ms ease-out;`;
+ * ```
+ */
+export function keyframes(strings: TemplateStringsArray, ...interpolations: InterpolationValue[]): Keyframes {
+  let body = "";
+  strings.forEach((str, i) => {
+    body += str;
+    if (i < interpolations.length) body += interpolations[i] ?? "";
+  });
+  body = body.trim();
+
+  const name = nameForKey("kf", body);
+  registry.insertKeyframes(name, body);
+  return { name, toString: () => name };
 }

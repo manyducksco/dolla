@@ -21,7 +21,8 @@ export { createDebug, getDebug, setLogFilter, setLogLevel } from "./debug.js";
 export { branch, createPortal, hideIf, repeat, showIf } from "./markup/helpers.js";
 export type { BranchTuple } from "./markup/helpers.js";
 export { html } from "./markup/html.js";
-export { css } from "./markup/css.js";
+export { css, keyframes } from "./markup/css.js";
+export type { Keyframes } from "./markup/css.js";
 export { transition } from "./markup/transition.js";
 
 // Ref
