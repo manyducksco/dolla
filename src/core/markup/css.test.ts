@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { cleanupContext, createContext, mountContext } from "../context.js";
 import { createAtom } from "../signals.js";
 import { css, isConditionalTemplate, isCSSTemplate } from "./css.js";
@@ -596,5 +596,65 @@ describe("detaching templates from an element", () => {
     expect(el.style.getPropertyValue(`--${className}-0`)).toBe("blue");
 
     node.unmount();
+  });
+});
+
+describe("at-rule extraction", () => {
+  /** Attaches `tpl` and returns the rule texts it inserted into the stylesheet. */
+  function insertedRules(tpl: ReturnType<typeof css>): string[] {
+    const sheets = document.adoptedStyleSheets;
+    const sheet = sheets[sheets.length - 1];
+    const spy = vi.spyOn(sheet, "insertRule");
+    try {
+      tpl.attach(createContext(null), document.createElement("div"));
+      return spy.mock.calls.map((call) => call[0].replace(/\s+/g, " ").trim());
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  test("a closing brace inside a string does not end a @keyframes block", () => {
+    const tpl = css`
+      @keyframes spin-brace { from { content: "}"; } to { content: "x"; } }
+      color: red;
+    `;
+    const rules = insertedRules(tpl);
+    expect(rules).toEqual([
+      `@keyframes spin-brace { from { content: "}"; } to { content: "x"; } }`,
+      `.${tpl.className}{ color: red; }`,
+    ]);
+  });
+
+  test("an `@` inside a string is not treated as an at-rule", () => {
+    const tpl = css`
+      content: "@page";
+      color: red;
+    `;
+    const rules = insertedRules(tpl);
+    expect(rules).toEqual([`.${tpl.className}{ content: "@page"; color: red; }`]);
+  });
+
+  test("vendor-prefixed @keyframes are extracted", () => {
+    const tpl = css`
+      @-webkit-keyframes wk-spin { to { opacity: 0; } }
+      color: red;
+    `;
+    const rules = insertedRules(tpl);
+    expect(rules).toEqual([`@-webkit-keyframes wk-spin { to { opacity: 0; } }`, `.${tpl.className}{ color: red; }`]);
+  });
+
+  test("@keyframes inside @media keeps its media condition", () => {
+    const tpl = css`
+      color: red;
+      @media (min-width: 600px) {
+        color: blue;
+        @keyframes grow-media { to { width: 10px; } }
+      }
+    `;
+    const rules = insertedRules(tpl);
+    expect(rules).toEqual([
+      `@media (min-width: 600px) { @keyframes grow-media { to { width: 10px; } } }`,
+      `.${tpl.className}{ color: red; @media (min-width: 600px) { color: blue; } }`,
+    ]);
   });
 });
