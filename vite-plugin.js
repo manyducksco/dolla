@@ -575,16 +575,17 @@ function isFunctionInitializer(code, scan, eq) {
 }
 
 /**
- * Returns true if the declaration whose initializer starts at `eq` declares
- * more than one name (`const a = ..., b = ...`). Stops at the end of the
- * statement; when unsure it reports more than one, so nothing is wrapped.
+ * Scans the declaration whose initializer starts at `eq` to the end of its
+ * statement. Returns `multiple: true` if it declares more than one name
+ * (`const a = ..., b = ...`), and otherwise `end`, the index just past the
+ * statement. When unsure it reports more than one, so nothing is wrapped.
  */
-function hasMoreDeclarators(code, scan, eq) {
+function scanDeclaration(code, scan, eq) {
   let start = skipSpaceAndComments(code, eq + 1);
   // Skip a generic arrow's type parameters, e.g. the comma in `<T,>(x: T) => x`.
   if (code[start] === "<") {
     start = matchAngleBalance(code, start);
-    if (start === -1) return true;
+    if (start === -1) return { multiple: true, end: -1 };
   }
 
   let depth = 0;
@@ -592,14 +593,77 @@ function hasMoreDeclarators(code, scan, eq) {
     const c = scan.masked[i];
     if (c === "(" || c === "[" || c === "{") depth++;
     else if (c === ")" || c === "]" || c === "}") depth--;
-    else if (depth === 0 && c === ";") return false;
-    else if (depth === 0 && c === ",") return true;
+    else if (depth === 0 && c === ";") return { multiple: false, end: i + 1 };
+    else if (depth === 0 && c === ",") return { multiple: true, end: -1 };
     else if (depth === 0 && c === "\n") {
       const next = skipSpaceAndComments(code, i);
-      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) return false;
+      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) {
+        return { multiple: false, end: i };
+      }
     }
   }
-  return false;
+  return { multiple: false, end: code.length };
+}
+
+function hasMoreDeclarators(code, scan, eq) {
+  return scanDeclaration(code, scan, eq).multiple;
+}
+
+// A call to one of dolla's store functions, but not a method like `obj.getStore`.
+const STORE_CALL_RE = /(?<![\w$.])(?:addStore|getStore|hasStore|hasOwnStore)\b/g;
+
+// `function Name` or `const|let Name`, matched at the keyword.
+const FUNC_DECL_RE = /(?<![\w$.])(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/g;
+const LOCAL_DECL_RE = /(?<![\w$.])(?:const|let)\s+([A-Za-z_$][\w$]*)/g;
+
+/**
+ * Returns the identifiers passed as the store argument (the second) of
+ * `addStore`, `getStore`, `hasStore` and `hasOwnStore` calls anywhere in the module.
+ */
+function findStoreArgNames(code, scan) {
+  const names = new Set();
+  STORE_CALL_RE.lastIndex = 0;
+  let match;
+  while ((match = STORE_CALL_RE.exec(scan.masked)) !== null) {
+    let i = skipSpaceAndComments(code, match.index + match[0].length);
+    if (code[i] === "<") {
+      i = matchAngleBalance(code, i);
+      if (i === -1) continue;
+      i = skipSpaceAndComments(code, i);
+    }
+    if (code[i] !== "(") continue;
+
+    // Skip the first argument, up to its top-level comma.
+    let depth = 0;
+    for (i++; i < code.length; i++) {
+      const c = scan.masked[i];
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") {
+        if (depth === 0) break;
+        depth--;
+      } else if (depth === 0 && c === ",") break;
+    }
+    if (scan.masked[i] !== ",") continue;
+
+    const arg = /^\s*([A-Za-z_$][\w$]*)\s*[,)]/.exec(scan.masked.slice(i + 1, i + 257));
+    if (arg) names.add(arg[1]);
+  }
+  return names;
+}
+
+/**
+ * Returns true if the keyword at `index` starts a declaration statement:
+ * not exported, not `declare`d, and not part of an expression such as
+ * `const x = function Foo() {}`.
+ */
+function isPrivateDeclaration(scan, index) {
+  // Comments and strings are masked as whitespace, so this lands on the previous real token.
+  let i = index - 1;
+  while (i >= 0 && /\s/.test(scan.masked[i])) i--;
+  if (i < 0) return true;
+  const last = scan.masked[i];
+  // A statement boundary. (A preceding word could be `export`, `declare`, `return`, `=` etc.)
+  return last === ";" || last === "}" || last === ")" || last === "]";
 }
 
 /**
@@ -612,6 +676,9 @@ function hasMoreDeclarators(code, scan, eq) {
  * - `export default function [Name]` becomes a local function, followed by
  *   `Name = __dolla_export("<id>:default", Name); export { Name as default };`.
  *   An anonymous one is named `__dolla_default`.
+ * - Private functions passed by name to `addStore`/`getStore`/`hasStore`/`hasOwnStore`
+ *   are wrapped in place: a `function Foo` at the top of the module (it is hoisted),
+ *   a `const Foo = <function>` (made `let`) right after its declaration.
  */
 function applyLiveBindings(s, code, id, scan) {
   const seen = new Set();
@@ -657,6 +724,33 @@ function applyLiveBindings(s, code, id, scan) {
       s.appendLeft(match.index + match[0].length - 1, ` ${ANONYMOUS_DEFAULT}`);
     }
     break;
+  }
+
+  // Private stores (functions passed to addStore/getStore but not exported) are wrapped too,
+  // or a reload gives them a new identity and existing instances can no longer be found.
+  const storeNames = findStoreArgNames(code, scan);
+
+  for (const match of topLevelMatches(FUNC_DECL_RE, scan)) {
+    const name = match[1];
+    if (!storeNames.has(name) || seen.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
+    seen.add(name);
+    // Function declarations are hoisted, so wrap first in case the module adds the store while it evaluates.
+    s.appendLeft(0, `${name} = __dolla_export(${JSON.stringify(`${id}:${name}`)}, ${name});\n`);
+  }
+
+  for (const match of topLevelMatches(LOCAL_DECL_RE, scan)) {
+    const name = match[1];
+    if (!storeNames.has(name) || seen.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
+    const eq = findInitializer(code, scan, match.index + match[0].length);
+    if (eq === -1 || !isFunctionInitializer(code, scan, eq)) continue;
+    const { multiple, end } = scanDeclaration(code, scan, eq);
+    if (multiple) continue;
+    seen.add(name);
+
+    // `const Foo` -> `let Foo`, wrapped right after its declaration.
+    const nameStart = match.index + match[0].length - name.length;
+    s.overwrite(match.index, nameStart, "let ");
+    s.appendRight(end, `\n${name} = __dolla_export(${JSON.stringify(`${id}:${name}`)}, ${name});`);
   }
 
   if (names.length === 0 && !defaultName) return;
@@ -725,9 +819,9 @@ export default function dollaPlugin() {
           s.appendLeft(0, hmrCall);
         }
       }
-      // Live-binding: wrap named function exports in a stable proxy for HMR.
+      // Live-binding: wrap named function exports and private stores in a stable proxy for HMR.
       // Must run before the HMR call so the proxy is assigned before the callback captures it.
-      if (entries.length > 0) applyLiveBindings(s, code, id, scan);
+      applyLiveBindings(s, code, id, scan);
 
       if (code.includes("styled")) applyStyledNamer(s, code, scan);
 

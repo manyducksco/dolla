@@ -25,7 +25,7 @@ The plugin only runs on the dev server. Production builds are left untouched.
 
 Stores are matched by the store function itself, not its name, so `getStore` finds the instance that `addStore` created with the same function. To keep that working across hot reloads, the Vite plugin wraps exported functions in a stable wrapper. A module can be re-evaluated any number of times and the export stays the same function.
 
-Exported stores keep their existing instance and state when their module reloads, as long as they are declared in one of these forms:
+Stores keep their existing instance and state when their module reloads, as long as they are declared in one of these forms:
 
 ```js
 export function AuthStore(props, c) {}
@@ -34,7 +34,15 @@ export const AuthStore = function (props, c) {};
 export default function AuthStore(props, c) {}
 ```
 
-Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. This covers stores that aren't exported, stores created by a function call (`export const AuthStore = makeStore()`), and stores exported in a separate statement (`export { AuthStore }`).
+A store that isn't exported is wrapped too when the module passes it to `addStore`, `getStore`, `hasStore` or `hasOwnStore` by name, so a store kept private behind helpers keeps working:
+
+```js
+function AuthStore(props, c) {}
+export const addAuth = (c) => addStore(c, AuthStore);
+export const getAuth = (c) => getStore(c, AuthStore);
+```
+
+Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`), stores exported in a separate statement (`export { AuthStore }`), and private stores only passed to dolla through another variable.
 
 ## Manual API
 

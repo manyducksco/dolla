@@ -326,6 +326,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     const declared: string[] = [];
     const body = code
       .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla\/hmr";\n/m, "")
+      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla";\n/m, "")
       .replace(/import\.meta\.hot/g, "undefined")
       .replace(/export \{([^}]*)\};/g, (_m, names: string) =>
         names
@@ -342,7 +343,13 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       });
     const exports: Record<string, any> = {};
     const tail = declared.map((name) => `__exports.${name} = ${name};`).join("\n");
-    new Function("__dolla_export", "__exports", `${body}\n${tail}`)(__dolla_export, exports);
+    new Function("__dolla_export", "__exports", "addStore", "getStore", "createContext", `${body}\n${tail}`)(
+      __dolla_export,
+      exports,
+      addStore,
+      getStore,
+      createContext,
+    );
     return exports;
   }
 
@@ -465,5 +472,82 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     const ctx = createContext(null);
     const store = addStore(ctx, v1.CounterStore);
     expect(getStore(ctx, v2.CounterStore)).toBe(store);
+  });
+
+  test("a private store is still found through its helpers after a reload", () => {
+    const authModule = (user: string) =>
+      [
+        `import { addStore, getStore } from "@manyducks.co/dolla";`,
+        `function AuthStore(_, c) { return { user: ${JSON.stringify(user)} }; }`,
+        `export function addAuth(c) { return addStore(c, AuthStore); }`,
+        `export function getAuth(c) { return getStore(c, AuthStore); }`,
+        ``,
+      ].join("\n");
+    const id = uniqueId();
+    const ctx = createContext(null);
+    const [v1] = reload(id, authModule("first"));
+    const store = v1.addAuth(ctx);
+    const [v2] = reload(id, authModule("second"));
+    expect(v2.getAuth(createContext(ctx))).toBe(store);
+  });
+
+  test("a private const store is still found after a reload", () => {
+    const counterModule = (count: number) =>
+      [
+        `const CounterStore = (_, c) => ({ count: ${count} });`,
+        `export const addCounter = (c) => addStore(c, CounterStore);`,
+        `export const getCounter = (c) => getStore(c, CounterStore);`,
+        ``,
+      ].join("\n");
+    const id = uniqueId();
+    const ctx = createContext(null);
+    const [v1] = reload(id, counterModule(1));
+    const store = v1.addCounter(ctx);
+    const [v2] = reload(id, counterModule(2));
+    expect(v2.getCounter(ctx)).toBe(store);
+  });
+
+  test("a private store added while its module evaluates is found afterwards", () => {
+    const [v1] = reload(
+      uniqueId(),
+      [
+        `export const root = createContext(null);`,
+        `addStore(root, SessionStore);`,
+        `function SessionStore() { return { id: 1 }; }`,
+        `export function getSession() { return getStore(root, SessionStore); }`,
+        ``,
+      ].join("\n"),
+    );
+    expect(v1.getSession().id).toBe(1);
+  });
+
+  test("leaves functions that aren't passed to a store function alone", () => {
+    const { code } = runTransform(
+      [
+        `function helper() {}`,
+        `// addStore(c, InComment)`,
+        `function InComment() {}`,
+        `const text = "getStore(c, InString)";`,
+        `function InString() {}`,
+        `export const useIt = (c) => c.getStore(c, helper);`,
+        ``,
+      ].join("\n"),
+      uniqueId(),
+    )!;
+    expect(code).not.toMatch(/__dolla_export\("[^"]*:(helper|InComment|InString)"/);
+  });
+
+  test("doesn't wrap store names that aren't module declarations", () => {
+    const { code } = runTransform(
+      [
+        `declare function Ambient(): {};`,
+        `const value = function Named() {};`,
+        `(function Iife() {})();`,
+        `export const use = (c) => [getStore(c, Ambient), getStore(c, Named), getStore(c, Iife)];`,
+        ``,
+      ].join("\n"),
+      uniqueId(),
+    )!;
+    expect(code).not.toMatch(/__dolla_export\("[^"]*:(Ambient|Named|Iife)"/);
   });
 });
