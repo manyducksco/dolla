@@ -77,6 +77,28 @@ describe("HTTP client", () => {
     expect(opts.body).toBe(JSON.stringify(body));
   });
 
+  test("POST serializes object and array bodies when a JSON content-type is set", async () => {
+    mockFetch.mockImplementation(async () => mockResponse({}));
+    const client = new HTTP();
+
+    await client.post("/api/items", {
+      body: { name: "test" },
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+    await client.post("/api/items", {
+      body: [1, 2],
+      headers: { "Content-Type": "application/vnd.api+json" },
+    });
+
+    const [, first] = mockFetch.mock.calls[0];
+    expect(first.body).toBe('{"name":"test"}');
+    expect(first.headers.get("content-type")).toBe("application/json; charset=utf-8");
+
+    const [, second] = mockFetch.mock.calls[1];
+    expect(second.body).toBe("[1,2]");
+    expect(second.headers.get("content-type")).toBe("application/vnd.api+json");
+  });
+
   test("DELETE request", async () => {
     mockFetch.mockImplementation(async () => mockResponse({ deleted: true }));
     const client = new HTTP();
@@ -130,6 +152,38 @@ describe("HTTP client", () => {
     expect(url).toContain("filter=active");
   });
 
+  test("query URLSearchParams keeps repeated keys", async () => {
+    mockFetch.mockImplementation(async () => mockResponse([]));
+    const client = new HTTP();
+    const params = new URLSearchParams([
+      ["tag", "a"],
+      ["tag", "b"],
+    ]);
+    await client.get("/api/items", { query: params });
+    const [url] = mockFetch.mock.calls[0];
+    expect(new URL(url).searchParams.getAll("tag")).toEqual(["a", "b"]);
+  });
+
+  test("query object arrays become repeated keys", async () => {
+    mockFetch.mockImplementation(async () => mockResponse([]));
+    const client = new HTTP();
+    await client.get("/api/items", { query: { tag: ["a", "b"], skip: [null, "c"] } });
+    const [url] = mockFetch.mock.calls[0];
+    expect(new URL(url).searchParams.getAll("tag")).toEqual(["a", "b"]);
+    expect(new URL(url).searchParams.getAll("skip")).toEqual(["c"]);
+  });
+
+  test("query options replace same-named params already in the URL", async () => {
+    mockFetch.mockImplementation(async () => mockResponse([]));
+    const client = new HTTP();
+    await client.get("/api/items?page=1&keep=yes", { query: { page: 2 } });
+    await client.get("/api/items?tag=x", { query: new URLSearchParams([["tag", "a"], ["tag", "b"]]) });
+    const first = new URL(mockFetch.mock.calls[0][0]).searchParams;
+    expect(first.getAll("page")).toEqual(["2"]);
+    expect(first.get("keep")).toBe("yes");
+    expect(new URL(mockFetch.mock.calls[1][0]).searchParams.getAll("tag")).toEqual(["a", "b"]);
+  });
+
   test("custom headers are passed to fetch", async () => {
     mockFetch.mockImplementation(async () => mockResponse({}));
     const client = new HTTP();
@@ -149,6 +203,53 @@ describe("HTTP client", () => {
     );
     const client = new HTTP();
     await expect(client.get("/api/missing")).rejects.toThrow(HTTPResponseError);
+  });
+
+  describe("responses without a JSON body", () => {
+    const jsonHeaders = { "content-type": "application/json" };
+
+    test("HEAD with a JSON content-type does not parse the body", async () => {
+      mockFetch.mockImplementation(async () => new Response(null, { status: 200, headers: jsonHeaders }));
+      const res = await new HTTP().head("/api/items");
+      expect(res.status).toBe(200);
+      expect(res.body).toBeUndefined();
+    });
+
+    test.each([204, 205])("%i with a JSON content-type has an undefined body", async (status) => {
+      mockFetch.mockImplementation(async () => new Response(null, { status, headers: jsonHeaders }));
+      const res = await new HTTP().delete("/api/items/1");
+      expect(res.status).toBe(status);
+      expect(res.body).toBeUndefined();
+    });
+
+    test("empty 200 JSON body is undefined", async () => {
+      mockFetch.mockImplementation(async () => new Response("", { status: 200, headers: jsonHeaders }));
+      const res = await new HTTP().post("/api/items", { body: { a: 1 } });
+      expect(res.body).toBeUndefined();
+    });
+
+    test("non-2xx with an unparseable JSON body still throws HTTPResponseError", async () => {
+      mockFetch.mockImplementation(
+        async () =>
+          new Response("<html>Bad Gateway</html>", { status: 502, statusText: "Bad Gateway", headers: jsonHeaders }),
+      );
+      const error = await new HTTP().get("/api/data").catch((e) => e);
+      expect(error).toBeInstanceOf(HTTPResponseError);
+      expect(error.response.status).toBe(502);
+      expect(error.response.body).toBe("<html>Bad Gateway</html>");
+    });
+
+    test("non-2xx with an empty JSON body throws HTTPResponseError", async () => {
+      mockFetch.mockImplementation(
+        async () => new Response("", { status: 500, statusText: "Internal Server Error", headers: jsonHeaders }),
+      );
+      await expect(new HTTP().get("/api/data")).rejects.toThrow(HTTPResponseError);
+    });
+
+    test("2xx with invalid JSON still rejects with a SyntaxError", async () => {
+      mockFetch.mockImplementation(async () => new Response("{nope", { status: 200, headers: jsonHeaders }));
+      await expect(new HTTP().get("/api/data")).rejects.toThrow(SyntaxError);
+    });
   });
 
   test("HTTPResponseError has response property", async () => {
@@ -247,6 +348,16 @@ describe("HTTP client", () => {
     expect(res.body).toEqual({ original: "data" });
   });
 
+  test("middleware that returns nothing without calling next() throws", async () => {
+    mockFetch.mockImplementation(async () => mockResponse({}));
+    const client = new HTTP();
+    client.use(async () => {});
+    await expect(client.get("/api/data")).rejects.toThrow(
+      "HTTP middleware returned no response; return next() or a response",
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   test("multiple middlewares execute in order", async () => {
     mockFetch.mockImplementation(async () => mockResponse({}));
     const order: number[] = [];
@@ -273,6 +384,14 @@ describe("HTTP client", () => {
     await client.get("https://example.com/api/data");
     const [url] = mockFetch.mock.calls[0];
     expect(url).toBe("https://example.com/api/data");
+  });
+
+  test("treats relative paths starting with 'http' as relative", async () => {
+    mockFetch.mockImplementation(async () => mockResponse({}));
+    const client = new HTTP();
+    await client.get("httpbin/get");
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(new URL("/httpbin/get", window.location.origin).toString());
   });
 
   test("reports the final response URL after redirects", async () => {

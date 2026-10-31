@@ -74,6 +74,8 @@ function UsersLayout(props) {
 
 Route params are always strings. Convert explicitly when needed, for example `Number(router.params().id)`.
 
+`*` must be the last segment of a pattern, and each pattern may only be defined once (`/users/:id` and `/users/:userId` count as the same pattern). `createRouter` throws on either mistake.
+
 ### Reading route state
 
 `path`, `pattern`, `params`, `query`, and `meta` are getters. Interpolate them directly for a reactive value, or wrap property access in a getter:
@@ -182,7 +184,7 @@ function UserDetail({ data }) {
 
 ## Error handling
 
-Provide an `errorView` to catch errors from `preload` or lazy loading:
+Provide an `errorView` to catch errors from `preload` or lazy loading. An error is handled by the failing route's `errorView`, or the nearest parent route that has one. If no route in the chain has an `errorView`, the current view stays in place and the error is rethrown.
 
 ```jsx
 const route = {
@@ -296,5 +298,5 @@ function AdminLayout(props) {
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `routes` | `Route[]` | — | Route definitions |
-| `hash` | `boolean` | `false` | Use hash-based routing (`/#!/path`) |
+| `hash` | `boolean` | `false` | Use hash-based routing (`#/path`, keeping the page's own path) |
 | `preserveQuery` | `boolean \| string[]` | `false` | Preserve query params across navigations |

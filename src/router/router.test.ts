@@ -338,6 +338,252 @@ describe("Router Engine - Query strings", () => {
   });
 });
 
+describe("Router Engine - Navigation order", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("ignores a slow earlier navigation that finishes after a later one", async () => {
+    let resolveSlow!: (value: string) => void;
+    const slowView = vi.fn(() => "slow");
+
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        { path: "/slow", view: slowView, preload: () => new Promise<string>((r) => (resolveSlow = r)) },
+        { path: "/fast", view: () => "fast" },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/slow");
+      await settle();
+      store.push("/fast");
+      await settle();
+
+      expect(document.body.textContent).toBe("fast");
+
+      resolveSlow("data");
+      await settle();
+
+      expect(slowView).not.toHaveBeenCalled();
+      expect(document.body.textContent).toBe("fast");
+      expect(store.path()).toBe("/fast");
+      expect(window.location.pathname).toBe("/fast");
+      expect(store.progress()).toBe(0);
+    });
+  });
+});
+
+describe("Router Engine - Error boundaries", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  const Layout = (props: any) => props.children;
+
+  it("shows the errorView of the layer that failed", async () => {
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        {
+          path: "/app",
+          view: Layout,
+          routes: [
+            {
+              path: "/broken",
+              view: () => "broken",
+              preload: () => Promise.reject(new Error("boom")),
+              errorView: (props) => `child error: ${props.error.message}`,
+            },
+          ],
+        },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      getRouter(context).push("/app/broken");
+      await settle();
+
+      expect(document.body.textContent).toBe("child error: boom");
+    });
+  });
+
+  it("falls back to the nearest ancestor errorView", async () => {
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        {
+          path: "/app",
+          view: Layout,
+          errorView: (props) => `parent error: ${props.error.message}`,
+          routes: [
+            { path: "/ok", view: () => "ok" },
+            { path: "/broken", view: () => "broken", preload: () => Promise.reject(new Error("boom")) },
+          ],
+        },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      // Parent layer already mounted when the child fails
+      store.push("/app/ok");
+      await settle();
+      expect(document.body.textContent).toBe("ok");
+
+      store.push("/app/broken");
+      await settle();
+      expect(document.body.textContent).toBe("parent error: boom");
+
+      // Recovers when navigating to a working sibling
+      store.push("/app/ok");
+      await settle();
+      expect(document.body.textContent).toBe("ok");
+    });
+  });
+
+  it("keeps the current view when no layer has an errorView", async () => {
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        { path: "/broken", view: () => "broken", preload: () => Promise.reject(new Error("boom")) },
+      ],
+    });
+
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+
+    try {
+      await withRouter(router, async (context) => {
+        await settle();
+        getRouter(context).push("/broken");
+        await settle();
+
+        expect(document.body.textContent).toBe("home");
+        expect(getRouter(context).progress()).toBe(0);
+      });
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+
+    expect(rejections).toHaveLength(1);
+    expect((rejections[0] as Error).message).toBe("boom");
+  });
+});
+
+describe("Router Engine - Query-only and hash-only hrefs", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/list?a=1");
+  });
+
+  function createListRouter() {
+    return createRouter({
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/list", view: () => {} },
+      ],
+    });
+  }
+
+  it("keeps the current path for a query-only push and replaces the query", async () => {
+    await withRouter(createListRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("?page=2");
+      await settle();
+
+      expect(window.location.pathname).toBe("/list");
+      expect(window.location.search).toBe("?page=2");
+      expect(store.path()).toBe("/list");
+      expect(store.query()).toEqual({ page: "2" });
+    });
+  });
+
+  it("keeps the current path and query for a hash-only push", async () => {
+    await withRouter(createListRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("#top");
+      await settle();
+
+      expect(window.location.pathname).toBe("/list");
+      expect(window.location.search).toBe("?a=1");
+      expect(window.location.hash).toBe("#top");
+      expect(store.path()).toBe("/list");
+      expect(store.query()).toEqual({ a: "1" });
+    });
+  });
+
+  it("leaves in-page anchor links to the browser", async () => {
+    await withRouter(createListRouter(), async () => {
+      await settle();
+
+      const anchor = document.createElement("a");
+      anchor.setAttribute("href", "#top");
+      document.body.appendChild(anchor);
+
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      anchor.dispatchEvent(event);
+      anchor.remove();
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+});
+
+describe("Router Engine - Hash mode", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/app/");
+  });
+
+  it("keeps the base path when navigating", async () => {
+    const router = createRouter({
+      hash: true,
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/users", view: () => {} },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/users?tab=a");
+      await settle();
+
+      expect(window.location.pathname).toBe("/app/");
+      expect(window.location.hash).toBe("#/users?tab=a");
+      expect(store.path()).toBe("/users");
+      expect(store.query()).toEqual({ tab: "a" });
+
+      store.replace("/");
+      await settle();
+
+      expect(window.location.pathname).toBe("/app/");
+      expect(window.location.hash).toBe("#/");
+    });
+  });
+});
+
 describe("Router Engine - preserveQuery", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/");

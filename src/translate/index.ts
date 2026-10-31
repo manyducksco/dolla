@@ -126,6 +126,7 @@ function createTranslator(options: TranslatorOptions): Translator {
   }
 
   let lookup: LookupFn | undefined;
+  let localeToken = 0;
 
   const [currentLocale, setCurrentLocale] = createAtom("en");
   const supportedLocales = [...Object.keys(options.translations)];
@@ -178,7 +179,12 @@ function createTranslator(options: TranslatorOptions): Translator {
       throw new Error(`Locale '${name}' has no translation.`);
     }
 
-    lookup = await createLookup(locale, formatters, options.translations[locale]);
+    const token = ++localeToken;
+    const nextLookup = await createLookup(locale, formatters, options.translations[locale]);
+
+    // A later setLocale call was made while this one was loading; let that one win.
+    if (token !== localeToken) return;
+    lookup = nextLookup;
 
     // Update locale string after init so t() signals will update.
     setCurrentLocale(locale);
@@ -241,30 +247,30 @@ async function createLookup(
   /**
    * Looks up the template and produces the output. Any reactive values in `options` are tracked when used.
    */
+  /**
+   * Finds the key for a variant of `base`, written either flat ("apples_one") or nested ({ apples: { one } }).
+   */
+  function variant(base: string, suffix: string): string | undefined {
+    const flat = `${base}_${suffix}`;
+    if (templates.has(flat)) return flat;
+    const nested = `${base}.${suffix}`;
+    if (templates.has(nested)) return nested;
+  }
+
   return function lookup(selector: string, options?: TOptions): string {
     if (options) {
       // Handle count (pluralization) and context. Keys become "key_context_pluralization".
-      if (options.context != null) {
-        selector += "_" + options.context;
+      // A missing variant falls back to the key without it.
+      const context = get(options.context);
+      if (context != null) {
+        selector = variant(selector, String(context)) ?? selector;
       }
-      if (options.count != null) {
-        if (options.ordinal) {
-          // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
-          const exact = `${selector}_ordinal_(=${options.count})`;
-          if (templates.has(exact)) {
-            selector = exact;
-          } else {
-            selector += "_ordinal_" + getPluralRules(true).select(get(options.count));
-          }
-        } else {
-          // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
-          const exact = `${selector}_(=${options.count})`;
-          if (templates.has(exact)) {
-            selector = exact;
-          } else {
-            selector += "_" + getPluralRules(false).select(get(options.count));
-          }
-        }
+      const count = get(options.count);
+      if (count != null) {
+        // Prefer an exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
+        const prefix = options.ordinal ? "ordinal_" : "";
+        const category = prefix + getPluralRules(!!options.ordinal).select(count);
+        selector = variant(selector, `${prefix}(=${count})`) ?? variant(selector, category) ?? selector;
       }
     }
 
@@ -320,6 +326,17 @@ export type TemplateSegmentFn = (
 export type CompiledTemplate = TemplateSegmentFn[];
 
 /**
+ * Converts a formatter option written in a template to the type `Intl` APIs expect.
+ * "true"/"false" become booleans and numeric strings become numbers; anything else stays a string.
+ */
+function parseOptionValue(value: string): string | number | boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  return value;
+}
+
+/**
  * Parse a string template into an array of functions that will produce each piece of the output when called.
  */
 export function parseTemplate(template: string): CompiledTemplate {
@@ -335,7 +352,7 @@ export function parseTemplate(template: string): CompiledTemplate {
       const parts = inner.split("|").map((p) => p.trim());
 
       const name = parts[0];
-      const parsedFormats: { name: string; options: Record<string, string> }[] = [];
+      const parsedFormats: { name: string; options: Record<string, string | number | boolean> }[] = [];
 
       // Parse formatters at build-time to prevent string splitting on every render
       for (let j = 1; j < parts.length; j++) {
@@ -345,7 +362,7 @@ export function parseTemplate(template: string): CompiledTemplate {
         if (match) {
           const formatName = match[1];
           const optionsStr = match[2];
-          const optsObj: Record<string, string> = {};
+          const optsObj: Record<string, string | number | boolean> = {};
 
           if (optionsStr) {
             const pairs = optionsStr.split(",");
@@ -353,7 +370,7 @@ export function parseTemplate(template: string): CompiledTemplate {
               const pair = pairs[k];
               const colonIndex = pair.indexOf(":");
               if (colonIndex > -1) {
-                optsObj[pair.slice(0, colonIndex).trim()] = pair.slice(colonIndex + 1).trim();
+                optsObj[pair.slice(0, colonIndex).trim()] = parseOptionValue(pair.slice(colonIndex + 1).trim());
               }
             }
           }

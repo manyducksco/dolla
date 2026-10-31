@@ -64,7 +64,7 @@ const translations = {
 t("apples", { count: 3 })(); // "3 apples"
 ```
 
-`count` may be a getter. Exact-number keys (`apples_(=2)`) and ordinal keys (`apples_ordinal_one`) are also supported.
+`count` may be a getter. Exact-number keys (`apples_(=2)`) and ordinal keys (`apples_ordinal_one`) are also supported. Variants can be written flat (`apples_one`) or nested under the base key as above (`apples: { one, "(=2)", ordinal_one }`).
 
 ### Context-aware keys
 
@@ -72,8 +72,10 @@ Append `_context` to a key to select locale-specific variants:
 
 ```js
 t("greeting", { context: "formal" })();
-// Selects key "greeting_formal" if it exists
+// Selects key "greeting_formal" (or nested "greeting.formal") if it exists
 ```
+
+If a context or plural variant is missing, the key without that variant is used (`greeting`). A key with no translation at all returns the key itself.
 
 ### Built-in formatters
 
@@ -89,6 +91,8 @@ Available built-in formatters:
 - `{{value|number}}` — uses `Intl.NumberFormat`
 - `{{value|datetime}}` — uses `Intl.DateTimeFormat`
 - `{{value|list}}` — uses `Intl.ListFormat`
+
+Pass formatter options in parentheses: `{{value|number(style: percent, useGrouping: false)}}`. `true`, `false` and numbers are converted to booleans and numbers; other values are strings.
 
 ### Custom formatters
 

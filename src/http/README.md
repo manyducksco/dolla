@@ -61,7 +61,7 @@ http.use(async (request, next) => {
 | --------- | ---------------------------------------- | ------------------------------------------------------------------ |
 | `body`    | any                                      | Request body. Plain objects are auto-serialized as JSON.           |
 | `headers` | `Record<string, any> \| Headers`         | Custom headers.                                                    |
-| `query`   | `Record<string, any> \| URLSearchParams` | URL query parameters.                                              |
+| `query`   | `Record<string, any> \| URLSearchParams` | URL query parameters. Arrays and repeated keys become repeated params. |
 | `parse`   | `(response: Response) => Promise<Body>`  | Custom parser for the raw `Response`.                              |
 | `schema`  | `StandardSchemaV1`                       | Validates the decoded body and replaces it with the schema output. |
 | `retry`   | `number`                                 | Number of retries. Defaults to the client setting, or `0`.         |
@@ -159,6 +159,8 @@ By default, the client parses the response body based on the `Content-Type` head
 - `application/json` → `response.json()`
 - `*/*form*` → `response.formData()`
 - everything else → `response.text()`
+
+`HEAD` requests and `204`, `205` and `304` responses have an `undefined` body, as do empty JSON bodies. If an error response's body can't be decoded, `HTTPResponseError` is still thrown, with the raw text as `response.body`.
 
 Override this with a custom `parse` function in the request options. `parse` receives the raw `Response`; use `schema` when you want to validate the decoded body instead.
 

@@ -38,6 +38,11 @@ interface RouteMatch extends Match {
 type RoutePayload = {
   pattern: string;
   meta: Record<any, any>;
+  /**
+   * Param names by path segment index. Stored per route because sibling routes
+   * share tree nodes but may name the same param segment differently.
+   */
+  params?: [index: number, name: string][];
   layers?: RouteLayer[];
   redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
 };
@@ -112,6 +117,17 @@ export function resolvePath(base: string, part: string | null = null): string {
   return joinPath([base, part]);
 }
 
+/**
+ * Decodes a path segment, falling back to the raw segment if it isn't valid percent-encoding.
+ */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 function parseQueryParams(query: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(query));
 }
@@ -149,7 +165,6 @@ class RouteNode {
 
   // Set if this node represents the end of a valid path
   route?: RoutePayload;
-  paramName?: string;
 }
 
 export function buildRouteTree(routes: Route[]): RouteNode {
@@ -158,16 +173,19 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 
   function insertIntoTree(pattern: string, payload: RoutePayload) {
     const parts = splitPath(pattern);
+    const params: [number, string][] = [];
     let current = root;
 
-    for (const part of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
       if (part === "*") {
+        assert(i === parts.length - 1, `Wildcard must be the last segment: ${pattern}`);
         current = current.wildcardChild ??= new RouteNode();
       } else if (part.startsWith(":")) {
         const name = part.slice(1);
         assert(/^[A-Za-z0-9_]+$/.test(name), `Invalid route param: ${part}`);
         current = current.paramChild ??= new RouteNode();
-        current.paramName = name;
+        params.push([i, name]);
       } else {
         const key = part.toLowerCase();
         let next = current.staticChildren.get(key);
@@ -175,6 +193,8 @@ export function buildRouteTree(routes: Route[]): RouteNode {
         current = next;
       }
     }
+    assert(!current.route, `Duplicate route: ${pattern}`);
+    payload.params = params;
     current.route = payload;
   }
 
@@ -182,8 +202,8 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     assert(isObject<Route>(route) && isString(route.path), "Invalid route object");
 
     const parentPaths = parents.map((p) => p.path);
-    const parent = parents.at(-1);
-    const meta = parent && route.meta ? { ...parent.meta, ...route.meta } : route.meta || {};
+    // Meta from every ancestor layer is merged, with deeper layers taking precedence.
+    const meta = Object.assign({}, ...parents.map((p) => p.meta), route.meta);
 
     const rawPattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
     assert(
@@ -249,11 +269,20 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 }
 
 export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatchOptions = {}): RouteMatch | undefined {
-  const [path, query] = url.split("?");
+  // The fragment never takes part in matching. Split on the first '?' only, since query values may contain '?'.
+  const hashIndex = url.indexOf("#");
+  if (hashIndex !== -1) url = url.slice(0, hashIndex);
+  const queryIndex = url.indexOf("?");
+  const path = queryIndex === -1 ? url : url.slice(0, queryIndex);
+  const query = queryIndex === -1 ? "" : url.slice(queryIndex + 1);
   const parts = splitPath(path);
-  const paramState: Record<string, string> = {}; // Reused across branches
+  function createMatch(route: RoutePayload, wildcard?: string): RouteMatch {
+    const params: Record<string, string> = {};
+    for (const [index, name] of route.params ?? []) {
+      params[name] = decodeSegment(parts[index]);
+    }
+    if (wildcard != null) params.wildcard = wildcard;
 
-  function createMatch(route: RoutePayload, params: Record<string, string>): RouteMatch {
     return {
       path: path || "/",
       pattern: route.pattern,
@@ -269,13 +298,13 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
     // if we've consumed all URL parts
     if (index === parts.length) {
       if (node.route && (!options.willMatch || options.willMatch(node.route))) {
-        return createMatch(node.route, { ...paramState });
+        return createMatch(node.route);
       }
 
       // Allow wildcards to match zero remaining segments
       if (node.wildcardChild && node.wildcardChild.route) {
         if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-          return createMatch(node.wildcardChild.route, { ...paramState, wildcard: "/" });
+          return createMatch(node.wildcardChild.route, "/");
         }
       }
 
@@ -292,18 +321,13 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
     }
 
     if (node.paramChild) {
-      paramState[node.paramChild.paramName!] = decodeURIComponent(part);
       const result = search(node.paramChild, index + 1);
       if (result) return result;
-      delete paramState[node.paramChild.paramName!];
     }
 
     if (node.wildcardChild && node.wildcardChild.route) {
       if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-        return createMatch(node.wildcardChild.route, {
-          ...paramState,
-          wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/"),
-        });
+        return createMatch(node.wildcardChild.route, "/" + parts.slice(index).map(decodeSegment).join("/"));
       }
     }
 
@@ -318,14 +342,19 @@ interface ResolvedRoute {
   journey: JourneyStep[];
 }
 
+const MAX_REDIRECTS = 20;
+
 /**
  * Takes a URL and finds a match, following redirects.
+ * Throws if redirects loop back to an already visited path or exceed `MAX_REDIRECTS`.
  */
 export async function resolveRoute(
   rootNode: RouteNode,
   path: string,
   journey: JourneyStep[] = [],
+  visited: string[] = [],
 ): Promise<ResolvedRoute> {
+  visited = [...visited, path];
   const match = matchRoute(rootNode, path);
 
   if (!match) return { journey: [...journey, { kind: "miss", message: `no match for '${path}'` }] };
@@ -341,10 +370,16 @@ export async function resolveRoute(
       if (!target.startsWith("/")) target = resolvePath(match.path, target);
     }
 
-    return resolveRoute(rootNode, target, [
-      ...journey,
-      { kind: "redirect", message: `redirecting '${match.path}' -> '${target}'` },
-    ]);
+    if (visited.includes(target) || visited.length > MAX_REDIRECTS) {
+      throw new Error(`Redirect loop: ${[...visited, target].join(" -> ")}`);
+    }
+
+    return resolveRoute(
+      rootNode,
+      target,
+      [...journey, { kind: "redirect", message: `redirecting '${match.path}' -> '${target}'` }],
+      visited,
+    );
   }
 
   // TODO: Data preload
@@ -373,7 +408,8 @@ export function catchLinks(
     if (!anchor || !root.contains(anchor)) return;
 
     const href = anchor.getAttribute("href");
-    if (!href) return;
+    // In-page anchors are left to the browser
+    if (!href || href.startsWith("#")) return;
 
     if (
       _window.location.protocol !== anchor.protocol ||
@@ -400,10 +436,11 @@ const MULTISLASH_RE = /\/+/g;
 
 /**
  * Replace route pattern param placeholders with real matched values.
+ * Values are URL-encoded so params containing '/' or other reserved characters stay one segment.
  */
 export function replaceParams(path: string, params: Record<string, string | number>) {
   const paramMap: Record<string, string> = {};
-  for (const key in params) paramMap[key] = String(params[key]);
+  for (const key in params) paramMap[key] = encodeURIComponent(String(params[key]));
 
   path = path.replace(PARAM_RE, (_, name) => paramMap[name] ?? "");
   path = path.replace(MULTISLASH_RE, "/");
@@ -444,11 +481,11 @@ export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
     getSearch,
     getKey,
     push: (url) => {
-      const prefix = useHash ? "/#" : "";
+      const prefix = useHash ? "#" : ""; // Relative to the current location, so the base path is kept
       window.history.pushState({ key: uniqueId() }, "", prefix + url);
     },
     replace: (url) => {
-      const prefix = useHash ? "/#" : "";
+      const prefix = useHash ? "#" : ""; // Relative to the current location, so the base path is kept
       window.history.replaceState({ key: getKey() }, "", prefix + url);
     },
   };

@@ -1,5 +1,124 @@
 import { describe, expect, test } from "vitest";
-import { compile, parseTemplate } from "./index.js";
+import { createAtom } from "../core/signals.js";
+import { compile, createTranslate, getTranslate, parseTemplate, type TranslatorOptions } from "./index.js";
+
+async function createTestTranslator(options: TranslatorOptions) {
+  const context: any = {};
+  await createTranslate(options)(context);
+  return getTranslate(context);
+}
+
+describe("translator", () => {
+  test("context option may be a getter", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: { en: { greeting_formal: "Good day", greeting_casual: "Hey" } },
+    });
+
+    const [context, setContext] = createAtom("formal");
+    const label = t("greeting", { context });
+    expect(label()).toBe("Good day");
+
+    setContext("casual");
+    expect(label()).toBe("Hey");
+  });
+
+  test("exact-count keys work with a getter count", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: {
+          "apples_(=0)": "no apples",
+          apples_one: "{{count}} apple",
+          apples_other: "{{count}} apples",
+          "place_ordinal_(=1)": "winner",
+          place_ordinal_two: "{{count}}nd",
+          place_ordinal_other: "{{count}}th",
+        },
+      },
+    });
+
+    const [count, setCount] = createAtom(0);
+    const apples = t("apples", { count });
+    const place = t("place", { count, ordinal: true });
+    expect(apples()).toBe("no apples");
+
+    setCount(1);
+    expect(apples()).toBe("1 apple");
+    expect(place()).toBe("winner");
+
+    setCount(2);
+    expect(apples()).toBe("2 apples");
+    expect(place()).toBe("2nd");
+
+    setCount(0);
+    expect(apples()).toBe("no apples");
+  });
+
+  test("nested plural and context objects resolve (README format)", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: {
+          apples: { "(=0)": "no apples", one: "{{count}} apple", other: "{{count}} apples" },
+          place: { ordinal_one: "{{count}}st", ordinal_other: "{{count}}th" },
+          greeting: { formal: "Good day", casual: "Hey" },
+          menu: { items: { one: "{{count}} item", other: "{{count}} items" } },
+        },
+      },
+    });
+
+    expect(t("apples", { count: 3 })()).toBe("3 apples");
+    expect(t("apples", { count: 1 })()).toBe("1 apple");
+    expect(t("apples", { count: 0 })()).toBe("no apples");
+    expect(t("place", { count: 1, ordinal: true })()).toBe("1st");
+    expect(t("greeting", { context: "formal" })()).toBe("Good day");
+    expect(t("menu.items", { count: 2 })()).toBe("2 items");
+  });
+
+  test("a slower earlier setLocale doesn't override a later one", async () => {
+    let resolveFr!: (strings: { hello: string }) => void;
+    const translator = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: { hello: "Hello" },
+        fr: () => new Promise((resolve) => (resolveFr = resolve)),
+        ja: { hello: "こんにちは" },
+      },
+    });
+    const hello = translator.t("hello");
+
+    const fr = translator.setLocale("fr");
+    await translator.setLocale("ja");
+    expect(hello()).toBe("こんにちは");
+
+    resolveFr({ hello: "Bonjour" });
+    await fr;
+
+    expect(translator.currentLocale()).toBe("ja");
+    expect(hello()).toBe("こんにちは");
+  });
+
+  test("missing context or plural variants fall back to the base key", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: {
+          greeting: "Hello",
+          greeting_formal: "Good day",
+          apples: "{{count}} apple(s)",
+          pears_casual: "{{count}} pears, mate",
+        },
+      },
+    });
+
+    expect(t("greeting", { context: "pirate" })()).toBe("Hello");
+    expect(t("apples", { count: 2 })()).toBe("2 apple(s)");
+    expect(t("greeting", { context: "formal", count: 2 })()).toBe("Good day");
+    expect(t("pears", { context: "casual", count: 2 })()).toBe("2 pears, mate");
+    expect(t("missing", { context: "formal", count: 2 })()).toBe("missing");
+  });
+});
 
 describe("parseTemplate", () => {
   test("static text returns single segment", () => {
@@ -51,6 +170,19 @@ describe("parseTemplate", () => {
     const result = segments.map((s) => s({ price: 100 }, formatters, "en")).join("");
     expect(result).toBe("$100");
     expect(capturedOptions).toEqual({ currency: "USD" });
+  });
+
+  test("formatter options coerce booleans and numbers", () => {
+    const segments = parseTemplate("{{n|number(useGrouping:false, minimumFractionDigits: 2, style: percent, x: true)}}");
+    let capturedOptions: any;
+    const formatters = new Map();
+    formatters.set("number", (_locale: string, value: any, options: any) => {
+      capturedOptions = options;
+      return new Intl.NumberFormat("en", options).format(value);
+    });
+    const result = segments.map((s) => s({ n: 12345 }, formatters, "en")).join("");
+    expect(capturedOptions).toEqual({ useGrouping: false, minimumFractionDigits: 2, style: "percent", x: true });
+    expect(result).toBe("1234500.00%");
   });
 
   test("empty template produces no segments", () => {

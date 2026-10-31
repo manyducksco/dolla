@@ -130,6 +130,39 @@ function withJson<T>(
   return promise as HTTPResponsePromise<T>;
 }
 
+const NO_BODY_STATUS_CODES = new Set([204, 205, 304]);
+
+/**
+ * Decodes a response body based on its content-type. Empty JSON bodies decode to `undefined`.
+ * Error responses whose body can't be decoded keep the raw text, so an `HTTPResponseError` is still thrown.
+ */
+async function parseBody(response: Response): Promise<unknown> {
+  const type = response.headers.get("content-type") || "";
+
+  if (type.includes("json")) {
+    const text = await response.text();
+    if (!text.trim()) return undefined;
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      if (response.ok) throw error;
+      return text;
+    }
+  }
+
+  if (type.includes("form")) {
+    if (response.ok) return response.formData();
+    const fallback = response.clone();
+    try {
+      return await response.formData();
+    } catch {
+      return fallback.text();
+    }
+  }
+
+  return response.text();
+}
+
 const RETRY_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE", "PUT", "DELETE"]);
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const RETRY_BASE_DELAY = 300;
@@ -311,16 +344,23 @@ export class HTTP {
     options: RequestOptions<any, ResBody> = {},
   ): Promise<HTTPResponse<ResBody>> {
     const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-    const url = new URL(uri, uri.startsWith("http") ? undefined : base);
+    // Only URIs with a scheme ("https:", "blob:", ...) are absolute.
+    const url = new URL(uri, /^[a-z][a-z\d+.-]*:/i.test(uri) ? undefined : base);
     const retries = normalizeRetry(options.retry, this.#retry);
 
     if (options.query) {
-      if (options.query instanceof URLSearchParams) {
-        options.query.forEach((v, k) => url.searchParams.set(k, v));
-      } else {
-        for (const [k, v] of Object.entries(options.query)) {
-          if (v != null) url.searchParams.set(k, v instanceof Date ? v.toISOString() : String(v));
-        }
+      // Query options replace same-named params in the URI; repeated keys and arrays become repeated params.
+      const entries: [string, unknown][] =
+        options.query instanceof URLSearchParams
+          ? [...options.query]
+          : Object.entries(options.query).flatMap(([k, v]) =>
+              Array.isArray(v) ? v.map((item): [string, unknown] => [k, item]) : [[k, v]],
+            );
+
+      const values = entries.filter(([, v]) => v != null);
+      for (const [k] of values) url.searchParams.delete(k);
+      for (const [k, v] of values) {
+        url.searchParams.append(k, v instanceof Date ? v.toISOString() : String(v));
       }
     }
 
@@ -329,8 +369,8 @@ export class HTTP {
     let body = options.body;
     const isPlainObject = body && typeof body === "object" && body.constructor === Object;
 
-    if (!headers.has("content-type") && (isPlainObject || Array.isArray(body))) {
-      headers.set("content-type", "application/json");
+    if ((isPlainObject || Array.isArray(body)) && (!headers.has("content-type") || isJsonContentType(headers))) {
+      if (!headers.has("content-type")) headers.set("content-type", "application/json");
       body = JSON.stringify(body);
     }
 
@@ -355,7 +395,9 @@ export class HTTP {
           res = await dispatch(i + 1);
           return res;
         });
-        return mwResult !== undefined ? mwResult : res!;
+        if (mwResult !== undefined) return mwResult;
+        if (res === undefined) throw new Error("HTTP middleware returned no response; return next() or a response");
+        return res;
       }
 
       // Terminal Request Handler
@@ -364,11 +406,10 @@ export class HTTP {
       let resBody: any;
       if (options.parse) {
         resBody = await options.parse(fetched);
+      } else if (req.method.toUpperCase() === "HEAD" || NO_BODY_STATUS_CODES.has(fetched.status)) {
+        resBody = undefined;
       } else {
-        const type = fetched.headers.get("content-type") || "";
-        if (type.includes("json")) resBody = await fetched.json();
-        else if (type.includes("form")) resBody = await fetched.formData();
-        else resBody = await fetched.text();
+        resBody = await parseBody(fetched);
       }
 
       const response: HTTPResponse<any> = {

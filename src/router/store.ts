@@ -22,12 +22,20 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
   function navigate(path: string, replace: boolean) {
     console.info(`🗺️ navigating to '${path}'${replace ? " (replace)" : ""}`);
 
-    // Resolve only the path part so the query string is passed through as-is.
+    // Resolve only the path part so the query string and fragment are passed through as-is.
+    const hashIndex = path.indexOf("#");
+    const fragment = hashIndex === -1 ? "" : path.slice(hashIndex);
+    if (hashIndex !== -1) path = path.slice(0, hashIndex);
+
     const queryIndex = path.indexOf("?");
-    const search = queryIndex === -1 ? "" : path.slice(queryIndex);
+    let search = queryIndex === -1 ? "" : path.slice(queryIndex);
     const pathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
 
-    const resolved = resolvePath(history.getPath(), pathname) + search;
+    // A fragment-only href ("#top") stays on the current path and query, like in a browser.
+    if (!pathname && !search && fragment) search = history.getSearch();
+
+    // A query-only href ("?page=2") keeps the current path.
+    const resolved = (pathname ? resolvePath(history.getPath(), pathname) : history.getPath()) + search + fragment;
     replace ? history.replace(resolved) : history.push(resolved);
     updateRoute();
   }

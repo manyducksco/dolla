@@ -42,6 +42,11 @@ describe("Radix Tree Routing Algorithm", () => {
     expect(match?.params.id).toBe("john doe");
   });
 
+  it("falls back to the raw segment for malformed percent-encoding", () => {
+    expect(matchRoute(tree, "/users/100%")?.params).toEqual({ id: "100%" });
+    expect(matchRoute(tree, "/files/a/100%")?.params).toEqual({ wildcard: "/a/100%" });
+  });
+
   it("captures wildcards", () => {
     const match = matchRoute(tree, "/files/documents/2026/report.pdf");
     expect(match?.pattern).toBe("/files/*");
@@ -53,8 +58,42 @@ describe("Radix Tree Routing Algorithm", () => {
     expect(match?.query).toEqual({ tab: "activity", sort: "desc" });
   });
 
+  it("keeps '?' inside query values", () => {
+    const match = matchRoute(tree, "/users/123?next=/a?b=1");
+    expect(match?.params.id).toBe("123");
+    expect(match?.query).toEqual({ next: "/a?b=1" });
+  });
+
+  it("ignores a #fragment when matching", () => {
+    expect(matchRoute(tree, "/users/123#top")?.params).toEqual({ id: "123" });
+    expect(matchRoute(tree, "/users#top")?.pattern).toBe("/users");
+
+    const withQuery = matchRoute(tree, "/users/123?tab=a#top");
+    expect(withQuery?.params).toEqual({ id: "123" });
+    expect(withQuery?.query).toEqual({ tab: "a" });
+  });
+
   it("returns undefined for misses", () => {
     const match = matchRoute(tree, "/unknown/path");
     expect(match).toBeUndefined();
+  });
+});
+
+describe("Sibling param routes", () => {
+  const dummyView = () => {};
+
+  it("keeps each route's own param name", () => {
+    const tree = buildRouteTree([
+      { path: "/users/:id", view: dummyView },
+      { path: "/users/:userId/posts", view: dummyView },
+    ]);
+
+    const user = matchRoute(tree, "/users/5");
+    expect(user?.pattern).toBe("/users/:id");
+    expect(user?.params).toEqual({ id: "5" });
+
+    const posts = matchRoute(tree, "/users/5/posts");
+    expect(posts?.pattern).toBe("/users/:userId/posts");
+    expect(posts?.params).toEqual({ userId: "5" });
   });
 });

@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { buildRouteTree, joinPath, matchRoute, resolvePath } from "./utils.js";
+import { buildRouteTree, joinPath, matchRoute, resolvePath, resolveRoute } from "./utils.js";
 import type { Route } from "./types.js";
 
 test("add and match routes", () => {
@@ -95,6 +95,34 @@ test("rejects invalid route params", () => {
   ).toThrow("Invalid route param");
 });
 
+test("rejects duplicate route patterns", () => {
+  const view = () => "test";
+  expect(() =>
+    buildRouteTree([
+      { path: "/users", view },
+      { path: "/users", view },
+    ]),
+  ).toThrow("Duplicate route: /users");
+  expect(() =>
+    buildRouteTree([
+      { path: "/users/:id", view },
+      { path: "/users/:userId", view },
+    ]),
+  ).toThrow("Duplicate route: /users/:userId");
+  expect(() =>
+    buildRouteTree([
+      { path: "/users", view, routes: [{ path: "/:id", view }] },
+      { path: "/users/:id", view },
+    ]),
+  ).toThrow("Duplicate route: /users/:id");
+});
+
+test("rejects segments after a wildcard", () => {
+  expect(() => buildRouteTree([{ path: "/files/*/edit", view: () => "test" }])).toThrow(
+    "Wildcard must be the last segment: /files/*/edit",
+  );
+});
+
 test("static joinPath: joins simple path fragments", () => {
   expect(joinPath(["users", 5, "edit"])).toBe("users/5/edit");
   expect(joinPath(["/lots", "/of/", "/slashes/"])).toBe("/lots/of/slashes");
@@ -113,6 +141,57 @@ test("static resolvePath: resolves relative paths", () => {
   expect(resolvePath("/users/5", "./edit")).toBe("/users/5/edit");
   expect(resolvePath("/users/5", "edit")).toBe("/users/5/edit");
   expect(resolvePath("/users/5/edit", "../delete")).toBe("/users/5/delete");
+});
+
+test("resolveRoute: reports redirect loops with a clear error", async () => {
+  const tree = buildRouteTree([
+    { path: "/a", redirect: "/b" },
+    { path: "/b", redirect: "/a" },
+  ]);
+  await expect(resolveRoute(tree, "/a")).rejects.toThrow("Redirect loop: /a -> /b -> /a");
+});
+
+test("resolveRoute: reports endless dynamic redirects", async () => {
+  let n = 0;
+  const tree = buildRouteTree([
+    { path: "/n/:id", redirect: () => `/n/${++n}` },
+  ]);
+  await expect(resolveRoute(tree, "/n/0")).rejects.toThrow("Redirect loop");
+});
+
+test("resolveRoute: re-encodes params inserted into redirect targets", async () => {
+  const tree = buildRouteTree([
+    { path: "/old/:id", redirect: "/new/:id" },
+    { path: "/new/:id", view: () => "test" },
+  ]);
+  const { match } = await resolveRoute(tree, "/old/a%2Fb%20c");
+  expect(match?.path).toBe("/new/a%2Fb%20c");
+  expect(match?.params).toEqual({ id: "a/b c" });
+});
+
+test("merges meta from all ancestor layers", () => {
+  const view = () => "test";
+  const tree = buildRouteTree([
+    {
+      path: "/a",
+      view,
+      meta: { a: 1, shared: "a" },
+      routes: [
+        {
+          path: "/b",
+          view,
+          meta: { b: 2, shared: "b" },
+          routes: [
+            { path: "/c", view, meta: { c: 3 } },
+            { path: "/none", view },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  expect(matchRoute(tree, "/a/b/c")?.meta).toEqual({ a: 1, b: 2, c: 3, shared: "b" });
+  expect(matchRoute(tree, "/a/b/none")?.meta).toEqual({ a: 1, b: 2, shared: "b" });
 });
 
 test("static resolvePath: returns absolute paths", () => {
