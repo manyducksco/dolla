@@ -1,4 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
+import { createAtom, createEffect } from "../../signals.js";
+import { flushPendingUpdates } from "../scheduler.js";
 import { createContext, onCleanup, onEffect, onMount, REPLACING } from "../../context.js";
 import type { View } from "../../index.js";
 import { createMarkup } from "../utils.js";
@@ -440,6 +442,42 @@ describe("ViewNode", () => {
       expect(pages).toHaveLength(1);
       expect(pages[0].textContent).toBe("v2");
       expect(container.textContent).not.toContain("v1");
+    });
+  });
+  describe("mounted from inside an effect", () => {
+    test("keeps updating after the surrounding effect re-runs", () => {
+      const { context, container } = setup();
+      const [value, setValue] = createAtom("a");
+      const [outer, setOuter] = createAtom(0);
+      const hookRuns = vi.fn();
+      const bodyRuns = vi.fn();
+
+      const View = function (this: ReturnType<typeof createContext>) {
+        onEffect(this, () => hookRuns(value()));
+        createEffect(() => bodyRuns(value()));
+        return createMarkup("span", { title: () => value(), children: () => value() });
+      };
+
+      let mounted = false;
+      const stop = createEffect(() => {
+        outer();
+        if (!mounted) {
+          mounted = true;
+          new ViewNode(context, View, {}).mount(container);
+        }
+      });
+
+      setOuter(1);
+      hookRuns.mockClear();
+      bodyRuns.mockClear();
+
+      setValue("b");
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe('<span title="b">b</span>');
+      expect(hookRuns).toHaveBeenCalledWith("b");
+      expect(bodyRuns).toHaveBeenCalledWith("b");
+
+      stop();
     });
   });
 });

@@ -1,6 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
-import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
+import { batch, type Getter, createAtom, subscribe, type Setter, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { getDebug } from "../../debug.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
@@ -83,17 +83,19 @@ export class RepeatNode<T> extends MarkupNode {
 
       let initial = true;
       let hasInitial = false;
-      this.#unsubscribe = subscribe(
-        this.#items,
-        (items) => {
-          this.#pendingItems = items;
-          if (initial) {
-            hasInitial = true;
-            return;
-          }
-          scheduleUpdate(this.#updatePending, this.#meta);
-        },
-        { name: "repeat:items", context: this.#context },
+      this.#unsubscribe = withoutOwner(() =>
+        subscribe(
+          this.#items,
+          (items) => {
+            this.#pendingItems = items;
+            if (initial) {
+              hasInitial = true;
+              return;
+            }
+            scheduleUpdate(this.#updatePending, this.#meta);
+          },
+          { name: "repeat:items", context: this.#context },
+        ),
       );
       initial = false;
       // Apply the initial value after the subscription is registered so the

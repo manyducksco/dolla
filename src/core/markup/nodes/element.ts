@@ -1,7 +1,7 @@
 import { isArray, isFunction, isNumber, isObject, isString } from "../../../utils.js";
 import { cleanupContext, createContext, getNearestViewNode, mountContext, type Context } from "../../context.js";
 import type { Ref } from "../../ref.js";
-import { type Getter, subscribe } from "../../signals.js";
+import { type Getter, subscribe, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { DEBUG } from "../../symbols.js";
 import { isConditionalTemplate, isCSSTemplate, type ConditionalTemplate, type CSSTemplate } from "../css-template.js";
@@ -217,18 +217,21 @@ export class ElementNode extends MarkupNode {
     const meta = { label, context: this.#context };
     const run = () => callback(latest);
 
-    return subscribe(
-      getter,
-      (current) => {
-        latest = current;
-        if (initialized) {
-          scheduleUpdate(run, meta);
-        } else {
-          initialized = true;
-          runUpdate(run, meta);
-        }
-      },
-      { name: label, context: this.#context },
+    // The node disposes this on unmount, so it must not belong to a surrounding effect.
+    return withoutOwner(() =>
+      subscribe(
+        getter,
+        (current) => {
+          latest = current;
+          if (initialized) {
+            scheduleUpdate(run, meta);
+          } else {
+            initialized = true;
+            runUpdate(run, meta);
+          }
+        },
+        { name: label, context: this.#context },
+      ),
     );
   }
 

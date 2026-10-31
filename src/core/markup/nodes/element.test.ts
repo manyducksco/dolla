@@ -1318,6 +1318,31 @@ describe("ElementNode", () => {
     });
   });
 
+  describe("css template bindings", () => {
+    test("keep updating after the class value changes", () => {
+      const { context, container } = setup();
+      const [color, setColor] = createAtom("red");
+      const [on, setOn] = createAtom(true);
+      const tpl = css`
+        color: ${() => color()};
+      `;
+      const node = new ElementNode(context, "div", { class: () => [tpl, on() ? "on" : "off"] });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      const varName = `--${tpl.className}-0`;
+      expect(el.style.getPropertyValue(varName)).toBe("red");
+
+      setOn(false);
+      flushPendingUpdates();
+      expect(el.classList.contains("off")).toBe(true);
+      expect(el.classList.contains(tpl.className)).toBe(true);
+
+      setColor("blue");
+      flushPendingUpdates();
+      expect(el.style.getPropertyValue(varName)).toBe("blue");
+    });
+  });
+
   describe("remounting", () => {
     test("remounting after unmount does not duplicate children", () => {
       const { context, container } = setup();

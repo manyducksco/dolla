@@ -386,6 +386,97 @@ test("nested memo", () => {
   stop();
 });
 
+describe("ownership while tracking is off", () => {
+  // `peek`, `subscribe` callbacks and setter updaters stop signal reads from
+  // being tracked, but effects created inside them still belong to the
+  // surrounding effect.
+  function setupOuter(createInner: (innerEffect: () => void) => void) {
+    const [outerDep, setOuterDep] = createAtom(0);
+    const [innerDep, setInnerDep] = createAtom(0);
+    const innerRuns = vi.fn();
+    const stop = createEffect(() => {
+      outerDep();
+      createInner(() =>
+        createEffect(() => {
+          innerRuns(innerDep());
+        }),
+      );
+    });
+    return { setOuterDep, setInnerDep, innerRuns, stop };
+  }
+
+  const cases: [string, (innerEffect: () => void) => void][] = [
+    ["peek", (inner) => peek(() => inner())],
+    [
+      "a subscribe callback",
+      (inner) => {
+        const [source] = createAtom(1);
+        // Braces matter: a function returned from the callback is used as its cleanup.
+        subscribe(source, () => {
+          inner();
+        });
+      },
+    ],
+    [
+      "a setter updater",
+      (inner) => {
+        const [, setValue] = createAtom(0);
+        setValue((n) => {
+          inner();
+          return n + 1;
+        });
+      },
+    ],
+  ];
+
+  test.each(cases)("an effect created inside %s is disposed when the outer effect re-runs", (_label, createInner) => {
+    const { setOuterDep, setInnerDep, innerRuns, stop } = setupOuter(createInner);
+    expect(innerRuns).toBeCalledTimes(1);
+
+    // Re-running the outer effect replaces the inner effect rather than adding one.
+    setOuterDep(1);
+    innerRuns.mockClear();
+    setInnerDep(1);
+    expect(innerRuns).toBeCalledTimes(1);
+
+    stop();
+  });
+
+  test.each(cases)("an effect created inside %s is disposed with the outer effect", (_label, createInner) => {
+    const { setInnerDep, innerRuns, stop } = setupOuter(createInner);
+    stop();
+    innerRuns.mockClear();
+
+    setInnerDep(1);
+    expect(innerRuns).not.toHaveBeenCalled();
+  });
+
+  test("signals read inside peek are still not tracked", () => {
+    const [tracked, setTracked] = createAtom(0);
+    const [untracked, setUntracked] = createAtom(0);
+    const runs = vi.fn();
+    const stop = createEffect(() => {
+      runs(tracked(), peek(untracked));
+    });
+
+    setUntracked(1);
+    expect(runs).toBeCalledTimes(1);
+    setTracked(1);
+    expect(runs).toBeCalledTimes(2);
+
+    stop();
+  });
+
+  test("peek outside any effect creates effects with no owner", () => {
+    const [dep, setDep] = createAtom(0);
+    const runs = vi.fn();
+    const stop = peek(() => createEffect(() => runs(dep())));
+    setDep(1);
+    expect(runs).toBeCalledTimes(2);
+    stop();
+  });
+});
+
 describe("subscribe", () => {
   // test("immediately cancelling doesn't crash", () => {
   //   const fn = vi.fn();

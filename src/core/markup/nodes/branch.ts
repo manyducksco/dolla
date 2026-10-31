@@ -1,6 +1,6 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
-import { type Getter, peek, subscribe } from "../../signals.js";
+import { type Getter, peek, subscribe, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
@@ -64,19 +64,21 @@ export class BranchNode extends MarkupNode {
 
     let initial = true;
     let hasInitial = false;
-    this.#unsubscribe = subscribe(
-      this.#selector,
-      () => {
-        if (initial) {
-          hasInitial = true;
-          return;
-        }
-        this.#onChange();
-      },
-      {
-        name: "branch:selector",
-        context: this.#context,
-      },
+    this.#unsubscribe = withoutOwner(() =>
+      subscribe(
+        this.#selector,
+        () => {
+          if (initial) {
+            hasInitial = true;
+            return;
+          }
+          this.#onChange();
+        },
+        {
+          name: "branch:selector",
+          context: this.#context,
+        },
+      ),
     );
     initial = false;
     // Sync the initial branch after the subscription is registered so the

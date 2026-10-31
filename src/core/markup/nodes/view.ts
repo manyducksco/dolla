@@ -1,6 +1,6 @@
 import type { View } from "../../../types.js";
 import { createContext, mountContext, cleanupContext, REPLACING, isMounted, type Context } from "../../context.js";
-import { peek } from "../../signals.js";
+import { peek, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { pushComponentName, popComponentName } from "../../signal-debug.js";
 import { MarkupNode, type MountTarget } from "../types.js";
@@ -47,7 +47,10 @@ export class ViewNode<P> extends MarkupNode {
 
     if (!wasMounted) {
       pushComponentName(this.context.name);
-      const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
+      const viewContent = withoutOwner(() =>
+        // The view's context owns its effects, not a surrounding effect.
+        peek(() => this.#view.call(this.context, this.#props, this.context)),
+      );
       popComponentName();
 
       if (viewContent != null && viewContent !== false) {
@@ -112,7 +115,10 @@ export class ViewNode<P> extends MarkupNode {
     try {
       this.context[REPLACING] = true;
       pushComponentName(this.context.name);
-      const viewContent = peek(() => this.#view.call(this.context, this.#props, this.context));
+      const viewContent = withoutOwner(() =>
+        // The view's context owns its effects, not a surrounding effect.
+        peek(() => this.#view.call(this.context, this.#props, this.context)),
+      );
       this.#node =
         viewContent != null && viewContent !== false
           ? render(viewContent, this.context)

@@ -1,6 +1,6 @@
 import { isArray } from "../../../utils.js";
 import type { Context } from "../../context.js";
-import { subscribe, type Getter } from "../../signals.js";
+import { subscribe, type Getter, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
@@ -50,17 +50,19 @@ export class DynamicNode extends MarkupNode {
       addChild(parent, this.#root, after);
       let initial = true;
       let hasInitial = false;
-      this.#unsubscribe = subscribe(
-        this.#slot,
-        (content) => {
-          this.#pendingContent = content;
-          if (initial) {
-            hasInitial = true;
-            return;
-          }
-          scheduleUpdate(this.#updatePending, this.#meta);
-        },
-        { name: "dynamic", context: this.#context },
+      this.#unsubscribe = withoutOwner(() =>
+        subscribe(
+          this.#slot,
+          (content) => {
+            this.#pendingContent = content;
+            if (initial) {
+              hasInitial = true;
+              return;
+            }
+            scheduleUpdate(this.#updatePending, this.#meta);
+          },
+          { name: "dynamic", context: this.#context },
+        ),
       );
       initial = false;
       // Apply the initial value after the subscription is registered so the

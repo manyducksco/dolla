@@ -1,7 +1,7 @@
 import type { Store } from "../types.js";
 import { assert } from "../utils.js";
 import { VIEW, type ViewNode } from "./markup/nodes/view.js";
-import { createEffect } from "./signals.js";
+import { createEffect, withoutOwner } from "./signals.js";
 import { pushComponentName, popComponentName } from "./signal-debug.js";
 import { runSafely } from "./errors.js";
 import { MOUNTED, PARENT_ELEMENT } from "./symbols.js";
@@ -107,7 +107,9 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 export function onEffect(context: Context, fn: () => void, options?: { name?: string }): void {
   const runEffect = () => {
     pushComponentName(context.name);
-    const cleanup = createEffect(fn, { ...options, context });
+    // The context disposes this effect, so it must not also belong to whatever
+    // effect happens to be running when the context mounts.
+    const cleanup = withoutOwner(() => createEffect(fn, { ...options, context }));
     popComponentName();
     return cleanup;
   };

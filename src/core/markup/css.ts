@@ -1,7 +1,7 @@
 import { isFunction } from "../../utils";
 import type { MaybeGetter } from "../../types.js";
 import { isMounted, onCleanup, onMount, REPLACING, type Context } from "../context";
-import { createEffect, type Getter } from "../signals";
+import { createEffect, type Getter, withoutOwner } from "../signals";
 import { popComponentName, pushComponentName } from "../signal-debug.js";
 import {
   IS_CONDITIONAL_TEMPLATE,
@@ -191,7 +191,7 @@ function disposableEffect(c: Context, fn: () => void): () => void {
   const start = () => {
     if (stopped) return;
     pushComponentName(c.name);
-    stop = createEffect(fn, { context: c });
+    stop = withoutOwner(() => createEffect(fn, { context: c }));
     popComponentName();
   };
 

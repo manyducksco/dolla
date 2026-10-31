@@ -70,6 +70,11 @@ let batchDepth = 0;
 let notifyIndex = 0;
 let queuedLength = 0;
 let activeSub: ReactiveNode | undefined;
+// The node that owns effects created right now. Usually the same as
+// `activeSub`, but untracked reads (`peek`, subscribe callbacks, setter
+// updaters) clear only `activeSub`, so effects created inside them still
+// belong to the surrounding effect.
+let activeOwner: ReactiveNode | undefined;
 
 const queued: (EffectNode | undefined)[] = [];
 
@@ -348,6 +353,12 @@ function setActiveSub(sub?: ReactiveNode) {
   return prevSub;
 }
 
+function setActiveOwner(owner?: ReactiveNode) {
+  const prevOwner = activeOwner;
+  activeOwner = owner;
+  return prevOwner;
+}
+
 function withReactiveScope<T>(
   node: ReactiveNode,
   prevSub: ReactiveNode | undefined,
@@ -382,6 +393,7 @@ function updateComputed(c: ComputedNode): boolean {
   c._depsTail = undefined;
   c._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
   const prevSub = setActiveSub(c);
+  const prevOwner = setActiveOwner(c);
   const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(c);
 
@@ -395,6 +407,7 @@ function updateComputed(c: ComputedNode): boolean {
     throw toSignalError(error, { phase: "computed", node: c });
   } finally {
     activeSub = prevSub;
+    activeOwner = prevOwner;
     c._flags &= ~ReactiveFlags.RecursedCheck;
     if (succeeded) purgeDeps(c);
     reactiveScopeStack.length = scopeLen;
@@ -456,6 +469,7 @@ function run(e: EffectNode): void {
       e._depsTail = undefined;
       e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
       const prevSub = setActiveSub(e);
+      const prevOwner = setActiveOwner(e);
       let bodyFailed = false;
 
       try {
@@ -470,6 +484,7 @@ function run(e: EffectNode): void {
         throw toSignalError(error, effectErrorInfo(e, "effect"));
       } finally {
         activeSub = prevSub;
+        activeOwner = prevOwner;
         e._flags &= ~ReactiveFlags.RecursedCheck;
         // Keep the dependency union after a failure so the effect can retry
         // when any of its previous or newly-read dependencies change.
@@ -569,6 +584,7 @@ function computedGetter(node: ComputedNode) {
     } else if (!node._flags) {
       node._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
       const prevSub = setActiveSub(node);
+      const prevOwner = setActiveOwner(node);
       const scopeLen = reactiveScopeStack.length;
       reactiveScopeStack.push(node);
 
@@ -581,6 +597,7 @@ function computedGetter(node: ComputedNode) {
         throw toSignalError(error, { phase: "computed", node });
       } finally {
         activeSub = prevSub;
+        activeOwner = prevOwner;
         node._flags &= ~ReactiveFlags.RecursedCheck;
         if (succeeded) purgeDeps(node);
         reactiveScopeStack.length = scopeLen;
@@ -694,12 +711,14 @@ function runCleanup(e: EffectNode): void {
   if (!cleanup) return;
   e._cleanup = undefined;
   const prevSub = setActiveSub(undefined);
+  const prevOwner = setActiveOwner(undefined);
   try {
     cleanup();
   } catch (error) {
     reportSignalError(toSignalError(error, effectErrorInfo(e, "effect-cleanup")), e._context);
   } finally {
     activeSub = prevSub;
+    activeOwner = prevOwner;
   }
 }
 
@@ -867,8 +886,9 @@ export function createEffect(fn: () => void, options?: { name?: string; context?
   };
   setNodeDebug(e, "effect", fn, options?.name);
   const prevSub = setActiveSub(e);
-  if (prevSub !== undefined) {
-    link(e, prevSub, 0);
+  const prevOwner = setActiveOwner(e);
+  if (prevOwner !== undefined) {
+    link(e, prevOwner, 0);
   }
 
   try {
@@ -889,9 +909,27 @@ export function createEffect(fn: () => void, options?: { name?: string; context?
     effectCleanup(e);
     reportSignalError(signalError, e._context);
     return () => {};
+  } finally {
+    activeOwner = prevOwner;
   }
 
   return () => effectCleanup(e);
+}
+
+/**
+ * Runs `fn` untracked and with no owner, so effects created inside it are not
+ * disposed with the surrounding effect. For code that manages effect lifetimes
+ * itself, such as contexts and markup nodes. Internal; not part of the public API.
+ */
+export function withoutOwner<T>(fn: () => T): T {
+  const prevSub = setActiveSub(undefined);
+  const prevOwner = setActiveOwner(undefined);
+  try {
+    return fn();
+  } finally {
+    activeSub = prevSub;
+    activeOwner = prevOwner;
+  }
 }
 
 /**
