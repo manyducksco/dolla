@@ -82,8 +82,17 @@ describe("css tagged template", () => {
         font-weight: bold;
       }
     `;
-    tpl.attach(ctx, el);
+    const insertRule = vi.spyOn(CSSStyleSheet.prototype, "insertRule");
+    let rules: string[];
+    try {
+      tpl.attach(ctx, el);
+      rules = insertRule.mock.calls.map((call) => call[0]);
+    } finally {
+      insertRule.mockRestore();
+    }
     expect(el.classList.contains(tpl.className)).toBe(true);
+    // The nested template is referenced by its class name.
+    expect(rules.some((rule) => rule.includes(`.${base.className}`) && rule.includes("font-weight"))).toBe(true);
   });
 });
 

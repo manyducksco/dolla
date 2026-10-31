@@ -63,6 +63,7 @@ describe("HTTP client", () => {
     const res = await client.get("/api/test");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ data: "ok" });
+    expect(mockFetch.mock.calls[0][1].method).toBe("GET");
   });
 
   test("POST with JSON body serializes and sets content-type", async () => {
@@ -75,6 +76,7 @@ describe("HTTP client", () => {
     expect(url).toContain("/api/items");
     expect(opts.method).toBe("POST");
     expect(opts.body).toBe(JSON.stringify(body));
+    expect(opts.headers.get("content-type")).toBe("application/json");
   });
 
   test("POST serializes object and array bodies when a JSON content-type is set", async () => {
@@ -104,6 +106,7 @@ describe("HTTP client", () => {
     const client = new HTTP();
     const res = await client.delete("/api/items/1");
     expect(res.body).toEqual({ deleted: true });
+    expect(mockFetch.mock.calls[0][1].method).toBe("DELETE");
   });
 
   test("PUT request", async () => {
@@ -111,6 +114,9 @@ describe("HTTP client", () => {
     const client = new HTTP();
     const res = await client.put("/api/items/1", { body: { name: "new" } });
     expect(res.body).toEqual({ updated: true });
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(opts.method).toBe("PUT");
+    expect(opts.body).toBe('{"name":"new"}');
   });
 
   test("PATCH request", async () => {
@@ -118,6 +124,9 @@ describe("HTTP client", () => {
     const client = new HTTP();
     const res = await client.patch("/api/items/1", { body: { name: "new" } });
     expect(res.body).toEqual({ patched: true });
+    const [, opts] = mockFetch.mock.calls[0];
+    expect(opts.method).toBe("PATCH");
+    expect(opts.body).toBe('{"name":"new"}');
   });
 
   test("OPTIONS request", async () => {
@@ -125,6 +134,7 @@ describe("HTTP client", () => {
     const client = new HTTP();
     const res = await client.options("/api/items");
     expect(res.status).toBe(204);
+    expect(mockFetch.mock.calls[0][1].method).toBe("OPTIONS");
   });
 
   test("query parameters passed as object", async () => {
@@ -246,13 +256,10 @@ describe("HTTP client", () => {
         }),
     );
     const client = new HTTP();
-    try {
-      await client.get("/api/error");
-    } catch (e) {
-      const err = e as HTTPResponseError;
-      expect(err.response.status).toBe(500);
-      expect(err.response.statusText).toBe("Internal Server Error");
-    }
+    const err = await client.get("/api/error").catch((e) => e);
+    expect(err).toBeInstanceOf(HTTPResponseError);
+    expect(err.response.status).toBe(500);
+    expect(err.response.statusText).toBe("Internal Server Error");
   });
 
   test("custom parse function", async () => {
@@ -397,7 +404,8 @@ describe("HTTP client", () => {
   test("GET omits body in fetch", async () => {
     mockFetch.mockImplementation(async () => new Response("ok", { status: 200 }));
     const client = new HTTP();
-    await client.get("/api/items");
+    // The types forbid a GET body; check the runtime drops one anyway.
+    await client.get("/api/items", { body: { ignored: true } } as any);
     const [_, opts] = mockFetch.mock.calls[0];
     expect(opts.body).toBeUndefined();
   });
@@ -405,7 +413,7 @@ describe("HTTP client", () => {
   test("HEAD omits body in fetch", async () => {
     mockFetch.mockImplementation(async () => new Response(null, { status: 200 }));
     const client = new HTTP();
-    await client.head("/api/items");
+    await client.head("/api/items", { body: { ignored: true } });
     const [_, opts] = mockFetch.mock.calls[0];
     expect(opts.body).toBeUndefined();
   });

@@ -28,8 +28,20 @@ describe("getDebug", () => {
     expect(warn.mock.calls[1][0]).toContain("Second");
   });
 
-  test("accepts trace as a log level", () => {
-    setLogLevel("trace");
-    setLogLevel("info");
+  test("trace logs only appear at the trace level", () => {
+    const trace = vi.spyOn(console, "trace").mockImplementation(() => {});
+    const context = createContext(null);
+    context.name = "Tracer";
+    try {
+      setLogLevel("warn");
+      getDebug(context).trace("hidden");
+      expect(trace).not.toHaveBeenCalled();
+
+      setLogLevel("trace");
+      getDebug(context).trace("shown");
+      expect(trace).toHaveBeenCalledTimes(1);
+    } finally {
+      setLogLevel("info");
+    }
   });
 });

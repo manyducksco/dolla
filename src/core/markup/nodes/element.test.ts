@@ -914,10 +914,12 @@ describe("ElementNode", () => {
       expect(el.style.height).toBe("20px");
     });
 
+    // Style strings from a getter or in an array go through the library's own
+    // parser rather than `cssText`, so these use getters.
     test("does not strip !important from content values", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", {
-        style: 'content: "!important"',
+        style: () => 'content: "!important"',
       });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
@@ -927,7 +929,7 @@ describe("ElementNode", () => {
     test("handles multiple inline styles with urls and !important", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", {
-        style: "color: red !important; background: url('https://example.com/bg.png')",
+        style: () => "color: red !important; background: url('https://example.com/bg.png')",
       });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
@@ -938,10 +940,12 @@ describe("ElementNode", () => {
 
     test("skips inline style entries without colon", () => {
       const { context, container } = setup();
-      const node = new ElementNode(context, "div", { style: "color: red; invalid" });
+      const node = new ElementNode(context, "div", { style: ["color: red; invalid", "margin: 0"] });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       expect(el.style.color).toBe("red");
+      expect(el.style.margin).toBe("0px");
+      expect(el.getAttribute("style")).not.toContain("invalid");
     });
 
     test("throws when CSSTemplate is passed to style", () => {

@@ -172,13 +172,18 @@ describe("ViewNode", () => {
   });
 
   describe("move", () => {
-    test("move delegates to child node", () => {
+    test("move moves the rendered content", () => {
       const { context, container } = setup();
-      const node = new ViewNode(context, noopView, {});
+      const node = new ViewNode(context, () => createMarkup("span", { children: "view" }), {});
       node.mount(container);
       const sibling = document.createElement("div");
+      sibling.textContent = "sibling";
       container.appendChild(sibling);
-      expect(() => node.move(container, sibling)).not.toThrow();
+      expect(container.textContent).toBe("viewsibling");
+
+      node.move(container, sibling);
+      expect(container.textContent).toBe("siblingview");
+      expect(container.lastChild).toBe(node.getRoot());
     });
   });
 

@@ -131,8 +131,9 @@ describe("Router Engine", () => {
   });
 
   it("updates query parameters reactively without unmounting", async () => {
+    const SearchView = vi.fn(() => {});
     const router = createRouter({
-      routes: [{ path: "/search", view: () => {} }],
+      routes: [{ path: "/search", view: SearchView }],
     });
 
     await withRouter(router, async (context) => {
@@ -142,10 +143,14 @@ describe("Router Engine", () => {
 
       const store = getRouter(context);
 
+      expect(SearchView).toHaveBeenCalledTimes(1);
+
       store.setQuery({ q: "potato", sort: "asc" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(store.query()).toEqual({ q: "potato", sort: "asc" });
       expect(window.location.search).toBe("?q=potato&sort=asc");
+      expect(SearchView).toHaveBeenCalledTimes(1);
     });
   });
 });

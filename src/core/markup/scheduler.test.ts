@@ -101,16 +101,18 @@ describe("scheduler", () => {
     expect(() => flushPendingUpdates()).not.toThrow();
   });
 
-  test("does not re-queue a microtask after a flush", async () => {
+  test("updates scheduled after a manual flush still run on their own", async () => {
     const order: number[] = [];
     scheduleUpdate(() => order.push(1));
     flushPendingUpdates();
     expect(order).toEqual([1]);
 
-    // A second scheduleUpdate should still work after the first flush.
+    // Let the microtask queued by the first schedule run with nothing left to do.
+    await Promise.resolve();
+
+    // A later update must queue its own microtask and run without a manual flush.
     scheduleUpdate(() => order.push(2));
     await Promise.resolve();
-    flushPendingUpdates();
     expect(order).toEqual([1, 2]);
   });
 

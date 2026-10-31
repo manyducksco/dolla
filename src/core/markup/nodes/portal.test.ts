@@ -118,8 +118,13 @@ describe("PortalNode", () => {
       node.mount(logicalParent);
       const sibling = document.createElement("div");
       logicalParent.appendChild(sibling);
+      expect(logicalParent.firstChild).toBe(node.getRoot());
+
       node.move(logicalParent, sibling);
-      expect(node.getRoot()!.parentNode).toBe(logicalParent);
+      expect(logicalParent.firstChild).toBe(sibling);
+      expect(sibling.nextSibling).toBe(node.getRoot());
+      // The content stays in the portal target.
+      expect(portalTarget.textContent).toBe("move me");
     });
   });
 });
