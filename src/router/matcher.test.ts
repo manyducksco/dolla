@@ -58,3 +58,22 @@ describe("Radix Tree Routing Algorithm", () => {
     expect(match).toBeUndefined();
   });
 });
+
+describe("Sibling param routes", () => {
+  const dummyView = () => {};
+
+  it("keeps each route's own param name", () => {
+    const tree = buildRouteTree([
+      { path: "/users/:id", view: dummyView },
+      { path: "/users/:userId/posts", view: dummyView },
+    ]);
+
+    const user = matchRoute(tree, "/users/5");
+    expect(user?.pattern).toBe("/users/:id");
+    expect(user?.params).toEqual({ id: "5" });
+
+    const posts = matchRoute(tree, "/users/5/posts");
+    expect(posts?.pattern).toBe("/users/:userId/posts");
+    expect(posts?.params).toEqual({ userId: "5" });
+  });
+});

@@ -38,6 +38,11 @@ interface RouteMatch extends Match {
 type RoutePayload = {
   pattern: string;
   meta: Record<any, any>;
+  /**
+   * Param names by path segment index. Stored per route because sibling routes
+   * share tree nodes but may name the same param segment differently.
+   */
+  params?: [index: number, name: string][];
   layers?: RouteLayer[];
   redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
 };
@@ -149,7 +154,6 @@ class RouteNode {
 
   // Set if this node represents the end of a valid path
   route?: RoutePayload;
-  paramName?: string;
 }
 
 export function buildRouteTree(routes: Route[]): RouteNode {
@@ -158,16 +162,18 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 
   function insertIntoTree(pattern: string, payload: RoutePayload) {
     const parts = splitPath(pattern);
+    const params: [number, string][] = [];
     let current = root;
 
-    for (const part of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
       if (part === "*") {
         current = current.wildcardChild ??= new RouteNode();
       } else if (part.startsWith(":")) {
         const name = part.slice(1);
         assert(/^[A-Za-z0-9_]+$/.test(name), `Invalid route param: ${part}`);
         current = current.paramChild ??= new RouteNode();
-        current.paramName = name;
+        params.push([i, name]);
       } else {
         const key = part.toLowerCase();
         let next = current.staticChildren.get(key);
@@ -175,6 +181,7 @@ export function buildRouteTree(routes: Route[]): RouteNode {
         current = next;
       }
     }
+    payload.params = params;
     current.route = payload;
   }
 
@@ -251,9 +258,13 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatchOptions = {}): RouteMatch | undefined {
   const [path, query] = url.split("?");
   const parts = splitPath(path);
-  const paramState: Record<string, string> = {}; // Reused across branches
+  function createMatch(route: RoutePayload, wildcard?: string): RouteMatch {
+    const params: Record<string, string> = {};
+    for (const [index, name] of route.params ?? []) {
+      params[name] = decodeURIComponent(parts[index]);
+    }
+    if (wildcard != null) params.wildcard = wildcard;
 
-  function createMatch(route: RoutePayload, params: Record<string, string>): RouteMatch {
     return {
       path: path || "/",
       pattern: route.pattern,
@@ -269,13 +280,13 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
     // if we've consumed all URL parts
     if (index === parts.length) {
       if (node.route && (!options.willMatch || options.willMatch(node.route))) {
-        return createMatch(node.route, { ...paramState });
+        return createMatch(node.route);
       }
 
       // Allow wildcards to match zero remaining segments
       if (node.wildcardChild && node.wildcardChild.route) {
         if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-          return createMatch(node.wildcardChild.route, { ...paramState, wildcard: "/" });
+          return createMatch(node.wildcardChild.route, "/");
         }
       }
 
@@ -292,18 +303,13 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
     }
 
     if (node.paramChild) {
-      paramState[node.paramChild.paramName!] = decodeURIComponent(part);
       const result = search(node.paramChild, index + 1);
       if (result) return result;
-      delete paramState[node.paramChild.paramName!];
     }
 
     if (node.wildcardChild && node.wildcardChild.route) {
       if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-        return createMatch(node.wildcardChild.route, {
-          ...paramState,
-          wildcard: "/" + parts.slice(index).map(decodeURIComponent).join("/"),
-        });
+        return createMatch(node.wildcardChild.route, "/" + parts.slice(index).map(decodeURIComponent).join("/"));
       }
     }
 
