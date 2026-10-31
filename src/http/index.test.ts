@@ -348,6 +348,16 @@ describe("HTTP client", () => {
     expect(res.body).toEqual({ original: "data" });
   });
 
+  test("middleware that returns nothing without calling next() throws", async () => {
+    mockFetch.mockImplementation(async () => mockResponse({}));
+    const client = new HTTP();
+    client.use(async () => {});
+    await expect(client.get("/api/data")).rejects.toThrow(
+      "HTTP middleware returned no response; return next() or a response",
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   test("multiple middlewares execute in order", async () => {
     mockFetch.mockImplementation(async () => mockResponse({}));
     const order: number[] = [];

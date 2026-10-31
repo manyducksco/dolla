@@ -395,7 +395,9 @@ export class HTTP {
           res = await dispatch(i + 1);
           return res;
         });
-        return mwResult !== undefined ? mwResult : res!;
+        if (mwResult !== undefined) return mwResult;
+        if (res === undefined) throw new Error("HTTP middleware returned no response; return next() or a response");
+        return res;
       }
 
       // Terminal Request Handler
