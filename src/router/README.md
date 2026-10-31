@@ -298,5 +298,5 @@ function AdminLayout(props) {
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `routes` | `Route[]` | — | Route definitions |
-| `hash` | `boolean` | `false` | Use hash-based routing (`/#!/path`) |
+| `hash` | `boolean` | `false` | Use hash-based routing (`#/path`, keeping the page's own path) |
 | `preserveQuery` | `boolean \| string[]` | `false` | Preserve query params across navigations |

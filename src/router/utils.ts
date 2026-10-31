@@ -480,11 +480,11 @@ export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
     getSearch,
     getKey,
     push: (url) => {
-      const prefix = useHash ? "/#" : "";
+      const prefix = useHash ? "#" : ""; // Relative to the current location, so the base path is kept
       window.history.pushState({ key: uniqueId() }, "", prefix + url);
     },
     replace: (url) => {
-      const prefix = useHash ? "/#" : "";
+      const prefix = useHash ? "#" : ""; // Relative to the current location, so the base path is kept
       window.history.replaceState({ key: getKey() }, "", prefix + url);
     },
   };

@@ -337,3 +337,40 @@ describe("Router Engine - Query strings", () => {
     });
   });
 });
+
+describe("Router Engine - Hash mode", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/app/");
+  });
+
+  it("keeps the base path when navigating", async () => {
+    const router = createRouter({
+      hash: true,
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/users", view: () => {} },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/users?tab=a");
+      await settle();
+
+      expect(window.location.pathname).toBe("/app/");
+      expect(window.location.hash).toBe("#/users?tab=a");
+      expect(store.path()).toBe("/users");
+      expect(store.query()).toEqual({ tab: "a" });
+
+      store.replace("/");
+      await settle();
+
+      expect(window.location.pathname).toBe("/app/");
+      expect(window.location.hash).toBe("#/");
+    });
+  });
+});
