@@ -1,5 +1,28 @@
 import { describe, expect, test } from "vitest";
-import { compile, parseTemplate } from "./index.js";
+import { createAtom } from "../core/signals.js";
+import { compile, createTranslate, getTranslate, parseTemplate, type TranslatorOptions } from "./index.js";
+
+async function createTestTranslator(options: TranslatorOptions) {
+  const context: any = {};
+  await createTranslate(options)(context);
+  return getTranslate(context);
+}
+
+describe("translator", () => {
+  test("context option may be a getter", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: { en: { greeting_formal: "Good day", greeting_casual: "Hey" } },
+    });
+
+    const [context, setContext] = createAtom("formal");
+    const label = t("greeting", { context });
+    expect(label()).toBe("Good day");
+
+    setContext("casual");
+    expect(label()).toBe("Hey");
+  });
+});
 
 describe("parseTemplate", () => {
   test("static text returns single segment", () => {

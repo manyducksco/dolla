@@ -244,8 +244,9 @@ async function createLookup(
   return function lookup(selector: string, options?: TOptions): string {
     if (options) {
       // Handle count (pluralization) and context. Keys become "key_context_pluralization".
-      if (options.context != null) {
-        selector += "_" + options.context;
+      const context = get(options.context);
+      if (context != null) {
+        selector += "_" + context;
       }
       if (options.count != null) {
         if (options.ordinal) {
