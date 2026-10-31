@@ -184,7 +184,7 @@ function UserDetail({ data }) {
 
 ## Error handling
 
-Provide an `errorView` to catch errors from `preload` or lazy loading:
+Provide an `errorView` to catch errors from `preload` or lazy loading. An error is handled by the failing route's `errorView`, or the nearest parent route that has one. If no route in the chain has an `errorView`, the current view stays in place and the error is rethrown.
 
 ```jsx
 const route = {

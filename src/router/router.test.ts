@@ -338,6 +338,109 @@ describe("Router Engine - Query strings", () => {
   });
 });
 
+describe("Router Engine - Error boundaries", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  const Layout = (props: any) => props.children;
+
+  it("shows the errorView of the layer that failed", async () => {
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        {
+          path: "/app",
+          view: Layout,
+          routes: [
+            {
+              path: "/broken",
+              view: () => "broken",
+              preload: () => Promise.reject(new Error("boom")),
+              errorView: (props) => `child error: ${props.error.message}`,
+            },
+          ],
+        },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      getRouter(context).push("/app/broken");
+      await settle();
+
+      expect(document.body.textContent).toBe("child error: boom");
+    });
+  });
+
+  it("falls back to the nearest ancestor errorView", async () => {
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        {
+          path: "/app",
+          view: Layout,
+          errorView: (props) => `parent error: ${props.error.message}`,
+          routes: [
+            { path: "/ok", view: () => "ok" },
+            { path: "/broken", view: () => "broken", preload: () => Promise.reject(new Error("boom")) },
+          ],
+        },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      // Parent layer already mounted when the child fails
+      store.push("/app/ok");
+      await settle();
+      expect(document.body.textContent).toBe("ok");
+
+      store.push("/app/broken");
+      await settle();
+      expect(document.body.textContent).toBe("parent error: boom");
+
+      // Recovers when navigating to a working sibling
+      store.push("/app/ok");
+      await settle();
+      expect(document.body.textContent).toBe("ok");
+    });
+  });
+
+  it("keeps the current view when no layer has an errorView", async () => {
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        { path: "/broken", view: () => "broken", preload: () => Promise.reject(new Error("boom")) },
+      ],
+    });
+
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+
+    try {
+      await withRouter(router, async (context) => {
+        await settle();
+        getRouter(context).push("/broken");
+        await settle();
+
+        expect(document.body.textContent).toBe("home");
+        expect(getRouter(context).progress()).toBe(0);
+      });
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+
+    expect(rejections).toHaveLength(1);
+    expect((rejections[0] as Error).message).toBe("boom");
+  });
+});
+
 describe("Router Engine - Query-only and hash-only hrefs", () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 

@@ -126,7 +126,15 @@ export function createRouter(options: RouterOptions): DollaPlugin {
       }
 
       const tasks: Promise<void>[] = [];
-      const preloadedData: any[] = []; // Offsets match loop index minus divIndex
+      const preloadedData: any[] = []; // Indexed by layer
+
+      // Tag failures with the index of the layer that caused them
+      const track = (index: number, task: Promise<void>) =>
+        tasks.push(
+          task.catch((error) => {
+            throw { layerIndex: index, error };
+          }),
+        );
 
       // Execute preloads and lazy component fetches
       for (let i = branchIndex; i < layers.length; i++) {
@@ -134,18 +142,20 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
         const preload = layer.preload;
         if (preload) {
-          tasks.push(
+          track(
+            i,
             Promise.resolve()
               .then(() => preload(match))
               .then((data) => {
-                preloadedData[i - branchIndex] = data;
+                preloadedData[i] = data;
               }),
           );
         }
 
         const view = layer.view;
         if (isLazyView(view)) {
-          tasks.push(
+          track(
+            i,
             view.load().then((mod) => {
               layer.view = (mod as any).default ?? mod; // Overwrite with loaded module
             }),
@@ -166,12 +176,22 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
         try {
           await Promise.all(tasks);
-        } catch (error) {
+        } catch (failure) {
+          const { layerIndex, error } = failure as { layerIndex: number; error: unknown };
           setProgress(0);
           if (error instanceof RedirectError) return api.replace(error.redirectPath);
 
           caughtError = error instanceof Error ? error : new Error(String(error));
-          errorIndex = branchIndex;
+
+          // The failing layer's errorView handles the error, or the nearest ancestor's.
+          errorIndex = layerIndex;
+          while (errorIndex >= 0 && !layers[errorIndex].errorView) errorIndex--;
+
+          // Without an error boundary, leave the current view in place.
+          if (errorIndex < 0) throw caughtError;
+
+          // An ancestor boundary may already be mounted; remount it with its errorView.
+          if (errorIndex < branchIndex) branchIndex = errorIndex;
         }
       }
 
@@ -204,14 +224,15 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
           let viewToMount = layer.view as View<any>;
           let propsToPass: any = {
-            data: preloadedData[i - branchIndex],
+            data: preloadedData[i],
             children: createMarkup(DynamicNode, { args: [slot] }),
           };
 
           // Handle Error Boundaries
-          if (caughtError && i === errorIndex) {
-            if (!layer.errorView) throw caughtError;
-            viewToMount = layer.errorView;
+          const isErrorLayer = caughtError != null && i === errorIndex;
+
+          if (isErrorLayer) {
+            viewToMount = layer.errorView!;
             propsToPass = { error: caughtError };
           }
 
@@ -220,14 +241,15 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
           activeLayers.push({
             id: layer.id,
-            key: targetKeys[i],
+            // Error layers never match a key, so the next navigation remounts the real view.
+            key: isErrorLayer ? "" : targetKeys[i],
             node,
             context: node.context,
             slot,
             setSlot,
           });
 
-          if (caughtError && i === errorIndex) break;
+          if (isErrorLayer) break;
         }
       });
 
