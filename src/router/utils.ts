@@ -408,7 +408,8 @@ export function catchLinks(
     if (!anchor || !root.contains(anchor)) return;
 
     const href = anchor.getAttribute("href");
-    if (!href) return;
+    // In-page anchors are left to the browser
+    if (!href || href.startsWith("#")) return;
 
     if (
       _window.location.protocol !== anchor.protocol ||

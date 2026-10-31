@@ -338,6 +338,70 @@ describe("Router Engine - Query strings", () => {
   });
 });
 
+describe("Router Engine - Query-only and hash-only hrefs", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/list?a=1");
+  });
+
+  function createListRouter() {
+    return createRouter({
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/list", view: () => {} },
+      ],
+    });
+  }
+
+  it("keeps the current path for a query-only push and replaces the query", async () => {
+    await withRouter(createListRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("?page=2");
+      await settle();
+
+      expect(window.location.pathname).toBe("/list");
+      expect(window.location.search).toBe("?page=2");
+      expect(store.path()).toBe("/list");
+      expect(store.query()).toEqual({ page: "2" });
+    });
+  });
+
+  it("keeps the current path and query for a hash-only push", async () => {
+    await withRouter(createListRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("#top");
+      await settle();
+
+      expect(window.location.pathname).toBe("/list");
+      expect(window.location.search).toBe("?a=1");
+      expect(window.location.hash).toBe("#top");
+      expect(store.path()).toBe("/list");
+      expect(store.query()).toEqual({ a: "1" });
+    });
+  });
+
+  it("leaves in-page anchor links to the browser", async () => {
+    await withRouter(createListRouter(), async () => {
+      await settle();
+
+      const anchor = document.createElement("a");
+      anchor.setAttribute("href", "#top");
+      document.body.appendChild(anchor);
+
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      anchor.dispatchEvent(event);
+      anchor.remove();
+
+      expect(event.defaultPrevented).toBe(false);
+    });
+  });
+});
+
 describe("Router Engine - Hash mode", () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
