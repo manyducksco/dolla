@@ -612,7 +612,7 @@ export default function dollaPlugin() {
       }
 
       if (!edited) return null;
-      return { code: s.toString(), map: s.generateMap({ hires: true }) };
+      return { code: s.toString(), map: s.generateMap({ source: id, includeContent: true, hires: true }) };
     },
   };
 }

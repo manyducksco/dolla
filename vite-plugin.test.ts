@@ -88,6 +88,14 @@ describe("dollaPlugin — HMR injection", () => {
     expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
   });
 
+  test("source map names the source file and includes its content", () => {
+    const code = `export function Foo() { return null; }\n`;
+    const result = runTransform(code, "/abs/views/Foo.tsx", "serve");
+    const map = result!.map as any;
+    expect(map.sources).toEqual(["/abs/views/Foo.tsx"]);
+    expect(map.sourcesContent).toEqual([code]);
+  });
+
   test("returns null for files inside node_modules", () => {
     const result = runTransform(`export const Foo = 1;\n`, "/abs/project/node_modules/pkg/file.tsx", "serve");
     expect(result).toBeNull();
