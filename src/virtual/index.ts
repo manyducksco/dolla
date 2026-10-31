@@ -46,7 +46,6 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   const engine = createOffsetEngine(props.estimatedItemHeight ?? 50);
 
   let viewport: HTMLElement | null = null;
-  const [scrollTop, setScrollTop] = createAtom(0);
   const [isAtBottom, setIsAtBottom] = createAtom(true);
   const commandQueue: (() => void)[] = [];
 
@@ -59,10 +58,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       if (smooth) isSmoothScrolling = isAutoGliding = true;
       setIsAtBottom(true);
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-      if (!smooth) {
-        setScrollTop(viewport.scrollTop);
-        isAutoGliding = false;
-      }
+      if (!smooth) isAutoGliding = false;
     },
     scrollToTop: (smooth = false) => {
       if (!viewport) return commandQueue.push(() => api.scrollToTop(smooth));
@@ -70,7 +66,6 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       isAutoGliding = false;
       setIsAtBottom(false);
       viewport.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
-      if (!smooth) setScrollTop(0);
     },
     scrollToIndex: (index: number, options = {}) => {
       if (!viewport) return commandQueue.push(() => api.scrollToIndex(index, options));
@@ -79,7 +74,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       isAutoGliding = false;
 
       const avg = peek(engine.averageHeight);
-      let target = engine.getOffset(index, avg);
+      let target = engine.getOffset(index);
       const itemHeight = engine.getItemHeight(index) ?? avg;
       const isTargetSticky = props.isSticky?.(peek(props.items)[index]) ?? false;
 
@@ -91,7 +86,6 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
       if (options.smooth) isSmoothScrolling = true;
       viewport.scrollTo({ top: target, behavior: options.smooth ? "smooth" : "auto" });
-      if (!options.smooth) setScrollTop(target);
     },
     scrollToItem: (item: T, options = {}) => {
       const index = peek(props.items).indexOf(item);
@@ -161,7 +155,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       if (!liveKeys.has(key)) heightsByKey.delete(key);
     }
     engine.clearCache();
-    engine.updateHeights(entries, peek(engine.averageHeight));
+    engine.updateHeights(entries);
   }
 
   const stickyIndices = compose(() => {
@@ -174,22 +168,21 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
   function updateScrollSlice() {
     const currentScroll = viewport ? viewport.scrollTop : 0;
-    const currentAvg = peek(engine.averageHeight);
     const data = peek(props.items);
     const total = data.length;
 
-    const startIndex = engine.findIndexAtScroll(currentScroll - currentAvg * 5, total, currentAvg);
+    const startIndex = engine.findIndexAtScroll(currentScroll - peek(engine.averageHeight) * 5, total);
 
     if (props.isSticky && props.renderSticky) {
       const indices = peek(stickyIndices);
-      const { activeIdx, nextIdx } = engine.findSticky(currentScroll, indices, currentAvg);
+      const { activeIdx, nextIdx } = engine.findSticky(currentScroll, indices);
 
       const newActive = activeIdx !== -1 ? data[activeIdx] : null;
       if (peek(activeStickyItem) !== newActive) setActiveStickyItem(newActive);
 
       let push = 0;
       if (nextIdx !== -1 && phantomHeight > 0) {
-        const distanceToNext = engine.getOffset(nextIdx, currentAvg) - currentScroll;
+        const distanceToNext = engine.getOffset(nextIdx) - currentScroll;
         if (distanceToNext < phantomHeight) push = distanceToNext - phantomHeight;
       }
       if (peek(stickyPushOffset) !== push) setStickyPushOffset(push);
@@ -206,7 +199,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         if (peek(slot.index) !== i || peek(slot.item) !== currentData) reused.push(i % POOL_SIZE);
         slot.setItem(currentData);
         slot.setIndex(i);
-        slot.setOffset(engine.getOffset(i, currentAvg));
+        slot.setOffset(engine.getOffset(i));
         slot.setActive(true);
         slot.setEntering(enteringItems.has(currentData));
       }
@@ -265,11 +258,10 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
     const observer = new ResizeObserver((entries) => {
       const currentScroll = viewport ? viewport.scrollTop : 0;
-      const oldAvg = peek(engine.averageHeight);
       const totalItems = peek(props.items).length;
 
-      const anchorIndex = engine.findIndexAtScroll(currentScroll, totalItems, oldAvg);
-      const oldAnchorOffset = engine.getOffset(anchorIndex, oldAvg);
+      const anchorIndex = engine.findIndexAtScroll(currentScroll, totalItems);
+      const oldAnchorOffset = engine.getOffset(anchorIndex);
 
       const data = peek(props.items);
       const parsedEntries = [];
@@ -282,9 +274,9 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         }
       }
 
-      if (engine.updateHeights(parsedEntries, oldAvg)) {
+      if (engine.updateHeights(parsedEntries)) {
         const effectivelyAtBottom = peek(isAtBottom) || isAutoGliding;
-        const shift = engine.getOffset(anchorIndex, peek(engine.averageHeight)) - oldAnchorOffset;
+        const shift = engine.getOffset(anchorIndex) - oldAnchorOffset;
 
         if (props.bottomUp && effectivelyAtBottom && viewport) {
           nextFrame(() => {
@@ -292,15 +284,11 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
             if (isAutoGliding) viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
             else {
               viewport.scrollTop = viewport.scrollHeight;
-              batch(() => {
-                setScrollTop(viewport!.scrollTop);
-                setIsAtBottom(true);
-              });
+              setIsAtBottom(true);
             }
           });
         } else if (shift !== 0 && viewport && currentScroll > 0 && !isSmoothScrolling) {
           viewport.scrollTop += shift;
-          setScrollTop(viewport.scrollTop);
         }
         updateScrollSlice();
         checkBoundaries(); // Re-evaluate if height changes put us in threshold
@@ -332,7 +320,6 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       ) {
         if (viewport) {
           viewport.scrollTop += (currentCount - previousCount) * peek(engine.averageHeight);
-          setScrollTop(viewport.scrollTop);
         }
         hasReachedStart = false; // Unlock prepends
       }
@@ -379,10 +366,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
         if (props.bottomUp) {
           el.scrollTop = el.scrollHeight;
-          batch(() => {
-            setScrollTop(el.scrollTop);
-            setIsAtBottom(true);
-          });
+          setIsAtBottom(true);
         }
 
         if (commandQueue.length > 0) {
@@ -398,7 +382,6 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         let lastSt = el.scrollTop;
         const onScroll = () => {
           const st = el.scrollTop;
-          setScrollTop(st);
           const distToBottom = el.scrollHeight - st - el.clientHeight;
           const isScrollingUp = st < lastSt;
 
@@ -496,8 +479,10 @@ export function createOffsetEngine(defaultAssumption: number) {
     return totalMeasuredHeight() + (totalItems - measuredCount()) * averageHeight();
   }
 
-  function getOffset(index: number, avg: number): number {
+  // Offsets are cached until heights change, which is also the only time the average changes.
+  function getOffset(index: number): number {
     if (index > lastCalculatedIndex) {
+      const avg = peek(averageHeight);
       let offset =
         lastCalculatedIndex < 0
           ? 0
@@ -511,14 +496,14 @@ export function createOffsetEngine(defaultAssumption: number) {
     return offsetCache[index] || 0;
   }
 
-  function findIndexAtScroll(scrollPos: number, totalItems: number, avg: number): number {
+  function findIndexAtScroll(scrollPos: number, totalItems: number): number {
     if (totalItems <= 0) return 0;
     let low = 0,
       high = totalItems - 1,
       foundIndex = 0;
     while (low <= high) {
       const mid = (low + high) >> 1;
-      if (getOffset(mid, avg) < scrollPos) {
+      if (getOffset(mid) < scrollPos) {
         foundIndex = mid;
         low = mid + 1;
       } else {
@@ -528,14 +513,14 @@ export function createOffsetEngine(defaultAssumption: number) {
     return foundIndex;
   }
 
-  function findSticky(scrollPos: number, indices: number[], avg: number) {
+  function findSticky(scrollPos: number, indices: number[]) {
     if (!indices.length) return { activeIdx: -1, nextIdx: -1 };
 
     let low = 0,
       high = indices.length - 1;
     while (low <= high) {
       const mid = (low + high) >> 1;
-      if (getOffset(indices[mid], avg) <= scrollPos) low = mid + 1;
+      if (getOffset(indices[mid]) <= scrollPos) low = mid + 1;
       else high = mid - 1;
     }
 
@@ -545,7 +530,7 @@ export function createOffsetEngine(defaultAssumption: number) {
     };
   }
 
-  function updateHeights(entries: { index: number; height: number }[], avg: number): boolean {
+  function updateHeights(entries: { index: number; height: number }[]): boolean {
     let needsRecalc = false;
     let currentCount = peek(measuredCount);
     let currentTotal = peek(totalMeasuredHeight);
