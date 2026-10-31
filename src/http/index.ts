@@ -163,7 +163,7 @@ async function parseBody(response: Response): Promise<unknown> {
   return response.text();
 }
 
-const RETRY_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE", "PUT", "DELETE"]);
+const RETRY_METHODS = new Set(["GET", "HEAD", "OPTIONS", "PUT", "DELETE"]);
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const RETRY_BASE_DELAY = 300;
 const RETRY_MAX_DELAY = 30_000;
@@ -297,12 +297,6 @@ export class HTTP {
     options?: RequestOptions<ReqBody, ResBody>,
   ): HTTPResponsePromise<ResBody> {
     return withJson(this.#request<ResBody, ReqBody>("OPTIONS", uri, options), options?.schema);
-  }
-  trace<ResBody = unknown, ReqBody = unknown>(
-    uri: string,
-    options?: RequestOptions<ReqBody, ResBody>,
-  ): HTTPResponsePromise<ResBody> {
-    return withJson(this.#request<ResBody, ReqBody>("TRACE", uri, options), options?.schema);
   }
 
   async #fetchWithRetry(req: HTTPRequest<any>, retries: number): Promise<Response> {

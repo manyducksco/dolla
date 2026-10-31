@@ -28,10 +28,7 @@ http.patch("/data/1", { body: { name: "Charlie" } });
 http.delete("/data/1");
 http.head("/data");
 http.options("/data");
-http.trace("/data");
 ```
-
-`trace()` is available for API completeness, but browsers (and many `fetch` implementations) reject `TRACE` requests.
 
 ## Base URL and defaults
 
@@ -82,7 +79,7 @@ await http.get("/api/data", { retry: 5 });
 await http.get("/api/data", { retry: 0 }); // disable for this request
 ```
 
-Retries apply to idempotent methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`, `PUT`, `DELETE`). `POST` and `PATCH` are not retried, since replaying them may duplicate side effects.
+Retries apply to idempotent methods (`GET`, `HEAD`, `OPTIONS`, `PUT`, `DELETE`). `POST` and `PATCH` are not retried, since replaying them may duplicate side effects.
 
 The client retries network errors and these status codes: `408`, `429`, `500`, `502`, `503`, `504`. Aborted requests are never retried.
 

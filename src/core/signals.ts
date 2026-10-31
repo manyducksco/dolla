@@ -910,15 +910,6 @@ export function get<T>(value: T | Getter<T>): T {
 }
 
 /**
- * Unwraps a `MaybeGetter<T>` into a plain `T`.
- * Tracks the value if it is a getter.
- * Use the non-tracking `peek` if you're being stealthy.
- *
- * @deprecated Use `get` instead.
- */
-export const unwrap: typeof get = get;
-
-/**
  * Unwraps a `MaybeGetter<T>` into a plain `T`. Will _not_ track if the value is a getter.
  */
 export function peek<T>(value: T | Getter<T>): T {

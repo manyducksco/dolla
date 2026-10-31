@@ -104,7 +104,6 @@ const getInitial = compose(() => get(props.label).charAt(0));
 - For a prop typed `Getter<T>`, calling it directly (`props.name()`) is enough.
 - For a prop typed `T`, use it directly.
 - `peek(value)` reads a getter without tracking it.
-- `unwrap` is a deprecated alias for `get`.
 
 ### Signals and effects
 

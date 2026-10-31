@@ -7,7 +7,7 @@ export { SignalError, isSignalError } from "./errors.js";
 export type { ReactiveScopeInfo } from "./errors.js";
 
 // Signals
-export { batch, compose, createAtom, createSetter, get, peek, unwrap } from "./signals.js";
+export { batch, compose, createAtom, createSetter, get, peek } from "./signals.js";
 export type { Getter, MaybeGetter, Setter } from "./signals.js";
 
 // Hooks

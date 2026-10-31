@@ -113,7 +113,7 @@ function Greeting(props) {
 }
 ```
 
-`unwrap` is a deprecated alias for `get`. See [Props follow their declared types](./concepts.md#props-follow-their-declared-types) for how prop types determine what you should read.
+See [Props follow their declared types](./concepts.md#props-follow-their-declared-types) for how prop types determine what you should read.
 
 ## Subscribing to changes
 
