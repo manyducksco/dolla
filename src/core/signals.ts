@@ -177,7 +177,9 @@ function notify(effect: EffectNode): void {
 }
 
 function update(node: ReactiveNode): boolean {
-  if (node._depsTail !== undefined) {
+  // `_depsTail` can't tell node kinds apart: a computed that threw before
+  // reading any signal also ends up with no tail.
+  if ((node as ComputedNode)._getter !== undefined) {
     return updateComputed(node as ComputedNode);
   } else {
     return updateValue(node as ValueNode);

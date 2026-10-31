@@ -840,4 +840,28 @@ describe("error enhancement", () => {
     expect(error.phase).toBe("effect");
     expect(error.stack).toContain("bad range");
   });
+  test("composed node recovers after throwing before reading any signal", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(1);
+    let flag = false;
+    const c = compose(() => {
+      if (flag) throw new Error("early throw");
+      return a();
+    });
+    const seen: number[] = [];
+    createEffect(() => {
+      seen.push(c());
+    });
+
+    flag = true;
+    setA(2);
+    expect(errors).toHaveLength(1);
+
+    flag = false;
+    setA(3);
+    setA(4);
+    expect(errors).toHaveLength(1);
+    expect(seen).toEqual([1, 3, 4]);
+    expect(c()).toBe(4);
+  });
 });
