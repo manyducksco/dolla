@@ -174,13 +174,7 @@ function normalizeRetry(value: number | undefined, fallback = 0): number {
 }
 
 function isAbortError(error: unknown, signal?: AbortSignal): boolean {
-  if (signal?.aborted) return true;
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    (error as { name?: unknown }).name === "AbortError"
-  );
+  return Boolean(signal?.aborted) || (error as any)?.name === "AbortError";
 }
 
 function parseRetryAfter(value: string | null): number | null {
@@ -203,19 +197,14 @@ function getRetryDelay(attempt: number, response?: Response): number {
 }
 
 async function discardResponse(response: Response): Promise<void> {
-  try {
-    await response.body?.cancel();
-  } catch {
-    // Ignore cancellation failures while preparing to retry.
-  }
+  // Ignore cancellation failures while preparing to retry.
+  await response.body?.cancel().catch(() => {});
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
+    // Throwing here rejects the promise with the abort reason.
+    signal?.throwIfAborted();
 
     const onAbort = () => {
       clearTimeout(timer);
@@ -228,12 +217,6 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     }, ms);
 
     signal?.addEventListener("abort", onAbort, { once: true });
-
-    if (signal?.aborted) {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      reject(signal.reason);
-    }
   });
 }
 
@@ -243,12 +226,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 export class HTTP {
   #middleware: HTTPMiddleware[] = [];
   #retry: number;
-  #fetch =
-    typeof window !== "undefined" && window.fetch
-      ? window.fetch.bind(window)
-      : typeof global !== "undefined" && global.fetch
-        ? global.fetch.bind(global)
-        : null;
+  #fetch = globalThis.fetch?.bind(globalThis);
 
   constructor(options: HTTPOptions = {}) {
     this.#retry = normalizeRetry(options.retry);
