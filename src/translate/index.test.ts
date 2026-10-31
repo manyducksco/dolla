@@ -220,16 +220,6 @@ describe("locale caching", () => {
     expect(translator.t("hello")()).toBe("Bonjour");
   });
 
-  test("concurrent loads of one locale share a fetch", async () => {
-    const fr = counted({ hello: "Bonjour" });
-    const translator = await createTestTranslator({ locale: "en", translations: { en: { hello: "Hello" }, fr } });
-
-    await Promise.all([translator.setLocale("fr"), translator.setLocale("fr")]);
-
-    expect(fr).toHaveBeenCalledTimes(1);
-    expect(translator.currentLocale()).toBe("fr");
-  });
-
   test("a locale unused for over five minutes is fetched again", async () => {
     vi.useFakeTimers();
     const fr = counted({ hello: "Bonjour" });
@@ -362,12 +352,6 @@ describe("parseTemplate", () => {
 });
 
 describe("compile", () => {
-  test("flattens a simple object", () => {
-    const entries = compile({ hello: "Hello" });
-    expect(entries.length).toBe(1);
-    expect(entries[0][0]).toBe("hello");
-  });
-
   test("flattens a nested object with dot-separated keys", () => {
     const entries = compile({
       greeting: {

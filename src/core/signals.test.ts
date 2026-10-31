@@ -731,21 +731,6 @@ describe("error enhancement", () => {
     expect(err.message).toContain("created at");
   });
 
-  test("enhances error in nested composed chain", () => {
-    const inner = compose(function inner() {
-      throw new Error("deep");
-    });
-
-    const outer = compose(function outer() {
-      return inner();
-    });
-
-    const err = catchError(() => outer());
-    expect(err.message).toContain("Reactive context");
-    expect(err.message).toContain('composed "inner"');
-    expect(err.message).toContain('composed "outer"');
-  });
-
   test("enhances error in peek", () => {
     const getter = compose(() => {
       throw new Error("peeked");

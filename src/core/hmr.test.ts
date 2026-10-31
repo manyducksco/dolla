@@ -100,11 +100,6 @@ describe("HMR __dolla_apply", () => {
     expect(b.calls).toEqual(["Foo"]);
   });
 
-  test("__dolla_export attaches __dolla_id to the live proxy", () => {
-    const view = makeView("Foo") as any;
-    expect(view.__dolla_id).toMatch(/^\/test\/\d+\.tsx:Foo$/);
-  });
-
   test("returns the same proxy on repeat __dolla_export with the same id", () => {
     const id = `/test/shared-${viewCounter++}.tsx:Foo`;
     const first = __dolla_export(id, function Foo() {

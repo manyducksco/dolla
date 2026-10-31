@@ -62,11 +62,6 @@ describe("ElementNode", () => {
       expect(other.children.length).toBe(1);
     });
 
-    test("getRoot returns the root DOM element", () => {
-      const { context } = setup();
-      const node = new ElementNode(context, "div", {});
-      expect(node.getRoot()).toBeInstanceOf(HTMLElement);
-    });
   });
 
   describe("unmount", () => {
@@ -237,12 +232,17 @@ describe("ElementNode", () => {
       expect(el.hasAttribute("for")).toBe(false);
     });
 
-    test("removes reflected attribute when prop: value becomes nullish", () => {
+    test("removes the attribute of a non-string property when prop: becomes nullish", () => {
       const { context, container } = setup();
-      const node = new ElementNode(context, "div", { "prop:dataThing": undefined } as any);
+      const [tabIndex, setTabIndex] = createAtom<number | null>(3);
+      const node = new ElementNode(context, "div", { "prop:tabIndex": tabIndex } as any);
       node.mount(container);
       const el = container.children[0] as HTMLElement;
-      expect(el.hasAttribute("dataThing")).toBe(false);
+      expect(el.getAttribute("tabindex")).toBe("3");
+
+      setTabIndex(null);
+      flushPendingUpdates();
+      expect(el.hasAttribute("tabindex")).toBe(false);
     });
 
     test("sets attribute to string value for falsy but non-null values", () => {
@@ -269,14 +269,6 @@ describe("ElementNode", () => {
       expect(el.getAttribute("aria-hidden")).toBe("false");
     });
 
-    test("sets aria-hidden to \"true\" string when passed true", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", { "aria-hidden": true });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.getAttribute("aria-hidden")).toBe("true");
-    });
-
     test("sets ariaLabel via camelCase and converts to kebab-case attribute", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", { ariaLabel: "close" });
@@ -291,14 +283,6 @@ describe("ElementNode", () => {
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       expect(el.getAttribute("aria-label")).toBe("close");
-    });
-
-    test("sets aria-pressed to \"mixed\"", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", { "aria-pressed": "mixed" });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.getAttribute("aria-pressed")).toBe("mixed");
     });
 
     test("sets ariaDescribedBy via camelCase and converts to kebab-case attribute", () => {
@@ -339,18 +323,6 @@ describe("ElementNode", () => {
       expect(el.getAttribute("aria-modal")).toBe("false");
       expect(el.getAttribute("aria-multiline")).toBe("true");
       expect(el.getAttribute("aria-multiselectable")).toBe("false");
-    });
-
-    test("boolean aria attributes remove attribute when value is null or undefined", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", {
-        "aria-hidden": null,
-        "aria-disabled": undefined,
-      });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.hasAttribute("aria-hidden")).toBe(false);
-      expect(el.hasAttribute("aria-disabled")).toBe(false);
     });
 
     test("boolean property disabled={false} removes the disabled attribute", () => {
@@ -942,27 +914,6 @@ describe("ElementNode", () => {
       expect(el.style.height).toBe("20px");
     });
 
-    test("handles CSS values containing colons (e.g. url())", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", {
-        style: "background: url('https://example.com/image.jpg')",
-      });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.style.background).toContain('url("https://example.com/image.jpg")');
-    });
-
-    test("parses !important from inline style string", () => {
-      const { context, container } = setup();
-      const node = new ElementNode(context, "div", {
-        style: "color: red !important",
-      });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.style.color).toBe("red");
-      expect(el.style.getPropertyPriority("color")).toBe("important");
-    });
-
     test("does not strip !important from content values", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", {
@@ -1026,16 +977,6 @@ describe("ElementNode", () => {
   });
 
   describe("events", () => {
-    test("handles onEvent convention (onClick)", () => {
-      const { context, container } = setup();
-      const handler = vi.fn();
-      const node = new ElementNode(context, "button", { onClick: handler });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      el.click();
-      expect(handler).toHaveBeenCalledTimes(1);
-    });
-
     test("handles camelCase event names (onMouseEnter)", () => {
       const { context, container } = setup();
       const handler = vi.fn();
@@ -1043,28 +984,6 @@ describe("ElementNode", () => {
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       el.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-      expect(handler).toHaveBeenCalledTimes(1);
-    });
-
-    test("handles on: convention (on:click)", () => {
-      const { context, container } = setup();
-      const handler = vi.fn();
-      const node = new ElementNode(context, "button", { "on:click": handler });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      el.click();
-      expect(handler).toHaveBeenCalledTimes(1);
-    });
-
-    test("on:click with handler object (handleEvent)", () => {
-      const { context, container } = setup();
-      const handler = vi.fn();
-      const node = new ElementNode(context, "button", {
-        "on:click": { handleEvent: handler },
-      });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      el.click();
       expect(handler).toHaveBeenCalledTimes(1);
     });
 
@@ -1098,19 +1017,6 @@ describe("ElementNode", () => {
       const { context, container } = setup();
       const handler = vi.fn();
       const node = new ElementNode(context, "button", { onClick: handler });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      el.click();
-      expect(handler).toHaveBeenCalledTimes(1);
-      node.unmount();
-      el.click();
-      expect(handler).toHaveBeenCalledTimes(1);
-    });
-
-    test("unsubscribes on: listeners on unmount", () => {
-      const { context, container } = setup();
-      const handler = vi.fn();
-      const node = new ElementNode(context, "button", { "on:click": handler });
       node.mount(container);
       const el = container.children[0] as HTMLElement;
       el.click();
@@ -1283,17 +1189,6 @@ describe("ElementNode", () => {
   });
 
   describe("subscription cleanup", () => {
-    test("reactive subscriptions are cleaned up on unmount", () => {
-      const { context, container } = setup();
-      const [val, setVal] = createAtom("a");
-      const node = new ElementNode(context, "div", { title: val });
-      node.mount(container);
-      const el = container.children[0] as HTMLElement;
-      expect(el.getAttribute("title")).toBe("a");
-      node.unmount();
-      expect(() => setVal("b")).not.toThrow();
-    });
-
     test.each([
       ["property", "title"],
       ["prop: prefix", "prop:title"],

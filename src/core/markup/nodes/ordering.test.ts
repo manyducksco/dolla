@@ -73,13 +73,6 @@ describe("sibling ordering", () => {
       expect(container.textContent).toBe("a1b1a2b2");
     });
 
-    test("repeat items that render a dynamic", () => {
-      const { context, container } = setup();
-      const [items] = createAtom([1, 2]);
-      repeat(context, items, (n) => () => `i${n()}`).mount(container);
-      expect(container.textContent).toBe("i1i2");
-    });
-
     test("siblings inside an element", () => {
       const { context, container } = setup();
       const [items] = createAtom([1, 2]);

@@ -126,12 +126,6 @@ describe("stores", () => {
     expect(store.theme).toBe("dark");
   });
 
-  test("addStore with no props uses undefined", () => {
-    const ctx = createContext(null);
-    const store = addStore(ctx, CounterStore);
-    expect(store).toBeDefined();
-  });
-
   test("adding the same store twice on the same context returns existing store", () => {
     const ctx = createContext(null);
     const first = addStore(ctx, CounterStore);

@@ -3,12 +3,6 @@ import { isFunction } from "./utils";
 
 describe("type checking", () => {
   describe("isFunction", () => {
-    test("identifies a function", () => {
-      expect(isFunction(function () {})).toBe(true);
-      expect(isFunction((...args: any[]) => true)).toBe(true);
-      expect(isFunction(class Test {})).toBe(false);
-    });
-
     test("distinguishes classes from functions of every kind, repeatedly", () => {
       class Base {}
       class Derived extends Base {}

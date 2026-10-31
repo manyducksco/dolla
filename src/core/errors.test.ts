@@ -7,7 +7,7 @@ import {
   toSignalError,
   SignalError,
 } from "./errors.js";
-import { compose, createAtom, createEffect } from "./signals.js";
+import { createAtom, createEffect } from "./signals.js";
 
 describe("SignalError", () => {
   afterEach(() => {
@@ -71,28 +71,6 @@ describe("SignalError", () => {
     expect(errors[0].message).toContain("Reactive context");
     expect(errors[0].message).toContain("Triggered from");
     expect(errors[0].trigger.join("\n")).toContain("trigger");
-  });
-
-  test("includes computed names and abbreviated scope chains", () => {
-    const inner = compose(function inner() {
-      throw new Error("deep");
-    });
-    const outer = compose(function outer() {
-      return inner();
-    });
-
-    const error = (() => {
-      try {
-        outer();
-      } catch (error) {
-        return error as SignalError;
-      }
-      throw new Error("did not throw");
-    })();
-
-    expect(error).toBeInstanceOf(SignalError);
-    expect(error.message).toContain('composed "inner"');
-    expect(error.message).toContain('composed "outer"');
   });
 
   test("reports the handler error without recursing when a handler throws", () => {

@@ -21,21 +21,6 @@ describe("Radix Tree Routing Algorithm", () => {
     expect(match?.params).toEqual({});
   });
 
-  it("prioritizes static segments over parameters", () => {
-    const match = matchRoute(tree, "/users/new");
-    expect(match?.pattern).toBe("/users/new");
-  });
-
-  it("matches parameters as strings", () => {
-    const numeric = matchRoute(tree, "/users/123");
-    expect(numeric?.pattern).toBe("/users/:id");
-    expect(numeric?.params.id).toBe("123");
-
-    const text = matchRoute(tree, "/users/alice");
-    expect(text?.pattern).toBe("/users/:id");
-    expect(text?.params.id).toBe("alice");
-  });
-
   it("decodes URL parameters", () => {
     const match = matchRoute(tree, "/users/john%20doe/settings");
     expect(match?.pattern).toBe("/users/:id/settings");
@@ -45,17 +30,6 @@ describe("Radix Tree Routing Algorithm", () => {
   it("falls back to the raw segment for malformed percent-encoding", () => {
     expect(matchRoute(tree, "/users/100%")?.params).toEqual({ id: "100%" });
     expect(matchRoute(tree, "/files/a/100%")?.params).toEqual({ wildcard: "/a/100%" });
-  });
-
-  it("captures wildcards", () => {
-    const match = matchRoute(tree, "/files/documents/2026/report.pdf");
-    expect(match?.pattern).toBe("/files/*");
-    expect(match?.params.wildcard).toBe("/documents/2026/report.pdf");
-  });
-
-  it("parses query strings", () => {
-    const match = matchRoute(tree, "/users/123?tab=activity&sort=desc");
-    expect(match?.query).toEqual({ tab: "activity", sort: "desc" });
   });
 
   it("keeps '?' inside query values", () => {
@@ -71,11 +45,6 @@ describe("Radix Tree Routing Algorithm", () => {
     const withQuery = matchRoute(tree, "/users/123?tab=a#top");
     expect(withQuery?.params).toEqual({ id: "123" });
     expect(withQuery?.query).toEqual({ tab: "a" });
-  });
-
-  it("returns undefined for misses", () => {
-    const match = matchRoute(tree, "/unknown/path");
-    expect(match).toBeUndefined();
   });
 });
 

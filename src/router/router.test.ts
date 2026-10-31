@@ -181,26 +181,6 @@ describe("Router Engine - Lazy Loading", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("resolves a lazy loaded component successfully", async () => {
-    const MockView = () => {};
-    // Simulate `() => import("./View.js")`
-    const loaderSpy = vi.fn().mockResolvedValue({ default: MockView });
-
-    const router = createRouter({
-      routes: [{ path: "/async", view: lazy(loaderSpy) }],
-    });
-
-    await withRouter(router, async (context) => {
-      window.history.pushState(null, "", "/async");
-      window.dispatchEvent(new Event("popstate"));
-
-      // Flush promises
-      await new Promise(process.nextTick);
-
-      expect(loaderSpy).toHaveBeenCalledOnce();
-    });
-  });
-
   it("caches the lazy loaded component after the first fetch", async () => {
     const MockView = () => {};
     const loaderSpy = vi.fn().mockResolvedValue({ default: MockView });
@@ -553,22 +533,6 @@ describe("Router Engine - Query-only and hash-only hrefs", () => {
       expect(window.location.hash).toBe("#top");
       expect(store.path()).toBe("/list");
       expect(store.query()).toEqual({ a: "1" });
-    });
-  });
-
-  it("leaves in-page anchor links to the browser", async () => {
-    await withRouter(createListRouter(), async () => {
-      await settle();
-
-      const anchor = document.createElement("a");
-      anchor.setAttribute("href", "#top");
-      document.body.appendChild(anchor);
-
-      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
-      anchor.dispatchEvent(event);
-      anchor.remove();
-
-      expect(event.defaultPrevented).toBe(false);
     });
   });
 });

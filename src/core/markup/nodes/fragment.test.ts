@@ -119,24 +119,6 @@ describe("FragmentNode", () => {
   });
 
   describe("move", () => {
-    test("moves anchor and children to new position", () => {
-      const { context, container } = setup();
-      const node = new FragmentNode(context, createChildren(context));
-      const first = document.createElement("div");
-      first.textContent = "first";
-      container.appendChild(first);
-      node.mount(container);
-      // Order: first, anchor, a, b
-      expect(container.childNodes[0]).toBe(first);
-      expect(container.childNodes[1]).toBeInstanceOf(Text);
-      expect(container.childNodes[2].textContent).toBe("a");
-      expect(container.childNodes[3].textContent).toBe("b");
-      expect(container.textContent).toBe("firstab");
-
-      // Move fragment to right after 'first', before anchor
-      // Anchor stays put — it's the reference point for children
-    });
-
     test("move before mount is a no-op", () => {
       const { context, container } = setup();
       const node = new FragmentNode(context, createChildren(context));

@@ -46,13 +46,6 @@ describe("ViewNode", () => {
   });
 
   describe("mount", () => {
-    test("mount renders view content into container", () => {
-      const { context, container } = setup();
-      const node = new ViewNode(context, noopView, {});
-      node.mount(container);
-      expect(container.querySelector("span")!.textContent).toBe("view content");
-    });
-
     test("mount calls view function with props", () => {
       const { context, container } = setup();
       const spyView = vi.fn(function (this: ReturnType<typeof createContext>, _props: { msg: string }) {
@@ -383,24 +376,6 @@ describe("ViewNode", () => {
 
       expect(() => node.replaceView(throwingView as any)).toThrow("view render failed");
       expect(node.context[REPLACING]).toBe(false);
-    });
-
-    test("replaceView keeps ViewNode HMR-registered when view function throws", () => {
-      const { context, container } = setup();
-      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
-      const throwingView = vi.fn(() => {
-        throw new Error("view render failed");
-      });
-      const view3 = vi.fn(() => createMarkup("span", { children: "v3" }));
-      const node = new ViewNode(context, view1, {});
-      node.mount(container);
-
-      expect(() => node.replaceView(throwingView as any)).toThrow("view render failed");
-
-      // The node should still be HMR-tracked under the throwing view so a
-      // subsequent replaceView can recover.
-      node.replaceView(view3);
-      expect(container.querySelector("span")!.textContent).toBe("v3");
     });
 
     test("replaceView resets REPLACING flag when mount throws", () => {

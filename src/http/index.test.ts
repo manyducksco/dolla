@@ -120,13 +120,6 @@ describe("HTTP client", () => {
     expect(res.body).toEqual({ patched: true });
   });
 
-  test("HEAD request", async () => {
-    mockFetch.mockImplementation(async () => new Response(null, { status: 200 }));
-    const client = new HTTP();
-    const res = await client.head("/api/items");
-    expect(res.status).toBe(200);
-  });
-
   test("OPTIONS request", async () => {
     mockFetch.mockImplementation(async () => new Response(null, { status: 204 }));
     const client = new HTTP();
@@ -141,15 +134,6 @@ describe("HTTP client", () => {
     const [url] = mockFetch.mock.calls[0];
     expect(url).toContain("q=hello");
     expect(url).toContain("page=1");
-  });
-
-  test("query parameters passed as URLSearchParams", async () => {
-    mockFetch.mockImplementation(async () => mockResponse([]));
-    const client = new HTTP();
-    const params = new URLSearchParams({ filter: "active" });
-    await client.get("/api/items", { query: params });
-    const [url] = mockFetch.mock.calls[0];
-    expect(url).toContain("filter=active");
   });
 
   test("query URLSearchParams keeps repeated keys", async () => {

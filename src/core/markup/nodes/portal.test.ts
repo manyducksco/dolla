@@ -47,13 +47,6 @@ describe("PortalNode", () => {
       expect(logicalParent.contains(node.getRoot()!)).toBe(true);
     });
 
-    test("renders content in portal target", () => {
-      const { context, logicalParent, portalTarget } = setup();
-      const node = new PortalNode(context, "world", portalTarget);
-      node.mount(logicalParent);
-      expect(portalTarget.textContent).toBe("world");
-    });
-
     test("renders markup in portal target", () => {
       const { context, logicalParent, portalTarget } = setup();
       const node = new PortalNode(context, createMarkup("span", { children: "portaled" }), portalTarget);

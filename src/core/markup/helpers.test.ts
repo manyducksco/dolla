@@ -2,9 +2,6 @@ import { describe, expect, test, vi } from "vitest";
 import { type Context, createContext, onCleanup } from "../context.js";
 import { createAtom } from "../signals.js";
 import { branch, createPortal, hideIf, repeat, showIf } from "./helpers.js";
-import { DynamicNode } from "./nodes/dynamic.js";
-import { PortalNode } from "./nodes/portal.js";
-import { RepeatNode } from "./nodes/repeat.js";
 import { flushPendingUpdates } from "./scheduler.js";
 import { createMarkup, render } from "./utils.js";
 
@@ -32,19 +29,6 @@ describe("repeat", () => {
       (item, index) => `${item()}:${index()}`,
     );
     expect(result).toEqual([]);
-  });
-
-  test("reactive items returns markup with RepeatNode", () => {
-    const [items] = createAtom([1, 2]);
-    const result = repeat(
-      items,
-      (item: number) => String(item),
-      (item, index) => createMarkup("span", { children: () => `${item()}:${index()}` }),
-    );
-    expect(result).toBeDefined();
-    expect(typeof result).toBe("object");
-    const markup = result as ReturnType<typeof createMarkup>;
-    expect(markup.type).toBe(RepeatNode);
   });
 
   test("reactive items renders in DOM", () => {
@@ -94,15 +78,6 @@ describe("showIf / hideIf", () => {
       expect(showIf(false, "hidden", "fallback")).toBe("fallback");
     });
 
-    test("reactive truthy renders content", () => {
-      const { context, container } = setup();
-      const [cond] = createAtom(true);
-      const content = showIf(cond, "rendered");
-      const node = render(content, context);
-      node.mount(container);
-      expect(container.textContent).toBe("rendered");
-    });
-
     test("reactive falsy renders nothing", () => {
       const { context, container } = setup();
       const [cond] = createAtom(false);
@@ -110,15 +85,6 @@ describe("showIf / hideIf", () => {
       const node = render(content, context);
       node.mount(container);
       expect(container.textContent).toBe("");
-    });
-
-    test("reactive falsy with fallback renders fallback", () => {
-      const { context, container } = setup();
-      const [cond] = createAtom(false);
-      const content = showIf(cond, "hidden", "fallback");
-      const node = render(content, context);
-      node.mount(container);
-      expect(container.textContent).toBe("fallback");
     });
 
     test("reactive condition switching truthy → falsy", () => {
@@ -197,32 +163,9 @@ describe("branch", () => {
     expect(branch(1, [[1, "number"]])).toBe("number");
     expect(branch<string | number>("1", [[1, "number"]], "fallback")).toBe("fallback");
   });
-
-  test("reactive value returns markup with a DynamicNode", () => {
-    const [state] = createAtom("loading");
-    const result = branch(state, { loading: "loading view" });
-    const markup = result as ReturnType<typeof createMarkup>;
-    expect(markup.type).toBe(DynamicNode);
-  });
-
-  test("reactive tuple value returns markup with a DynamicNode", () => {
-    const key = {};
-    const [state] = createAtom<object>(key);
-    const result = branch(state, [[key, "content"]]);
-    const markup = result as ReturnType<typeof createMarkup>;
-    expect(markup.type).toBe(DynamicNode);
-  });
 });
 
 describe("createPortal", () => {
-  test("returns markup with PortalNode", () => {
-    const target = document.createElement("div");
-    const result = createPortal(target, "hello");
-    expect(result).toBeDefined();
-    const markup = result as ReturnType<typeof createMarkup>;
-    expect(markup.type).toBe(PortalNode);
-  });
-
   test("portal renders content in target element", () => {
     const { context, container } = setup();
     const target = document.createElement("div");

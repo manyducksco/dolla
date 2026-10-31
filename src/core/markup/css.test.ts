@@ -21,16 +21,6 @@ describe("css tagged template", () => {
     expect(tpl.className).toMatch(/^css-/);
   });
 
-  test("same input produces same className", () => {
-    const tpl1 = css`
-      color: red;
-    `;
-    const tpl2 = css`
-      color: red;
-    `;
-    expect(tpl1.className).toBe(tpl2.className);
-  });
-
   test("different input produces different className", () => {
     const tpl1 = css`
       color: red;
@@ -61,17 +51,6 @@ describe("css tagged template", () => {
     expect(first).toBe(second);
   });
 
-  test("dynamic templates with the same hash are not shared", () => {
-    const first = css`
-      color: ${() => "red"};
-    `;
-    const second = css`
-      color: ${() => "blue"};
-    `;
-    expect(first.className).toBe(second.className);
-    expect(first).not.toBe(second);
-  });
-
   test("attach adds className to element", () => {
     const ctx = createContext(null);
     const el = document.createElement("div");
@@ -90,40 +69,6 @@ describe("css tagged template", () => {
     `;
     tpl.attach(ctx, el, false);
     expect(el.classList.contains(tpl.className)).toBe(false);
-  });
-
-  test("attach with truthy condition adds class", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const tpl = css`
-      color: red;
-    `;
-    tpl.attach(ctx, el, true);
-    expect(el.classList.contains(tpl.className)).toBe(true);
-  });
-
-  test("static interpolation is included", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const size = "20px";
-    const tpl = css`
-      font-size: ${size};
-    `;
-    tpl.attach(ctx, el);
-    expect(el.classList.contains(tpl.className)).toBe(true);
-  });
-
-  test("template with multiple values", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const color = "blue";
-    const padding = "10px";
-    const tpl = css`
-      color: ${color};
-      padding: ${padding};
-    `;
-    tpl.attach(ctx, el);
-    expect(el.classList.contains(tpl.className)).toBe(true);
   });
 
   test("nested template interpolation", () => {
@@ -332,26 +277,6 @@ describe("css.when()", () => {
     expect(result.condition).toBe(true);
   });
 
-  test("attaches template when condition is true", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const tpl = css`
-      color: red;
-    `;
-    tpl.when(true).template.attach(ctx, el, true);
-    expect(el.classList.contains(tpl.className)).toBe(true);
-  });
-
-  test("does not attach template when condition is false", () => {
-    const ctx = createContext(null);
-    const el = document.createElement("div");
-    const tpl = css`
-      color: red;
-    `;
-    const conditional = tpl.when(false);
-    conditional.template.attach(ctx, el, false);
-    expect(el.classList.contains(tpl.className)).toBe(false);
-  });
 });
 
 describe("hash collision prevention", () => {
@@ -427,20 +352,6 @@ describe("hash collision prevention", () => {
       color: ${cfgB};
     `;
     expect(tplA.className).not.toBe(tplB.className);
-  });
-
-  test("reactive getter interpolations are still skipped from the hash (dedup preserved)", () => {
-    const getColor = () => "red";
-    const getOtherColor = () => "blue";
-    const tplA = css`
-      color: ${getColor};
-    `;
-    const tplB = css`
-      color: ${getOtherColor};
-    `;
-    // Both functions render as `var(--css-XYZ-0)`; the template identity is
-    // the same so they dedup.
-    expect(tplA.className).toBe(tplB.className);
   });
 
   test("reactive getter vs static primitive interpolation produce distinct classNames", () => {

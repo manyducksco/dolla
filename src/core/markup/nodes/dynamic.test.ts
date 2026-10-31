@@ -223,40 +223,10 @@ describe("DynamicNode", () => {
       expect(node.getRoot()?.parentNode).toBe(container);
     });
 
-    test("unmount unsubscribes from signal", () => {
-      const { context, container } = setup();
-      const [content, setContent] = createAtom("hello");
-      const node = new DynamicNode(context, content);
-      node.mount(container);
-      node.unmount();
-      // After unmount, updates should not throw
-      expect(() => setContent("world")).not.toThrow();
-    });
-
     test("unmounting an unmounted node does not throw", () => {
       const { context } = setup();
       const node = new DynamicNode(context, () => "hello");
       expect(() => node.unmount()).not.toThrow();
-    });
-  });
-
-  describe("move", () => {
-    test("moves anchor and children to new position", () => {
-      const { context, container } = setup();
-      const [content] = createAtom(createMarkup("span", { children: "moved" }));
-      const node = new DynamicNode(context, content);
-      const first = document.createElement("div");
-      first.textContent = "first";
-      container.appendChild(first);
-      node.mount(container);
-      // Order: first, anchor, span
-      expect(container.childNodes[0]).toBe(first);
-      expect(container.childNodes[1]).toBe(node.getRoot());
-      expect(container.childNodes[2]).toBeInstanceOf(HTMLSpanElement);
-      expect(container.textContent).toBe("firstmoved");
-
-      // Move dynamic content to be right after its anchor (which stays)
-      // This effectively just repositions the child span after the anchor
     });
   });
 

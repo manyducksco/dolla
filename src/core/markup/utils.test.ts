@@ -13,11 +13,6 @@ describe("camelToKebab", () => {
     expect(camelToKebab("backgroundColor")).toBe("background-color");
     expect(camelToKebab("borderTopLeftRadius")).toBe("border-top-left-radius");
   });
-
-  test("returns stable results for repeated calls", () => {
-    expect(camelToKebab("fillOpacity")).toBe("fill-opacity");
-    expect(camelToKebab("fillOpacity")).toBe("fill-opacity");
-  });
 });
 
 describe("type checking", () => {

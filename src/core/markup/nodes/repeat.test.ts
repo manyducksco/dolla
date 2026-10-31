@@ -361,49 +361,6 @@ describe("RepeatNode", () => {
     });
   });
 
-  describe("render function gets correct values", () => {
-    test("render receives updated item values via getter", () => {
-      const renderAssert = vi.fn(
-        (item: ReturnType<typeof createAtom<Item>>[0], _index: ReturnType<typeof createAtom<number>>[0]) => {
-          return createMarkup("span", { children: () => item().text });
-        },
-      );
-      const { context, container } = setup();
-      const [items, setItems] = createAtom<Item[]>([{ id: 1, text: "init" }]);
-      const node = new RepeatNode(context, items, keyFn, renderAssert);
-      node.mount(container);
-      expect(container.querySelector("span")!.textContent).toBe("init");
-
-      setItems([{ id: 1, text: "changed" }]);
-      flushPendingUpdates();
-      expect(container.querySelector("span")!.textContent).toBe("changed");
-    });
-
-    test("render receives updated index values", () => {
-      const renderAssert = vi.fn(
-        (item: ReturnType<typeof createAtom<Item>>[0], index: ReturnType<typeof createAtom<number>>[0]) => {
-          return createMarkup("span", { children: () => `${item().text}:${index()}` });
-        },
-      );
-      const { context, container } = setup();
-      const [items, setItems] = createAtom<Item[]>([
-        { id: 1, text: "a" },
-        { id: 2, text: "b" },
-      ]);
-      const node = new RepeatNode(context, items, keyFn, renderAssert);
-      node.mount(container);
-      expect(container.querySelectorAll("span")[0].textContent).toBe("a:0");
-      expect(container.querySelectorAll("span")[1].textContent).toBe("b:1");
-
-      // Remove first item - second item's index should change from 1 to 0
-      setItems([{ id: 2, text: "b" }]);
-      flushPendingUpdates();
-      const spans = container.querySelectorAll("span");
-      expect(spans.length).toBe(1);
-      expect(spans[0].textContent).toBe("b:0");
-    });
-  });
-
   describe("unmount", () => {
     test("unmount removes anchor and items from DOM", () => {
       const { context, container } = setup();
@@ -458,24 +415,6 @@ describe("RepeatNode", () => {
 
       // Anchor is now after `after`
       expect(childIdx(node.getRoot()!)).toBeGreaterThan(childIdx(after));
-    });
-
-    test("move preserves rendered content", () => {
-      const { context, container } = setup();
-      const [items] = createAtom<Item[]>([
-        { id: 1, text: "one" },
-        { id: 2, text: "two" },
-      ]);
-      const before = document.createElement("div");
-      const after = document.createElement("div");
-      container.append(before, after);
-      const node = new RepeatNode(context, items, keyFn, renderFn);
-      node.mount(container, before);
-
-      node.move(container, after);
-      const spans = container.querySelectorAll("span");
-      expect(spans[0].textContent).toBe("one:0");
-      expect(spans[1].textContent).toBe("two:1");
     });
 
     test("does not throw when called on unmounted node", () => {

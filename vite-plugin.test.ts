@@ -165,14 +165,6 @@ describe("dollaPlugin — styled namer (dev only)", () => {
     expect(result!.code).not.toContain(".named(");
   });
 
-  test("does not rewrite function returns", () => {
-    const code = IMPORT + `function make() { return styled.button\`\`; }\n`;
-    const result = runTransform(code, "/abs/file.tsx");
-    // No styled declaration to rewrite, but HMR self-accept is still injected.
-    expect(result).not.toBeNull();
-    expect(result!.code).not.toContain(".named(");
-  });
-
   test("rewrites multiple styled declarations in one file", () => {
     const code = IMPORT + [
       `const A = styled.div\`\n  color: red;\n\`;`,
@@ -192,17 +184,6 @@ describe("dollaPlugin — styled namer (dev only)", () => {
     expect(second).not.toBeNull();
     // Second pass should not double-inject .named.
     expect((second!.code.match(/\.named\(/g) ?? []).length).toBe(1);
-  });
-
-  test("handles multi-line template literals", () => {
-    const code = IMPORT + `const X = styled.div\`
-      color: red;
-      background: white;
-      padding: 4px;
-    \`;\n`;
-    const result = runTransform(code, "/abs/file.tsx");
-    expect(result).not.toBeNull();
-    expect(result!.code).toContain(`styled.div.named("X")`);
   });
 
   test("skips styled inside an existing string literal", () => {

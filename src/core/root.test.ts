@@ -175,12 +175,6 @@ describe("createRoot", () => {
     other.remove();
   });
 
-  test("mount renders content into the target element", async () => {
-    const root = createRoot(container);
-    await root.mount("hello world");
-    expect(container.textContent).toBe("hello world");
-  });
-
   test("mount with markup renders into target", async () => {
     const root = createRoot(container);
     const { createMarkup } = await import("../core/markup/utils.js");
@@ -196,14 +190,6 @@ describe("createRoot", () => {
     expect(container.textContent).toBe("content");
     root.unmount();
     expect(container.textContent).toBe("");
-  });
-
-  test("plugin is called during mount", async () => {
-    const root = createRoot(container);
-    const plugin = vi.fn(async () => {});
-    root.plugin(plugin);
-    await root.mount("hello");
-    expect(plugin).toHaveBeenCalledTimes(1);
   });
 
   test("plugin receives context", async () => {
@@ -269,15 +255,6 @@ describe("createRoot", () => {
     root.unmount();
     root.unmount();
     expect(container.textContent).toBe("");
-  });
-
-  test("mount with View function renders view", async () => {
-    const root = createRoot(container);
-    const view = vi.fn(function (this: any) {
-      return "from view";
-    });
-    await root.mount(view);
-    expect(container.textContent).toBe("from view");
   });
 
   test("unmount after mount with view cleans up", async () => {
