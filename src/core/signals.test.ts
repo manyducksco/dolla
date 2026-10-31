@@ -903,4 +903,49 @@ describe("effect cleanup", () => {
     setB(2);
     expect(runs).toBe(2);
   });
+
+  test("child effects from the previous run are disposed before the next run", () => {
+    const [a, setA] = createAtom(1);
+    const log: string[] = [];
+    createEffect(() => {
+      const n = a();
+      createEffect(() => {
+        log.push(`setup ${n}`);
+        return () => log.push(`cleanup ${n}`);
+      });
+    });
+
+    setA(2);
+    expect(log).toEqual(["setup 1", "cleanup 1", "setup 2"]);
+  });
+
+  test("child effects from the previous run are disposed when a re-run throws", () => {
+    setErrorHandler(() => {});
+    try {
+      const [a, setA] = createAtom(1);
+      const [tick, setTick] = createAtom(0);
+      let live = 0;
+      createEffect(() => {
+        const n = a();
+        createEffect(() => {
+          tick();
+          live++;
+          return () => live--;
+        });
+        if (n === 2) throw new Error("boom");
+      });
+      expect(live).toBe(1);
+
+      setA(2);
+      expect(live).toBe(1);
+
+      // The parent still retries after the failure.
+      setA(3);
+      expect(live).toBe(1);
+      setTick(1);
+      expect(live).toBe(1);
+    } finally {
+      setErrorHandler(null);
+    }
+  });
 });

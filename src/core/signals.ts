@@ -449,6 +449,7 @@ function run(e: EffectNode): void {
     }
 
     if (shouldRun) {
+      disposeChildEffects(e);
       runCleanup(e);
 
       ++cycle;
@@ -506,6 +507,18 @@ function flush(): void {
     notifyIndex = 0;
     queuedLength = 0;
     queued.length = 0;
+  }
+}
+
+/**
+ * Disposes effects created by the previous run of `e` before it runs again, so
+ * old children are torn down before new ones are set up, and even if the new
+ * run throws. Signal dependencies are left linked.
+ */
+function disposeChildEffects(e: EffectNode): void {
+  let link = e._deps;
+  while (link !== undefined) {
+    link = (link._dep as EffectNode)._fn !== undefined ? unlink(link, e) : link._nextDep;
   }
 }
 
