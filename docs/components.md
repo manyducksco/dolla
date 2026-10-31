@@ -105,6 +105,8 @@ function Counter(props, context) {
 }
 ```
 
+Props can be left out when none of them are required. The store then receives an empty object, as views do, so give optional props defaults by destructuring: `function ExampleStore({ initialCount = 0 })`.
+
 A store instance is available to all components in its subtree. See [Stores vs Views](./concepts.md#stores-vs-views) for the conceptual difference.
 
 ## TypeScript

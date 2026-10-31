@@ -147,25 +147,23 @@ describe("stores", () => {
     expect(store.theme).toBe("dark");
   });
 
-  test("addStore without props lets the store's default parameter apply", () => {
-    function DefaultStore(props = { n: 1 }, _ctx: Context) {
-      return { n: props.n };
+  test("addStore can omit props with no required keys and passes an empty object", () => {
+    let received: unknown;
+    function EmptyStore(props: {}, _ctx: Context) {
+      received = props;
+      return {};
     }
-    const ctx = createContext(null);
-    expect(addStore(ctx, DefaultStore).n).toBe(1);
-  });
-
-  test("addStore requires props unless the store accepts undefined", () => {
-    function OptionalStore(props: { label?: string }, _ctx: Context) {
-      return { label: props.label ?? "none" };
+    function OptionalStore({ label = "none" }: { label?: string }, _ctx: Context) {
+      return { label };
     }
     const ctx = createContext(null);
 
-    // Omitted props are passed as `undefined`, so this store would throw reading `props.label`.
-    // @ts-expect-error props that don't accept undefined must be passed
-    expect(() => addStore(ctx, OptionalStore)).toThrow(TypeError);
+    addStore(ctx, EmptyStore);
+    expect(received).toEqual({});
+    expect(addStore(ctx, OptionalStore).label).toBe("none");
+
     // @ts-expect-error props with required keys must still be passed
-    expect(() => addStore(createContext(null), ConfigStore)).toThrow(TypeError);
+    addStore(createContext(null), ConfigStore);
   });
 
   test("adding the same store twice on the same context returns existing store", () => {
