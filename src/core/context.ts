@@ -145,31 +145,18 @@ export function getNearestViewNode<Props = unknown>(context: Context): ViewNode<
 ||              Stores               ||
 \*===================================*/
 
-/**
- * Module-local registry: maps a store's stable name to a unique symbol.
- * The symbol is reused across HMR re-evaluations of the same store
- * function, so the context lookup in `getStore` keeps working after
- * a hot reload even though the function itself is a new instance.
- */
-const STORE_SYMBOLS = new Map<string, symbol>();
-
-function getStoreSymbol(name: string): symbol {
-  let s = STORE_SYMBOLS.get(name);
-  if (!s) {
-    s = Symbol(name);
-    STORE_SYMBOLS.set(name, s);
-  }
-  return s;
-}
-
 export const STORE_ID = Symbol.for("$_STORE_ID");
 
 /**
- * Resolves a store's symbol without registering a new one, so a fresh function
- * instance (e.g. after HMR) is matched the same way `getStore` matches it.
+ * Returns the symbol that identifies a store function, creating it on first use.
+ *
+ * Stores are identified by the function itself, not its name, so two stores
+ * that happen to share a name (common after minification) never collide.
+ * Hot reload keeps working because the vite plugin wraps exported functions
+ * with `__dolla_export`, which returns the same wrapper on every re-evaluation.
  */
-function lookupStoreId(store: { name: string; [STORE_ID]?: symbol }): symbol | undefined {
-  return store[STORE_ID] ?? STORE_SYMBOLS.get(store.name);
+function storeId(store: { name: string; [STORE_ID]?: symbol }): symbol {
+  return (store[STORE_ID] ??= Symbol(store.name));
 }
 
 /**
@@ -187,15 +174,12 @@ export function addStore<Props, Returns>(
   store: Store<Props, Returns> & { [STORE_ID]?: symbol },
   ...args: undefined extends Props ? [props?: Props] : [props: Props]
 ) {
-  // Tag the store function with the registry-resolved symbol for its name.
-  // The registry is the single source of truth so the same name always
-  // maps to the same symbol, even after HMR replaces the function instance.
-  store[STORE_ID] = getStoreSymbol(store.name);
+  const id = storeId(store);
 
-  if (Object.hasOwn(context, store[STORE_ID])) {
+  if (Object.hasOwn(context, id)) {
     // Re-register lifecycle listeners for the existing store so they
     // survive cleanupContext clearing MOUNT_LISTENERS during HMR.
-    const existing = context[store[STORE_ID]];
+    const existing = context[id];
     if (existing != null && existing[STORE_CONTEXT]) {
       const storeContext = existing[STORE_CONTEXT];
       onMount(context, () => mountContext(storeContext));
@@ -211,15 +195,14 @@ export function addStore<Props, Returns>(
 
   const result = store.call(storeContext, args[0] as Props, storeContext);
   if (result != null) (result as any)[STORE_CONTEXT] = storeContext;
-  return (context[store[STORE_ID]!] = result);
+  return (context[id] = result);
 }
 
 /**
  * Gets the nearest instance of a store from up this context chain.
  */
 export function getStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
-  const id = (store[STORE_ID] ??= getStoreSymbol(store.name));
-  const result = id ? context[id] : undefined;
+  const result = context[storeId(store)];
   assert(result != null, `Store '${store.name}' is not provided by this context.`);
   return result;
 }
@@ -228,16 +211,15 @@ export function getStore<Returns>(context: Context, store: Store<any, Returns> &
  * Determines if an instance of a store is available on this context or up the context chain.
  */
 export function hasStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
-  const id = lookupStoreId(store);
-  if (!id) return false;
-  return context[id] != null;
+  // A store function that was never added has no symbol yet, so it can't be present.
+  const id = store[STORE_ID];
+  return id !== undefined && context[id] != null;
 }
 
 /**
  * Determines if an instance of a store is stored directly on this context.
  */
 export function hasOwnStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
-  const id = lookupStoreId(store);
-  if (!id) return false;
-  return Object.hasOwn(context, id);
+  const id = store[STORE_ID];
+  return id !== undefined && Object.hasOwn(context, id);
 }

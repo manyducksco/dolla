@@ -13,6 +13,7 @@ import {
   onMount,
   type Context,
 } from "./context.js";
+import { __dolla_export } from "./hmr.js";
 
 test("lifecycle", () => {
   const c = createContext(null);
@@ -208,29 +209,49 @@ describe("stores", () => {
   });
 });
 
-describe("HMR-stable store identity", () => {
-  function AuthStore(this: Context) {
-    return { id: "auth", value: 1 };
+describe("store identity", () => {
+  function named<T extends Function>(name: string, fn: T): T {
+    Object.defineProperty(fn, "name", { value: name });
+    return fn;
   }
 
-  test("a re-created function with the same name resolves to the same store", () => {
+  test.each([
+    ["a minified name", "e"],
+    ["the name 'default'", "default"],
+    ["an empty name", ""],
+  ])("different stores with %s get separate instances", (_label, name) => {
     const ctx = createContext(null);
-    addStore(ctx, AuthStore);
-    const first = getStore(ctx, AuthStore);
+    const A = named(name, function (this: Context) {
+      return { tag: "A" };
+    });
+    const B = named(name, function (this: Context) {
+      return { tag: "B" };
+    });
 
-    // Simulate HMR: the module is re-evaluated, producing a new function
-    // instance with the same `name`.
-    function AuthStore(this: Context) {
-      return { id: "auth", value: 999 };
-    }
-    const after = getStore(ctx, AuthStore);
-
-    // The registry maps both functions to the same symbol, so the
-    // original store value is returned and the assert does not throw.
-    expect(after).toBe(first);
+    expect(addStore(ctx, A).tag).toBe("A");
+    expect(addStore(ctx, B).tag).toBe("B");
+    expect(getStore(ctx, A).tag).toBe("A");
+    expect(getStore(ctx, B).tag).toBe("B");
   });
 
-  test("two different store names get distinct symbols", () => {
+  test("hasStore and hasOwnStore do not match a different store with the same name", () => {
+    const parent = createContext(null);
+    const child = createContext(parent);
+    function AuthStore(this: Context) {
+      return { id: "auth" };
+    }
+    const Impostor = named("AuthStore", function (this: Context) {
+      return { id: "impostor" };
+    });
+    addStore(parent, AuthStore);
+
+    expect(hasStore(child, AuthStore)).toBe(true);
+    expect(hasStore(child, Impostor)).toBe(false);
+    expect(hasOwnStore(parent, Impostor)).toBe(false);
+    expect(() => getStore(child, Impostor)).toThrow();
+  });
+
+  test("two different store names get distinct instances", () => {
     const ctx = createContext(null);
     function AStore(this: Context) {
       return { tag: "A" };
@@ -244,9 +265,7 @@ describe("HMR-stable store identity", () => {
     expect(getStore(ctx, BStore).tag).toBe("B");
   });
 
-  test("re-creating a store with the same name on a new context still adds it independently", () => {
-    // HMR can also produce a fresh root context in some flows; the
-    // registry should not leak store values across unrelated contexts.
+  test("the same store on two contexts gets independent instances", () => {
     const ctxA = createContext(null);
     const ctxB = createContext(null);
     function CounterStore(this: Context) {
@@ -261,20 +280,43 @@ describe("HMR-stable store identity", () => {
     expect(getStore(ctxB, CounterStore).get()).toBe(0);
   });
 
-  test("hasStore and hasOwnStore find a store through a re-created function", () => {
-    const parent = createContext(null);
-    addStore(parent, AuthStore);
-    const child = createContext(parent);
-
-    function makeAuthStore() {
-      return function AuthStore(this: Context) {
-        return { id: "auth", value: 999 };
+  describe("hot reload", () => {
+    // The vite plugin wraps exported functions with `__dolla_export`, which
+    // returns the same wrapper every time the module is re-evaluated.
+    let reloadId = 0;
+    function hotModule() {
+      const id = `/src/stores.ts:AuthStore:${reloadId++}`;
+      return (value: number) => {
+        function AuthStore(this: Context) {
+          return { id: "auth", value };
+        }
+        return __dolla_export(id, AuthStore as any) as typeof AuthStore;
       };
     }
-    // Simulate HMR: a fresh function instance that has never been passed in.
-    expect(hasStore(child, makeAuthStore())).toBe(true);
-    expect(hasOwnStore(parent, makeAuthStore())).toBe(true);
-    expect(hasOwnStore(child, makeAuthStore())).toBe(false);
+
+    test("a reloaded store keeps the existing instance", () => {
+      const load = hotModule();
+      const ctx = createContext(null);
+      const before = load(1);
+      const first = addStore(ctx, before);
+
+      const after = load(999); // module re-evaluated
+      expect(after).toBe(before);
+      expect(getStore(ctx, after)).toBe(first);
+      expect(addStore(ctx, after)).toBe(first);
+    });
+
+    test("hasStore and hasOwnStore find a reloaded store", () => {
+      const load = hotModule();
+      const parent = createContext(null);
+      addStore(parent, load(1));
+      const child = createContext(parent);
+
+      const reloaded = load(2);
+      expect(hasStore(child, reloaded)).toBe(true);
+      expect(hasOwnStore(parent, reloaded)).toBe(true);
+      expect(hasOwnStore(child, reloaded)).toBe(false);
+    });
   });
 
   test("continues cleanup after a throwing listener", () => {
