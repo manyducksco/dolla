@@ -15,16 +15,6 @@ Recommendation: B, with a time limit. Most of the new code is unavoidable.
 
 ## Signals and core
 
-### Stores are identified by function name
-
-`addStore`/`getStore` match stores by `store.name` so that HMR can swap a store function and keep its state. Two different stores with the same name share one slot: `addStore(ctx, B)` returns A's instance. This is likely in minified builds (`e`) and for `default` or anonymous functions. The test "a re-created function with the same name resolves to the same store" asserts the current behavior. Files: `src/core/context.ts`, `src/core/hmr.ts`.
-
-- **A.** Key stores by function identity, using the vite plugin's `__dolla_export` id (which survives HMR) when one is present.
-- **B.** Match by identity first, and fall back to the name only in dev/HMR mode.
-- **C.** Require an explicit store key.
-
-Recommendation: A. Cost: stores that aren't exported from a hot-reloaded module lose their state on reload, and the test above needs rewriting to use `__dolla_export`.
-
 ### Debug settings are global
 
 `createRoot` calls `setSignalDebug`/`setUpdateStats`, which set module-level flags. A second root created without `debug` turns debugging off for the first. Files: `src/core/root.ts`, `src/core/signal-debug.ts`, `src/core/markup/scheduler.ts`.
