@@ -241,32 +241,30 @@ async function createLookup(
   /**
    * Looks up the template and produces the output. Any reactive values in `options` are tracked when used.
    */
+  /**
+   * Finds the key for a variant of `base`, written either flat ("apples_one") or nested ({ apples: { one } }).
+   */
+  function variant(base: string, suffix: string): string | undefined {
+    const flat = `${base}_${suffix}`;
+    if (templates.has(flat)) return flat;
+    const nested = `${base}.${suffix}`;
+    if (templates.has(nested)) return nested;
+  }
+
   return function lookup(selector: string, options?: TOptions): string {
     if (options) {
       // Handle count (pluralization) and context. Keys become "key_context_pluralization".
       const context = get(options.context);
       if (context != null) {
-        selector += "_" + context;
+        selector = variant(selector, String(context)) ?? selector + "_" + context;
       }
       const count = get(options.count);
       if (count != null) {
-        if (options.ordinal) {
-          // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
-          const exact = `${selector}_ordinal_(=${count})`;
-          if (templates.has(exact)) {
-            selector = exact;
-          } else {
-            selector += "_ordinal_" + getPluralRules(true).select(count);
-          }
-        } else {
-          // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
-          const exact = `${selector}_(=${count})`;
-          if (templates.has(exact)) {
-            selector = exact;
-          } else {
-            selector += "_" + getPluralRules(false).select(count);
-          }
-        }
+        // Prefer an exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
+        const prefix = options.ordinal ? "ordinal_" : "";
+        const category = prefix + getPluralRules(!!options.ordinal).select(count);
+        selector =
+          variant(selector, `${prefix}(=${count})`) ?? variant(selector, category) ?? selector + "_" + category;
       }
     }
 

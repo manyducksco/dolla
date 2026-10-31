@@ -64,7 +64,7 @@ const translations = {
 t("apples", { count: 3 })(); // "3 apples"
 ```
 
-`count` may be a getter. Exact-number keys (`apples_(=2)`) and ordinal keys (`apples_ordinal_one`) are also supported.
+`count` may be a getter. Exact-number keys (`apples_(=2)`) and ordinal keys (`apples_ordinal_one`) are also supported. Variants can be written flat (`apples_one`) or nested under the base key as above (`apples: { one, "(=2)", ordinal_one }`).
 
 ### Context-aware keys
 
@@ -72,7 +72,7 @@ Append `_context` to a key to select locale-specific variants:
 
 ```js
 t("greeting", { context: "formal" })();
-// Selects key "greeting_formal" if it exists
+// Selects key "greeting_formal" (or nested "greeting.formal") if it exists
 ```
 
 ### Built-in formatters

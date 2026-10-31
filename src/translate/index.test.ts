@@ -54,6 +54,27 @@ describe("translator", () => {
     setCount(0);
     expect(apples()).toBe("no apples");
   });
+
+  test("nested plural and context objects resolve (README format)", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: {
+          apples: { "(=0)": "no apples", one: "{{count}} apple", other: "{{count}} apples" },
+          place: { ordinal_one: "{{count}}st", ordinal_other: "{{count}}th" },
+          greeting: { formal: "Good day", casual: "Hey" },
+          menu: { items: { one: "{{count}} item", other: "{{count}} items" } },
+        },
+      },
+    });
+
+    expect(t("apples", { count: 3 })()).toBe("3 apples");
+    expect(t("apples", { count: 1 })()).toBe("1 apple");
+    expect(t("apples", { count: 0 })()).toBe("no apples");
+    expect(t("place", { count: 1, ordinal: true })()).toBe("1st");
+    expect(t("greeting", { context: "formal" })()).toBe("Good day");
+    expect(t("menu.items", { count: 2 })()).toBe("2 items");
+  });
 });
 
 describe("parseTemplate", () => {
