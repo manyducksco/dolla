@@ -73,6 +73,21 @@ describe("dollaPlugin — HMR injection", () => {
     expect(acceptIdx).toBeLessThan(userCodeIdx);
   });
 
+  test("registers `export async function` for HMR and live bindings", () => {
+    const code = `export async function Loader() { return null; }\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ Loader \}\)/);
+    expect(result!.code).toContain("\nasync function Loader()");
+    expect(result!.code).toContain(`Loader = __dolla_export("/abs/file.tsx:Loader", Loader);`);
+    expect(result!.code).toContain("export { Loader };");
+  });
+
+  test("registers `export default async function Name` for HMR", () => {
+    const code = `export default async function Page() { return null; }\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
+  });
+
   test("returns null for files inside node_modules", () => {
     const result = runTransform(`export const Foo = 1;\n`, "/abs/project/node_modules/pkg/file.tsx", "serve");
     expect(result).toBeNull();

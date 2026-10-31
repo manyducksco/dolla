@@ -5,13 +5,13 @@ const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export).*from\s+["']@manyduck
 const HMR_ACCEPT_RE = /import\.meta\.hot\.accept\s*\(/;
 
 // Match `export function Foo` — NOT `export default function`
-const EXPORT_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
+const EXPORT_FUNC_RE = /export\s+(?:async\s+)?function\s+\*?\s*([a-zA-Z_$]\w*)/g;
 
 // Match `export const Foo =`
 const EXPORT_CONST_RE = /export\s+(?:const|let|var)\s+([a-zA-Z_$]\w*)\s*[=:]/g;
 
 // Match `export default function Foo` or `export default function`
-const EXPORT_DEFAULT_FUNC_RE = /export\s+default\s+function\s+\*?\s*([a-zA-Z_$]\w*)?\s*\(/g;
+const EXPORT_DEFAULT_FUNC_RE = /export\s+default\s+(?:async\s+)?function\s+\*?\s*([a-zA-Z_$]\w*)?\s*\(/g;
 
 // Match `export default Foo` (identifier reference, e.g. re-export)
 const EXPORT_DEFAULT_IDENT_RE = /export\s+default\s+([a-zA-Z_$]\w*)\s*;?$/gm;
@@ -481,7 +481,7 @@ function applyStyledNamer(s, code) {
  */
 function applyLiveBindings(s, code, id, scan) {
   // Only wrap named-function exports. Skips default, const, etc.
-  const EXPORT_NAMED_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
+  const EXPORT_NAMED_FUNC_RE = /export\s+(?:async\s+)?function\s+\*?\s*([a-zA-Z_$]\w*)/g;
 
   const seen = new Set();
   const names = [];
