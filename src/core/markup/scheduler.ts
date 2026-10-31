@@ -16,6 +16,13 @@ let isFlushing = false;
 let collectUpdateStats = false;
 
 /**
+ * Updates scheduled during a flush run in a follow-up wave. A chain this long
+ * means updates keep rescheduling each other, so the flush gives up instead of
+ * freezing the page.
+ */
+const MAX_WAVES = 1000;
+
+/**
  * Enables flush timing and update-label statistics. Enabled by `createRoot`
  * in debug mode; disabled by default so production flushes do no extra work.
  */
@@ -59,7 +66,13 @@ function flushUpdates() {
     // elements added during iteration, but the original code also broke
     // if any update threw — the throw would skip the cleanup and leave
     // the scheduler permanently stuck.
+    let waves = 0;
     while (pendingUpdates.size > 0) {
+      if (++waves > MAX_WAVES) {
+        dropRunawayUpdates();
+        break;
+      }
+
       const wave = pendingUpdates;
       pendingUpdates = flushingUpdates;
       flushingUpdates = wave;
@@ -99,6 +112,23 @@ function flushUpdates() {
     }
     console.warn(`[dolla] flushed ${count} update${count === 1 ? "" : "s"} in ${ms.toFixed(1)}ms${breakdown}`);
   }
+}
+
+function dropRunawayUpdates() {
+  const labels = new Set<string>();
+  let context: Context | undefined;
+  for (const meta of pendingUpdates.values()) {
+    if (meta?.label) labels.add(meta.label);
+    context ??= meta?.context;
+  }
+  pendingUpdates.clear();
+
+  const names = labels.size ? ` (${Array.from(labels).join(", ")})` : "";
+  const error = new Error(
+    `Updates kept rescheduling themselves for ${MAX_WAVES} rounds and were stopped${names}. ` +
+      `An update is probably writing to a signal that triggers itself.`,
+  );
+  reportSignalError(toSignalError(error, { phase: "update", context, triggerFrames: [] }), context);
 }
 
 export function flushPendingUpdates() {

@@ -159,6 +159,31 @@ describe("scheduler", () => {
     setErrorHandler(null);
   });
 
+  test("stops an update that keeps rescheduling itself and reports it", () => {
+    const errors: SignalError[] = [];
+    setErrorHandler((error) => errors.push(error));
+
+    let runs = 0;
+    const loop = () => {
+      runs++;
+      scheduleUpdate(loop, { label: "LoopingNode" });
+    };
+    scheduleUpdate(loop, { label: "LoopingNode" });
+
+    flushPendingUpdates();
+
+    expect(runs).toBeLessThan(10_000);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].phase).toBe("update");
+    expect(errors[0].message).toContain("LoopingNode");
+
+    // The scheduler keeps working afterwards.
+    const order: number[] = [];
+    scheduleUpdate(() => order.push(1));
+    flushPendingUpdates();
+    expect(order).toEqual([1]);
+  });
+
   afterEach(() => {
     setErrorHandler(null);
     setUpdateStats(false);
