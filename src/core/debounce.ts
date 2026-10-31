@@ -100,8 +100,10 @@ export function debounce<Fn extends (...args: any[]) => any>(
       cancel();
       pendingFn = fn ? createCaller(fn, ...(args as Parameters<Fn>)) : args[0];
       pendingTimer = setTimeout(() => {
-        pendingFn();
+        // Clear first: `pendingFn` may schedule a new call (which must stay
+        // cancellable) or throw (which must not leave it pending for flush).
         pendingTimer = undefined;
+        pendingFn();
       }, ms);
     },
     flush: () => {

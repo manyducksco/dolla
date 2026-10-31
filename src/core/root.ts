@@ -16,7 +16,7 @@ import { setSignalDebug } from "./signal-debug.js";
 import { setUpdateStats } from "./markup/scheduler.js";
 import { DEBUG, ERROR_HANDLER, PARENT_ELEMENT } from "./symbols.js";
 
-// Marks an element that already hosts a dolla root, so a subsequent mount into
+// Marks an element that already hosts a dolla root (holds its DollaRoot), so a subsequent mount into
 // the same element can tear down the previous instance instead of stacking a
 // duplicate.
 const ROOT_MARKER = Symbol("dolla:root-node");
@@ -90,9 +90,21 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     return self;
   }
 
-  async function mount(content: View<{}> | Renderable) {
-    if (isMounted(context)) return;
+  // The in-flight mount, so a concurrent call doesn't render a second time
+  // while plugins are still resolving.
+  let mounting: Promise<void> | undefined;
 
+  function mount(content: View<{}> | Renderable): Promise<void> {
+    if (isMounted(context)) return Promise.resolve();
+    if (!mounting) {
+      mounting = doMount(content).finally(() => {
+        mounting = undefined;
+      });
+    }
+    return mounting;
+  }
+
+  async function doMount(content: View<{}> | Renderable) {
     await Promise.all(plugins.map((fn) => fn(context)));
 
     // Defensive against duplicate mounts: a full HMR reload can re-run the entry
@@ -101,13 +113,15 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     // stack duplicate routes. (A normal re-mount of a different root is handled
     // the same way — only one root per element is valid.)
     const existing = (element as any)?.[ROOT_MARKER];
-    if (existing && existing !== rootNode) {
-      runSafely(() => existing.unmount?.(), { phase: "unmount", context });
+    if (existing && existing !== self) {
+      // Unmount the whole root, not just its node, so its context (and any
+      // plugin cleanup listeners) is cleaned up too.
+      runSafely(() => existing.unmount(), { phase: "unmount", context });
       if (element!.firstChild != null) element!.replaceChildren();
     }
 
     rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
-    (element as any)[ROOT_MARKER] = rootNode;
+    (element as any)[ROOT_MARKER] = self;
     rootNode?.mount(element!);
 
     mountContext(context);
@@ -129,7 +143,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
     cleanupContext(context);
 
-    if (element && (element as any)[ROOT_MARKER]) {
+    if (element && (element as any)[ROOT_MARKER] === self) {
       runSafely(
         () => {
           delete (element as any)[ROOT_MARKER];

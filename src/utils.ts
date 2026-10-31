@@ -67,11 +67,23 @@ export function isString(value: unknown): value is string {
  * Returns true if `value` is a function (but not a class).
  */
 export function isFunction<T = (...args: unknown[]) => unknown>(value: unknown): value is T {
-  return typeof value === "function" && !isClass(value);
+  // Arrow functions, methods, async and bound functions have no `prototype`, so
+  // they can't be classes. That covers almost every getter, letting hot signal
+  // paths skip the costly class check.
+  return typeof value === "function" && (value.prototype === undefined || !isClass(value));
 }
 
+// Caches class detection, which needs a `toString()` of the function source.
+const classCache = new WeakMap<Function, boolean>();
+
 export function isClass(value: unknown): boolean {
-  return typeof value === "function" && value.toString().startsWith("class ");
+  if (typeof value !== "function") return false;
+  let result = classCache.get(value);
+  if (result === undefined) {
+    result = value.toString().startsWith("class ");
+    classCache.set(value, result);
+  }
+  return result;
 }
 
 /**

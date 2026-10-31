@@ -85,6 +85,17 @@ test("get reads plain values and tracks getters", () => {
   expect(getDoubled()).toBe(4);
 });
 
+test("classes are stored as plain values, not called as getters", () => {
+  class A {}
+  class B {}
+  const [cls, setCls] = createAtom<typeof A>(A);
+  expect(cls()).toBe(A);
+  setCls(B);
+  expect(cls()).toBe(B);
+  expect(get(A)).toBe(A);
+  expect(compose(A)()).toBe(A);
+});
+
 test("setters return the new value", () => {
   const [count, setCount] = createAtom(2);
   const [doubled, setDoubled] = createAtom(() => count() * 2);
@@ -839,5 +850,113 @@ describe("error enhancement", () => {
     expect(error.original).toBeInstanceOf(RangeError);
     expect(error.phase).toBe("effect");
     expect(error.stack).toContain("bad range");
+  });
+  test("composed node recovers after throwing before reading any signal", () => {
+    const errors = captureErrors();
+    const [a, setA] = createAtom(1);
+    let flag = false;
+    const c = compose(() => {
+      if (flag) throw new Error("early throw");
+      return a();
+    });
+    const seen: number[] = [];
+    createEffect(() => {
+      seen.push(c());
+    });
+
+    flag = true;
+    setA(2);
+    expect(errors).toHaveLength(1);
+
+    flag = false;
+    setA(3);
+    setA(4);
+    expect(errors).toHaveLength(1);
+    expect(seen).toEqual([1, 3, 4]);
+    expect(c()).toBe(4);
+  });
+});
+
+describe("effect cleanup", () => {
+  test("signals read inside a re-run cleanup are not tracked", () => {
+    const [a, setA] = createAtom(1);
+    const [b, setB] = createAtom(1);
+    let runs = 0;
+    createEffect(() => {
+      runs++;
+      a();
+      return () => {
+        b();
+      };
+    });
+
+    setA(2);
+    expect(runs).toBe(2);
+    setB(2);
+    expect(runs).toBe(2);
+  });
+
+  test("signals read inside a disposed effect's cleanup are not tracked by the caller", () => {
+    const [b, setB] = createAtom(1);
+    const [trigger, setTrigger] = createAtom(0);
+    const dispose = createEffect(() => () => {
+      b();
+    });
+
+    let runs = 0;
+    createEffect(() => {
+      runs++;
+      if (trigger() === 1) dispose();
+    });
+
+    setTrigger(1);
+    expect(runs).toBe(2);
+    setB(2);
+    expect(runs).toBe(2);
+  });
+
+  test("child effects from the previous run are disposed before the next run", () => {
+    const [a, setA] = createAtom(1);
+    const log: string[] = [];
+    createEffect(() => {
+      const n = a();
+      createEffect(() => {
+        log.push(`setup ${n}`);
+        return () => log.push(`cleanup ${n}`);
+      });
+    });
+
+    setA(2);
+    expect(log).toEqual(["setup 1", "cleanup 1", "setup 2"]);
+  });
+
+  test("child effects from the previous run are disposed when a re-run throws", () => {
+    setErrorHandler(() => {});
+    try {
+      const [a, setA] = createAtom(1);
+      const [tick, setTick] = createAtom(0);
+      let live = 0;
+      createEffect(() => {
+        const n = a();
+        createEffect(() => {
+          tick();
+          live++;
+          return () => live--;
+        });
+        if (n === 2) throw new Error("boom");
+      });
+      expect(live).toBe(1);
+
+      setA(2);
+      expect(live).toBe(1);
+
+      // The parent still retries after the failure.
+      setA(3);
+      expect(live).toBe(1);
+      setTick(1);
+      expect(live).toBe(1);
+    } finally {
+      setErrorHandler(null);
+    }
   });
 });

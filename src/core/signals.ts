@@ -177,7 +177,9 @@ function notify(effect: EffectNode): void {
 }
 
 function update(node: ReactiveNode): boolean {
-  if (node._depsTail !== undefined) {
+  // `_depsTail` can't tell node kinds apart: a computed that threw before
+  // reading any signal also ends up with no tail.
+  if ((node as ComputedNode)._getter !== undefined) {
     return updateComputed(node as ComputedNode);
   } else {
     return updateValue(node as ValueNode);
@@ -447,21 +449,14 @@ function run(e: EffectNode): void {
     }
 
     if (shouldRun) {
+      disposeChildEffects(e);
+      runCleanup(e);
+
       ++cycle;
       e._depsTail = undefined;
       e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
       const prevSub = setActiveSub(e);
       let bodyFailed = false;
-
-      const cleanup = e._cleanup;
-      e._cleanup = undefined;
-      if (cleanup) {
-        try {
-          cleanup();
-        } catch (error) {
-          reportSignalError(toSignalError(error, effectErrorInfo(e, "effect-cleanup")), e._context);
-        }
-      }
 
       try {
         const result = e._fn();
@@ -512,6 +507,18 @@ function flush(): void {
     notifyIndex = 0;
     queuedLength = 0;
     queued.length = 0;
+  }
+}
+
+/**
+ * Disposes effects created by the previous run of `e` before it runs again, so
+ * old children are torn down before new ones are set up, and even if the new
+ * run throws. Signal dependencies are left linked.
+ */
+function disposeChildEffects(e: EffectNode): void {
+  let link = e._deps;
+  while (link !== undefined) {
+    link = (link._dep as EffectNode)._fn !== undefined ? unlink(link, e) : link._nextDep;
   }
 }
 
@@ -667,18 +674,32 @@ function effectCleanup(node: ReactiveNode): void {
   }
 
   const effect = node as EffectNode;
-  const cleanup = effect._cleanup;
-  effect._cleanup = undefined;
-  if (!cleanup) return;
+  if (!effect._cleanup) return;
 
   const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(node);
   try {
-    cleanup();
-  } catch (error) {
-    reportSignalError(toSignalError(error, effectErrorInfo(effect, "effect-cleanup")), effect._context);
+    runCleanup(effect);
   } finally {
     reactiveScopeStack.length = scopeLen;
+  }
+}
+
+/**
+ * Runs and clears an effect's cleanup function, untracked so that signals it
+ * reads don't become dependencies of the effect or of whoever triggered it.
+ */
+function runCleanup(e: EffectNode): void {
+  const cleanup = e._cleanup;
+  if (!cleanup) return;
+  e._cleanup = undefined;
+  const prevSub = setActiveSub(undefined);
+  try {
+    cleanup();
+  } catch (error) {
+    reportSignalError(toSignalError(error, effectErrorInfo(e, "effect-cleanup")), e._context);
+  } finally {
+    activeSub = prevSub;
   }
 }
 

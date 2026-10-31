@@ -22,12 +22,16 @@ export interface Ref<T> {
  */
 export function createRef<T = HTMLElement>(): Ref<T> {
   let currentValue: T | undefined;
+  let generation = 0;
 
   return ((...args: [T]) => {
     if (args.length) {
       currentValue = args[0];
+      const setAt = ++generation;
       return () => {
-        currentValue = undefined;
+        // Only clear if the ref hasn't been set again since; a stale cleanup
+        // must not wipe out a newer value.
+        if (generation === setAt) currentValue = undefined;
       };
     } else {
       return currentValue;

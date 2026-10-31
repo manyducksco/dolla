@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { sleep } from "../utils";
 import { debounce } from "./debounce";
 import { createContext, mountContext, cleanupContext } from "./context";
@@ -171,4 +171,59 @@ test("context cleanup cancellation", async () => {
 
   await sleep(WAIT_MS + 1);
   expect(value).toBe(0); // doesn't run after time elapses
+});
+
+describe("re-entrant and failing calls", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("cancel stops a call scheduled from inside the debounced function", () => {
+    vi.useFakeTimers();
+    const d = debounce(WAIT_MS);
+    let runs = 0;
+    const poll = () => {
+      runs++;
+      d.call(poll);
+    };
+    d.call(poll);
+    vi.advanceTimersByTime(WAIT_MS);
+    expect(runs).toBe(1);
+
+    d.cancel();
+    vi.advanceTimersByTime(WAIT_MS * 5);
+    expect(runs).toBe(1);
+  });
+
+  test("context cleanup stops a polling loop", () => {
+    vi.useFakeTimers();
+    const context = createContext(null);
+    mountContext(context);
+    let runs = 0;
+    const d = debounce(WAIT_MS, () => {
+      runs++;
+      d.call();
+    }, { context });
+    d.call();
+    vi.advanceTimersByTime(WAIT_MS * 3);
+    expect(runs).toBe(3);
+
+    cleanupContext(context);
+    vi.advanceTimersByTime(WAIT_MS * 5);
+    expect(runs).toBe(3);
+  });
+
+  test("flush does not re-run a function that threw from the timer", () => {
+    vi.useFakeTimers();
+    const d = debounce(WAIT_MS);
+    const fn = vi.fn(() => {
+      throw new Error("boom");
+    });
+    d.call(fn);
+    expect(() => vi.advanceTimersByTime(WAIT_MS)).toThrow("boom");
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    d.flush();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
 });

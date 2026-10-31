@@ -163,6 +163,14 @@ function getStoreSymbol(name: string): symbol {
 export const STORE_ID = Symbol.for("$_STORE_ID");
 
 /**
+ * Resolves a store's symbol without registering a new one, so a fresh function
+ * instance (e.g. after HMR) is matched the same way `getStore` matches it.
+ */
+function lookupStoreId(store: { name: string; [STORE_ID]?: symbol }): symbol | undefined {
+  return store[STORE_ID] ?? STORE_SYMBOLS.get(store.name);
+}
+
+/**
  * Hidden property stored on the store result so `addStore` can retrieve
  * the store's sub-context on re-registration (e.g. during HMR).
  */
@@ -218,7 +226,7 @@ export function getStore<Returns>(context: Context, store: Store<any, Returns> &
  * Determines if an instance of a store is available on this context or up the context chain.
  */
 export function hasStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
-  const id = store[STORE_ID];
+  const id = lookupStoreId(store);
   if (!id) return false;
   return context[id] != null;
 }
@@ -227,7 +235,7 @@ export function hasStore(context: Context, store: Store<any, any> & { [STORE_ID]
  * Determines if an instance of a store is stored directly on this context.
  */
 export function hasOwnStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
-  const id = store[STORE_ID];
+  const id = lookupStoreId(store);
   if (!id) return false;
   return Object.hasOwn(context, id);
 }
