@@ -65,40 +65,24 @@ export function debounce<Fn extends (...args: any[]) => any>(
   ms: number,
   ...args: [Fn, DebounceOptions?] | [DebounceOptions?]
 ) {
-  let fn = isFunction(args[0]) ? (args[0] as Fn) : undefined;
-  let options = (isFunction(args[0]) ? args[1] : args[0]) as DebounceOptions | undefined;
+  const fn = isFunction(args[0]) ? (args[0] as Fn) : undefined;
+  const options = (isFunction(args[0]) ? args[1] : args[0]) as DebounceOptions | undefined;
 
   let pendingTimer: any;
   let pendingFn: () => void;
 
   const cancel = () => {
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = undefined;
-    }
+    clearTimeout(pendingTimer);
+    pendingTimer = undefined;
   };
 
-  const createCaller =
-    (fn: Fn, ...args: Parameters<Fn>) =>
-    () => {
-      cancel();
-      fn(...args);
-    };
-
-  if (options) {
-    if (options.signal) {
-      options.signal.addEventListener("abort", cancel);
-    }
-
-    if (options.context) {
-      onCleanup(options.context, cancel);
-    }
-  }
+  options?.signal?.addEventListener("abort", cancel);
+  if (options?.context) onCleanup(options.context, cancel);
 
   return {
     call: (...args: Parameters<Fn> | [Fn]) => {
       cancel();
-      pendingFn = fn ? createCaller(fn, ...(args as Parameters<Fn>)) : args[0];
+      pendingFn = fn ? () => fn(...(args as Parameters<Fn>)) : (args[0] as () => void);
       pendingTimer = setTimeout(() => {
         // Clear first: `pendingFn` may schedule a new call (which must stay
         // cancellable) or throw (which must not leave it pending for flush).

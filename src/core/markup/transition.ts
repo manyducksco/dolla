@@ -26,17 +26,6 @@ function resolveEasing(easing?: Easing): string | undefined {
   return easing;
 }
 
-function resolveOptions(
-  shared: { duration?: number; easing?: Easing },
-  phase: { duration?: number; easing?: Easing },
-): KeyframeAnimationOptions {
-  return {
-    duration: phase.duration ?? shared.duration,
-    easing: resolveEasing(phase.easing ?? shared.easing),
-    fill: "forwards",
-  } as KeyframeAnimationOptions;
-}
-
 function TransitionView(this: Context, props: TransitionProps): Renderable {
   const [isMounted, setMounted] = createAtom(false);
   let wrapperEl: HTMLElement | null = null;
@@ -56,58 +45,49 @@ function TransitionView(this: Context, props: TransitionProps): Renderable {
     }
   }
 
+  /** Plays `keyframes` on the wrapper, then calls `done`. With nothing to play it calls `done` right away. */
+  function animate(
+    keyframes: TransitionProps["enter"],
+    duration: number | undefined,
+    easing: Easing | undefined,
+    done: (finished?: Animation) => void,
+  ) {
+    cancelAnim();
+    if (!wrapperEl || !keyframes) return done();
+
+    const current = wrapperEl.animate(keyframes, {
+      duration: duration ?? props.duration,
+      easing: resolveEasing(easing ?? props.easing),
+      fill: "forwards",
+    } as KeyframeAnimationOptions);
+    anim = current;
+    current.onfinish = () => {
+      if (anim !== current) return;
+      anim = null;
+      done(current);
+    };
+  }
+
   function startEnter() {
     phase = "entering";
-    if (!wrapperEl || !props.enter) {
+    animate(props.enter, props.enterDuration, props.enterEasing, (finished) => {
       phase = "entered";
-      return;
-    }
-    cancelAnim();
-    anim = wrapperEl.animate(
-      props.enter,
-      resolveOptions(
-        { duration: props.duration, easing: props.easing },
-        { duration: props.enterDuration, easing: props.enterEasing },
-      ),
-    );
-    anim.onfinish = () => {
-      if (phase === "entering") {
-        phase = "entered";
-        anim?.commitStyles();
-        anim?.cancel();
-        anim = null;
-      }
-    };
+      finished?.commitStyles();
+      finished?.cancel();
+    });
   }
 
   function startExit() {
     phase = "exiting";
-    if (!wrapperEl || !props.exit) {
+    animate(props.exit, props.exitDuration, props.exitEasing, () => {
       phase = "idle";
       setMounted(false);
-      return;
-    }
-    cancelAnim();
-    anim = wrapperEl.animate(
-      props.exit,
-      resolveOptions(
-        { duration: props.duration, easing: props.easing },
-        { duration: props.exitDuration, easing: props.exitEasing },
-      ),
-    );
-    anim.onfinish = () => {
-      if (phase === "exiting") {
-        phase = "idle";
-        anim = null;
-        setMounted(false);
-      }
-    };
+    });
   }
 
   onEffect(this, () => {
     if (props.when()) {
       if (phase === "exiting") {
-        cancelAnim();
         startEnter();
       } else if (!isMounted()) {
         setMounted(true);
@@ -115,7 +95,6 @@ function TransitionView(this: Context, props: TransitionProps): Renderable {
       }
     } else {
       if (phase === "entering" || phase === "entered") {
-        cancelAnim();
         startExit();
       } else if (pendingEnter) {
         // Shown and hidden again before the wrapper rendered; nothing to animate.
@@ -125,9 +104,7 @@ function TransitionView(this: Context, props: TransitionProps): Renderable {
     }
   });
 
-  onCleanup(this, () => {
-    cancelAnim();
-  });
+  onCleanup(this, cancelAnim);
 
   return () => {
     if (isMounted()) {

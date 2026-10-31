@@ -29,7 +29,7 @@ export function throttle<Fn extends (...args: any[]) => any>(
   ms: number,
   ...args: [Fn] | []
 ) {
-  let fn = isFunction(args[0]) ? (args[0] as Fn) : undefined;
+  const fn = isFunction(args[0]) ? (args[0] as Fn) : undefined;
 
   let nextAllowedAt = Date.now();
 
