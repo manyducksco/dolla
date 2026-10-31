@@ -139,6 +139,11 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   const [stickyPushOffset, setStickyPushOffset] = createAtom(0);
   let phantomHeight = 0;
 
+  // Set while the view is mounted: the item ResizeObserver and the pool slot
+  // elements, in pool order.
+  let itemObserver: ResizeObserver | null = null;
+  let poolElements: Element[] = [];
+
   // Measured heights by item key; the engine's index-based measurements are
   // rebuilt from this whenever the list changes.
   const heightsByKey = new Map<string | number, number>();
@@ -190,12 +195,15 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       if (peek(stickyPushOffset) !== push) setStickyPushOffset(push);
     }
 
+    const reused: number[] = [];
+
     batch(() => {
       for (let i = 0; i < POOL_SIZE; i++) pool[i].setActive(false);
       const endIndex = Math.min(total, startIndex + POOL_SIZE);
       for (let i = startIndex; i < endIndex; i++) {
         const slot = pool[i % POOL_SIZE];
         const currentData = data[i];
+        if (peek(slot.index) !== i || peek(slot.item) !== currentData) reused.push(i % POOL_SIZE);
         slot.setItem(currentData);
         slot.setIndex(i);
         slot.setOffset(engine.getOffset(i, currentAvg));
@@ -203,6 +211,18 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         slot.setEntering(enteringItems.has(currentData));
       }
     });
+
+    // A ResizeObserver only reports size *changes*, so a slot that now shows
+    // a different item at the same height would never be measured. Observing
+    // it again queues a fresh initial observation.
+    if (itemObserver) {
+      for (const slotIndex of reused) {
+        const el = poolElements[slotIndex];
+        if (!el) continue;
+        itemObserver.unobserve(el);
+        itemObserver.observe(el);
+      }
+    }
   }
 
   const VirtualListView: View = (_, c) => {
@@ -329,7 +349,9 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
     return createMarkup("div", {
       ref: (el: HTMLElement) => {
         viewport = el;
-        Array.from(el.children[el.children.length - 1].children).forEach((child) => observer.observe(child));
+        itemObserver = observer;
+        poolElements = Array.from(el.children[el.children.length - 1].children);
+        poolElements.forEach((child) => observer.observe(child));
 
         if (props.bottomUp) {
           el.scrollTop = el.scrollHeight;
@@ -379,6 +401,8 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
         return () => {
           viewport = null;
+          if (itemObserver === observer) itemObserver = null;
+          poolElements = [];
         };
       },
       style: {

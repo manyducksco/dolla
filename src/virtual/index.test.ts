@@ -358,6 +358,29 @@ describe("createVirtualList", () => {
     expect(content.style.height).toBe("30px");
   });
 
+  test("measures a recycled pool slot even when its height is unchanged", async () => {
+    // Slot 0 shows items 0 then 8 (both 40px); slot 1 shows items 1 then 7
+    // (both 120px). The ResizeObserver never reports a size change for them.
+    const heights: Record<number, number> = { 0: 40, 1: 120, 7: 120, 8: 40 };
+    const [items] = createAtom(range(0, 20));
+    const { slots, scrollTo } = await setup({ items, poolSize: 2 });
+    const heightOf = heightsBy((id) => heights[id] ?? 100, items);
+
+    MockResizeObserver.deliverAll(heightOf);
+    flushPendingUpdates();
+
+    // Average is 80 after measuring items 0 and 1, so this renders items 7-8.
+    scrollTo(1000);
+    expect(slotFor(slots, 7)).toBeDefined();
+    expect(slotFor(slots, 8)).toBeDefined();
+
+    MockResizeObserver.deliverAll(heightOf);
+    flushPendingUpdates();
+
+    // With item 7 measured at 120px: 40 + 120 + 5 * 80 + 120 = 680.
+    expect(slotFor(slots, 8)!.style.transform).toBe("translateY(680px)");
+  });
+
   test("detects a prepend when the previous first key is 0", async () => {
     const [items, setItems] = createAtom(range(0, 3));
     const { viewport, scrollTo } = await setup({ items });
