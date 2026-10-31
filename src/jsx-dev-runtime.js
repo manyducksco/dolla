@@ -1,8 +1,10 @@
-import { createMarkup } from "./core/markup/utils.js";
+import { jsx } from "./jsx-runtime.js";
 
-export const Fragment = ({ children }) => children;
+export { Fragment } from "./jsx-runtime.js";
 
-export function jsxDEV(element, props, key, isStaticChildren, source, self) {
-  // TODO: Take additional dev arguments and use them for better debugging.
-  return createMarkup(element, key != null ? { ...props, key } : props);
+/**
+ * Dev JSX function. The extra dev arguments (static children flag, source, self) are ignored.
+ */
+export function jsxDEV(element, props, key) {
+  return jsx(element, props, key);
 }

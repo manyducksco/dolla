@@ -18,6 +18,11 @@
   "peerDependencies": {
     "vite": "^8.0.0"
   },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/core/index.d.ts",
@@ -81,7 +86,6 @@
   "scripts": {
     "test": "vitest",
     "bench": "npm run build && node scripts/bench.mjs",
-    "build:esbuild": "tsc && node build.js",
     "build": "vite build && tsc",
     "docs:check": "node scripts/check-docs.mjs",
     "bundle:check": "node scripts/check-tree-shaking.mjs",
