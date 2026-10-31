@@ -210,3 +210,57 @@ describe("dollaPlugin — styled namer (dev only)", () => {
     expect(result!.code).toContain(`"styled.button";`);
   });
 });
+
+describe("dollaPlugin — export detection ignores non-code", () => {
+  test("ignores `export function` inside a block comment", () => {
+    const code = `/**\n * Usage:\n * export function MyView() {}\n */\nexport const Real = () => null;\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result).not.toBeNull();
+    expect(result!.code).not.toContain("MyView =");
+    expect(result!.code).not.toContain("export { MyView }");
+    expect(result!.code).toContain(" * export function MyView() {}");
+    expect(result!.code).not.toMatch(/__dolla_apply\(newModule, \{[^}]*MyView/);
+  });
+
+  test("ignores `export function` inside a line comment", () => {
+    const code = `// export function MyView() {}\nexport const Real = 1;\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).not.toContain("MyView =");
+    expect(result!.code).toContain("// export function MyView() {}");
+  });
+
+  test("does not rewrite `export function` inside a template literal", () => {
+    const code = "export const snippet = `export function Demo() {}`;\n";
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain("`export function Demo() {}`");
+    expect(result!.code).not.toContain("Demo =");
+  });
+
+  test("does not rewrite `export function` inside a string literal", () => {
+    const code = `export const snippet = "export function Demo() {}";\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain(`"export function Demo() {}"`);
+    expect(result!.code).not.toContain("Demo =");
+  });
+
+  test("does not hoist exports nested inside a namespace", () => {
+    const code = `export namespace NS {\n  export function helper() {}\n}\nexport function Top() {}\n`;
+    const result = runTransform(code, "/abs/file.ts", "serve");
+    expect(result!.code).toContain("  export function helper() {}");
+    expect(result!.code).not.toContain("helper =");
+    expect(result!.code).toContain(`Top = __dolla_export("/abs/file.ts:Top", Top);`);
+    expect(result!.code).toContain("export { Top };");
+  });
+
+  test("still rewrites a top-level export after a template literal with an expression", () => {
+    const code = "const a = `x ${{ b: 1 }.b} y`;\nexport function After() {}\n";
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain(`After = __dolla_export("/abs/file.tsx:After", After);`);
+  });
+
+  test("a regex literal containing a quote does not hide later exports", () => {
+    const code = `const re = /["']/g;\nexport function After() {}\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain(`After = __dolla_export("/abs/file.tsx:After", After);`);
+  });
+});

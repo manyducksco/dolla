@@ -11,32 +11,237 @@ const EXPORT_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
 const EXPORT_CONST_RE = /export\s+(?:const|let|var)\s+([a-zA-Z_$]\w*)\s*[=:]/g;
 
 // Match `export default function Foo` or `export default function`
-const EXPORT_DEFAULT_FUNC_RE = /export\s+default\s+function\s+\*?\s*([a-zA-Z_$]\w*)?\s*\(/;
+const EXPORT_DEFAULT_FUNC_RE = /export\s+default\s+function\s+\*?\s*([a-zA-Z_$]\w*)?\s*\(/g;
 
 // Match `export default Foo` (identifier reference, e.g. re-export)
-const EXPORT_DEFAULT_IDENT_RE = /export\s+default\s+([a-zA-Z_$]\w*)\s*;?$/m;
+const EXPORT_DEFAULT_IDENT_RE = /export\s+default\s+([a-zA-Z_$]\w*)\s*;?$/gm;
 
 // Match `const|let|var IDENT =` (optionally preceded by `export`).
 // Captures the identifier name in group 1. The trailing `(?=[\s=])` keeps the
 // boundary check anchored without consuming the assignment operator.
 const DECLARATOR_RE = /(?:\b|^)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?=[=])/g;
 
-function findExportEntries(code) {
-  const entries = [];
+/*============================*\
+||        Code Masking        ||
+\*============================*/
+
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "case",
+  "do",
+  "else",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "yield",
+  "await",
+]);
+
+/**
+ * Returns a copy of `code` with the contents of comments, string literals,
+ * template literal text and regex literals replaced by spaces (newlines are
+ * kept), so regexes run against it only ever match real code. Positions are
+ * unchanged, so match indices can be used against the original source.
+ *
+ * Also returns `depth`, where `depth[i]` is the curly-brace nesting depth at
+ * position `i` (0 = top level of the module).
+ *
+ * This is a lightweight lexer, not a parser. It handles the cases that
+ * matter for export detection; ambiguities (e.g. `/` as division vs. regex,
+ * apostrophes in JSX text) are resolved so that a mistake can only affect
+ * the rest of the current line.
+ */
+function maskNonCode(code) {
+  const out = code.split("");
+  const depth = new Int32Array(code.length + 1);
+  const len = code.length;
+  // Stack of brace depths at which an open template literal `${` resumes.
+  const templateStack = [];
+  let braces = 0;
+  let i = 0;
+  // Last significant code character / word, used to tell regex from division.
+  let lastChar = "";
+  let lastWord = "";
+
+  const blank = (from, to) => {
+    for (let k = from; k < to && k < len; k++) {
+      if (out[k] !== "\n" && out[k] !== "\r") out[k] = " ";
+      depth[k] = braces;
+    }
+  };
+
+  // Scans template text starting at `i` (just after a backtick or a closing
+  // `}` of an expression). Returns the index to resume code scanning at.
+  const scanTemplate = (start) => {
+    let j = start;
+    while (j < len) {
+      const c = code[j];
+      if (c === "\\") {
+        j += 2;
+        continue;
+      }
+      if (c === "`") {
+        blank(start, j);
+        depth[j] = braces;
+        return j + 1;
+      }
+      if (c === "$" && code[j + 1] === "{") {
+        blank(start, j);
+        depth[j] = braces;
+        templateStack.push(braces);
+        braces++;
+        depth[j + 1] = braces;
+        return j + 2;
+      }
+      j++;
+    }
+    blank(start, len);
+    return len;
+  };
+
+  while (i < len) {
+    const c = code[i];
+    depth[i] = braces;
+
+    if (c === "/" && code[i + 1] === "/") {
+      let j = i;
+      while (j < len && code[j] !== "\n") j++;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (c === "/" && code[i + 1] === "*") {
+      const end = code.indexOf("*/", i + 2);
+      const j = end === -1 ? len : end + 2;
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      // Plain strings can't span lines (without a trailing backslash). If one
+      // runs into a newline it was probably an apostrophe in JSX text, so
+      // treat the quote as an ordinary character.
+      let j = i + 1;
+      while (j < len && code[j] !== c && code[j] !== "\n") {
+        j += code[j] === "\\" ? 2 : 1;
+      }
+      if (j < len && code[j] === c) {
+        blank(i + 1, j);
+        depth[j] = braces;
+        i = j + 1;
+        lastChar = c;
+        lastWord = "";
+        continue;
+      }
+      i++;
+      lastChar = c;
+      continue;
+    }
+    if (c === "`") {
+      i = scanTemplate(i + 1);
+      lastChar = "`";
+      lastWord = "";
+      continue;
+    }
+    if (c === "/") {
+      // `</` is a JSX closing tag, not a regex.
+      const regexAllowed =
+        lastChar === "" || /[(,=:[!&|?{};+\-*%>~^]/.test(lastChar) || REGEX_PRECEDING_KEYWORDS.has(lastWord);
+      if (regexAllowed) {
+        let j = i + 1;
+        let inClass = false;
+        while (j < len && code[j] !== "\n") {
+          const r = code[j];
+          if (r === "\\") {
+            j += 2;
+            continue;
+          }
+          if (r === "[") inClass = true;
+          else if (r === "]") inClass = false;
+          else if (r === "/" && !inClass) break;
+          j++;
+        }
+        if (j < len && code[j] === "/") {
+          blank(i + 1, j);
+          depth[j] = braces;
+          i = j + 1;
+          lastChar = "/";
+          lastWord = "";
+          continue;
+        }
+      }
+      i++;
+      lastChar = "/";
+      lastWord = "";
+      continue;
+    }
+    if (c === "{") {
+      braces++;
+    } else if (c === "}") {
+      if (templateStack.length > 0 && templateStack[templateStack.length - 1] === braces - 1) {
+        templateStack.pop();
+        braces--;
+        depth[i] = braces;
+        i = scanTemplate(i + 1);
+        lastChar = "`";
+        lastWord = "";
+        continue;
+      }
+      braces = Math.max(0, braces - 1);
+      depth[i] = braces;
+    }
+
+    if (/[\w$]/.test(c)) {
+      let j = i;
+      while (j < len && /[\w$]/.test(code[j])) {
+        depth[j] = braces;
+        j++;
+      }
+      lastWord = code.slice(i, j);
+      lastChar = code[j - 1];
+      i = j;
+      continue;
+    }
+    if (!/\s/.test(c)) {
+      lastChar = c;
+      lastWord = "";
+    }
+    i++;
+  }
+  depth[len] = braces;
+
+  return { masked: out.join(""), depth };
+}
+
+/**
+ * Runs a global regex against masked source and yields only the matches that
+ * start at the top level of the module.
+ */
+function* topLevelMatches(re, scan) {
+  re.lastIndex = 0;
   let match;
+  while ((match = re.exec(scan.masked)) !== null) {
+    if (scan.depth[match.index] === 0) yield match;
+  }
+}
 
-  EXPORT_FUNC_RE.lastIndex = 0;
-  while ((match = EXPORT_FUNC_RE.exec(code)) !== null) {
+function findExportEntries(code, scan = maskNonCode(code)) {
+  const entries = [];
+
+  for (const match of topLevelMatches(EXPORT_FUNC_RE, scan)) {
     entries.push(match[1]);
   }
 
-  EXPORT_CONST_RE.lastIndex = 0;
-  while ((match = EXPORT_CONST_RE.exec(code)) !== null) {
+  for (const match of topLevelMatches(EXPORT_CONST_RE, scan)) {
     entries.push(match[1]);
   }
 
-  EXPORT_DEFAULT_FUNC_RE.lastIndex = 0;
-  if ((match = EXPORT_DEFAULT_FUNC_RE.exec(code)) !== null) {
+  for (const match of topLevelMatches(EXPORT_DEFAULT_FUNC_RE, scan)) {
     const name = match[1];
     if (name) {
       entries.push(`default: ${name}`);
@@ -44,9 +249,9 @@ function findExportEntries(code) {
     return entries;
   }
 
-  EXPORT_DEFAULT_IDENT_RE.lastIndex = 0;
-  if ((match = EXPORT_DEFAULT_IDENT_RE.exec(code)) !== null) {
+  for (const match of topLevelMatches(EXPORT_DEFAULT_IDENT_RE, scan)) {
     entries.push(`default: ${match[1]}`);
+    break;
   }
 
   return entries;
@@ -274,16 +479,14 @@ function applyStyledNamer(s, code) {
  * `Foo = __dolla_export("<id>:Foo", Foo); export { Foo };` at the bottom.
  * Skips `export default function` (handled separately).
  */
-function applyLiveBindings(s, code, id, entries) {
+function applyLiveBindings(s, code, id, scan) {
   // Only wrap named-function exports. Skips default, const, etc.
   const EXPORT_NAMED_FUNC_RE = /export\s+function\s+\*?\s*([a-zA-Z_$]\w*)/g;
 
   const seen = new Set();
   const names = [];
-  let match;
 
-  EXPORT_NAMED_FUNC_RE.lastIndex = 0;
-  while ((match = EXPORT_NAMED_FUNC_RE.exec(code)) !== null) {
+  for (const match of topLevelMatches(EXPORT_NAMED_FUNC_RE, scan)) {
     const name = match[1];
     const exportStart = match.index;
 
@@ -338,7 +541,8 @@ export default function dollaPlugin() {
       let edited = false;
 
       // HMR injection (dev + build).
-      const entries = findExportEntries(code);
+      const scan = maskNonCode(code);
+      const entries = findExportEntries(code, scan);
 
       // Inject `import.meta.hot.accept` into EVERY module that participates in
       // the HMR graph — including the entry module, which may have no matching
@@ -375,7 +579,7 @@ export default function dollaPlugin() {
 
       // Live-binding: wrap named function exports in a stable proxy for HMR (dev only).
       // Must run before the HMR call so the proxy is assigned before the callback captures it.
-      const liveBound = isDev && entries.length > 0 && applyLiveBindings(s, code, id, entries);
+      const liveBound = isDev && entries.length > 0 && applyLiveBindings(s, code, id, scan);
 
       // Styled-namer (dev only).
       if (hasStyled) {
