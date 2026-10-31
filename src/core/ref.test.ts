@@ -34,6 +34,14 @@ describe("createRef", () => {
     expect(ref()).toBeUndefined();
   });
 
+  test("a stale cleanup does not clear a newer value", () => {
+    const ref = createRef<string>();
+    const cleanupA = ref("a");
+    ref("b");
+    cleanupA();
+    expect(ref()).toBe("b");
+  });
+
   test("multiple refs are independent", () => {
     const refA = createRef<number>();
     const refB = createRef<number>();
