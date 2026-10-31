@@ -200,8 +200,8 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     assert(isObject<Route>(route) && isString(route.path), "Invalid route object");
 
     const parentPaths = parents.map((p) => p.path);
-    const parent = parents.at(-1);
-    const meta = parent && route.meta ? { ...parent.meta, ...route.meta } : route.meta || {};
+    // Meta from every ancestor layer is merged, with deeper layers taking precedence.
+    const meta = Object.assign({}, ...parents.map((p) => p.meta), route.meta);
 
     const rawPattern = parentPaths.length ? joinPath([...parentPaths, route.path]) : route.path;
     assert(

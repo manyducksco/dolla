@@ -115,6 +115,31 @@ test("static resolvePath: resolves relative paths", () => {
   expect(resolvePath("/users/5/edit", "../delete")).toBe("/users/5/delete");
 });
 
+test("merges meta from all ancestor layers", () => {
+  const view = () => "test";
+  const tree = buildRouteTree([
+    {
+      path: "/a",
+      view,
+      meta: { a: 1, shared: "a" },
+      routes: [
+        {
+          path: "/b",
+          view,
+          meta: { b: 2, shared: "b" },
+          routes: [
+            { path: "/c", view, meta: { c: 3 } },
+            { path: "/none", view },
+          ],
+        },
+      ],
+    },
+  ]);
+
+  expect(matchRoute(tree, "/a/b/c")?.meta).toEqual({ a: 1, b: 2, c: 3, shared: "b" });
+  expect(matchRoute(tree, "/a/b/none")?.meta).toEqual({ a: 1, b: 2, shared: "b" });
+});
+
 test("static resolvePath: returns absolute paths", () => {
   expect(resolvePath("/users/5", "/edit")).toBe("/edit");
 });
