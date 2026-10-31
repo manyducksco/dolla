@@ -193,6 +193,46 @@ describe("translator", () => {
   });
 });
 
+describe("format", () => {
+  test("number keeps bigint precision", async () => {
+    const { format } = await createTestTranslator({ locale: "en", translations: { en: {} } });
+    expect(format("number", 12345678901234567890n)()).toBe("12,345,678,901,234,567,890");
+  });
+
+  test("datetime accepts dates, timestamps and date strings", async () => {
+    const { format } = await createTestTranslator({ locale: "en", translations: { en: {} } });
+    const options = { timeZone: "UTC", dateStyle: "medium" } as const;
+    expect(format("datetime", new Date(Date.UTC(2026, 0, 2)), options)()).toBe("Jan 2, 2026");
+    expect(format("datetime", Date.UTC(2026, 0, 2), options)()).toBe("Jan 2, 2026");
+    expect(format("datetime", "2026-01-02T00:00:00Z", options)()).toBe("Jan 2, 2026");
+  });
+
+  test("built-in formatters check value and option types", async () => {
+    const { format } = await createTestTranslator({
+      locale: "en",
+      translations: { en: {} },
+      formatters: { shout: (_locale, value) => String(value).toUpperCase() },
+    });
+    const [count] = createAtom(3);
+    const [maybe] = createAtom<number | undefined>(3);
+
+    format("number", count, { style: "percent" });
+    format("list", ["a", "b"], { type: "conjunction" });
+    expect(format("shout", "hi")()).toBe("HI");
+
+    // @ts-expect-error a string is not a number
+    format("number", "5");
+    // @ts-expect-error a number is not a list of strings
+    format("list", [1, 2]);
+    // @ts-expect-error dateStyle is not a number option
+    format("number", 5, { dateStyle: "short" });
+    // @ts-expect-error "percnt" is not a valid style
+    format("number", 5, { style: "percnt" });
+    // @ts-expect-error the getter may hold undefined
+    format("number", maybe);
+  });
+});
+
 describe("locale caching", () => {
   const MINUTE = 60 * 1000;
 

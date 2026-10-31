@@ -1,6 +1,6 @@
 import type { Context } from "../core/context.js";
 import type { DollaPlugin } from "../core/root.js";
-import { compose, createAtom, get, type Getter } from "../core/signals.js";
+import { compose, createAtom, get, type Getter, type MaybeGetter } from "../core/signals.js";
 import { isFunction } from "../utils.js";
 
 // ----- Types ----- //
@@ -32,10 +32,11 @@ export type LookupFn = (selector: string, options?: TOptions) => string;
 
 export type Formatter = (locale: string, value: any, options: Record<string, any>) => string;
 
+/** Value and options types for each built-in formatter. */
 type BuiltInFormatters = {
-  number: [number | bigint, Intl.NumberFormatOptions?];
-  datetime: [Date, Intl.DateTimeFormatOptions?];
-  list: [Iterable<string>, Intl.ListFormatOptions?];
+  number: [number | bigint, Intl.NumberFormatOptions];
+  datetime: [Date | number | string, Intl.DateTimeFormatOptions];
+  list: [Iterable<string>, Intl.ListFormatOptions];
 };
 
 export interface Translator {
@@ -68,13 +69,18 @@ export interface Translator {
    */
   t(selector: string, options?: TOptions): Getter<string>;
 
-  format<K extends keyof BuiltInFormatters, V extends BuiltInFormatters[K][0], O extends BuiltInFormatters[K][1]>(
+  format<K extends keyof BuiltInFormatters>(
     name: K,
-    value: Getter<V> | V,
-    options?: O,
+    value: MaybeGetter<BuiltInFormatters[K][0]>,
+    options?: BuiltInFormatters[K][1],
   ): Getter<string>;
 
-  format<V, O>(name: string, value: Getter<V> | V, options?: O): Getter<string>;
+  /** Custom formatters. Built-in names are excluded so their calls are always type checked. */
+  format<N extends string>(
+    name: N extends keyof BuiltInFormatters ? never : N,
+    value: unknown,
+    options?: Record<string, any>,
+  ): Getter<string>;
 }
 
 export interface TranslatorOptions {
@@ -117,7 +123,7 @@ function createTranslator(options: TranslatorOptions): Translator {
   const formatters = new Map<string, Formatter>();
 
   formatters.set("number", (locale, value, options) => {
-    return new Intl.NumberFormat(locale, options).format(Number(value));
+    return new Intl.NumberFormat(locale, options).format(typeof value === "bigint" ? value : Number(value));
   });
   formatters.set("datetime", (locale, value, options) => {
     return new Intl.DateTimeFormat(locale, options).format(new Date(value));
@@ -213,14 +219,6 @@ function createTranslator(options: TranslatorOptions): Translator {
       return lookup?.(selector, options) ?? selector;
     });
   }
-
-  function format<
-    K extends keyof BuiltInFormatters,
-    V extends BuiltInFormatters[K][0],
-    O extends BuiltInFormatters[K][1],
-  >(name: K, value: Getter<V> | V, options?: O): Getter<string>;
-
-  function format<V, O>(name: string, value: Getter<V> | V, options?: O): Getter<string>;
 
   function format(name: string, value: unknown, options?: Record<string, any>): Getter<string> {
     const callback = formatters.get(name);

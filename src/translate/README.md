@@ -176,7 +176,7 @@ Returns a `Translator` API object:
 | `setLocale(name?)` | Switches the current locale. Returns a `Promise<void>` that rejects if the locale has no translations. Without a name, picks a locale the same way as the `locale` option's default. |
 | `currentLocale` | Getter for the current locale string. |
 | `supportedLocales` | Array of available locale codes. |
-| `format(name, value, options?)` | Returns a `Getter<string>` for a formatted value. `value` may be a getter. |
+| `format(name, value, options?)` | Returns a `Getter<string>` for a formatted value. `value` may be a getter. Built-in formatters are type checked: `number` takes a `number` or `bigint`, `datetime` a `Date`, timestamp or date string, and `list` an iterable of strings, each with the matching `Intl` options. |
 
 #### `compile(strings, path?)`
 
