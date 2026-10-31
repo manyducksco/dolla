@@ -337,3 +337,63 @@ describe("Router Engine - Query strings", () => {
     });
   });
 });
+
+describe("Router Engine - preserveQuery", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function createQueryRouter(preserveQuery?: boolean | string[]) {
+    return createRouter({
+      preserveQuery,
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/a", view: () => {} },
+        { path: "/b", view: () => {} },
+      ],
+    });
+  }
+
+  async function navigateAndRead(preserveQuery: boolean | string[] | undefined, target: string) {
+    let result: { query: Record<string, string>; search: string } | undefined;
+    await withRouter(createQueryRouter(preserveQuery), async (context) => {
+      await settle();
+      const store = getRouter(context);
+      store.push("/a?keep=1&drop=2");
+      await settle();
+      store.push(target);
+      await settle();
+      result = { query: store.query(), search: window.location.search };
+    });
+    return result!;
+  }
+
+  it("does not carry previous params over by default", async () => {
+    expect(await navigateAndRead(undefined, "/b")).toEqual({ query: {}, search: "" });
+    expect(await navigateAndRead(undefined, "/b?x=3")).toEqual({ query: { x: "3" }, search: "?x=3" });
+  });
+
+  it("does not carry previous params over when preserveQuery is false", async () => {
+    expect(await navigateAndRead(false, "/b?x=3")).toEqual({ query: { x: "3" }, search: "?x=3" });
+  });
+
+  it("carries all previous params over when preserveQuery is true", async () => {
+    expect(await navigateAndRead(true, "/b?x=3")).toEqual({
+      query: { keep: "1", drop: "2", x: "3" },
+      search: "?keep=1&drop=2&x=3",
+    });
+  });
+
+  it("lets the target URL override a preserved param", async () => {
+    expect((await navigateAndRead(true, "/b?keep=9")).query).toEqual({ keep: "9", drop: "2" });
+  });
+
+  it("carries only the listed params over when preserveQuery is an array", async () => {
+    expect(await navigateAndRead(["keep"], "/b?x=3")).toEqual({
+      query: { keep: "1", x: "3" },
+      search: "?keep=1&x=3",
+    });
+  });
+});
