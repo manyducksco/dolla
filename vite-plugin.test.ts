@@ -247,6 +247,32 @@ describe("dollaPlugin — styled namer (dev only)", () => {
     expect(result!.code).toContain("theme.styled.span`");
   });
 
+  test("does not borrow the name of an unrelated earlier const", () => {
+    const code = IMPORT + `const theme = { color: "red" };\nfunction make() { return styled.button\`color: red;\`; }\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).not.toContain(".named(");
+  });
+
+  test("does not borrow a const name across an intervening expression", () => {
+    const code = IMPORT + `const Wrapped = wrap(styled.div\`color: red;\`);\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).not.toContain(".named(");
+  });
+
+  test("names declarations in large files without rescanning the whole prefix", () => {
+    const lines: string[] = [];
+    for (let n = 0; n < 8000; n++) {
+      lines.push(`const S${n} = styled.div\`color: red;\`;`);
+    }
+    const code = IMPORT + lines.join("\n") + "\n";
+    const start = performance.now();
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const elapsed = performance.now() - start;
+    expect(result!.code).toContain(`const S0 = styled.div.named("S0")`);
+    expect(result!.code).toContain(`const S7999 = styled.div.named("S7999")`);
+    expect(elapsed).toBeLessThan(1000);
+  });
+
   test("rewrites an aliased dolla styled import", () => {
     const code = `import { styled as s } from "@manyducks.co/dolla/styled";\nconst Title = s.h1\`color: red;\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");

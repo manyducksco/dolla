@@ -16,10 +16,11 @@ const EXPORT_DEFAULT_FUNC_RE = /export\s+default\s+(?:async\s+)?function\s+\*?\s
 // Match `export default Foo` (identifier reference, e.g. re-export)
 const EXPORT_DEFAULT_IDENT_RE = /export\s+default\s+([a-zA-Z_$]\w*)\s*;?$/gm;
 
-// Match `const|let|var IDENT =` (optionally preceded by `export`).
-// Captures the identifier name in group 1. The trailing `(?=[\s=])` keeps the
-// boundary check anchored without consuming the assignment operator.
-const DECLARATOR_RE = /(?:\b|^)(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?=[=])/g;
+// Match `const|let|var IDENT =` ending at the end of the input, i.e. a
+// declarator whose initializer starts right after. Captures the identifier
+// name in group 1.
+const DECLARATOR_RE = /(?:^|[^\w$.])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/;
+const DECLARATOR_WINDOW = 256;
 
 /*============================*\
 ||        Code Masking        ||
@@ -468,25 +469,13 @@ function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
     const scan = scanStyledChain(code, nameEnd);
     if (!scan) continue;
 
-    // Look backward for the enclosing declarator. We need a simple
-    // `const|let|var IDENT =` (optionally preceded by `export`).
-    const lhsEnd = i; // i is the start of `styled`
-    const before = code.slice(0, lhsEnd);
+    // The `styled` expression must be the direct initializer of a simple
+    // `const|let|var IDENT =` declarator. Only look at a short window right
+    // before it (masked, so comments in between are whitespace).
+    const declMatch = DECLARATOR_RE.exec(masked.slice(Math.max(0, i - DECLARATOR_WINDOW), i));
+    if (!declMatch) continue;
 
-    // Use a non-greedy regex that finds the most recent declarator ending at
-    // or just before `styled`. We scan with global but pick the last match.
-    DECLARATOR_RE.lastIndex = 0;
-    let lastMatch = null;
-    let m;
-    while ((m = DECLARATOR_RE.exec(before)) !== null) {
-      // Ensure the declarator is at top level (ignoring balanced parens, but
-      // we don't actually need that here — destructuring or function returns
-      // would put parens/braces between, which DECLARATOR_RE wouldn't match).
-      lastMatch = m;
-    }
-    if (!lastMatch) continue;
-
-    const ident = lastMatch[1];
+    const ident = declMatch[1];
 
     // Idempotency: if the chain already contains `.named(`, skip.
     if (/\.named\s*\(/.test(scan.chainText)) continue;
