@@ -75,6 +75,26 @@ describe("translator", () => {
     expect(t("greeting", { context: "formal" })()).toBe("Good day");
     expect(t("menu.items", { count: 2 })()).toBe("2 items");
   });
+
+  test("missing context or plural variants fall back to the base key", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: {
+          greeting: "Hello",
+          greeting_formal: "Good day",
+          apples: "{{count}} apple(s)",
+          pears_casual: "{{count}} pears, mate",
+        },
+      },
+    });
+
+    expect(t("greeting", { context: "pirate" })()).toBe("Hello");
+    expect(t("apples", { count: 2 })()).toBe("2 apple(s)");
+    expect(t("greeting", { context: "formal", count: 2 })()).toBe("Good day");
+    expect(t("pears", { context: "casual", count: 2 })()).toBe("2 pears, mate");
+    expect(t("missing", { context: "formal", count: 2 })()).toBe("missing");
+  });
 });
 
 describe("parseTemplate", () => {

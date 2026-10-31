@@ -254,17 +254,17 @@ async function createLookup(
   return function lookup(selector: string, options?: TOptions): string {
     if (options) {
       // Handle count (pluralization) and context. Keys become "key_context_pluralization".
+      // A missing variant falls back to the key without it.
       const context = get(options.context);
       if (context != null) {
-        selector = variant(selector, String(context)) ?? selector + "_" + context;
+        selector = variant(selector, String(context)) ?? selector;
       }
       const count = get(options.count);
       if (count != null) {
         // Prefer an exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
         const prefix = options.ordinal ? "ordinal_" : "";
         const category = prefix + getPluralRules(!!options.ordinal).select(count);
-        selector =
-          variant(selector, `${prefix}(=${count})`) ?? variant(selector, category) ?? selector + "_" + category;
+        selector = variant(selector, `${prefix}(=${count})`) ?? variant(selector, category) ?? selector;
       }
     }
 

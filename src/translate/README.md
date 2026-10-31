@@ -75,6 +75,8 @@ t("greeting", { context: "formal" })();
 // Selects key "greeting_formal" (or nested "greeting.formal") if it exists
 ```
 
+If a context or plural variant is missing, the key without that variant is used (`greeting`). A key with no translation at all returns the key itself.
+
 ### Built-in formatters
 
 Pipe values through formatters using `|`:
