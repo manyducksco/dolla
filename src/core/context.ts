@@ -180,8 +180,7 @@ const STORE_CONTEXT = Symbol.for("$_STORE_CONTEXT");
 export function addStore<Props, Returns>(
   context: Context,
   store: Store<Props, Returns> & { [STORE_ID]?: symbol },
-  // Props can be omitted when they accept `undefined` or have no required keys (e.g. `{}`).
-  ...args: undefined extends Props ? [props?: Props] : {} extends Props ? [props?: Props] : [props: Props]
+  ...args: undefined extends Props ? [props?: Props] : [props: Props]
 ) {
   const id = storeId(store);
   const bind = (storeContext: Context) => {
@@ -205,8 +204,7 @@ export function addStore<Props, Returns>(
   pushContext(storeContext);
   let result: Returns;
   try {
-    // Omitted props default to `{}`, as views always receive an object.
-    result = store.call(storeContext, (args.length ? args[0] : {}) as Props, storeContext);
+    result = store.call(storeContext, args[0] as Props, storeContext);
   } finally {
     popContext();
   }
