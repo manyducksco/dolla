@@ -76,6 +76,29 @@ describe("translator", () => {
     expect(t("menu.items", { count: 2 })()).toBe("2 items");
   });
 
+  test("a slower earlier setLocale doesn't override a later one", async () => {
+    let resolveFr!: (strings: { hello: string }) => void;
+    const translator = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: { hello: "Hello" },
+        fr: () => new Promise((resolve) => (resolveFr = resolve)),
+        ja: { hello: "こんにちは" },
+      },
+    });
+    const hello = translator.t("hello");
+
+    const fr = translator.setLocale("fr");
+    await translator.setLocale("ja");
+    expect(hello()).toBe("こんにちは");
+
+    resolveFr({ hello: "Bonjour" });
+    await fr;
+
+    expect(translator.currentLocale()).toBe("ja");
+    expect(hello()).toBe("こんにちは");
+  });
+
   test("missing context or plural variants fall back to the base key", async () => {
     const { t } = await createTestTranslator({
       locale: "en",

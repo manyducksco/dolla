@@ -126,6 +126,7 @@ function createTranslator(options: TranslatorOptions): Translator {
   }
 
   let lookup: LookupFn | undefined;
+  let localeToken = 0;
 
   const [currentLocale, setCurrentLocale] = createAtom("en");
   const supportedLocales = [...Object.keys(options.translations)];
@@ -178,7 +179,12 @@ function createTranslator(options: TranslatorOptions): Translator {
       throw new Error(`Locale '${name}' has no translation.`);
     }
 
-    lookup = await createLookup(locale, formatters, options.translations[locale]);
+    const token = ++localeToken;
+    const nextLookup = await createLookup(locale, formatters, options.translations[locale]);
+
+    // A later setLocale call was made while this one was loading; let that one win.
+    if (token !== localeToken) return;
+    lookup = nextLookup;
 
     // Update locale string after init so t() signals will update.
     setCurrentLocale(locale);
