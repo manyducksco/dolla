@@ -82,6 +82,11 @@ export class ElementNode extends MarkupNode {
 
   #refCleanup?: () => void;
 
+  // Tracks whether props, children and the ref are set up. Kept separately from
+  // `isMounted()` because a `skipDOM` unmount leaves the root attached to its
+  // (detached) parent.
+  #setUp = false;
+
   constructor(context: Context, tag: string, props: Record<string, any>) {
     super();
 
@@ -128,9 +133,15 @@ export class ElementNode extends MarkupNode {
   }
 
   override mount(parent: MountTarget, after?: Node | null) {
-    const wasMounted = this.isMounted();
+    const wasMounted = this.#setUp;
 
     if (!wasMounted) {
+      this.#setUp = true;
+
+      // Children unmount with `skipDOM`, so a previous mount leaves their DOM
+      // behind. Clear it before rebuilding.
+      if (this.#root.firstChild) this.#root.textContent = "";
+
       this.#applyProps(this.#root, this.#props);
 
       if (this.#props.children) {
@@ -160,6 +171,8 @@ export class ElementNode extends MarkupNode {
   }
 
   override unmount(skipDOM = false) {
+    this.#setUp = false;
+
     if (!skipDOM && this.#root.parentNode) {
       this.#root.parentNode.removeChild(this.#root);
     }
@@ -342,34 +355,34 @@ export class ElementNode extends MarkupNode {
     }
 
     if (key === "for") {
-      this.#subscribe(getter, (value) => applyFor(element, value), "element:for");
+      this.#attach(getter, (value) => applyFor(element, value), "element:for");
       return;
     }
 
     if (key.startsWith("prop:")) {
       const name = key.substring(5);
-      this.#subscribe(getter, (value) => setProp(element, name, value), `element:${key}`);
+      this.#attach(getter, (value) => setProp(element, name, value), `element:${key}`);
       return;
     }
 
     if (key.startsWith("attr:")) {
       const name = key.substring(5).toLowerCase();
-      this.#subscribe(getter, (value) => setAttribute(element, name, value), `element:${key}`);
+      this.#attach(getter, (value) => setAttribute(element, name, value), `element:${key}`);
       return;
     }
 
     if (key in element && !isSvg) {
       // Set as property if the element has one.
       if (typeof element[key] === "boolean") {
-        this.#subscribe(getter, (value) => applyBooleanProperty(element, key, value), `element:${key}`);
+        this.#attach(getter, (value) => applyBooleanProperty(element, key, value), `element:${key}`);
       } else {
-        this.#subscribe(getter, (value) => setProp(element, key, value), `element:${key}`);
+        this.#attach(getter, (value) => setProp(element, key, value), `element:${key}`);
       }
       return;
     }
 
     const name = normalizeAttributeName(key);
-    this.#subscribe(getter, (value) => setAttribute(element, name, value), `element:${key}`);
+    this.#attach(getter, (value) => setAttribute(element, name, value), `element:${key}`);
   }
 
   #applyStaticStyles(element: HTMLElement | SVGElement, styles: unknown) {

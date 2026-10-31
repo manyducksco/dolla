@@ -26,6 +26,19 @@ describe("PortalNode", () => {
     });
   });
 
+  describe("remount", () => {
+    test("remounting renders element content once", () => {
+      const { context, logicalParent, portalTarget } = setup();
+      const node = new PortalNode(context, createMarkup("p", { children: "hi" }), portalTarget);
+
+      node.mount(logicalParent);
+      node.unmount();
+      node.mount(logicalParent);
+
+      expect(portalTarget.innerHTML).toBe("<p>hi</p>");
+    });
+  });
+
   describe("mount", () => {
     test("mounts anchor in logical parent", () => {
       const { context, logicalParent, portalTarget } = setup();

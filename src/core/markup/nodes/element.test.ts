@@ -1236,6 +1236,65 @@ describe("ElementNode", () => {
       node.unmount();
       expect(() => setVal("b")).not.toThrow();
     });
+
+    test.each([
+      ["property", "title"],
+      ["prop: prefix", "prop:title"],
+      ["attr: prefix", "attr:data-x"],
+      ["plain attribute", "data-y"],
+      ["boolean property", "disabled"],
+      ["for", "for"],
+    ])("reactive %s stops updating after unmount", (_label, key) => {
+      const { context, container } = setup();
+      const [val, setVal] = createAtom<any>("a");
+      const getter = vi.fn(() => val());
+      const node = new ElementNode(context, key === "for" ? "label" : "button", { [key]: getter });
+      node.mount(container);
+      flushPendingUpdates();
+      const calls = getter.mock.calls.length;
+
+      node.unmount();
+      setVal("b");
+      flushPendingUpdates();
+
+      expect(getter).toBeCalledTimes(calls);
+    });
+  });
+
+  describe("remounting", () => {
+    test("remounting after unmount does not duplicate children", () => {
+      const { context, container } = setup();
+      const [text] = createAtom("yo");
+      const node = new ElementNode(context, "p", { children: ["hi", () => text()] });
+
+      node.mount(container);
+      expect(container.innerHTML).toBe("<p>hiyo</p>");
+
+      node.unmount();
+      expect(container.innerHTML).toBe("");
+
+      node.mount(container);
+      expect(container.innerHTML).toBe("<p>hiyo</p>");
+    });
+
+    test("remounting after a skipDOM unmount sets the element up again", () => {
+      const { context } = setup();
+      const first = document.createElement("div");
+      const second = document.createElement("div");
+      const [text, setText] = createAtom("a");
+      const node = new ElementNode(context, "p", { title: () => text(), children: () => text() });
+
+      node.mount(first);
+      // Parent is being torn down, so the element's DOM is left in place.
+      node.unmount(true);
+
+      node.mount(second);
+      expect(second.innerHTML).toBe('<p title="a">a</p>');
+
+      setText("b");
+      flushPendingUpdates();
+      expect(second.innerHTML).toBe('<p title="b">b</p>');
+    });
   });
 
   describe("template cascade ordering", () => {
