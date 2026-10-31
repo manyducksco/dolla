@@ -248,22 +248,23 @@ async function createLookup(
       if (context != null) {
         selector += "_" + context;
       }
-      if (options.count != null) {
+      const count = get(options.count);
+      if (count != null) {
         if (options.ordinal) {
           // Try to match the exact number key if there is one (e.g. "myExampleKey_ordinal_(=2)" when count is 2).
-          const exact = `${selector}_ordinal_(=${options.count})`;
+          const exact = `${selector}_ordinal_(=${count})`;
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_ordinal_" + getPluralRules(true).select(get(options.count));
+            selector += "_ordinal_" + getPluralRules(true).select(count);
           }
         } else {
           // Try to match the exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
-          const exact = `${selector}_(=${options.count})`;
+          const exact = `${selector}_(=${count})`;
           if (templates.has(exact)) {
             selector = exact;
           } else {
-            selector += "_" + getPluralRules(false).select(get(options.count));
+            selector += "_" + getPluralRules(false).select(count);
           }
         }
       }

@@ -22,6 +22,38 @@ describe("translator", () => {
     setContext("casual");
     expect(label()).toBe("Hey");
   });
+
+  test("exact-count keys work with a getter count", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: {
+        en: {
+          "apples_(=0)": "no apples",
+          apples_one: "{{count}} apple",
+          apples_other: "{{count}} apples",
+          "place_ordinal_(=1)": "winner",
+          place_ordinal_two: "{{count}}nd",
+          place_ordinal_other: "{{count}}th",
+        },
+      },
+    });
+
+    const [count, setCount] = createAtom(0);
+    const apples = t("apples", { count });
+    const place = t("place", { count, ordinal: true });
+    expect(apples()).toBe("no apples");
+
+    setCount(1);
+    expect(apples()).toBe("1 apple");
+    expect(place()).toBe("winner");
+
+    setCount(2);
+    expect(apples()).toBe("2 apples");
+    expect(place()).toBe("2nd");
+
+    setCount(0);
+    expect(apples()).toBe("no apples");
+  });
 });
 
 describe("parseTemplate", () => {
