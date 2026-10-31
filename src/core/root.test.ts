@@ -262,6 +262,21 @@ describe("createRoot", () => {
     expect(container.textContent).toBe("PAGE");
   });
 
+  test("fresh root into an element already hosting a dolla root cleans up the old root's context", async () => {
+    const cleanupSpy = vi.fn();
+    const first = createRoot(container);
+    first.plugin((ctx) => {
+      onCleanup(ctx, cleanupSpy);
+    });
+    await first.mount("first");
+
+    const second = createRoot(container);
+    await second.mount("second");
+
+    expect(cleanupSpy).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toBe("second");
+  });
+
   test("onError receives errors from effects in mounted views", async () => {
     const errors: any[] = [];
     const [count, setCount] = createAtom(0);
