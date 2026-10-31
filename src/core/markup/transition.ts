@@ -117,6 +117,10 @@ function TransitionView(this: Context, props: TransitionProps): Renderable {
       if (phase === "entering" || phase === "entered") {
         cancelAnim();
         startExit();
+      } else if (pendingEnter) {
+        // Shown and hidden again before the wrapper rendered; nothing to animate.
+        pendingEnter = false;
+        setMounted(false);
       }
     }
   });

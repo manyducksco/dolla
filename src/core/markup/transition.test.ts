@@ -98,6 +98,26 @@ describe("transition", () => {
     expect(container.textContent).toBe("content");
   });
 
+  test.each([
+    ["without keyframes", {}],
+    ["with keyframes", { enter: { opacity: [0, 1] }, exit: { opacity: [1, 0] } }],
+  ])("hides content when toggled on then off before rendering (%s)", (_label, keyframes) => {
+    const { context, container } = setup();
+    const [show, setShow] = createAtom(false);
+    const node = render(transition({ when: show, children: "content", ...keyframes }), context);
+    node.mount(container);
+    flushPendingUpdates();
+
+    setShow(true);
+    setShow(false);
+    flushPendingUpdates();
+    expect(container.textContent).toBe("");
+
+    setShow(true);
+    flushPendingUpdates();
+    expect(container.textContent).toBe("content");
+  });
+
   test("calls animate with enter keyframes on show", () => {
     const { context, container } = setup();
     const [show, setShow] = createAtom(false);
