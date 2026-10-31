@@ -131,6 +131,16 @@ test("resolveRoute: reports endless dynamic redirects", async () => {
   await expect(resolveRoute(tree, "/n/0")).rejects.toThrow("Redirect loop");
 });
 
+test("resolveRoute: re-encodes params inserted into redirect targets", async () => {
+  const tree = buildRouteTree([
+    { path: "/old/:id", redirect: "/new/:id" },
+    { path: "/new/:id", view: () => "test" },
+  ]);
+  const { match } = await resolveRoute(tree, "/old/a%2Fb%20c");
+  expect(match?.path).toBe("/new/a%2Fb%20c");
+  expect(match?.params).toEqual({ id: "a/b c" });
+});
+
 test("merges meta from all ancestor layers", () => {
   const view = () => "test";
   const tree = buildRouteTree([

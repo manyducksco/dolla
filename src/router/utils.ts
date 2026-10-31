@@ -433,10 +433,11 @@ const MULTISLASH_RE = /\/+/g;
 
 /**
  * Replace route pattern param placeholders with real matched values.
+ * Values are URL-encoded so params containing '/' or other reserved characters stay one segment.
  */
 export function replaceParams(path: string, params: Record<string, string | number>) {
   const paramMap: Record<string, string> = {};
-  for (const key in params) paramMap[key] = String(params[key]);
+  for (const key in params) paramMap[key] = encodeURIComponent(String(params[key]));
 
   path = path.replace(PARAM_RE, (_, name) => paramMap[name] ?? "");
   path = path.replace(MULTISLASH_RE, "/");
