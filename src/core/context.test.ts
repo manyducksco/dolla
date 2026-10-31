@@ -10,9 +10,11 @@ import {
   isMounted,
   mountContext,
   onCleanup,
+  onEffect,
   onMount,
   type Context,
 } from "./context.js";
+import { createAtom } from "./signals.js";
 import { __dolla_export } from "./hmr.js";
 
 test("lifecycle", () => {
@@ -40,6 +42,33 @@ test("lifecycle", () => {
   expect(isMounted(c)).toBe(false);
   expect(mountSpy).toHaveBeenCalledTimes(1);
   expect(cleanupSpy).toHaveBeenCalledTimes(1);
+});
+
+describe("onEffect", () => {
+  test("returns a function that stops the effect early", () => {
+    const c = createContext(null);
+    const [value, setValue] = createAtom(0);
+    const runs = vi.fn();
+
+    const stop = onEffect(c, () => runs(value()));
+    mountContext(c);
+    expect(runs).toHaveBeenCalledTimes(1);
+
+    stop();
+    setValue(1);
+    expect(runs).toHaveBeenCalledTimes(1);
+    cleanupContext(c);
+  });
+
+  test("stopping before mount keeps the effect from starting", () => {
+    const c = createContext(null);
+    const runs = vi.fn();
+
+    onEffect(c, runs)();
+    mountContext(c);
+    expect(runs).not.toHaveBeenCalled();
+    cleanupContext(c);
+  });
 });
 
 describe("stores", () => {

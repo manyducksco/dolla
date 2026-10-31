@@ -36,6 +36,18 @@ onEffect(context, () => {
 });
 ```
 
+### Stopping early
+
+`onEffect` returns a function that stops the effect before the context unmounts. Calling it before mount keeps the effect from starting.
+
+```jsx
+const stop = onEffect(context, () => {
+  console.log("Count is:", getCount());
+});
+
+stop();
+```
+
 ## When it runs
 
 `onEffect` registers the effect on mount, after the view's DOM is mounted. It is the usual choice inside a view or store.

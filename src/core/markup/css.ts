@@ -1,8 +1,7 @@
 import { isFunction } from "../../utils";
 import type { MaybeGetter } from "../../types.js";
-import { isMounted, onCleanup, onMount, REPLACING, type Context } from "../context";
-import { createEffect, type Getter, withoutOwner } from "../signals";
-import { popContext, pushContext } from "../signal-debug.js";
+import { onCleanup, onEffect, type Context } from "../context";
+import type { Getter } from "../signals";
 import {
   IS_CONDITIONAL_TEMPLATE,
   IS_CSS_TEMPLATE,
@@ -194,35 +193,6 @@ function isPropertyConfig(value: any): boolean {
 const noop = () => {};
 
 /**
- * Like `onEffect`, but returns a function that stops the effect early (before
- * the context is cleaned up). Stopping is idempotent.
- */
-function disposableEffect(c: Context, fn: () => void): () => void {
-  let stop: (() => void) | undefined;
-  let stopped = false;
-
-  const start = () => {
-    if (stopped) return;
-    pushContext(c);
-    stop = withoutOwner(() => createEffect(fn, { context: c }));
-    popContext();
-  };
-
-  const dispose = () => {
-    if (stopped) return;
-    stopped = true;
-    stop?.();
-    stop = undefined;
-  };
-
-  if (isMounted(c) || c[REPLACING]) start();
-  else onMount(c, start);
-  onCleanup(c, dispose);
-
-  return dispose;
-}
-
-/**
  * Adds `className` to `element` (reactively when `condition` is a getter).
  * Returns `null` when the class is not applied at all, otherwise a function
  * that stops any condition tracking.
@@ -234,7 +204,7 @@ function attachClass(
   condition?: MaybeGetter<any>,
 ): (() => void) | null {
   if (isFunction(condition)) {
-    return disposableEffect(c, () => {
+    return onEffect(c, () => {
       element.classList.toggle(className, Boolean(condition()));
     });
   } else if (Boolean(condition)) {
@@ -579,7 +549,7 @@ class CSSFactoryTemplate implements CSSTemplate {
 
     const interpolations = this.#interpolations;
 
-    const stopBindings = disposableEffect(c, () => {
+    const stopBindings = onEffect(c, () => {
       for (const binding of shape.bindings) {
         const value = binding.read(interpolations);
 

@@ -1,7 +1,7 @@
 import type { Context } from "./context";
 import { peek, type MaybeGetter } from "./signals";
 
-export const noOp = () => {};
+const noOp = () => {};
 
 export type LogLevel = "trace" | "info" | "log" | "warn" | "error" | "silent";
 const LEVELS: Record<string, number> = { trace: 1, info: 1, log: 2, warn: 3, error: 4, silent: 5 };
@@ -9,7 +9,6 @@ const LEVELS: Record<string, number> = { trace: 1, info: 1, log: 2, warn: 3, err
 let logLevel = 1;
 let logFilter = (name: string) => !name.startsWith("dolla:");
 
-// 3. Extracted configuration setters (replacing static class methods)
 export const setLogLevel = (level: LogLevel) => {
   logLevel = LEVELS[level] || 1;
 };
@@ -17,7 +16,7 @@ export const setLogFilter = (filter: (name: string) => boolean) => {
   logFilter = filter;
 };
 
-const cnsl: any = globalThis.console || {};
+const cnsl: any = console;
 
 export function getDebug(c: Context, ...tags: [string, any][]) {
   return createDebug(() => c.name ?? "", ...tags);

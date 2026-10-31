@@ -67,7 +67,7 @@ export function render(content: Renderable, context = createContext(null)): Mark
 /**
  * Convert basically anything into an array of `MarkupNode`
  */
-export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[] {
+export function toMarkupNodes(context: Context, content: any): MarkupNode[] {
   const nodes: MarkupNode[] = [];
 
   // Internal processor to avoid intermediate array allocations
@@ -102,10 +102,7 @@ export function toMarkupNodes(context: Context, ...content: any[]): MarkupNode[]
     }
   }
 
-  for (let i = 0; i < content.length; i++) {
-    process(content[i]);
-  }
-
+  process(content);
   return nodes;
 }
 

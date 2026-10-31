@@ -39,8 +39,7 @@ export function createContext<State extends GenericState>(
 /**
  * Returns true while the context lifecycle is mounted.
  *
- * This is a plain boolean read and is not reactive. It is the replacement for
- * the old `context.isMounted` field.
+ * This is a plain boolean read and is not reactive.
  */
 export function isMounted(context: Context): boolean {
   return Object.hasOwn(context, MOUNTED);
@@ -103,24 +102,33 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
 
 /**
  * Creates an effect that auto-tracks getters called within its callback.
+ * The effect starts when the context mounts and stops when it is cleaned up.
+ * Returns a function that stops it early.
  */
-export function onEffect(context: Context, fn: () => void, options?: { name?: string }): void {
-  const runEffect = () => {
+export function onEffect(context: Context, fn: () => void, options?: { name?: string }): () => void {
+  let stop: (() => void) | undefined;
+  let stopped = false;
+
+  const start = () => {
+    if (stopped) return;
     pushContext(context);
     // The context disposes this effect, so it must not also belong to whatever
     // effect happens to be running when the context mounts.
-    const cleanup = withoutOwner(() => createEffect(fn, { ...options, context }));
+    stop = withoutOwner(() => createEffect(fn, { ...options, context }));
     popContext();
-    return cleanup;
+    onCleanup(context, dispose);
   };
 
-  if (isMounted(context) || context[REPLACING]) {
-    onCleanup(context, runEffect());
-  } else {
-    onMount(context, () => {
-      onCleanup(context, runEffect());
-    });
-  }
+  const dispose = () => {
+    stopped = true;
+    stop?.();
+    stop = undefined;
+  };
+
+  if (isMounted(context) || context[REPLACING]) start();
+  else onMount(context, start);
+
+  return dispose;
 }
 
 /*===================================*\
@@ -175,23 +183,22 @@ export function addStore<Props, Returns>(
   ...args: undefined extends Props ? [props?: Props] : [props: Props]
 ) {
   const id = storeId(store);
+  const bind = (storeContext: Context) => {
+    onMount(context, () => mountContext(storeContext));
+    onCleanup(context, () => cleanupContext(storeContext));
+  };
 
   if (Object.hasOwn(context, id)) {
     // Re-register lifecycle listeners for the existing store so they
     // survive cleanupContext clearing MOUNT_LISTENERS during HMR.
     const existing = context[id];
-    if (existing != null && existing[STORE_CONTEXT]) {
-      const storeContext = existing[STORE_CONTEXT];
-      onMount(context, () => mountContext(storeContext));
-      onCleanup(context, () => cleanupContext(storeContext));
-    }
+    if (existing?.[STORE_CONTEXT]) bind(existing[STORE_CONTEXT]);
     return existing;
   }
 
   // Give the store its own context bound to this lifecycle.
   const storeContext = createContext(context, { name: store.name });
-  onMount(context, () => mountContext(storeContext));
-  onCleanup(context, () => cleanupContext(storeContext));
+  bind(storeContext);
 
   // Signals created by the store take its name and its root's debug setting.
   pushContext(storeContext);

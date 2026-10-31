@@ -76,12 +76,8 @@ export class SignalError extends Error {
 }
 
 export function isSignalError(value: unknown): value is SignalError {
-  if (value instanceof SignalError) return true;
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as any)[SIGNAL_ERROR_BRAND] === true
-  );
+  // The brand also recognizes errors from another copy of the library.
+  return (value as any)?.[SIGNAL_ERROR_BRAND] === true;
 }
 
 export function toSignalError(error: unknown, info: SignalErrorInfo): SignalError {
@@ -90,11 +86,7 @@ export function toSignalError(error: unknown, info: SignalErrorInfo): SignalErro
   const cause =
     error instanceof Error ? error : new Error(String(error), { cause: error });
 
-  return new SignalError(cause, error, {
-    ...info,
-    scopes: info.scopes ?? collectScopes(),
-    triggerFrames: info.triggerFrames ?? extractTriggerFrames(cause.stack),
-  });
+  return new SignalError(cause, error, info);
 }
 
 let globalHandler: SignalErrorHandler | null = null;

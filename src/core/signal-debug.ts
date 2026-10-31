@@ -2,12 +2,6 @@ import type { Context } from "./context.js";
 import type { ReactiveNode } from "./signals.js";
 import { DEBUG } from "./symbols.js";
 
-export interface ReactiveNodeDebug {
-  type: "composed" | "effect";
-  name: string;
-  creationStack?: string;
-}
-
 export interface ReactiveScopeInfo {
   type: "effect" | "composed";
   name: string;
@@ -51,7 +45,7 @@ export function popContext(): void {
  */
 function setNodeDebug(
   node: ReactiveNode,
-  type: ReactiveNodeDebug["type"],
+  type: ReactiveScopeInfo["type"],
   fn: Function,
   nameOverride?: string,
   context?: Context,
@@ -63,16 +57,6 @@ function setNodeDebug(
   node._debugType = type;
   node._debugName = componentName ? `${componentName} → ${fnName}` : fnName;
   if (forceCreationStacks || (context ?? current)?.[DEBUG]) node._debugStack = new Error().stack;
-}
-
-function getNodeDebugInfo(node: ReactiveNode): ReactiveNodeDebug | undefined {
-  if (node._debugName === undefined) return undefined;
-
-  return {
-    type: node._debugType!,
-    name: node._debugName,
-    creationStack: node._debugStack,
-  };
 }
 
 function describeNode(node: ReactiveNode): ReactiveScopeInfo | undefined {
@@ -97,6 +81,5 @@ function getCreationFrame(stack?: string): string {
 export {
   reactiveScopeStack,
   setNodeDebug,
-  getNodeDebugInfo,
   describeNode,
 };

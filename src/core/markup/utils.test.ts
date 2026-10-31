@@ -52,14 +52,13 @@ test("toMarkupNodes", () => {
   const [count] = createAtom(5);
 
   const context = createContext(null);
-  const nodes = toMarkupNodes(
-    context,
+  const nodes = toMarkupNodes(context, [
     "one",
     document.createElement("div"),
     () => "hello",
     createMarkup("span", { children: "hi" }),
     count,
-  );
+  ]);
 
   expect(nodes.length).toBe(5);
   expect(nodes[0]).toBeInstanceOf(DOMNode);

@@ -109,7 +109,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     // If the target already hosts a dolla root, tear it down first so we never
     // stack duplicate routes. (A normal re-mount of a different root is handled
     // the same way — only one root per element is valid.)
-    const existing = (element as any)?.[ROOT_MARKER];
+    const existing = (element as any)[ROOT_MARKER];
     if (existing && existing !== self) {
       // Unmount the whole root, not just its node, so its context (and any
       // plugin cleanup listeners) is cleaned up too.
@@ -119,12 +119,12 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
     rootNode = isFunction<View<{}>>(content) ? new ViewNode(context, content, {}) : render(content, context);
     (element as any)[ROOT_MARKER] = self;
-    rootNode?.mount(element!);
+    rootNode.mount(element!);
 
     mountContext(context);
   }
 
-  async function unmount() {
+  function unmount() {
     // Always detach the mounted DOM. The previous early-return on
     // `!context.isMounted` could skip removal when the context had already
     // been cleaned up (e.g. during an HMR full-reload of the entry), leaving
@@ -140,14 +140,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
 
     cleanupContext(context);
 
-    if (element && (element as any)[ROOT_MARKER] === self) {
-      runSafely(
-        () => {
-          delete (element as any)[ROOT_MARKER];
-        },
-        unmountInfo,
-      );
-    }
+    if ((element as any)[ROOT_MARKER] === self) delete (element as any)[ROOT_MARKER];
   }
 
   return self;
