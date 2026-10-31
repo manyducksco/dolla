@@ -90,9 +90,21 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     return self;
   }
 
-  async function mount(content: View<{}> | Renderable) {
-    if (isMounted(context)) return;
+  // The in-flight mount, so a concurrent call doesn't render a second time
+  // while plugins are still resolving.
+  let mounting: Promise<void> | undefined;
 
+  function mount(content: View<{}> | Renderable): Promise<void> {
+    if (isMounted(context)) return Promise.resolve();
+    if (!mounting) {
+      mounting = doMount(content).finally(() => {
+        mounting = undefined;
+      });
+    }
+    return mounting;
+  }
+
+  async function doMount(content: View<{}> | Renderable) {
     await Promise.all(plugins.map((fn) => fn(context)));
 
     // Defensive against duplicate mounts: a full HMR reload can re-run the entry

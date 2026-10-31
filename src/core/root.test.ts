@@ -145,6 +145,19 @@ describe("createRoot", () => {
     expect(container.textContent).toBe("first");
   });
 
+  test("concurrent mounts render once", async () => {
+    const root = createRoot(container);
+    const plugin = vi.fn(async () => {});
+    root.plugin(plugin);
+    const view = vi.fn(function (this: any) {
+      return "once";
+    });
+    await Promise.all([root.mount(view), root.mount(view)]);
+    expect(view).toHaveBeenCalledTimes(1);
+    expect(plugin).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toBe("once");
+  });
+
   test("double unmount is a no-op", async () => {
     const root = createRoot(container);
     await root.mount("hello");
