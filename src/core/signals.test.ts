@@ -85,6 +85,17 @@ test("get reads plain values and tracks getters", () => {
   expect(getDoubled()).toBe(4);
 });
 
+test("classes are stored as plain values, not called as getters", () => {
+  class A {}
+  class B {}
+  const [cls, setCls] = createAtom<typeof A>(A);
+  expect(cls()).toBe(A);
+  setCls(B);
+  expect(cls()).toBe(B);
+  expect(get(A)).toBe(A);
+  expect(compose(A)()).toBe(A);
+});
+
 test("setters return the new value", () => {
   const [count, setCount] = createAtom(2);
   const [doubled, setDoubled] = createAtom(() => count() * 2);
