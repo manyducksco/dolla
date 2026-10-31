@@ -811,7 +811,7 @@ export function createAtom<T>(value?: T, options?: { name?: string }) {
  */
 export function createSetter<T>(getter: Getter<T>, callback: (current: T) => T | void): Setter<T> {
   return (value: SetterAction<T>) => {
-    const next = typeof value === "function" ? (value as (current: T) => T)(peek(getter)) : value;
+    const next = resolveValue(value, peek(getter));
     const returned = callback(next);
     return returned ?? next;
   };

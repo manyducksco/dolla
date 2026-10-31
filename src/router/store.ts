@@ -56,7 +56,7 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
       setCurrentMatch({ ...m, query });
 
       const queryString = merged.size ? "?" + merged.toString() : "";
-      history.replace(m.path + queryString);
+      history.replace(m.path + queryString + history.getFragment());
 
       return query;
     },

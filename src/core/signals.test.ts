@@ -5,6 +5,7 @@ import {
   compose,
   createAtom,
   createEffect,
+  createSetter,
   get,
   peek,
   subscribe,
@@ -947,6 +948,32 @@ describe("error enhancement", () => {
     expect((error as SignalError).phase).toBe("setter");
     expect(error.message).toContain("updater boom");
     expect(a()).toBe(0);
+  });
+
+  test("createSetter updaters run untracked and report setter errors", () => {
+    const [value, setValue] = createAtom(0);
+    const [step, setStep] = createAtom(1);
+    const setDoubled = createSetter(value, (next) => setValue(next * 2));
+    const runs = vi.fn();
+
+    createEffect(() => {
+      runs();
+      setDoubled((current) => current + step());
+    });
+    expect(runs).toHaveBeenCalledTimes(1);
+    expect(peek(value)).toBe(2);
+
+    setStep(5);
+    expect(runs).toHaveBeenCalledTimes(1);
+
+    const error = catchError(() =>
+      setDoubled(() => {
+        throw new Error("updater boom");
+      }),
+    );
+    expect(error).toBeInstanceOf(SignalError);
+    expect((error as SignalError).phase).toBe("setter");
+    expect(peek(value)).toBe(2);
   });
 
   test("exposes the structured error through SignalError", () => {

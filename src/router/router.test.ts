@@ -150,6 +150,32 @@ describe("Router Engine", () => {
   });
 });
 
+describe("Router Engine - setQuery", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("keeps the fragment and other history state", async () => {
+    const router = createRouter({
+      routes: [{ path: "/search", view: () => {} }],
+    });
+
+    await withRouter(router, async (context) => {
+      window.history.pushState({ key: "k", scroll: 120 }, "", "/search#results");
+      window.dispatchEvent(new Event("popstate"));
+      await settle();
+
+      getRouter(context).setQuery({ q: "potato" });
+
+      expect(window.location.search).toBe("?q=potato");
+      expect(window.location.hash).toBe("#results");
+      expect(window.history.state).toEqual({ key: "k", scroll: 120 });
+    });
+  });
+});
+
 describe("Router Engine - Lazy Loading", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/");
@@ -580,6 +606,41 @@ describe("Router Engine - Hash mode", () => {
 
       expect(window.location.pathname).toBe("/app/");
       expect(window.location.hash).toBe("#/");
+    });
+  });
+});
+
+describe("Router Engine - Hash mode fragments", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/app/");
+  });
+
+  it("keeps a fragment inside the hash out of the path and query", async () => {
+    const router = createRouter({
+      hash: true,
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/users", view: () => {} },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/users#top");
+      await settle();
+      expect(store.path()).toBe("/users");
+
+      store.push("/users?tab=a#top");
+      await settle();
+      expect(store.path()).toBe("/users");
+      expect(store.query()).toEqual({ tab: "a" });
+
+      store.setQuery({ tab: "b" });
+      expect(window.location.hash).toBe("#/users?tab=b#top");
     });
   });
 });

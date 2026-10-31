@@ -99,6 +99,20 @@ describe("translator", () => {
     expect(hello()).toBe("こんにちは");
   });
 
+  test("ordinal option may be a getter", async () => {
+    const { t } = await createTestTranslator({
+      locale: "en",
+      translations: { en: { place_one: "{{count}} place", place_ordinal_one: "{{count}}st place" } },
+    });
+
+    const [ordinal, setOrdinal] = createAtom(false);
+    const place = t("place", { count: 1, ordinal });
+    expect(place()).toBe("1 place");
+
+    setOrdinal(true);
+    expect(place()).toBe("1st place");
+  });
+
   test("setLocale rejects a locale with no translations and keeps the current one", async () => {
     const translator = await createTestTranslator({
       locale: "en",

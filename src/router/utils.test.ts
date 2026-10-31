@@ -1,5 +1,5 @@
-import { test, expect } from "vitest";
-import { buildRouteTree, joinPath, matchRoute, resolvePath, resolveRoute } from "./utils.js";
+import { describe, test, expect } from "vitest";
+import { buildRouteTree, createHistoryAdapter, joinPath, matchRoute, resolvePath, resolveRoute } from "./utils.js";
 import type { Route } from "./types.js";
 
 test("add and match routes", () => {
@@ -196,4 +196,20 @@ test("merges meta from all ancestor layers", () => {
 
 test("static resolvePath: returns absolute paths", () => {
   expect(resolvePath("/users/5", "/edit")).toBe("/edit");
+});
+
+describe("createHistoryAdapter", () => {
+  test("hash mode splits a fragment inside the hash from the path and query", () => {
+    window.history.replaceState(null, "", "/app/#/users?tab=a#top");
+    const history = createHistoryAdapter(true);
+    expect(history.getPath()).toBe("/users");
+    expect(history.getSearch()).toBe("?tab=a");
+    expect(history.getFragment()).toBe("#top");
+
+    window.history.replaceState(null, "", "/app/#/users#top");
+    expect(history.getPath()).toBe("/users");
+    expect(history.getSearch()).toBe("");
+
+    window.history.replaceState(null, "", "/");
+  });
 });

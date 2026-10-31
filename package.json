@@ -9,7 +9,6 @@
   "main": "dist/index.js",
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "csstype": "^3.2.3",
     "happy-dom": "^20.9.0",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
@@ -21,48 +20,48 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/core/index.d.ts"
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./internals": {
-      "import": "./dist/internals.js",
-      "types": "./dist/internals.d.ts"
+      "types": "./dist/internals.d.ts",
+      "import": "./dist/internals.js"
     },
     "./router": {
-      "import": "./dist/router.js",
-      "types": "./dist/router/index.d.ts"
+      "types": "./dist/router/index.d.ts",
+      "import": "./dist/router.js"
     },
     "./translate": {
-      "import": "./dist/translate.js",
-      "types": "./dist/translate/index.d.ts"
+      "types": "./dist/translate/index.d.ts",
+      "import": "./dist/translate.js"
     },
     "./http": {
-      "import": "./dist/http.js",
-      "types": "./dist/http/index.d.ts"
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http.js"
     },
     "./virtual": {
-      "import": "./dist/virtual.js",
-      "types": "./dist/virtual/index.d.ts"
+      "types": "./dist/virtual/index.d.ts",
+      "import": "./dist/virtual.js"
     },
     "./styled": {
-      "import": "./dist/styled.js",
-      "types": "./dist/styled/index.d.ts"
+      "types": "./dist/styled/index.d.ts",
+      "import": "./dist/styled.js"
     },
     "./jsx-runtime": {
-      "import": "./dist/jsx-runtime.js",
-      "types": "./jsx-runtime.d.ts"
+      "types": "./jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js"
     },
     "./jsx-dev-runtime": {
-      "import": "./dist/jsx-dev-runtime.js",
-      "types": "./jsx-dev-runtime.d.ts"
+      "types": "./jsx-dev-runtime.d.ts",
+      "import": "./dist/jsx-dev-runtime.js"
     },
     "./hmr": {
-      "import": "./dist/hmr.js",
-      "types": "./dist/core/hmr.d.ts"
+      "types": "./dist/core/hmr.d.ts",
+      "import": "./dist/hmr.js"
     },
     "./vite-plugin": {
-      "import": "./vite-plugin.js",
-      "types": "./vite-plugin.d.ts"
+      "types": "./vite-plugin.d.ts",
+      "import": "./vite-plugin.js"
     }
   },
   "description": "A fast, batteries-included JavaScript framework with a React-inspired API and the power of signals.",
@@ -94,6 +93,7 @@
   "types": "dist/core/index.d.ts",
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",
+    "csstype": "^3.2.3",
     "magic-string": "^0.30.21"
   }
 }

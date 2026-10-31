@@ -16,14 +16,13 @@ export interface LocalizedStrings extends Record<string, string | LocalizedStrin
 export type TranslationFetchFn = () => LocalizedStrings | Promise<LocalizedStrings>;
 
 export type TOptions = {
-  /**
-   *
-   */
+  /** Selects a plural variant, such as `key_one` or `key_(=2)`. */
   count?: Getter<number> | number;
 
-  /**
-   *
-   */
+  /** Uses ordinal plural variants, such as `key_ordinal_two`, for `count`. */
+  ordinal?: Getter<boolean> | boolean;
+
+  /** Selects a context variant, such as `key_formal`. */
   context?: Getter<string> | string;
 
   [value: string]: Getter<any> | any;
@@ -285,8 +284,9 @@ async function createLookup(
       const count = get(options.count);
       if (count != null) {
         // Prefer an exact number key if there is one (e.g. "myExampleKey_(=2)" when count is 2).
-        const prefix = options.ordinal ? "ordinal_" : "";
-        const category = prefix + getPluralRules(!!options.ordinal).select(count);
+        const ordinal = !!get(options.ordinal);
+        const prefix = ordinal ? "ordinal_" : "";
+        const category = prefix + getPluralRules(ordinal).select(count);
         selector = variant(selector, `${prefix}(=${count})`) ?? variant(selector, category) ?? selector;
       }
     }

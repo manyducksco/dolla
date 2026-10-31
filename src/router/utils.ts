@@ -455,6 +455,8 @@ export function replaceParams(path: string, params: Record<string, string | numb
 export interface HistoryAdapter {
   getPath(): string;
   getSearch(): string;
+  /** The fragment, including its leading `#`, or an empty string. */
+  getFragment(): string;
   getKey(): string;
   push(url: string): void;
   replace(url: string): void;
@@ -465,20 +467,27 @@ export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
     window.history.replaceState({ ...window.history.state, key: Date.now().toString() }, "");
   }
 
-  const getPath = useHash ? () => window.location.hash.slice(1).split("?")[0] || "/" : () => window.location.pathname;
-  const getSearch = useHash
-    ? () => {
-        const hash = window.location.hash;
-        const searchIndex = hash.indexOf("?");
-        return searchIndex !== -1 ? hash.slice(searchIndex) : "";
-      }
-    : () => window.location.search;
+  // In hash mode the URL lives in the hash, as "#/path?query#fragment".
+  const hashParts = (): [path: string, search: string, fragment: string] => {
+    let url = window.location.hash.slice(1);
+    const hashIndex = url.indexOf("#");
+    const fragment = hashIndex === -1 ? "" : url.slice(hashIndex);
+    if (hashIndex !== -1) url = url.slice(0, hashIndex);
+    const queryIndex = url.indexOf("?");
+    if (queryIndex === -1) return [url || "/", "", fragment];
+    return [url.slice(0, queryIndex) || "/", url.slice(queryIndex), fragment];
+  };
+
+  const getPath = useHash ? () => hashParts()[0] : () => window.location.pathname;
+  const getSearch = useHash ? () => hashParts()[1] : () => window.location.search;
+  const getFragment = useHash ? () => hashParts()[2] : () => window.location.hash;
 
   const getKey = () => window.history.state?.key || "root";
 
   return {
     getPath,
     getSearch,
+    getFragment,
     getKey,
     push: (url) => {
       const prefix = useHash ? "#" : ""; // Relative to the current location, so the base path is kept
@@ -486,7 +495,7 @@ export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
     },
     replace: (url) => {
       const prefix = useHash ? "#" : ""; // Relative to the current location, so the base path is kept
-      window.history.replaceState({ key: getKey() }, "", prefix + url);
+      window.history.replaceState({ ...window.history.state, key: getKey() }, "", prefix + url);
     },
   };
 }

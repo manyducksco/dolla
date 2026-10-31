@@ -3,7 +3,7 @@ import { peek, type MaybeGetter } from "./signals";
 
 export const noOp = () => {};
 
-export type LogLevel = "info" | "log" | "warn" | "error" | "silent";
+export type LogLevel = "trace" | "info" | "log" | "warn" | "error" | "silent";
 const LEVELS: Record<string, number> = { trace: 1, info: 1, log: 2, warn: 3, error: 4, silent: 5 };
 
 let logLevel = 1;
@@ -24,24 +24,18 @@ export function getDebug(c: Context, ...tags: [string, any][]) {
 }
 
 export function createDebug(name: MaybeGetter<string>, ...tags: [string, any][]) {
-  let args: any[];
-
   const make = (method: string, level: number): ((...args: any[]) => void) => {
     const _name = peek(name);
     if (level < logLevel || !logFilter(_name) || !cnsl[method]) return noOp;
 
-    // Build and cache the console arguments on the first valid log
-    if (!args) {
-      let p = "%c" + _name;
-      let s = [`color:${okhash(_name)};font-weight:bold`];
-      for (const [k, v] of tags) {
-        p += `%c[${k}: %c${v}%c]`;
-        s.push("color:#777", "color:#aaa", "color:#777");
-      }
-      args = [p, ...s];
+    let p = "%c" + _name;
+    const s = [`color:${okhash(_name)};font-weight:bold`];
+    for (const [k, v] of tags) {
+      p += `%c[${k}: %c${v}%c]`;
+      s.push("color:#777", "color:#aaa", "color:#777");
     }
 
-    return cnsl[method].bind(cnsl, ...args);
+    return cnsl[method].bind(cnsl, p, ...s);
   };
 
   return {
