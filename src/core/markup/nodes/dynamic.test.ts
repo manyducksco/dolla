@@ -314,4 +314,74 @@ describe("DynamicNode", () => {
       expect(container.textContent).toBe("e");
     });
   });
+  describe("text fast path", () => {
+    test("switching an array item from text to an element renders the element", () => {
+      const { context, container } = setup();
+      const [content, setContent] = createAtom<any[]>(["a", "b"]);
+      new DynamicNode(context, content).mount(container);
+      expect(container.textContent).toBe("ab");
+
+      setContent(["a", createMarkup("span", { children: "b" })]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("a<span>b</span>");
+    });
+
+    test("null and false array items render nothing", () => {
+      const { context, container } = setup();
+      const [content, setContent] = createAtom<any[]>(["a", "b"]);
+      new DynamicNode(context, content).mount(container);
+
+      setContent([null, "b"]);
+      flushPendingUpdates();
+      expect(container.textContent).toBe("b");
+
+      setContent([false, "c"]);
+      flushPendingUpdates();
+      expect(container.textContent).toBe("c");
+    });
+
+    test("array items still update text in place", () => {
+      const { context, container } = setup();
+      const [content, setContent] = createAtom<any[]>(["a", 1]);
+      new DynamicNode(context, content).mount(container);
+      const first = container.childNodes[1];
+
+      setContent(["x", 2]);
+      flushPendingUpdates();
+      expect(container.textContent).toBe("x2");
+      expect(container.childNodes[1]).toBe(first);
+    });
+  });
+
+  describe("unmount when detached", () => {
+    test("cleans up children even if the anchor was already removed", () => {
+      const { context, container } = setup();
+      const [text, setText] = createAtom("a");
+      const getter = vi.fn(() => text());
+      const node = new DynamicNode(context, () => createMarkup("span", { title: getter }));
+      node.mount(container);
+      const calls = getter.mock.calls.length;
+
+      // Something else removes all the DOM (e.g. a parent's innerHTML is cleared).
+      container.textContent = "";
+      node.unmount();
+
+      setText("b");
+      flushPendingUpdates();
+      expect(getter).toBeCalledTimes(calls);
+    });
+
+    test("can be mounted again after unmount", () => {
+      const { context, container } = setup();
+      const [text, setText] = createAtom("a");
+      const node = new DynamicNode(context, () => text());
+      node.mount(container);
+      node.unmount();
+      node.mount(container);
+
+      setText("b");
+      flushPendingUpdates();
+      expect(container.textContent).toBe("b");
+    });
+  });
 });

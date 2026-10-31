@@ -72,13 +72,13 @@ export class DynamicNode extends MarkupNode {
 
   override unmount(skipDOM = false) {
     this.#unsubscribe?.();
+    this.#unsubscribe = undefined;
 
-    if (this.isMounted()) {
-      if (!skipDOM) {
-        this.#root!.parentNode?.removeChild(this.#root!);
-      }
-      this.#cleanup(skipDOM);
+    if (!skipDOM) {
+      this.#root?.parentNode?.removeChild(this.#root);
     }
+    // Clean up children even if something else already detached the anchor.
+    this.#cleanup(skipDOM);
   }
 
   override move(parent: MountTarget, after?: Node | null) {
@@ -116,9 +116,9 @@ export class DynamicNode extends MarkupNode {
 
     // Fast-path for arrays of primitives where all children are text nodes
     if (isArray(content) && content.length === this.#children.length && content.length > 0) {
-      const allText = this.#children.every(
-        (c) => c instanceof DOMNode && c.getRoot()?.nodeType === Node.TEXT_NODE,
-      );
+      const allText =
+        content.every((item) => typeof item === "string" || typeof item === "number") &&
+        this.#children.every((c) => c instanceof DOMNode && c.getRoot()?.nodeType === Node.TEXT_NODE);
       if (allText) {
         for (let i = 0; i < content.length; i++) {
           (this.#children[i].getRoot() as Text).nodeValue = String(content[i]);
