@@ -359,23 +359,14 @@ function setActiveOwner(owner?: ReactiveNode) {
   return prevOwner;
 }
 
-function withReactiveScope<T>(
-  node: ReactiveNode,
-  prevSub: ReactiveNode | undefined,
-  fn: () => T,
-  withPurge?: boolean,
-): T {
+function withReactiveScope<T>(node: ReactiveNode, prevSub: ReactiveNode | undefined, fn: () => T): T {
   const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(node);
-  let succeeded = false;
   try {
-    const result = fn();
-    succeeded = true;
-    return result;
+    return fn();
   } finally {
     activeSub = prevSub;
     node._flags &= ~ReactiveFlags.RecursedCheck;
-    if (withPurge && succeeded) purgeDeps(node);
     reactiveScopeStack.length = scopeLen;
   }
 }
@@ -430,12 +421,7 @@ function reportAsyncEffect(e: EffectNode, result: PromiseLike<unknown>): void {
   );
 
   reportSignalError(
-    toSignalError(error, {
-      phase: "effect",
-      node: e,
-      context: e._context,
-      triggerFrames: [],
-    }),
+    toSignalError(error, { ...effectErrorInfo(e, "effect"), triggerFrames: [] }),
     e._context,
   );
 
@@ -443,6 +429,20 @@ function reportAsyncEffect(e: EffectNode, result: PromiseLike<unknown>): void {
   Promise.resolve(result).catch((reason) => {
     reportSignalError(toSignalError(reason, effectErrorInfo(e, "effect")), e._context);
   });
+}
+
+/** Calls the effect function and keeps its cleanup. Errors are rethrown as SignalErrors. */
+function callEffectFn(e: EffectNode): void {
+  try {
+    const result = e._fn();
+    if (isFunction(result)) {
+      e._cleanup = result;
+    } else if (isThenable(result)) {
+      reportAsyncEffect(e, result);
+    }
+  } catch (error) {
+    throw toSignalError(error, effectErrorInfo(e, "effect"));
+  }
 }
 
 function run(e: EffectNode): void {
@@ -470,25 +470,18 @@ function run(e: EffectNode): void {
       e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
       const prevSub = setActiveSub(e);
       const prevOwner = setActiveOwner(e);
-      let bodyFailed = false;
+      let succeeded = false;
 
       try {
-        const result = e._fn();
-        if (isFunction(result)) {
-          e._cleanup = result;
-        } else if (isThenable(result)) {
-          reportAsyncEffect(e, result);
-        }
-      } catch (error) {
-        bodyFailed = true;
-        throw toSignalError(error, effectErrorInfo(e, "effect"));
+        callEffectFn(e);
+        succeeded = true;
       } finally {
         activeSub = prevSub;
         activeOwner = prevOwner;
         e._flags &= ~ReactiveFlags.RecursedCheck;
         // Keep the dependency union after a failure so the effect can retry
         // when any of its previous or newly-read dependencies change.
-        if (!bodyFailed) purgeDeps(e);
+        if (succeeded) purgeDeps(e);
       }
     } else {
       e._flags = ReactiveFlags.Watching;
@@ -582,26 +575,8 @@ function computedGetter(node: ComputedNode) {
     } else if (node._error !== undefined) {
       throw toSignalError(node._error, { phase: "computed", node });
     } else if (!node._flags) {
-      node._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
-      const prevSub = setActiveSub(node);
-      const prevOwner = setActiveOwner(node);
-      const scopeLen = reactiveScopeStack.length;
-      reactiveScopeStack.push(node);
-
-      let succeeded = false;
-      try {
-        evaluateComputed(node);
-        succeeded = true;
-      } catch (error) {
-        node._error = error;
-        throw toSignalError(error, { phase: "computed", node });
-      } finally {
-        activeSub = prevSub;
-        activeOwner = prevOwner;
-        node._flags &= ~ReactiveFlags.RecursedCheck;
-        if (succeeded) purgeDeps(node);
-        reactiveScopeStack.length = scopeLen;
-      }
+      // First read. There are no subscribers yet, so nothing to propagate.
+      updateComputed(node);
     }
 
     return node._value!;
@@ -892,18 +867,7 @@ export function createEffect(fn: () => void, options?: { name?: string; context?
   }
 
   try {
-    withReactiveScope(e, prevSub, () => {
-      try {
-        const result = e._fn();
-        if (isFunction(result)) {
-          e._cleanup = result;
-        } else if (isThenable(result)) {
-          reportAsyncEffect(e, result);
-        }
-      } catch (error) {
-        throw toSignalError(error, effectErrorInfo(e, "effect"));
-      }
-    });
+    withReactiveScope(e, prevSub, () => callEffectFn(e));
   } catch (error) {
     const signalError = toSignalError(error, effectErrorInfo(e, "effect"));
     effectCleanup(e);

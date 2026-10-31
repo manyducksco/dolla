@@ -52,7 +52,7 @@ function setNodeDebug(
   nameOverride?: string,
   context?: Context,
 ): void {
-  const current = contextStack.length > 0 ? contextStack[contextStack.length - 1] : undefined;
+  const current = contextStack.at(-1);
   const componentName = current?.name;
   const fnName = nameOverride || fn.name || "(anonymous)";
 

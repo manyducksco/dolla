@@ -114,26 +114,19 @@ export function setErrorHandler(handler: SignalErrorHandler | null): void {
  * internals-only global handler, then the default reporter.
  */
 export function reportSignalError(error: SignalError, context?: Context): void {
-  const handler = resolveHandler(context);
+  const handler: SignalErrorHandler | null = (context as any)?.[ERROR_HANDLER] || globalHandler;
 
   if (handler) {
     try {
       handler(error);
       return;
     } catch (handlerError) {
-      defaultReport(
-        toSignalError(handlerError, {
-          phase: "handler",
-          context,
-          triggerFrames: [],
-        }),
-        context,
-      );
-      return;
+      // Report the handler's own failure instead.
+      error = toSignalError(handlerError, { phase: "handler", context, triggerFrames: [] });
     }
   }
 
-  defaultReport(error, context);
+  defaultReport(error);
 }
 
 /**
@@ -149,15 +142,7 @@ export function runSafely(fn: () => void, info: SignalErrorInfo): void {
   }
 }
 
-function resolveHandler(context?: Context): SignalErrorHandler | undefined {
-  if (context) {
-    const handler = (context as any)[ERROR_HANDLER] as SignalErrorHandler | undefined;
-    if (handler) return handler;
-  }
-  return globalHandler ?? undefined;
-}
-
-function defaultReport(error: SignalError, _context?: Context): void {
+function defaultReport(error: SignalError): void {
   const reportError = (globalThis as any).reportError as
     | ((error: unknown) => void)
     | undefined;

@@ -36,12 +36,7 @@ export class FragmentNode extends MarkupNode {
 
     this.#anchor = createTextNode("");
     addChild(parent, this.#anchor, after);
-
-    let ref: Node = this.#anchor;
-    for (const child of this.#children) {
-      child.mount(parent, ref);
-      ref = child.getLastNode() ?? ref;
-    }
+    moveChildrenAfter(parent, this.#anchor, this.#children, true);
   }
 
   override unmount(skipDOM = false) {

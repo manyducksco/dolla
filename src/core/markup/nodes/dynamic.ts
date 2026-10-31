@@ -91,11 +91,9 @@ export class DynamicNode extends MarkupNode {
   }
 
   #cleanup(skipDOM: boolean) {
+    const info = { phase: "unmount", context: this.#context } as const;
     for (let i = 0; i < this.#children.length; i++) {
-      runSafely(() => this.#children[i].unmount(skipDOM), {
-        phase: "unmount",
-        context: this.#context,
-      });
+      runSafely(() => this.#children[i].unmount(skipDOM), info);
     }
     this.#children.length = 0;
   }
@@ -103,30 +101,20 @@ export class DynamicNode extends MarkupNode {
   #update(content: any) {
     if (!this.isMounted() || !this.#root) return;
 
-    // Fast-path for primitive text updates to a single text node
-    const isPrimitive = typeof content === "string" || typeof content === "number";
-    if (isPrimitive && this.#children.length === 1) {
-      const child = this.#children[0];
-      if (child instanceof DOMNode) {
-        const domNode = child.getRoot();
-        if (domNode && domNode.nodeType === Node.TEXT_NODE) {
-          domNode.nodeValue = String(content);
-          return;
-        }
+    // Fast path: a primitive, or an array of primitives, replacing the same
+    // number of text nodes only needs their text updated.
+    const children = this.#children;
+    const count = children.length;
+    const list = isArray(content);
+    if (
+      count > 0 &&
+      (list ? content.length === count && content.every(isPrimitive) : count === 1 && isPrimitive(content)) &&
+      children.every(isTextNode)
+    ) {
+      for (let i = 0; i < count; i++) {
+        (children[i].getRoot() as Text).nodeValue = String(list ? content[i] : content);
       }
-    }
-
-    // Fast-path for arrays of primitives where all children are text nodes
-    if (isArray(content) && content.length === this.#children.length && content.length > 0) {
-      const allText =
-        content.every((item) => typeof item === "string" || typeof item === "number") &&
-        this.#children.every((c) => c instanceof DOMNode && c.getRoot()?.nodeType === Node.TEXT_NODE);
-      if (allText) {
-        for (let i = 0; i < content.length; i++) {
-          (this.#children[i].getRoot() as Text).nodeValue = String(content[i]);
-        }
-        return;
-      }
+      return;
     }
 
     this.#cleanup(false);
@@ -147,4 +135,12 @@ export class DynamicNode extends MarkupNode {
       referenceNode = node.getLastNode() ?? referenceNode;
     }
   }
+}
+
+function isPrimitive(value: unknown): boolean {
+  return typeof value === "string" || typeof value === "number";
+}
+
+function isTextNode(node: MarkupNode): boolean {
+  return node instanceof DOMNode && node.getRoot()?.nodeType === Node.TEXT_NODE;
 }

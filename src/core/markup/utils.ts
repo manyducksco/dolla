@@ -156,12 +156,13 @@ export function lastNodeOf(nodes: MarkupNode[], fallback: Node | null): Node | u
 }
 
 /**
- * Moves a list of sibling nodes, in order, so the first one directly follows `after`.
+ * Moves (or mounts) a list of sibling nodes, in order, so the first one directly follows `after`.
  */
-export function moveChildrenAfter(parent: MountTarget, after: Node, nodes: MarkupNode[]) {
+export function moveChildrenAfter(parent: MountTarget, after: Node, nodes: MarkupNode[], mount?: boolean) {
   let ref = after;
   for (const node of nodes) {
-    node.move(parent, ref);
+    if (mount) node.mount(parent, ref);
+    else node.move(parent, ref);
     ref = node.getLastNode() ?? ref;
   }
 }

@@ -177,15 +177,17 @@ export class ElementNode extends MarkupNode {
       this.#root.parentNode.removeChild(this.#root);
     }
 
+    const info = { phase: "unmount", context: this.#context } as const;
+
     for (const child of this.#childNodes) {
-      runSafely(() => child.unmount(true), { phase: "unmount", context: this.#context });
+      runSafely(() => child.unmount(true), info);
     }
 
     // Clear reactivity
     const unsubscribers = Array.from(this.#unsubscribers);
     this.#unsubscribers.clear();
     for (const unsubscribe of unsubscribers) {
-      runSafely(unsubscribe, { phase: "unmount", context: this.#context });
+      runSafely(unsubscribe, info);
     }
 
     cleanupContext(this.#context);
@@ -194,7 +196,7 @@ export class ElementNode extends MarkupNode {
     if (this.#refCleanup) {
       const refCleanup = this.#refCleanup;
       this.#refCleanup = undefined;
-      runSafely(refCleanup, { phase: "unmount", context: this.#context });
+      runSafely(refCleanup, info);
     }
 
     // Release memory
@@ -276,17 +278,13 @@ export class ElementNode extends MarkupNode {
         continue;
       }
 
-      const value = props[key];
-
-      if (isFunction(value)) {
-        this.#applyDynamicProp(element, key, value as Getter<unknown>, isSvg);
-      } else {
-        this.#applyStaticProp(element, key, value, isSvg);
-      }
+      this.#applyProp(element, key, props[key], isSvg);
     }
   }
 
-  #applyStaticProp(element: any, key: string, value: unknown, isSvg: boolean) {
+  /** Applies one prop, binding it when `value` is a getter. */
+  #applyProp(element: any, key: string, value: unknown, isSvg: boolean) {
+    // Getters count as reactive in both checks below.
     if (key === "style") {
       if (isString(value)) {
         // Static CSS text can be assigned directly; the browser parser does
@@ -309,7 +307,7 @@ export class ElementNode extends MarkupNode {
         // Fast path for the common single-template case. Avoids building
         // the name/template/condition collections in #applyStaticClasses.
         value.attach(this.#context, element);
-      } else if (hasReactiveClassValue(value)) {
+      } else if (hasReactiveValue(value, true)) {
         this.#applyClasses(element, value);
       } else {
         this.#applyStaticClasses(element, value);
@@ -317,75 +315,31 @@ export class ElementNode extends MarkupNode {
       return;
     }
 
-    if (key === "for") {
-      applyFor(element, value);
-      return;
-    }
-
-    if (key.startsWith("prop:")) {
-      setProp(element, key.substring(5), value);
-      return;
-    }
-
-    if (key.startsWith("attr:")) {
-      const name = key.substring(5).toLowerCase();
-      setAttribute(element, name, value);
-      return;
-    }
-
-    if (key in element && !isSvg) {
-      // Set as property if the element has one.
-      if (typeof element[key] === "boolean") {
-        applyBooleanProperty(element, key, value);
-      } else {
-        setProp(element, key, value);
-      }
-      return;
-    }
-
-    setAttribute(element, normalizeAttributeName(key), value);
-  }
-
-  #applyDynamicProp(element: any, key: string, getter: Getter<unknown>, isSvg: boolean) {
-    if (key === "style") {
-      this.#applyStyles(element, getter);
-      return;
-    }
-
-    if (key === "class" || key === "className") {
-      this.#applyClasses(element, getter);
-      return;
-    }
+    // Pick the setter once. Static values are set directly, without a closure.
+    let name = key;
+    let set: (element: any, name: string, value: any) => void;
 
     if (key === "for") {
-      this.#attach(getter, (value) => applyFor(element, value), "element:for");
-      return;
-    }
-
-    if (key.startsWith("prop:")) {
-      const name = key.substring(5);
-      this.#attach(getter, (value) => setProp(element, name, value), `element:${key}`);
-      return;
-    }
-
-    if (key.startsWith("attr:")) {
-      const name = key.substring(5).toLowerCase();
-      this.#attach(getter, (value) => setAttribute(element, name, value), `element:${key}`);
-      return;
-    }
-
-    if (key in element && !isSvg) {
+      set = applyFor;
+    } else if (key.startsWith("prop:")) {
+      name = key.substring(5);
+      set = setProp;
+    } else if (key.startsWith("attr:")) {
+      name = key.substring(5).toLowerCase();
+      set = setAttribute;
+    } else if (key in element && !isSvg) {
       // Set as property if the element has one.
-      if (typeof element[key] === "boolean") {
-        this.#attach(getter, (value) => applyBooleanProperty(element, key, value), `element:${key}`);
-      } else {
-        this.#attach(getter, (value) => setProp(element, key, value), `element:${key}`);
-      }
-      return;
+      set = typeof element[key] === "boolean" ? applyBooleanProperty : setProp;
+    } else {
+      name = normalizeAttributeName(key);
+      set = setAttribute;
     }
 
-    const name = normalizeAttributeName(key);
-    this.#attach(getter, (value) => setAttribute(element, name, value), `element:${key}`);
+    if (isFunction<Getter<unknown>>(value)) {
+      this.#unsubscribers.add(this.#subscribe(value, (current) => set(element, name, current), `element:${key}`));
+    } else {
+      set(element, name, value);
+    }
   }
 
   #applyStaticStyles(element: HTMLElement | SVGElement, styles: unknown) {
@@ -494,6 +448,7 @@ export class ElementNode extends MarkupNode {
     const localUnsubs = new Set<() => void>();
     const staticClasses = new Set<string>();
     const attachedTemplates = new Set<CSSTemplate>();
+    const templateDisposers = new Map<CSSTemplate, () => void>();
     const conditionSubs = new Map<CSSTemplate, () => void>();
 
     const apply = (current: unknown) => {
@@ -501,7 +456,7 @@ export class ElementNode extends MarkupNode {
 
       const { templates: currentTemplates, conditions, remaining: processedValue } = this.#extractTemplates(current);
 
-      this.#syncTemplates(currentTemplates, attachedTemplates, element);
+      this.#syncTemplates(currentTemplates, attachedTemplates, templateDisposers, element);
       this.#applyConditions(conditions, currentTemplates, attachedTemplates, conditionSubs, element);
 
       if (processedValue === undefined) {
@@ -673,19 +628,12 @@ export class ElementNode extends MarkupNode {
    * The CSSStyleRule for a detached template stays in the sheet; rules are
    * never removed.
    */
-  static #templateDisposers = new WeakMap<Set<CSSTemplate>, Map<CSSTemplate, () => void>>();
-
   #syncTemplates(
     currentTemplates: Set<CSSTemplate>,
     attachedTemplates: Set<CSSTemplate>,
+    disposers: Map<CSSTemplate, () => void>,
     element: HTMLElement | SVGElement,
   ): void {
-    let disposers = ElementNode.#templateDisposers.get(attachedTemplates);
-    if (!disposers) {
-      disposers = new Map();
-      ElementNode.#templateDisposers.set(attachedTemplates, disposers);
-    }
-
     for (const tpl of attachedTemplates) {
       if (!currentTemplates.has(tpl)) {
         disposers.get(tpl)?.();
@@ -764,27 +712,6 @@ export class ElementNode extends MarkupNode {
   }
 }
 
-function hasReactiveClassValue(value: unknown): boolean {
-  if (isFunction(value)) return true;
-  if (isConditionalTemplate(value)) return isFunction(value.condition);
-  if (isCSSTemplate(value)) return false;
-
-  if (isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      if (hasReactiveClassValue(value[i])) return true;
-    }
-    return false;
-  }
-
-  if (isObject(value)) {
-    for (const key in value) {
-      if (isFunction((value as Record<string, unknown>)[key])) return true;
-    }
-  }
-
-  return false;
-}
-
 function collectStaticClasses(
   value: unknown,
   names: Set<string>,
@@ -826,12 +753,19 @@ function collectStaticClasses(
   }
 }
 
-function hasReactiveValue(value: unknown): boolean {
-  if (isFunction(value) || isCSSTemplate(value) || isConditionalTemplate(value)) return true;
+/**
+ * Whether a `style` (or, with `forClass`, a `class`) value needs the reactive
+ * path. CSS templates always do for `style`, where they are rejected. For
+ * `class` only a getter condition does.
+ */
+function hasReactiveValue(value: unknown, forClass?: boolean): boolean {
+  if (isFunction(value)) return true;
+  if (isConditionalTemplate(value)) return !forClass || isFunction(value.condition);
+  if (isCSSTemplate(value)) return !forClass;
 
   if (isArray(value)) {
     for (let i = 0; i < value.length; i++) {
-      if (hasReactiveValue(value[i])) return true;
+      if (hasReactiveValue(value[i], forClass)) return true;
     }
     return false;
   }
@@ -857,12 +791,7 @@ function getClassMap(classes: unknown): Record<string, unknown> {
   if (isCSSTemplate(classes)) return {};
   if (isArray(classes)) {
     const result: Record<string, unknown> = {};
-    for (const item of classes) {
-      if (item) {
-        const m = getClassMap(item);
-        for (const k in m) result[k] = m[k];
-      }
-    }
+    for (const item of classes) if (item) Object.assign(result, getClassMap(item));
     return result;
   }
   if (isObject(classes)) return classes as Record<string, unknown>;
@@ -894,12 +823,7 @@ function getStyleMap(styles: unknown): Record<string, { value: unknown; priority
   }
   if (isArray(styles)) {
     const result: Record<string, { value: unknown; priority?: string }> = {};
-    for (const item of styles) {
-      if (item) {
-        const m = getStyleMap(item);
-        for (const k in m) result[k] = m[k];
-      }
-    }
+    for (const item of styles) if (item) Object.assign(result, getStyleMap(item));
     return result;
   }
   if (isObject(styles)) {
@@ -964,7 +888,7 @@ function formatValue(name: string, value: any): string {
   }
 }
 
-function applyFor(element: any, value: unknown) {
+function applyFor(element: any, _name: string, value: unknown) {
   if (value == null) {
     element.removeAttribute("for");
   } else {

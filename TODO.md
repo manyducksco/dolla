@@ -6,12 +6,16 @@ These came up while fixing the bugs found in the October 2026 audit (branch `fix
 
 ### Bundle size budget
 
-`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **10,084 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). The check passed before the audit fixes. The increase is correctness code in paths the minimal app uses: signals, ElementNode, DynamicNode, FragmentNode, the scheduler and `isFunction`.
+`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **9,895 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). `main` measures 9,582 B. The increase is correctness code in paths the minimal app uses: signals, ElementNode, the scheduler, `isFunction` and the markup utils.
 
-- **A.** Raise the budget to cover the fixes (earlier feature commits have done this).
-- **B.** Look for bytes to cut in the affected modules first, then raise the budget by whatever remains.
+Code trimming without behavior or speed changes has been done: from 10,084 B to 9,895 B gzipped, and from 28,907 B to 27,363 B minified. What remains are changes of a few bytes each.
 
-Recommendation: B, with a time limit. Most of the new code is unavoidable.
+Property mangling doesn't work. Both `vite.config.ts` and the check pass `oxc: { mangleProps: /^_/ }`, but Vite 8's oxc minifier has no property mangling, so the option is ignored and the published `dist` keeps names like `_depsTail` and `_flags`. Renaming those properties in the output would save about 110 B, which still isn't enough on its own.
+
+- **A.** Raise the budget to cover the fixes (earlier feature commits have done this). About 9.7 KB would fit.
+- **B.** Get property mangling working (for example with terser's `mangle.properties`, which needs a new devDependency) for both `dist` and the check, then raise the budget by the remaining ~160 B.
+
+Recommendation: B if smaller published output matters, otherwise A.
 
 ## Signals and core
 

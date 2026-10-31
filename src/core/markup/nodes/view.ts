@@ -47,17 +47,8 @@ export class ViewNode<P> extends MarkupNode {
 
     if (!wasMounted) {
       pushContext(this.context);
-      const viewContent = withoutOwner(() =>
-        // The view's context owns its effects, not a surrounding effect.
-        peek(() => this.#view.call(this.context, this.#props, this.context)),
-      );
+      this.#node = this.#render();
       popContext();
-
-      if (viewContent != null && viewContent !== false) {
-        this.#node = render(viewContent, this.context);
-      } else {
-        this.#node = new DOMNode(this.context, createTextNode(""));
-      }
 
       registerViewInstance(this.#view, this);
     }
@@ -65,6 +56,17 @@ export class ViewNode<P> extends MarkupNode {
     this.#node!.mount(parent, after);
 
     if (!wasMounted) mountContext(this.context);
+  }
+
+  /** Runs the view function and returns a node for what it rendered. */
+  #render(): MarkupNode {
+    const content = withoutOwner(() =>
+      // The view's context owns its effects, not a surrounding effect.
+      peek(() => this.#view.call(this.context, this.#props, this.context)),
+    );
+    return content != null && content !== false
+      ? render(content, this.context)
+      : new DOMNode(this.context, createTextNode(""));
   }
 
   unmount(skipDOM = false) {
@@ -115,14 +117,7 @@ export class ViewNode<P> extends MarkupNode {
     try {
       this.context[REPLACING] = true;
       pushContext(this.context);
-      const viewContent = withoutOwner(() =>
-        // The view's context owns its effects, not a surrounding effect.
-        peek(() => this.#view.call(this.context, this.#props, this.context)),
-      );
-      this.#node =
-        viewContent != null && viewContent !== false
-          ? render(viewContent, this.context)
-          : new DOMNode(this.context, createTextNode(""));
+      this.#node = this.#render();
 
       registerViewInstance(newView, this);
 

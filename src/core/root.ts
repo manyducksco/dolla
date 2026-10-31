@@ -70,6 +70,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   assert(element, "Element cannot be null.");
 
   const context = createContext<GenericState>(null, { name: "dolla:root" });
+  const unmountInfo = { phase: "unmount", context } as const;
 
   const plugins: DollaPlugin[] = [];
 
@@ -112,7 +113,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     if (existing && existing !== self) {
       // Unmount the whole root, not just its node, so its context (and any
       // plugin cleanup listeners) is cleaned up too.
-      runSafely(() => existing.unmount(), { phase: "unmount", context });
+      runSafely(() => existing.unmount(), unmountInfo);
       if (element!.firstChild != null) element!.replaceChildren();
     }
 
@@ -134,7 +135,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
     rootNode = null;
 
     if (node) {
-      runSafely(() => node.unmount(false), { phase: "unmount", context });
+      runSafely(() => node.unmount(false), unmountInfo);
     }
 
     cleanupContext(context);
@@ -144,7 +145,7 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
         () => {
           delete (element as any)[ROOT_MARKER];
         },
-        { phase: "unmount", context },
+        unmountInfo,
       );
     }
   }
