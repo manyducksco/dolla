@@ -261,6 +261,22 @@ describe("HMR-stable store identity", () => {
     expect(getStore(ctxB, CounterStore).get()).toBe(0);
   });
 
+  test("hasStore and hasOwnStore find a store through a re-created function", () => {
+    const parent = createContext(null);
+    addStore(parent, AuthStore);
+    const child = createContext(parent);
+
+    function makeAuthStore() {
+      return function AuthStore(this: Context) {
+        return { id: "auth", value: 999 };
+      };
+    }
+    // Simulate HMR: a fresh function instance that has never been passed in.
+    expect(hasStore(child, makeAuthStore())).toBe(true);
+    expect(hasOwnStore(parent, makeAuthStore())).toBe(true);
+    expect(hasOwnStore(child, makeAuthStore())).toBe(false);
+  });
+
   test("continues cleanup after a throwing listener", () => {
     const errors: SignalError[] = [];
     setErrorHandler((error) => errors.push(error));
