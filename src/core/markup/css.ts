@@ -99,11 +99,21 @@ function isReactiveFunction(value: any): value is Getter<InterpolationValue> {
   return isFunction(value) && !isStyledTemplate(value);
 }
 
-function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): string {
-  let statics = "";
+// Marks the start of each interpolation slot in a template key. Bindings are
+// read from `interpolations` by index, so the key must encode every slot's
+// position and kind; otherwise templates with different slot layouts (e.g.
+// `margin: ${a}` and `margin: ${a} ${b}`) could share a cached shape.
+const SLOT = "\u0000";
+
+/**
+ * Builds a string that uniquely identifies the CSS a template produces and the
+ * layout of its interpolation slots. Equal keys can safely share a shape.
+ */
+function templateKey(strings: TemplateStringsArray, interpolations: any[]): string {
+  let key = "";
 
   strings.forEach((str, i) => {
-    statics += str;
+    key += str;
 
     if (i < interpolations.length) {
       let expr = interpolations[i];
@@ -112,32 +122,55 @@ function hashTemplate(strings: TemplateStringsArray, interpolations: any[]): str
       if (className != null) {
         // Nested CSSTemplate: include its className so equivalent templates
         // dedup (e.g. `${base} { ... }` vs `${baseCopy} { ... }`).
-        statics += `.${className}`;
+        key += `${SLOT}.${className}`;
       } else if (typeof expr === "function") {
         // Reactive getter: the function reference is not part of the rendered
-        // CSS (it becomes a `var(--…)` binding).  Skipping it preserves dedup
-        // across `css\`color: ${hue};\`` defined in two places.
+        // CSS (it becomes a `var(--…)` binding), so only its slot is recorded.
+        // This preserves dedup across `css\`color: ${hue};\`` defined in two places.
+        key += `${SLOT}f`;
       } else if (isPropertyConfig(expr)) {
         // PropertyConfig: the static-defining fields are `syntax` and
         // `initialValue` (the `value` getter becomes a CSS var binding).
-        statics += `~${expr.syntax}|${String(expr.initialValue ?? "")}`;
+        key += `${SLOT}~${expr.syntax}|${String(expr.initialValue ?? "")}`;
       } else {
         // Static primitive (string/number/null/undefined) or other value:
         // include its stringification so `css\`font-size: ${size};\`` and
         // `css\`font-size: 14px;\`` produce distinct classNames when the
         // static parts differ only in interpolation values.
-        statics += String(expr);
+        key += `${SLOT}s${String(expr)}`;
       }
     }
   });
 
-  statics = statics.trim();
+  return key.trim();
+}
+
+const classNamesByKey = new Map<string, string>();
+const claimedClassNames = new Set<string>();
+
+/**
+ * Returns a stable className for a template key. The short hash can collide
+ * for different keys, so a colliding key gets a numbered suffix instead of
+ * reusing another template's className.
+ */
+function classNameForKey(key: string): string {
+  let className = classNamesByKey.get(key);
+  if (className !== undefined) return className;
 
   let hash = 0;
-  for (let i = 0; i < statics.length; i++) {
-    hash = (Math.imul(31, hash) + statics.charCodeAt(i)) | 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (Math.imul(31, hash) + key.charCodeAt(i)) | 0;
   }
-  return Math.abs(hash).toString(36);
+
+  const base = `css-${Math.abs(hash).toString(36)}`;
+  className = base;
+  for (let n = 1; claimedClassNames.has(className); n++) {
+    className = `${base}-${n}`;
+  }
+
+  claimedClassNames.add(className);
+  classNamesByKey.set(key, className);
+  return className;
 }
 
 function isPropertyConfig(value: any): boolean {
@@ -451,7 +484,7 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
   if (shape) {
     className = shape.className;
   } else {
-    className = `css-${hashTemplate(strings, interpolations)}`;
+    className = classNameForKey(templateKey(strings, interpolations));
     isStatic = interpolations.every((expr) => !isReactiveFunction(expr) && !isPropertyConfig(expr));
 
     if (isStatic) {

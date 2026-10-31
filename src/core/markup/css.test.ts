@@ -452,4 +452,74 @@ describe("hash collision prevention", () => {
     // Different static content (function skipped vs literal "red").
     expect(tplFn.className).not.toBe(tplStatic.className);
   });
+
+  test("templates differing only in the number of reactive getters get distinct classNames", () => {
+    const a = () => "1px";
+    const b = () => "2px";
+    const one = css`margin: ${a}`;
+    const two = css`margin: ${a} ${b}`;
+    expect(one.className).not.toBe(two.className);
+  });
+
+  test("templates differing only in reactive getter position get distinct classNames", () => {
+    const a = () => "1px";
+    const before = css`margin: ${a} 0`;
+    const after = css`margin: 0 ${a}`;
+    expect(before.className).not.toBe(after.className);
+  });
+
+  test("a static interpolation does not shift the getter index of an equivalent literal template", () => {
+    const width = () => "10px";
+    const interpolated = css`color: ${"red"}; width: ${width};`;
+    const literal = css`color: red; width: ${width};`;
+
+    for (const tpl of [literal, interpolated]) {
+      const ctx = createContext(null);
+      const el = document.createElement("div");
+      expect(() => {
+        tpl.attach(ctx, el);
+        mountContext(ctx);
+      }).not.toThrow();
+      const varNames = Array.from(el.style).filter((name) => name.startsWith(`--${tpl.className}`));
+      expect(varNames.map((name) => el.style.getPropertyValue(name))).toEqual(["10px"]);
+      cleanupContext(ctx);
+    }
+  });
+
+  test.each([
+    ["the shorter template first", false],
+    ["the longer template first", true],
+  ])("each template binds its own getters when built with %s", (_label, longFirst) => {
+    const [a] = createAtom("1px");
+    const [b] = createAtom("2px");
+    const build = {
+      one: () => css`padding: ${() => a()}`,
+      two: () => css`padding: ${() => a()} ${() => b()}`,
+    };
+    const two = longFirst ? build.two() : undefined;
+    const one = build.one();
+    const tplTwo = two ?? build.two();
+
+    const values = (tpl: typeof one) => {
+      const ctx = createContext(null);
+      const el = document.createElement("div");
+      tpl.attach(ctx, el);
+      mountContext(ctx);
+      const result = Array.from(el.style)
+        .filter((name) => name.startsWith(`--${tpl.className}`))
+        .map((name) => el.style.getPropertyValue(name));
+      cleanupContext(ctx);
+      return result;
+    };
+
+    expect(values(one)).toEqual(["1px"]);
+    expect(values(tplTwo)).toEqual(["1px", "2px"]);
+  });
+
+  test("different static templates whose source strings hash identically get distinct classNames", () => {
+    // "Aa" and "BB" have the same 31-multiplier string hash.
+    const tplA = css`content: "Aa";`;
+    const tplB = css`content: "BB";`;
+    expect(tplA.className).not.toBe(tplB.className);
+  });
 });
