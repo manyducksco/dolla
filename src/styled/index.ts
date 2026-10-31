@@ -72,27 +72,6 @@ function composeClass(existing: unknown, tpl: CSSTemplate): unknown {
   return [tpl, existing];
 }
 
-/**
- * Builds the final props object in a single pass, dropping `class`,
- * `className`, and `as` before applying the styled class and optional tag
- * override. One allocation instead of a rest object plus a spread matters for
- * large lists of styled elements.
- */
-function buildProps(props: Record<string, any> | null | undefined, classes: unknown, as?: string): Record<string, any> {
-  const next: Record<string, any> = {};
-
-  if (props) {
-    for (const key in props) {
-      if (key === "class" || key === "className" || key === "as") continue;
-      next[key] = props[key];
-    }
-  }
-
-  if (as != null) next.as = as;
-  next.class = classes;
-  return next;
-}
-
 /*============================*\
 ||           Builder          ||
 \*============================*/
@@ -112,18 +91,18 @@ function createBuilder(tagOrView: string | View<any>, boundName?: string, boundA
     const template = styledTemplate(strings, interpolations);
 
     const StyledView = function StyledView(props: any, context: Context) {
-      const rawProps = props ?? {};
-      const effectiveAs = rawProps.as ?? boundAs;
-      const classes = composeClass(rawProps.class ?? rawProps.className, template);
+      const { as, class: cls, className, ...rest } = props ?? {};
+      const effectiveAs = as ?? boundAs;
+      rest.class = composeClass(cls ?? className, template);
 
       if (typeof tagOrView === "string") {
         // Intrinsic base: pick the tag locally; don't forward `as` to the DOM.
-        const target = effectiveAs ?? tagOrView;
-        return new ElementNode(context, target, buildProps(rawProps, classes));
+        return new ElementNode(context, effectiveAs ?? tagOrView, rest);
       }
 
       // Wrapping a View: forward `as` so the wrapped view can pick its tag.
-      return new ViewNode(context, tagOrView, buildProps(rawProps, classes, effectiveAs));
+      if (effectiveAs != null) rest.as = effectiveAs;
+      return new ViewNode(context, tagOrView, rest);
     } as unknown as StyledView<any>;
 
     Object.defineProperty(StyledView, "name", {
