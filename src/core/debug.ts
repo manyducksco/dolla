@@ -20,7 +20,7 @@ export const setLogFilter = (filter: (name: string) => boolean) => {
 const cnsl: any = globalThis.console || {};
 
 export function getDebug(c: Context, ...tags: [string, any][]) {
-  return createDebug(() => c.name, ...tags);
+  return createDebug(() => c.name ?? "", ...tags);
 }
 
 export function createDebug(name: MaybeGetter<string>, ...tags: [string, any][]) {
