@@ -12,7 +12,12 @@ export type CSSTemplate = {
   [IS_CSS_TEMPLATE]: true;
   className: string;
 
-  attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): void;
+  /**
+   * Applies the template's class to `element` and binds its reactive values.
+   * Bindings are released when `c` is cleaned up, or earlier by calling the
+   * returned function (used when the template is removed from a live element).
+   */
+  attach(c: Context, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>): () => void;
   when(condition: MaybeGetter<any>): ConditionalTemplate;
 
   toString(): string;

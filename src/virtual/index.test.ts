@@ -1,5 +1,9 @@
-import { describe, expect, test } from "vitest";
-import { createOffsetEngine } from "./index.js";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { createRoot } from "../core/root.js";
+import { flushPendingUpdates } from "../core/markup/scheduler.js";
+import { createMarkup } from "../core/markup/utils.js";
+import { createAtom, type Getter } from "../core/signals.js";
+import { createOffsetEngine, createVirtualList, type VirtualListOptions } from "./index.js";
 
 describe("createOffsetEngine", () => {
   describe("getOffset", () => {
@@ -170,6 +174,17 @@ describe("createOffsetEngine", () => {
       const engine = createOffsetEngine(50);
       expect(engine.updateHeights([{ index: 0, height: 0 }], 50)).toBe(false);
     });
+
+    test("records a height equal to the current average", () => {
+      const engine = createOffsetEngine(50);
+      engine.updateHeights([{ index: 0, height: 50 }], 50);
+      expect(engine.getItemHeight(0)).toBe(50);
+
+      // Item 0 counts toward the average: (50 + 150) / 2 = 100.
+      engine.updateHeights([{ index: 1, height: 150 }], 50);
+      expect(engine.averageHeight()).toBe(100);
+      expect(engine.getTotalHeight(4)).toBe(400);
+    });
   });
 
   describe("getItemHeight", () => {
@@ -194,5 +209,275 @@ describe("createOffsetEngine", () => {
       // After clearing, getOffset returns to avg-based calculation
       expect(engine.getOffset(1, 50)).toBe(50);
     });
+
+    test("resets the measured totals used for the average and total height", () => {
+      const engine = createOffsetEngine(50);
+      engine.updateHeights(
+        [
+          { index: 0, height: 200 },
+          { index: 1, height: 150 },
+        ],
+        50,
+      );
+      engine.clearCache();
+      expect(engine.averageHeight()).toBe(50);
+      expect(engine.getTotalHeight(10)).toBe(500);
+    });
+  });
+});
+
+/*============================*\
+||     createVirtualList      ||
+\*============================*/
+
+/**
+ * happy-dom has no layout and its ResizeObserver never fires. This mock
+ * follows the real delivery rules: `observe()` always queues an initial
+ * observation, and later deliveries only include elements whose size changed
+ * since they were last reported. Sizes come from `heightOf`.
+ */
+class MockResizeObserver {
+  static instances: MockResizeObserver[] = [];
+
+  callback: ResizeObserverCallback;
+  observed = new Set<Element>();
+  lastReported = new Map<Element, number>();
+  disconnected = false;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    MockResizeObserver.instances.push(this);
+  }
+
+  observe(el: Element) {
+    this.observed.add(el);
+    this.lastReported.delete(el);
+  }
+
+  unobserve(el: Element) {
+    this.observed.delete(el);
+    this.lastReported.delete(el);
+  }
+
+  disconnect() {
+    this.observed.clear();
+    this.lastReported.clear();
+    this.disconnected = true;
+  }
+
+  deliver(heightOf: (el: HTMLElement) => number) {
+    const entries: any[] = [];
+    for (const el of this.observed) {
+      const height = heightOf(el as HTMLElement);
+      if (this.lastReported.get(el) === height) continue;
+      this.lastReported.set(el, height);
+      entries.push({ target: el, borderBoxSize: [{ blockSize: height, inlineSize: 0 }] });
+    }
+    if (entries.length > 0) this.callback(entries, this as any);
+  }
+
+  static deliverAll(heightOf: (el: HTMLElement) => number) {
+    for (const instance of MockResizeObserver.instances) {
+      if (!instance.disconnected) instance.deliver(heightOf);
+    }
+  }
+}
+
+describe("createVirtualList", () => {
+  type Item = { id: number };
+
+  const roots: { unmount(): void }[] = [];
+
+  beforeEach(() => {
+    MockResizeObserver.instances = [];
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) root.unmount();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  });
+
+  const range = (from: number, to: number): Item[] => {
+    const out: Item[] = [];
+    for (let i = from; i < to; i++) out.push({ id: i });
+    return out;
+  };
+
+  /** Heights by item id; hidden pool slots measure 0 like `display: none`. */
+  function heightsBy(fn: (id: number) => number, items: Getter<Item[]>) {
+    return (el: HTMLElement) => {
+      if (el.style.display === "none") return 0;
+      const index = Number(el.dataset.index);
+      const item = items()[index];
+      return item ? fn(item.id) : 0;
+    };
+  }
+
+  async function setup(options: Partial<VirtualListOptions<Item>> & { items: Getter<Item[]> }) {
+    const [View, api] = createVirtualList<Item>({
+      keyFn: (item) => item.id,
+      render: (item) => createMarkup("span", { children: () => String(item()?.id) }),
+      ...options,
+    });
+    const target = document.createElement("div");
+    document.body.append(target);
+    const root = createRoot(target);
+    roots.push(root);
+    await root.mount(View);
+    flushPendingUpdates();
+
+    const viewport = target.querySelector("div") as HTMLElement;
+    const content = viewport.lastElementChild as HTMLElement;
+    const slots = Array.from(content.children) as HTMLElement[];
+
+    const scrollTo = (top: number) => {
+      viewport.scrollTop = top;
+      viewport.dispatchEvent(new Event("scroll"));
+      flushPendingUpdates();
+    };
+
+    return { View, api, root, target, viewport, content, slots, scrollTo };
+  }
+
+  const slotFor = (slots: HTMLElement[], index: number) =>
+    slots.find((el) => el.dataset.index === String(index) && el.style.display !== "none");
+
+  test("forgets heights of removed items when the list shrinks", async () => {
+    const [items, setItems] = createAtom(range(0, 10));
+    const { content } = await setup({ items, poolSize: 20 });
+
+    MockResizeObserver.deliverAll(heightsBy((id) => (id < 3 ? 10 : 100), items));
+    flushPendingUpdates();
+    expect(content.style.height).toBe("730px");
+
+    setItems(range(0, 3));
+    flushPendingUpdates();
+    expect(content.style.height).toBe("30px");
+  });
+
+  test("measures a recycled pool slot even when its height is unchanged", async () => {
+    // Slot 0 shows items 0 then 8 (both 40px); slot 1 shows items 1 then 7
+    // (both 120px). The ResizeObserver never reports a size change for them.
+    const heights: Record<number, number> = { 0: 40, 1: 120, 7: 120, 8: 40 };
+    const [items] = createAtom(range(0, 20));
+    const { slots, scrollTo } = await setup({ items, poolSize: 2 });
+    const heightOf = heightsBy((id) => heights[id] ?? 100, items);
+
+    MockResizeObserver.deliverAll(heightOf);
+    flushPendingUpdates();
+
+    // Average is 80 after measuring items 0 and 1, so this renders items 7-8.
+    scrollTo(1000);
+    expect(slotFor(slots, 7)).toBeDefined();
+    expect(slotFor(slots, 8)).toBeDefined();
+
+    MockResizeObserver.deliverAll(heightOf);
+    flushPendingUpdates();
+
+    // With item 7 measured at 120px: 40 + 120 + 5 * 80 + 120 = 680.
+    expect(slotFor(slots, 8)!.style.transform).toBe("translateY(680px)");
+  });
+
+  test("disconnects its ResizeObserver on unmount", async () => {
+    const [items] = createAtom(range(0, 5));
+    const { root } = await setup({ items });
+    expect(MockResizeObserver.instances.length).toBeGreaterThan(0);
+
+    root.unmount();
+    for (const instance of MockResizeObserver.instances) {
+      expect(instance.disconnected).toBe(true);
+    }
+  });
+
+  test("leaves a single live ResizeObserver after a remount", async () => {
+    const [items] = createAtom(range(0, 5));
+    const { View, root } = await setup({ items, poolSize: 5 });
+    root.unmount();
+
+    const target = document.createElement("div");
+    document.body.append(target);
+    const second = createRoot(target);
+    roots.push(second);
+    await second.mount(View);
+
+    const live = MockResizeObserver.instances.filter((o) => !o.disconnected);
+    expect(live.length).toBe(1);
+  });
+
+  test("removes its scroll listeners on unmount", async () => {
+    const listeners = new Map<EventTarget, Set<string>>();
+    const proto = HTMLElement.prototype;
+    const originalAdd = proto.addEventListener;
+    const originalRemove = proto.removeEventListener;
+    const keyOf = (type: string, fn: unknown) => `${type}:${String(fn)}`;
+    const fnIds = new Map<unknown, number>();
+    const idOf = (fn: unknown) => {
+      if (!fnIds.has(fn)) fnIds.set(fn, fnIds.size);
+      return fnIds.get(fn);
+    };
+
+    proto.addEventListener = function (this: EventTarget, type: string, fn: any, options?: any) {
+      if (!listeners.has(this)) listeners.set(this, new Set());
+      listeners.get(this)!.add(keyOf(type, idOf(fn)));
+      return originalAdd.call(this, type, fn, options);
+    };
+    proto.removeEventListener = function (this: EventTarget, type: string, fn: any, options?: any) {
+      listeners.get(this)?.delete(keyOf(type, idOf(fn)));
+      return originalRemove.call(this, type, fn, options);
+    };
+
+    try {
+      const [items] = createAtom(range(0, 5));
+      const { root, viewport } = await setup({ items });
+      const scrollListeners = () => [...(listeners.get(viewport) ?? [])].filter((key) => key.startsWith("scroll"));
+      expect(scrollListeners().length).toBeGreaterThan(0);
+
+      root.unmount();
+      expect(scrollListeners()).toEqual([]);
+    } finally {
+      proto.addEventListener = originalAdd;
+      proto.removeEventListener = originalRemove;
+    }
+  });
+
+  test("cancels pending frames and enter-animation timers on unmount", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
+    const [items, setItems] = createAtom(range(0, 3));
+    const { root } = await setup({ items, enterAnimationMs: 300, bottomUp: true });
+
+    setItems(range(0, 5));
+    flushPendingUpdates();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    root.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test("detects a prepend when the previous first key is 0", async () => {
+    const [items, setItems] = createAtom(range(0, 3));
+    const { viewport, scrollTo } = await setup({ items });
+    scrollTo(100);
+    expect(viewport.scrollTop).toBe(100);
+
+    // Two items prepended in front of key 0: keep the same content in view.
+    setItems(range(-2, 3));
+    flushPendingUpdates();
+    expect(viewport.scrollTop).toBe(200);
+  });
+
+  test("keeps heights with their items when the list is reordered", async () => {
+    const [items, setItems] = createAtom(range(0, 4));
+    const { slots } = await setup({ items, poolSize: 10 });
+
+    MockResizeObserver.deliverAll(heightsBy((id) => (id === 0 ? 200 : 20), items));
+    flushPendingUpdates();
+
+    // Move item 0 (200px) to the end: item 3 now sits at 3 * 20px.
+    setItems([...range(1, 4), { id: 0 }]);
+    flushPendingUpdates();
+    expect(slotFor(slots, 3)!.style.transform).toBe("translateY(60px)");
   });
 });

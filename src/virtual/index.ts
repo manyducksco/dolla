@@ -1,4 +1,4 @@
-import { onEffect } from "../core/context.js";
+import { onCleanup, onEffect } from "../core/context.js";
 import { showIf } from "../core/markup/helpers.js";
 import { createMarkup } from "../core/markup/utils.js";
 import { batch, compose, createAtom, peek, type Getter } from "../core/signals.js";
@@ -139,6 +139,31 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   const [stickyPushOffset, setStickyPushOffset] = createAtom(0);
   let phantomHeight = 0;
 
+  // Set while the view is mounted: the item ResizeObserver and the pool slot
+  // elements, in pool order.
+  let itemObserver: ResizeObserver | null = null;
+  let poolElements: Element[] = [];
+
+  // Measured heights by item key; the engine's index-based measurements are
+  // rebuilt from this whenever the list changes.
+  const heightsByKey = new Map<string | number, number>();
+
+  function remapHeights(items: T[]) {
+    const entries: { index: number; height: number }[] = [];
+    const liveKeys = new Set<string | number>();
+    for (let i = 0; i < items.length; i++) {
+      const key = props.keyFn(items[i]);
+      liveKeys.add(key);
+      const height = heightsByKey.get(key);
+      if (height !== undefined) entries.push({ index: i, height });
+    }
+    for (const key of heightsByKey.keys()) {
+      if (!liveKeys.has(key)) heightsByKey.delete(key);
+    }
+    engine.clearCache();
+    engine.updateHeights(entries, peek(engine.averageHeight));
+  }
+
   const stickyIndices = compose(() => {
     if (!props.isSticky) return [];
     return props
@@ -170,12 +195,15 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       if (peek(stickyPushOffset) !== push) setStickyPushOffset(push);
     }
 
+    const reused: number[] = [];
+
     batch(() => {
       for (let i = 0; i < POOL_SIZE; i++) pool[i].setActive(false);
       const endIndex = Math.min(total, startIndex + POOL_SIZE);
       for (let i = startIndex; i < endIndex; i++) {
         const slot = pool[i % POOL_SIZE];
         const currentData = data[i];
+        if (peek(slot.index) !== i || peek(slot.item) !== currentData) reused.push(i % POOL_SIZE);
         slot.setItem(currentData);
         slot.setIndex(i);
         slot.setOffset(engine.getOffset(i, currentAvg));
@@ -183,11 +211,35 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         slot.setEntering(enteringItems.has(currentData));
       }
     });
+
+    // A ResizeObserver only reports size *changes*, so a slot that now shows
+    // a different item at the same height would never be measured. Observing
+    // it again queues a fresh initial observation.
+    if (itemObserver) {
+      for (const slotIndex of reused) {
+        const el = poolElements[slotIndex];
+        if (!el) continue;
+        itemObserver.unobserve(el);
+        itemObserver.observe(el);
+      }
+    }
   }
 
   const VirtualListView: View = (_, c) => {
     let hasReachedStart = false;
     let hasReachedEnd = false;
+
+    // Pending frames and timers, cancelled on unmount.
+    const frames = new Set<number>();
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+
+    function nextFrame(fn: () => void) {
+      const id = requestAnimationFrame(() => {
+        frames.delete(id);
+        fn();
+      });
+      frames.add(id);
+    }
 
     function checkBoundaries() {
       if (!viewport) return;
@@ -219,11 +271,14 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       const anchorIndex = engine.findIndexAtScroll(currentScroll, totalItems, oldAvg);
       const oldAnchorOffset = engine.getOffset(anchorIndex, oldAvg);
 
+      const data = peek(props.items);
       const parsedEntries = [];
       for (let i = 0; i < entries.length; i++) {
         const dataIndex = Number((entries[i].target as HTMLElement).dataset.index);
-        if (!isNaN(dataIndex)) {
-          parsedEntries.push({ index: dataIndex, height: Math.round(entries[i].borderBoxSize[0].blockSize) });
+        if (!isNaN(dataIndex) && dataIndex >= 0 && dataIndex < data.length) {
+          const height = Math.round(entries[i].borderBoxSize[0].blockSize);
+          parsedEntries.push({ index: dataIndex, height });
+          if (height > 0) heightsByKey.set(props.keyFn(data[dataIndex]), height);
         }
       }
 
@@ -232,7 +287,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         const shift = engine.getOffset(anchorIndex, peek(engine.averageHeight)) - oldAnchorOffset;
 
         if (props.bottomUp && effectivelyAtBottom && viewport) {
-          requestAnimationFrame(() => {
+          nextFrame(() => {
             if (!viewport) return;
             if (isAutoGliding) viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
             else {
@@ -252,6 +307,16 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       }
     });
 
+    onCleanup(c, () => {
+      observer.disconnect();
+      for (const id of frames) cancelAnimationFrame(id);
+      frames.clear();
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+      // Their timers were cancelled, so nothing would clear these anymore.
+      enteringItems.clear();
+    });
+
     let previousCount = peek(props.items).length;
     let previousFirstKey: string | number | null = previousCount > 0 ? props.keyFn(peek(props.items)[0]) : null;
 
@@ -262,16 +327,20 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
       if (
         currentCount > previousCount &&
-        previousFirstKey &&
+        previousFirstKey !== null &&
         props.keyFn(currentItems[currentCount - previousCount]) === previousFirstKey
       ) {
         if (viewport) {
           viewport.scrollTop += (currentCount - previousCount) * peek(engine.averageHeight);
           setScrollTop(viewport.scrollTop);
         }
-        engine.clearCache();
         hasReachedStart = false; // Unlock prepends
       }
+
+      // Measured heights belong to items, not positions. Re-key them to the
+      // new indices so prepends, removals and reorders don't leave stale
+      // heights (and totals) behind.
+      remapHeights(currentItems);
 
       if (currentCount > previousCount && currentFirstKey === previousFirstKey) {
         hasReachedEnd = false; // Unlock appends
@@ -279,16 +348,18 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           for (let i = previousCount; i < currentCount; i++) {
             const newItem = currentItems[i];
             enteringItems.add(newItem);
-            setTimeout(() => {
+            const timer = setTimeout(() => {
+              timers.delete(timer);
               enteringItems.delete(newItem);
               updateScrollSlice();
             }, props.enterAnimationMs);
+            timers.add(timer);
           }
         }
 
         if (props.bottomUp && (peek(isAtBottom) || isAutoGliding) && viewport) {
           isSmoothScrolling = isAutoGliding = true;
-          requestAnimationFrame(() => viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" }));
+          nextFrame(() => viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" }));
         }
       }
 
@@ -302,7 +373,9 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
     return createMarkup("div", {
       ref: (el: HTMLElement) => {
         viewport = el;
-        Array.from(el.children[el.children.length - 1].children).forEach((child) => observer.observe(child));
+        itemObserver = observer;
+        poolElements = Array.from(el.children[el.children.length - 1].children);
+        poolElements.forEach((child) => observer.observe(child));
 
         if (props.bottomUp) {
           el.scrollTop = el.scrollHeight;
@@ -317,33 +390,31 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           commandQueue.length = 0;
         }
 
-        el.addEventListener("scrollend", () => {
+        const onScrollEnd = () => {
           isSmoothScrolling = isAutoGliding = false;
-        });
+        };
+        el.addEventListener("scrollend", onScrollEnd);
 
         let lastSt = el.scrollTop;
-        el.addEventListener(
-          "scroll",
-          () => {
-            const st = el.scrollTop;
-            setScrollTop(st);
-            const distToBottom = el.scrollHeight - st - el.clientHeight;
-            const isScrollingUp = st < lastSt;
+        const onScroll = () => {
+          const st = el.scrollTop;
+          setScrollTop(st);
+          const distToBottom = el.scrollHeight - st - el.clientHeight;
+          const isScrollingUp = st < lastSt;
 
-            if (!isSmoothScrolling) {
-              if (isScrollingUp && distToBottom > 15) setIsAtBottom(false);
-              else if (!isScrollingUp && distToBottom <= 100) setIsAtBottom(true);
-            }
-            lastSt = st;
+          if (!isSmoothScrolling) {
+            if (isScrollingUp && distToBottom > 15) setIsAtBottom(false);
+            else if (!isScrollingUp && distToBottom <= 100) setIsAtBottom(true);
+          }
+          lastSt = st;
 
-            checkBoundaries();
-            updateScrollSlice();
-          },
-          { passive: true },
-        );
+          checkBoundaries();
+          updateScrollSlice();
+        };
+        el.addEventListener("scroll", onScroll, { passive: true });
 
         // Bootstrap on next frame to ensure clientHeight is populated
-        requestAnimationFrame(() => {
+        nextFrame(() => {
           if (viewport) {
             checkBoundaries();
             updateScrollSlice();
@@ -351,7 +422,11 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         });
 
         return () => {
+          el.removeEventListener("scrollend", onScrollEnd);
+          el.removeEventListener("scroll", onScroll);
           viewport = null;
+          if (itemObserver === observer) itemObserver = null;
+          poolElements = [];
         };
       },
       style: {
@@ -479,17 +554,19 @@ export function createOffsetEngine(defaultAssumption: number) {
       const { index, height } = entries[i];
       if (height === 0) continue;
 
-      const oldHeight = measuredHeights.get(index) ?? avg;
-      if (Math.abs(oldHeight - height) > 0) {
-        if (!measuredHeights.has(index)) {
-          currentCount++;
-          currentTotal += height;
-        } else {
-          currentTotal += height - oldHeight;
-        }
-        measuredHeights.set(index, height);
-        needsRecalc = true;
+      const oldHeight = measuredHeights.get(index);
+      if (oldHeight === undefined) {
+        // Record every first measurement, even one that matches the average,
+        // so it counts toward the average from now on.
+        currentCount++;
+        currentTotal += height;
+      } else if (oldHeight !== height) {
+        currentTotal += height - oldHeight;
+      } else {
+        continue;
       }
+      measuredHeights.set(index, height);
+      needsRecalc = true;
     }
 
     if (needsRecalc) {
@@ -507,6 +584,10 @@ export function createOffsetEngine(defaultAssumption: number) {
     offsetCache.length = 0;
     lastCalculatedIndex = -1;
     measuredHeights.clear();
+    batch(() => {
+      setMeasuredCount(0);
+      setTotalMeasuredHeight(0);
+    });
   }
 
   function getItemHeight(index: number) {

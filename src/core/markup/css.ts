@@ -1,7 +1,8 @@
 import { isFunction } from "../../utils";
 import type { MaybeGetter } from "../../types.js";
-import { onCleanup, onEffect, type Context } from "../context";
-import type { Getter } from "../signals";
+import { isMounted, onCleanup, onMount, REPLACING, type Context } from "../context";
+import { createEffect, type Getter } from "../signals";
+import { popComponentName, pushComponentName } from "../signal-debug.js";
 import {
   IS_CONDITIONAL_TEMPLATE,
   IS_CSS_TEMPLATE,
@@ -177,17 +178,57 @@ function isPropertyConfig(value: any): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "syntax" in value && "value" in value;
 }
 
-function attachClass(c: Context, className: string, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>) {
+const noop = () => {};
+
+/**
+ * Like `onEffect`, but returns a function that stops the effect early (before
+ * the context is cleaned up). Stopping is idempotent.
+ */
+function disposableEffect(c: Context, fn: () => void): () => void {
+  let stop: (() => void) | undefined;
+  let stopped = false;
+
+  const start = () => {
+    if (stopped) return;
+    pushComponentName(c.name);
+    stop = createEffect(fn, { context: c });
+    popComponentName();
+  };
+
+  const dispose = () => {
+    if (stopped) return;
+    stopped = true;
+    stop?.();
+    stop = undefined;
+  };
+
+  if (isMounted(c) || c[REPLACING]) start();
+  else onMount(c, start);
+  onCleanup(c, dispose);
+
+  return dispose;
+}
+
+/**
+ * Adds `className` to `element` (reactively when `condition` is a getter).
+ * Returns `null` when the class is not applied at all, otherwise a function
+ * that stops any condition tracking.
+ */
+function attachClass(
+  c: Context,
+  className: string,
+  element: HTMLElement | SVGElement,
+  condition?: MaybeGetter<any>,
+): (() => void) | null {
   if (isFunction(condition)) {
-    onEffect(c, () => {
+    return disposableEffect(c, () => {
       element.classList.toggle(className, Boolean(condition()));
     });
-    return true;
   } else if (Boolean(condition)) {
     element.classList.add(className);
-    return true;
+    return noop;
   } else {
-    return false;
+    return null;
   }
 }
 
@@ -200,67 +241,116 @@ const nonNestableAtRules = new Set([
   "font-feature-values",
 ]);
 
+// Conditional group rules that may contain non-nestable at-rules. Those keep
+// their conditions when extracted (`@media x { @keyframes … }`).
+const groupingAtRules = new Set(["media", "supports", "container", "layer"]);
+
+/** Returns the index just past the comment or string starting at `i`, or `i` if there is none. */
+function skipCommentOrString(css: string, i: number): number {
+  const c = css[i];
+  if (c === "/" && css[i + 1] === "*") {
+    const end = css.indexOf("*/", i + 2);
+    return end === -1 ? css.length : end + 2;
+  }
+  if (c === '"' || c === "'") {
+    let j = i + 1;
+    while (j < css.length && css[j] !== c) j += css[j] === "\\" ? 2 : 1;
+    return Math.min(j + 1, css.length);
+  }
+  return i;
+}
+
+/** Returns the index just past the `}` matching the `{` at `open`. */
+function findBlockEnd(css: string, open: number): number {
+  let depth = 0;
+  let i = open;
+  while (i < css.length) {
+    const skipped = skipCommentOrString(css, i);
+    if (skipped !== i) {
+      i = skipped;
+      continue;
+    }
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}" && --depth === 0) return i + 1;
+    i++;
+  }
+  return css.length;
+}
+
 /**
  * Scans CSS and extracts at-rules that cannot be nested inside a style rule
- * (@keyframes, @font-face, @property, @counter-style, @page, @font-feature-values).
- * These are returned separately so they can be inserted as top-level rules,
- * while the remaining CSS is wrapped in the class selector and inserted
- * as a single style rule (relying on native CSS Nesting for @media etc.).
+ * (@keyframes, @font-face, @property, @counter-style, @page, @font-feature-values,
+ * including vendor-prefixed forms like @-webkit-keyframes). These are returned
+ * separately so they can be inserted as top-level rules, while the remaining
+ * CSS is wrapped in the class selector and inserted as a single style rule
+ * (relying on native CSS Nesting for @media etc.). An extracted rule nested in
+ * @media/@supports/@container/@layer is wrapped in those same conditions.
+ * Strings and comments are skipped, so `content: "}"` or `"@page"` are safe.
  */
 function extractNonNestableAtRules(css: string): { cleanCss: string; extracted: string[] } {
   const extracted: string[] = [];
 
-  let result = "";
-  let i = 0;
+  const process = (text: string, conditions: string[]): string => {
+    let result = "";
+    let i = 0;
 
-  while (i < css.length) {
-    if (css[i] === "/" && css[i + 1] === "*") {
-      const end = css.indexOf("*/", i + 2);
-      result += css.slice(i, end !== -1 ? end + 2 : css.length);
-      i = end !== -1 ? end + 2 : css.length;
-      continue;
-    }
-
-    if (css[i] === "@") {
-      const start = i;
-      i++;
-
-      let name = "";
-      while (i < css.length && /[a-z-]/i.test(css[i])) name += css[i++];
-
-      if (nonNestableAtRules.has(name)) {
-        while (i < css.length && css[i] !== "{") i++;
-
-        if (i < css.length) {
-          const atRuleStart = start;
-          let depth = 0;
-          while (i < css.length) {
-            if (css[i] === "/" && css[i + 1] === "*") {
-              const end = css.indexOf("*/", i + 2);
-              i = end !== -1 ? end + 2 : css.length;
-              continue;
-            }
-            if (css[i] === "{") depth++;
-            else if (css[i] === "}") {
-              depth--;
-              if (depth === 0) {
-                i++;
-                extracted.push(css.slice(atRuleStart, i));
-                break;
-              }
-            }
-            i++;
-          }
-        }
-      } else {
-        result += css.slice(start, i);
+    while (i < text.length) {
+      const skipped = skipCommentOrString(text, i);
+      if (skipped !== i) {
+        result += text.slice(i, skipped);
+        i = skipped;
+        continue;
       }
-    } else {
-      result += css[i++];
-    }
-  }
 
-  return { cleanCss: result, extracted };
+      if (text[i] !== "@") {
+        result += text[i++];
+        continue;
+      }
+
+      const start = i;
+      let j = i + 1;
+      while (j < text.length && /[\w-]/.test(text[j])) j++;
+      const name = text
+        .slice(i + 1, j)
+        .toLowerCase()
+        .replace(/^-[a-z]+-/, "");
+      const isNonNestable = nonNestableAtRules.has(name);
+
+      if (isNonNestable || groupingAtRules.has(name)) {
+        // Find the end of the prelude: a block `{` or a statement `;`.
+        let k = j;
+        while (k < text.length && text[k] !== "{" && text[k] !== ";") {
+          const next = skipCommentOrString(text, k);
+          k = next !== k ? next : k + 1;
+        }
+
+        if (text[k] === "{") {
+          const end = findBlockEnd(text, k);
+
+          if (isNonNestable) {
+            let rule = text.slice(start, end);
+            for (let n = conditions.length - 1; n >= 0; n--) rule = `${conditions[n]} { ${rule} }`;
+            extracted.push(rule);
+          } else {
+            const prelude = text.slice(start, k);
+            const bodyEnd = text[end - 1] === "}" ? end - 1 : end; // unterminated block
+            const body = process(text.slice(k + 1, bodyEnd), [...conditions, prelude.trim()]);
+            result += `${prelude}{${body}}`;
+          }
+
+          i = end;
+          continue;
+        }
+      }
+
+      result += text.slice(start, j);
+      i = j;
+    }
+
+    return result;
+  };
+
+  return { cleanCss: process(css, []), extracted };
 }
 
 /*============================*\
@@ -392,7 +482,8 @@ function buildStyles(
           initialValue: null,
           read: (interpolations) => interpolations[i](),
         });
-      } else {
+      } else if (expr != null && expr !== false) {
+        // `null`, `undefined` and `false` (e.g. `${cond && "..."}`) emit nothing.
         styles += expr;
       }
     }
@@ -432,8 +523,9 @@ class CSSFactoryTemplate implements CSSTemplate {
     return this.className;
   }
 
-  attach(c: Context, element: HTMLElement | SVGElement, condition: MaybeGetter<any> = true): void {
-    if (!attachClass(c, this.className, element, condition)) return;
+  attach(c: Context, element: HTMLElement | SVGElement, condition: MaybeGetter<any> = true): () => void {
+    const stopCondition = attachClass(c, this.className, element, condition);
+    if (!stopCondition) return noop;
 
     const shape = this.#shape;
 
@@ -442,27 +534,35 @@ class CSSFactoryTemplate implements CSSTemplate {
       shape.registered = true;
     }
 
-    if (shape.bindings.length > 0) {
-      const interpolations = this.#interpolations;
+    if (shape.bindings.length === 0) return stopCondition;
 
-      onEffect(c, () => {
-        for (const binding of shape.bindings) {
-          const value = binding.read(interpolations);
+    const interpolations = this.#interpolations;
 
-          if (value === null || value === undefined || value === binding.initialValue) {
-            element.style.removeProperty(binding.varName);
-          } else {
-            element.style.setProperty(binding.varName, value);
-          }
-        }
-      });
+    const stopBindings = disposableEffect(c, () => {
+      for (const binding of shape.bindings) {
+        const value = binding.read(interpolations);
 
-      onCleanup(c, () => {
-        for (const binding of shape.bindings) {
+        if (value === null || value === undefined || value === binding.initialValue) {
           element.style.removeProperty(binding.varName);
+        } else {
+          element.style.setProperty(binding.varName, value);
         }
-      });
-    }
+      }
+    });
+
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
+      stopCondition();
+      stopBindings();
+      for (const binding of shape.bindings) {
+        element.style.removeProperty(binding.varName);
+      }
+    };
+
+    onCleanup(c, detach);
+    return detach;
   }
 
   when(condition: MaybeGetter<any>): ConditionalTemplate {
