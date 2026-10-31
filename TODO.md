@@ -6,7 +6,7 @@ These came up while fixing the bugs found in the October 2026 audit (branch `fix
 
 ### Bundle size budget
 
-`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **10,014 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). Before the audit fixes it was 9,654 B, which already passed. The extra ~360 B is correctness code in paths the minimal app uses: signals, ElementNode, DynamicNode, FragmentNode, the scheduler and `isFunction`.
+`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **10,079 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). The check passed before the audit fixes. The increase is correctness code in paths the minimal app uses: signals, ElementNode, DynamicNode, FragmentNode, the scheduler and `isFunction`.
 
 - **A.** Raise the budget to cover the fixes (earlier feature commits have done this).
 - **B.** Look for bytes to cut in the affected modules first, then raise the budget by whatever remains.
@@ -14,16 +14,6 @@ These came up while fixing the bugs found in the October 2026 audit (branch `fix
 Recommendation: B, with a time limit. Most of the new code is unavoidable.
 
 ## Signals and core
-
-### Effects created while tracking is off have no owner
-
-`peek`, `subscribe` callbacks and setter updater functions (`resolveValue`) set `activeSub` to `undefined`. That variable controls both dependency tracking and ownership, so effects created inside them are never disposed with their parent. Files: `src/core/signals.ts`.
-
-- **A.** Add a separate owner variable that these functions leave in place while switching tracking off. This matches Solid's `untrack`, but changes what `peek` means internally.
-- **B.** Keep ownership only inside `subscribe` callbacks.
-- **C.** Document the current behavior.
-
-Recommendation: A, or at least B.
 
 ### Stores are identified by function name
 
