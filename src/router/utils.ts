@@ -267,7 +267,12 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 }
 
 export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatchOptions = {}): RouteMatch | undefined {
-  const [path, query] = url.split("?");
+  // The fragment never takes part in matching. Split on the first '?' only, since query values may contain '?'.
+  const hashIndex = url.indexOf("#");
+  if (hashIndex !== -1) url = url.slice(0, hashIndex);
+  const queryIndex = url.indexOf("?");
+  const path = queryIndex === -1 ? url : url.slice(0, queryIndex);
+  const query = queryIndex === -1 ? "" : url.slice(queryIndex + 1);
   const parts = splitPath(path);
   function createMatch(route: RoutePayload, wildcard?: string): RouteMatch {
     const params: Record<string, string> = {};
