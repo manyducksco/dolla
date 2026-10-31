@@ -2,6 +2,7 @@ import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
 import { batch, type Getter, createAtom, subscribe, type Setter } from "../../signals.js";
 import { runSafely } from "../../errors.js";
+import { getDebug } from "../../debug.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { addChild, createTextNode, moveAfter, render } from "../utils.js";
@@ -20,6 +21,8 @@ type ConnectedItem<T> = {
   _index: Getter<number>;
   _setIndex: Setter<number>;
   _node: MarkupNode;
+  /** Position in the most recently rendered order. */
+  _order: number;
 };
 
 // ----- Code ----- //
@@ -149,6 +152,13 @@ export class RepeatNode<T> extends MarkupNode {
       for (let i = 0; i < value.length; i++) {
         const itemVal = value[i];
         const key = this.#key(itemVal, i);
+
+        if (nextItems.has(key)) {
+          // Only the first item with a given key is rendered.
+          getDebug(this.#context).warn(`repeat: duplicate key at index ${i} was skipped`, key);
+          continue;
+        }
+
         let connected = this.#connectedItems.get(key);
 
         if (connected) {
@@ -168,6 +178,7 @@ export class RepeatNode<T> extends MarkupNode {
             _setItem,
             _index,
             _setIndex,
+            _order: -1,
           };
         }
         nextItems.set(key, connected);
@@ -186,21 +197,76 @@ export class RepeatNode<T> extends MarkupNode {
 
     this.#connectedItems = nextItems;
 
-    // Forward pass to insert or move nodes.
     const parent = this.#root.parentNode as MountTarget | null;
     if (!parent) return;
+
+    const items = Array.from(nextItems.values());
+    const stable = findStableItems(items);
+
+    // Forward pass to insert or move nodes. Items in the stable set keep their
+    // relative order, so only the others need to move.
     let referenceNode: Node = this.#root;
 
-    for (const connected of this.#connectedItems.values()) {
-      const expectedNext = referenceNode.nextSibling;
+    for (let i = 0; i < items.length; i++) {
+      const connected = items[i];
+      connected._order = i;
 
       if (!connected._node.isMounted()) {
         connected._node.mount(parent, referenceNode);
-      } else if (connected._node.getRoot() !== expectedNext) {
+      } else if (!stable[i] && connected._node.getRoot() !== referenceNode.nextSibling) {
         connected._node.move(parent, referenceNode);
       }
 
       referenceNode = connected._node.getLastNode() ?? referenceNode;
     }
   }
+}
+
+/**
+ * Marks the items that can stay where they are: the longest run of previously
+ * rendered items whose old order is still increasing in the new order. Every
+ * other item is new or must be moved. O(n log n).
+ */
+function findStableItems(items: { _order: number }[]): boolean[] {
+  const n = items.length;
+  const stable = new Array<boolean>(n).fill(false);
+
+  // Fast path: nothing was reordered (appends, removals, in-place updates).
+  let last = -1;
+  let ordered = true;
+  for (let i = 0; i < n; i++) {
+    const order = items[i]._order;
+    if (order === -1) continue;
+    if (order < last) {
+      ordered = false;
+      break;
+    }
+    last = order;
+  }
+  if (ordered) return stable.fill(true);
+
+  // Longest increasing subsequence of old orders, tracking predecessors.
+  const tails: number[] = []; // index into items of the smallest tail for each length
+  const prev = new Int32Array(n).fill(-1);
+
+  for (let i = 0; i < n; i++) {
+    const order = items[i]._order;
+    if (order === -1) continue;
+
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (items[tails[mid]]._order < order) lo = mid + 1;
+      else hi = mid;
+    }
+
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i !== -1; i = prev[i]) {
+    stable[i] = true;
+  }
+  return stable;
 }

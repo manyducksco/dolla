@@ -513,4 +513,85 @@ describe("RepeatNode", () => {
       expect(container.querySelectorAll("span")[50].textContent).toBe("item-50:50");
     });
   });
+  describe("duplicate keys", () => {
+    test("renders the first occurrence once and does not leak the duplicate", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>([
+        { id: 1, text: "a" },
+        { id: 1, text: "dup" },
+        { id: 2, text: "b" },
+      ]);
+      const render = vi.fn(renderFn);
+      const node = new RepeatNode(context, items, keyFn, render);
+      node.mount(container);
+
+      expect(Array.from(container.querySelectorAll("span"), (s) => s.textContent)).toEqual(["a:0", "b:2"]);
+      expect(render).toBeCalledTimes(2);
+
+      setItems([{ id: 2, text: "b" }]);
+      flushPendingUpdates();
+      expect(Array.from(container.querySelectorAll("span"), (s) => s.textContent)).toEqual(["b:0"]);
+    });
+  });
+
+  describe("move efficiency", () => {
+    function setupList(count: number) {
+      const { context, container } = setup();
+      const data = Array.from({ length: count }, (_, i) => ({ id: i, text: String(i) }));
+      const [items, setItems] = createAtom<Item[]>(data);
+      const node = new RepeatNode(context, items, keyFn, renderFn);
+      node.mount(container);
+      const inserts = vi.spyOn(container, "insertBefore");
+      const texts = () => Array.from(container.querySelectorAll("span"), (s) => s.textContent!.split(":")[0]);
+      return { data, setItems, inserts, texts };
+    }
+
+    test("moving the first item to the end moves one node", () => {
+      const { data, setItems, inserts, texts } = setupList(50);
+      const next = [...data.slice(1), data[0]];
+      setItems(next);
+      flushPendingUpdates();
+
+      expect(texts()).toEqual(next.map((d) => d.text));
+      expect(inserts).toBeCalledTimes(1);
+    });
+
+    test("moving the last item to the front moves one node", () => {
+      const { data, setItems, inserts, texts } = setupList(50);
+      const next = [data[49], ...data.slice(0, 49)];
+      setItems(next);
+      flushPendingUpdates();
+
+      expect(texts()).toEqual(next.map((d) => d.text));
+      expect(inserts).toBeCalledTimes(1);
+    });
+
+    test("swapping two items moves at most two nodes", () => {
+      const { data, setItems, inserts, texts } = setupList(20);
+      const next = [...data];
+      [next[2], next[15]] = [next[15], next[2]];
+      setItems(next);
+      flushPendingUpdates();
+
+      expect(texts()).toEqual(next.map((d) => d.text));
+      expect(inserts.mock.calls.length).toBeLessThanOrEqual(2);
+    });
+
+    test("random reorders, inserts and removals produce the right order", () => {
+      let seed = 42;
+      const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+      const { setItems, texts } = setupList(30);
+      let nextId = 100;
+
+      for (let round = 0; round < 50; round++) {
+        let next: Item[] = Array.from({ length: 30 }, (_, i) => ({ id: i, text: String(i) }));
+        next = next.filter(() => random() > 0.2);
+        for (let i = 0; i < 3; i++) next.splice(Math.floor(random() * next.length), 0, { id: nextId, text: String(nextId++) });
+        next.sort(() => random() - 0.5);
+        setItems(next);
+        flushPendingUpdates();
+        expect(texts()).toEqual(next.map((d) => d.text));
+      }
+    });
+  });
 });
