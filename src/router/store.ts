@@ -22,7 +22,12 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
   function navigate(path: string, replace: boolean) {
     console.info(`🗺️ navigating to '${path}'${replace ? " (replace)" : ""}`);
 
-    const resolved = resolvePath(history.getPath(), path);
+    // Resolve only the path part so the query string is passed through as-is.
+    const queryIndex = path.indexOf("?");
+    const search = queryIndex === -1 ? "" : path.slice(queryIndex);
+    const pathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
+
+    const resolved = resolvePath(history.getPath(), pathname) + search;
     replace ? history.replace(resolved) : history.push(resolved);
     updateRoute();
   }

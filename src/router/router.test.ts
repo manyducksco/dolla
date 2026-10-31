@@ -237,3 +237,103 @@ describe("Router Engine - Lazy Loading", () => {
     });
   });
 });
+
+describe("Router Engine - Query strings", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function createSearchRouter() {
+    return createRouter({
+      routes: [
+        { path: "/", view: () => {} },
+        { path: "/search", view: () => {} },
+      ],
+    });
+  }
+
+  it("keeps the query string when navigating with push", async () => {
+    await withRouter(createSearchRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/search?q=foo&sort=asc");
+      await settle();
+
+      expect(store.path()).toBe("/search");
+      expect(store.query()).toEqual({ q: "foo", sort: "asc" });
+      expect(window.location.pathname).toBe("/search");
+      expect(window.location.search).toBe("?q=foo&sort=asc");
+    });
+  });
+
+  it("keeps the query string when navigating with replace", async () => {
+    await withRouter(createSearchRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.replace("/search?q=bar");
+      await settle();
+
+      expect(store.query()).toEqual({ q: "bar" });
+      expect(window.location.search).toBe("?q=bar");
+    });
+  });
+
+  it("keeps slashes inside query values", async () => {
+    await withRouter(createSearchRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/search?path=a/b");
+      await settle();
+
+      expect(store.path()).toBe("/search");
+      expect(store.query()).toEqual({ path: "a/b" });
+    });
+  });
+
+  it("keeps the query string on the initial page load", async () => {
+    window.history.replaceState(null, "", "/search?q=initial");
+
+    await withRouter(createSearchRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      expect(store.path()).toBe("/search");
+      expect(store.query()).toEqual({ q: "initial" });
+      expect(window.location.search).toBe("?q=initial");
+    });
+  });
+
+  it("reads the query string on popstate (back/forward)", async () => {
+    await withRouter(createSearchRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      window.history.pushState(null, "", "/search?q=history");
+      window.dispatchEvent(new Event("popstate"));
+      await settle();
+
+      expect(store.query()).toEqual({ q: "history" });
+      expect(window.location.search).toBe("?q=history");
+    });
+  });
+
+  it("drops the previous query when navigating to a URL without one", async () => {
+    await withRouter(createSearchRouter(), async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/search?q=foo");
+      await settle();
+      store.push("/");
+      await settle();
+
+      expect(store.query()).toEqual({});
+      expect(window.location.search).toBe("");
+    });
+  });
+});

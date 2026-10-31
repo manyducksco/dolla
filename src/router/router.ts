@@ -89,7 +89,7 @@ export function createRouter(options: RouterOptions): DollaPlugin {
     async function updateRoute(href?: string) {
       scrollCache.set(currentKey, window.scrollY);
 
-      const path = href ?? history.getPath();
+      const path = href ?? history.getPath() + history.getSearch();
       const { match, journey } = await resolveRoute(routeTree, path);
 
       if (context[DEBUG]) {
