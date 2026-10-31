@@ -21,6 +21,33 @@ function makeMockNode(opts: { mounted?: boolean; root?: Element | null } = {}) {
   } as any;
 }
 
+describe("HMR __dolla_export", () => {
+  test("keeps properties attached to the exported function", () => {
+    const log = function (this: any, msg: string) {
+      return `${this?.level ?? "log"}: ${msg}`;
+    } as any;
+    log.info = (msg: string) => log.call({ level: "info" }, msg);
+
+    const live = __dolla_export(`/test/${viewCounter++}.ts:log`, log) as any;
+
+    expect(live("hi")).toBe("log: hi");
+    expect(live.info("hi")).toBe("info: hi");
+  });
+
+  test("updates attached properties on hot reload", () => {
+    const id = `/test/${viewCounter++}.ts:log`;
+    const first = Object.assign(() => "first", { info: () => "first info", old: true });
+    const second = Object.assign(() => "second", { info: () => "second info" });
+
+    const live = __dolla_export(id, first) as any;
+    __dolla_export(id, second);
+
+    expect(live()).toBe("second");
+    expect(live.info()).toBe("second info");
+    expect("old" in live).toBe(false);
+  });
+});
+
 describe("HMR __dolla_apply", () => {
   test("replaces all instances of the same view", () => {
     const view = makeView("Foo");

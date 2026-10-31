@@ -16,14 +16,34 @@ export function __dolla_export<P>(id: string, impl: View<P> | P): View<P> | P {
   const live = function (this: any, ...args: any[]) {
     return current.apply(this, args as Parameters<View<P>>);
   } as unknown as View<P> & { __dolla_setImpl: (fn: View<P>) => void };
+  // Properties attached to the function (e.g. `log.info = ...`) are copied so they survive wrapping.
+  let copied = copyOwnProps(live, impl, []);
   live.__dolla_setImpl = (fn) => {
     current = fn;
+    copied = copyOwnProps(live, fn, copied);
   };
   Object.defineProperty(live, "length", { get: () => current.length });
   Object.defineProperty(live, "name", { get: () => current.name });
   Object.defineProperty(live, "__dolla_id", { value: id, enumerable: false });
   liveViews.set(id, live);
   return live;
+}
+
+const SKIPPED_KEYS = new Set<PropertyKey>(["length", "name", "prototype", "arguments", "caller"]);
+
+/**
+ * Copies `source`'s own properties onto `target`, removing those copied previously that `source` no longer has.
+ * Returns the copied keys.
+ */
+function copyOwnProps(target: object, source: object, previous: PropertyKey[]): PropertyKey[] {
+  for (const key of previous) delete (target as any)[key];
+  const keys = Reflect.ownKeys(source).filter(
+    (key) => !SKIPPED_KEYS.has(key) && !(typeof key === "string" && key.startsWith("__dolla_")),
+  );
+  for (const key of keys) {
+    Object.defineProperty(target, key, { ...Object.getOwnPropertyDescriptor(source, key), configurable: true });
+  }
+  return keys;
 }
 
 export function registerViewInstance<P>(view: View<P>, node: ViewNode<P>) {
