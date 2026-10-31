@@ -381,6 +381,81 @@ describe("createVirtualList", () => {
     expect(slotFor(slots, 8)!.style.transform).toBe("translateY(680px)");
   });
 
+  test("disconnects its ResizeObserver on unmount", async () => {
+    const [items] = createAtom(range(0, 5));
+    const { root } = await setup({ items });
+    expect(MockResizeObserver.instances.length).toBeGreaterThan(0);
+
+    root.unmount();
+    for (const instance of MockResizeObserver.instances) {
+      expect(instance.disconnected).toBe(true);
+    }
+  });
+
+  test("leaves a single live ResizeObserver after a remount", async () => {
+    const [items] = createAtom(range(0, 5));
+    const { View, root } = await setup({ items, poolSize: 5 });
+    root.unmount();
+
+    const target = document.createElement("div");
+    document.body.append(target);
+    const second = createRoot(target);
+    roots.push(second);
+    await second.mount(View);
+
+    const live = MockResizeObserver.instances.filter((o) => !o.disconnected);
+    expect(live.length).toBe(1);
+  });
+
+  test("removes its scroll listeners on unmount", async () => {
+    const listeners = new Map<EventTarget, Set<string>>();
+    const proto = HTMLElement.prototype;
+    const originalAdd = proto.addEventListener;
+    const originalRemove = proto.removeEventListener;
+    const keyOf = (type: string, fn: unknown) => `${type}:${String(fn)}`;
+    const fnIds = new Map<unknown, number>();
+    const idOf = (fn: unknown) => {
+      if (!fnIds.has(fn)) fnIds.set(fn, fnIds.size);
+      return fnIds.get(fn);
+    };
+
+    proto.addEventListener = function (this: EventTarget, type: string, fn: any, options?: any) {
+      if (!listeners.has(this)) listeners.set(this, new Set());
+      listeners.get(this)!.add(keyOf(type, idOf(fn)));
+      return originalAdd.call(this, type, fn, options);
+    };
+    proto.removeEventListener = function (this: EventTarget, type: string, fn: any, options?: any) {
+      listeners.get(this)?.delete(keyOf(type, idOf(fn)));
+      return originalRemove.call(this, type, fn, options);
+    };
+
+    try {
+      const [items] = createAtom(range(0, 5));
+      const { root, viewport } = await setup({ items });
+      const scrollListeners = () => [...(listeners.get(viewport) ?? [])].filter((key) => key.startsWith("scroll"));
+      expect(scrollListeners().length).toBeGreaterThan(0);
+
+      root.unmount();
+      expect(scrollListeners()).toEqual([]);
+    } finally {
+      proto.addEventListener = originalAdd;
+      proto.removeEventListener = originalRemove;
+    }
+  });
+
+  test("cancels pending frames and enter-animation timers on unmount", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"] });
+    const [items, setItems] = createAtom(range(0, 3));
+    const { root } = await setup({ items, enterAnimationMs: 300, bottomUp: true });
+
+    setItems(range(0, 5));
+    flushPendingUpdates();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    root.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   test("detects a prepend when the previous first key is 0", async () => {
     const [items, setItems] = createAtom(range(0, 3));
     const { viewport, scrollTo } = await setup({ items });

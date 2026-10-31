@@ -1,4 +1,4 @@
-import { onEffect } from "../core/context.js";
+import { onCleanup, onEffect } from "../core/context.js";
 import { showIf } from "../core/markup/helpers.js";
 import { createMarkup } from "../core/markup/utils.js";
 import { batch, compose, createAtom, peek, type Getter } from "../core/signals.js";
@@ -229,6 +229,18 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
     let hasReachedStart = false;
     let hasReachedEnd = false;
 
+    // Pending frames and timers, cancelled on unmount.
+    const frames = new Set<number>();
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+
+    function nextFrame(fn: () => void) {
+      const id = requestAnimationFrame(() => {
+        frames.delete(id);
+        fn();
+      });
+      frames.add(id);
+    }
+
     function checkBoundaries() {
       if (!viewport) return;
       const st = viewport.scrollTop;
@@ -275,7 +287,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         const shift = engine.getOffset(anchorIndex, peek(engine.averageHeight)) - oldAnchorOffset;
 
         if (props.bottomUp && effectivelyAtBottom && viewport) {
-          requestAnimationFrame(() => {
+          nextFrame(() => {
             if (!viewport) return;
             if (isAutoGliding) viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
             else {
@@ -293,6 +305,16 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         updateScrollSlice();
         checkBoundaries(); // Re-evaluate if height changes put us in threshold
       }
+    });
+
+    onCleanup(c, () => {
+      observer.disconnect();
+      for (const id of frames) cancelAnimationFrame(id);
+      frames.clear();
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+      // Their timers were cancelled, so nothing would clear these anymore.
+      enteringItems.clear();
     });
 
     let previousCount = peek(props.items).length;
@@ -326,16 +348,18 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           for (let i = previousCount; i < currentCount; i++) {
             const newItem = currentItems[i];
             enteringItems.add(newItem);
-            setTimeout(() => {
+            const timer = setTimeout(() => {
+              timers.delete(timer);
               enteringItems.delete(newItem);
               updateScrollSlice();
             }, props.enterAnimationMs);
+            timers.add(timer);
           }
         }
 
         if (props.bottomUp && (peek(isAtBottom) || isAutoGliding) && viewport) {
           isSmoothScrolling = isAutoGliding = true;
-          requestAnimationFrame(() => viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" }));
+          nextFrame(() => viewport?.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" }));
         }
       }
 
@@ -366,33 +390,31 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           commandQueue.length = 0;
         }
 
-        el.addEventListener("scrollend", () => {
+        const onScrollEnd = () => {
           isSmoothScrolling = isAutoGliding = false;
-        });
+        };
+        el.addEventListener("scrollend", onScrollEnd);
 
         let lastSt = el.scrollTop;
-        el.addEventListener(
-          "scroll",
-          () => {
-            const st = el.scrollTop;
-            setScrollTop(st);
-            const distToBottom = el.scrollHeight - st - el.clientHeight;
-            const isScrollingUp = st < lastSt;
+        const onScroll = () => {
+          const st = el.scrollTop;
+          setScrollTop(st);
+          const distToBottom = el.scrollHeight - st - el.clientHeight;
+          const isScrollingUp = st < lastSt;
 
-            if (!isSmoothScrolling) {
-              if (isScrollingUp && distToBottom > 15) setIsAtBottom(false);
-              else if (!isScrollingUp && distToBottom <= 100) setIsAtBottom(true);
-            }
-            lastSt = st;
+          if (!isSmoothScrolling) {
+            if (isScrollingUp && distToBottom > 15) setIsAtBottom(false);
+            else if (!isScrollingUp && distToBottom <= 100) setIsAtBottom(true);
+          }
+          lastSt = st;
 
-            checkBoundaries();
-            updateScrollSlice();
-          },
-          { passive: true },
-        );
+          checkBoundaries();
+          updateScrollSlice();
+        };
+        el.addEventListener("scroll", onScroll, { passive: true });
 
         // Bootstrap on next frame to ensure clientHeight is populated
-        requestAnimationFrame(() => {
+        nextFrame(() => {
           if (viewport) {
             checkBoundaries();
             updateScrollSlice();
@@ -400,6 +422,8 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
         });
 
         return () => {
+          el.removeEventListener("scrollend", onScrollEnd);
+          el.removeEventListener("scroll", onScroll);
           viewport = null;
           if (itemObserver === observer) itemObserver = null;
           poolElements = [];
