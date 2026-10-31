@@ -170,6 +170,17 @@ describe("createOffsetEngine", () => {
       const engine = createOffsetEngine(50);
       expect(engine.updateHeights([{ index: 0, height: 0 }], 50)).toBe(false);
     });
+
+    test("records a height equal to the current average", () => {
+      const engine = createOffsetEngine(50);
+      engine.updateHeights([{ index: 0, height: 50 }], 50);
+      expect(engine.getItemHeight(0)).toBe(50);
+
+      // Item 0 counts toward the average: (50 + 150) / 2 = 100.
+      engine.updateHeights([{ index: 1, height: 150 }], 50);
+      expect(engine.averageHeight()).toBe(100);
+      expect(engine.getTotalHeight(4)).toBe(400);
+    });
   });
 
   describe("getItemHeight", () => {

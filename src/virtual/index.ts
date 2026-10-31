@@ -479,17 +479,19 @@ export function createOffsetEngine(defaultAssumption: number) {
       const { index, height } = entries[i];
       if (height === 0) continue;
 
-      const oldHeight = measuredHeights.get(index) ?? avg;
-      if (Math.abs(oldHeight - height) > 0) {
-        if (!measuredHeights.has(index)) {
-          currentCount++;
-          currentTotal += height;
-        } else {
-          currentTotal += height - oldHeight;
-        }
-        measuredHeights.set(index, height);
-        needsRecalc = true;
+      const oldHeight = measuredHeights.get(index);
+      if (oldHeight === undefined) {
+        // Record every first measurement, even one that matches the average,
+        // so it counts toward the average from now on.
+        currentCount++;
+        currentTotal += height;
+      } else if (oldHeight !== height) {
+        currentTotal += height - oldHeight;
+      } else {
+        continue;
       }
+      measuredHeights.set(index, height);
+      needsRecalc = true;
     }
 
     if (needsRecalc) {
