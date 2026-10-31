@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { createAtom, createEffect } from "../../signals.js";
+import { compose, createAtom, createEffect } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
 import { createContext, onCleanup, onEffect, onMount, REPLACING } from "../../context.js";
 import type { View } from "../../index.js";
@@ -127,6 +127,19 @@ describe("ViewNode", () => {
       // Re-mount
       node.mount(container);
       expect(container.querySelector("span")!.textContent).toBe("view content");
+    });
+
+    test("a view that throws while rendering does not name signals created after it", () => {
+      const { context, container } = setup();
+      function Broken(): never {
+        throw new Error("render failed");
+      }
+      expect(() => new ViewNode(context, Broken, {}).mount(container)).toThrow("render failed");
+
+      const later = compose(function later() {
+        throw new Error("later failed");
+      });
+      expect(() => later()).toThrow(expect.objectContaining({ message: expect.not.stringContaining("Broken") }));
     });
   });
 

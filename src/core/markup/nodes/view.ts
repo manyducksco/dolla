@@ -47,8 +47,11 @@ export class ViewNode<P> extends MarkupNode {
 
     if (!wasMounted) {
       pushContext(this.context);
-      this.#node = this.#render();
-      popContext();
+      try {
+        this.#node = this.#render();
+      } finally {
+        popContext();
+      }
 
       registerViewInstance(this.#view, this);
     }

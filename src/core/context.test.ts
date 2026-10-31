@@ -14,7 +14,7 @@ import {
   onMount,
   type Context,
 } from "./context.js";
-import { createAtom } from "./signals.js";
+import { compose, createAtom } from "./signals.js";
 import { __dolla_export } from "./hmr.js";
 
 test("lifecycle", () => {
@@ -68,6 +68,27 @@ describe("onEffect", () => {
     mountContext(c);
     expect(runs).not.toHaveBeenCalled();
     cleanupContext(c);
+  });
+
+  test("an effect that throws on its first run does not name signals created after it", () => {
+    const c = createContext(null, { name: "Failing" });
+    const handler = vi.fn();
+    setErrorHandler(handler);
+    try {
+      onEffect(c, () => {
+        throw new Error("effect failed");
+      });
+      mountContext(c);
+    } finally {
+      setErrorHandler(null);
+      cleanupContext(c);
+    }
+    expect(handler).toHaveBeenCalledTimes(1);
+
+    const later = compose(function later() {
+      throw new Error("later failed");
+    });
+    expect(() => later()).toThrow(expect.objectContaining({ message: expect.not.stringContaining("Failing") }));
   });
 });
 
