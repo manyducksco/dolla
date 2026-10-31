@@ -179,7 +179,7 @@ function createTranslator(options: TranslatorOptions): Translator {
 
     if (name === undefined) {
       // Use the first browser language with translations, or else the first locale.
-      const languages = typeof navigator === "undefined" ? [] : navigator.languages;
+      const languages = globalThis.navigator?.languages ?? [];
       locale = languages.find((language) => language in options.translations) ?? supportedLocales[0];
     } else if (name in options.translations) {
       locale = name;

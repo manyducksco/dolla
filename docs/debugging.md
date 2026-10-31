@@ -43,7 +43,7 @@ setLogLevel("warn"); // show warn + error
 setLogLevel("silent"); // disable all debug output
 ```
 
-Accepted levels: `info`, `log`, `warn`, `error`, `silent`. The default is `info`.
+Accepted levels: `trace`, `info`, `log`, `warn`, `error`, `silent`. The default is `info`. `trace` and `info` are the same level, so both show everything.
 
 ## Filtering by name
 

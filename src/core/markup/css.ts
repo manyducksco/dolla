@@ -62,7 +62,7 @@ export type PropertyConfig<Syntax extends CSSSyntaxDescriptor> = {
   inherits?: boolean;
 };
 
-export type InterpolationValue = string | number | null | undefined;
+export type InterpolationValue = string | number | false | null | undefined;
 
 export type Interpolation<Props = {}> =
   | InterpolationValue

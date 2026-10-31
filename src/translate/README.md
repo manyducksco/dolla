@@ -94,6 +94,8 @@ Available built-in formatters:
 
 Pass formatter options in parentheses: `{{value|number(style: percent, useGrouping: false)}}`. `true`, `false` and numbers are converted to booleans and numbers; other values are strings.
 
+A formatter name that isn't registered, or that can't be parsed, logs a warning once and the value is shown unformatted.
+
 ### Custom formatters
 
 Register custom formatters in the plugin options:
@@ -161,7 +163,7 @@ Creates a DollaPlugin for internationalization.
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `translations` | `Record<string, LocalizedStrings \| () => LocalizedStrings \| Promise<LocalizedStrings>>` | — | Locale-keyed translation objects or async fetch functions. |
-| `locale` | `string` | browser default | Initial locale to load. |
+| `locale` | `string` | browser default | Initial locale to load. If it has no translations, mounting the root rejects. Without it, the first of `navigator.languages` that has translations is used, or else the first locale in `translations`. |
 | `formatters` | `Record<string, Formatter>` | — | Custom formatter functions. |
 
 #### `getTranslate(context)`
@@ -171,7 +173,7 @@ Returns a `Translator` API object:
 | Method | Description |
 | --- | --- |
 | `t(selector, options?)` | Returns a `Getter<string>`. Options: `count`, `ordinal`, `context`, and interpolation values. Values may be getters. |
-| `setLocale(name?)` | Switches the current locale. Returns a `Promise<void>`. |
+| `setLocale(name?)` | Switches the current locale. Returns a `Promise<void>` that rejects if the locale has no translations. Without a name, picks a locale the same way as the `locale` option's default. |
 | `currentLocale` | Getter for the current locale string. |
 | `supportedLocales` | Array of available locale codes. |
 | `format(name, value, options?)` | Returns a `Getter<string>` for a formatted value. `value` may be a getter. |

@@ -99,6 +99,18 @@ describe("translator", () => {
     expect(hello()).toBe("こんにちは");
   });
 
+  test("setLocale without a name falls back to the first locale when navigator has no languages", async () => {
+    const languages = vi.spyOn(navigator, "languages", "get").mockReturnValue(undefined as any);
+    try {
+      const translator = await createTestTranslator({
+        translations: { fr: { hello: "Bonjour" }, en: { hello: "Hello" } },
+      });
+      expect(translator.currentLocale()).toBe("fr");
+    } finally {
+      languages.mockRestore();
+    }
+  });
+
   test("ordinal option may be a getter", async () => {
     const { t } = await createTestTranslator({
       locale: "en",

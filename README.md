@@ -95,19 +95,20 @@ New here? Read **[Getting started](./docs/getting-started.md)**, then **[Build y
 
 ### Reference
 
-| Page                                        | Description                                            |
-| ------------------------------------------- | ------------------------------------------------------ |
-| [Cheatsheet](./docs/cheatsheet.md)          | Task → code lookups for common jobs                    |
-| [HTML templates](./docs/html.md)            | The buildless `html` helper and JSX equivalents        |
-| [App root](./docs/root.md)                  | `createRoot`, plugins, async mount, unmount            |
-| [Errors](./docs/errors.md)                  | Effect error reporting and `SignalError`               |
-| [Debugging](./docs/debugging.md)            | Loggers, levels, filters, and debug mode               |
-| [Utilities](./docs/utilities.md)            | debounce, throttle, sleep                              |
-| [FAQ](./docs/faq.md)                        | Common questions and gotchas                           |
-| [Glossary](./docs/glossary.md)              | Definitions for the terms used throughout the docs     |
-| [Advanced internals](./docs/advanced.md)    | `@manyducks.co/dolla/internals`, custom nodes          |
-| [HMR](./docs/hmr.md)                        | Hot module replacement with Vite                       |
-| [Docs contributing](./docs/contributing.md) | Conventions for examples, terminology, and docs checks |
+| Page                                         | Description                                            |
+| -------------------------------------------- | ------------------------------------------------------ |
+| [Cheatsheet](./docs/cheatsheet.md)           | Task → code lookups for common jobs                    |
+| [HTML templates](./docs/html.md)             | The buildless `html` helper and JSX equivalents        |
+| [App root](./docs/root.md)                   | `createRoot`, plugins, async mount, unmount            |
+| [Errors](./docs/errors.md)                   | Effect error reporting and `SignalError`               |
+| [Debugging](./docs/debugging.md)             | Loggers, levels, filters, and debug mode               |
+| [Utilities](./docs/utilities.md)             | debounce, throttle, sleep                              |
+| [FAQ](./docs/faq.md)                         | Common questions and gotchas                           |
+| [Glossary](./docs/glossary.md)               | Definitions for the terms used throughout the docs     |
+| [Advanced internals](./docs/advanced.md)     | `@manyducks.co/dolla/internals`, custom nodes          |
+| [Migrating to 5.0](./docs/migrating-to-5.md) | Upgrading a 4.x app: moved, renamed and removed APIs   |
+| [HMR](./docs/hmr.md)                         | Hot module replacement with Vite                       |
+| [Docs contributing](./docs/contributing.md)  | Conventions for examples, terminology, and docs checks |
 
 ## Sub-packages
 

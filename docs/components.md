@@ -212,8 +212,6 @@ Render a dynamic, keyed list:
 - Items with the same key reuse their existing DOM node when the list changes.
 - For a static array that never changes, a plain `.map()` is fine. Use `repeat` when the list is reactive.
 
-`forEach` is a deprecated alias of `repeat`. Use `repeat` in new code.
-
 ### `createPortal`
 
 Render content into a different DOM element:

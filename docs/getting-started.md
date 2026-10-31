@@ -16,6 +16,8 @@ JSX is the default template style. It needs a compiler; Vite handles that for yo
 npm install @manyducks.co/dolla
 ```
 
+Upgrading an app from 4.x? See [Migrating to 5.0](./migrating-to-5.md).
+
 ## Create a project
 
 ```sh

@@ -1,6 +1,6 @@
 {
   "name": "@manyducks.co/dolla",
-  "version": "4.9.0",
+  "version": "5.0.0",
   "author": "tony@manyducks.co",
   "repository": {
     "type": "git",
@@ -86,7 +86,7 @@
   "scripts": {
     "test": "vitest",
     "bench": "npm run build && node scripts/bench.mjs",
-    "build": "vite build && tsc",
+    "build": "vite build && tsc -p tsconfig.build.json",
     "docs:check": "node scripts/check-docs.mjs",
     "bundle:check": "node scripts/check-tree-shaking.mjs",
     "start": "tsc --watch",

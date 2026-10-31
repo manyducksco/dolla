@@ -6,7 +6,7 @@ These came up while fixing the bugs found in the October 2026 audit (branch `fix
 
 ### `mangleProps` is ignored
 
-Both `vite.config.js` and `scripts/check-tree-shaking.mjs` pass `oxc: { mangleProps: /^_/ }`, but Vite 8's oxc minifier has no property mangling. The option does nothing, and the published `dist` keeps names like `_depsTail` and `_flags`. Mangling them would save about 110 B gzipped in the minimal app. The bundle check passes without it (9,500 B against a 9,625.6 B budget).
+Both `vite.config.js` and `scripts/check-tree-shaking.mjs` pass `oxc: { mangleProps: /^_/ }`, but Vite 8's oxc minifier has no property mangling. The option does nothing, and the published `dist` keeps names like `_depsTail` and `_flags`. Mangling them would save about 110 B gzipped in the minimal app. The bundle check passes without it (9,405 B against a 9,625.6 B budget).
 
 - **A.** Remove the dead option from both files.
 - **B.** Get mangling working, for example with terser's `mangle.properties` (a new devDependency), for both `dist` and the check.

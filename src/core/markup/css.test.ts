@@ -584,7 +584,7 @@ describe("at-rule extraction", () => {
       color: red;
       ${null}
       ${undefined}
-      ${(isLarge && "font-size: 2em;") as any}
+      ${isLarge && "font-size: 2em;"}
     `;
     const rules = insertedRules(tpl);
     expect(rules).toEqual([`.${tpl.className}{ color: red; }`]);

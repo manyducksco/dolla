@@ -127,7 +127,7 @@ const unsubscribe = subscribe(getCount, (value) => {
 });
 ```
 
-`subscribe` runs the callback immediately with the current value, then again whenever the value changes. Call the returned function to stop.
+`subscribe` runs the callback immediately with the current value, then again whenever the value changes. Call the returned function to stop. Like an effect, the callback may return a cleanup function, which runs before the next call and when you unsubscribe.
 
 ## `createSetter`
 
