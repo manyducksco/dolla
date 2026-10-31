@@ -91,6 +91,14 @@ export interface TranslatorOptions {
 
 const TRANSLATE = Symbol.for("$_DOLLA_TRANSLATE");
 
+/** How long a loaded locale stays cached after it stops being the current locale. */
+const LOCALE_CACHE_TIME = 5 * 60 * 1000;
+
+type CachedLocale = {
+  lookup: Promise<LookupFn>;
+  evictTimer?: ReturnType<typeof setTimeout>;
+};
+
 export function createTranslate(options: TranslatorOptions): DollaPlugin {
   return async function (context) {
     const translator = createTranslator(options);
@@ -126,7 +134,40 @@ function createTranslator(options: TranslatorOptions): Translator {
   }
 
   let lookup: LookupFn | undefined;
+  let activeLocale: string | undefined;
   let localeToken = 0;
+
+  // Loaded locales, so switching back to one doesn't fetch it again. An entry
+  // holds the pending load too, so concurrent calls share one fetch.
+  const cache = new Map<string, CachedLocale>();
+
+  function loadLocale(locale: string): Promise<LookupFn> {
+    const cached = cache.get(locale);
+    if (cached) {
+      clearTimeout(cached.evictTimer);
+      cached.evictTimer = undefined;
+      return cached.lookup;
+    }
+
+    const entry: CachedLocale = { lookup: createLookup(locale, formatters, options.translations[locale]) };
+    cache.set(locale, entry);
+    // Failed loads aren't kept, so the next setLocale tries again.
+    entry.lookup.catch(() => {
+      if (cache.get(locale) === entry) cache.delete(locale);
+    });
+    return entry.lookup;
+  }
+
+  /** Drops a loaded locale once it has gone unused for `LOCALE_CACHE_TIME`. */
+  function scheduleEviction(locale: string) {
+    const entry = cache.get(locale);
+    if (!entry || locale === activeLocale) return;
+
+    clearTimeout(entry.evictTimer);
+    entry.evictTimer = setTimeout(() => {
+      if (locale !== activeLocale && cache.get(locale) === entry) cache.delete(locale);
+    }, LOCALE_CACHE_TIME);
+  }
 
   const [currentLocale, setCurrentLocale] = createAtom("en");
   const supportedLocales = [...Object.keys(options.translations)];
@@ -180,11 +221,18 @@ function createTranslator(options: TranslatorOptions): Translator {
     }
 
     const token = ++localeToken;
-    const nextLookup = await createLookup(locale, formatters, options.translations[locale]);
+    const nextLookup = await loadLocale(locale);
 
     // A later setLocale call was made while this one was loading; let that one win.
-    if (token !== localeToken) return;
+    if (token !== localeToken) {
+      scheduleEviction(locale);
+      return;
+    }
+
+    const previous = activeLocale;
+    activeLocale = locale;
     lookup = nextLookup;
+    if (previous !== undefined && previous !== locale) scheduleEviction(previous);
 
     // Update locale string after init so t() signals will update.
     setCurrentLocale(locale);

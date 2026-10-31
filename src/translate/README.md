@@ -135,6 +135,8 @@ try {
 
 If the requested locale has no translations, `setLocale` rejects. A failed translation fetch also rejects.
 
+Loaded locales are cached, so switching back to one you used recently doesn't fetch it again. Calling `setLocale` for a locale that is still loading reuses that load. A locale that has been unused for five minutes is dropped from the cache and fetched again the next time it is needed. The current locale is always kept. A failed fetch isn't cached, so calling `setLocale` again retries it.
+
 ### Reactive `t()`
 
 The `t()` function returns a `Getter<string>` that automatically updates whenever the locale (or a reactive option) changes.

@@ -45,18 +45,6 @@ The class fast paths added in `a3b7e4b` call `setAttribute("class", …)` when o
 
 Recommendation: A, unless a real integration needs outside classes.
 
-## Router, HTTP, translate
-
-### Translation caching
-
-`setLocale` calls the locale's fetch function every time, so switching fr → en → fr fetches fr twice. Files: `src/translate/index.ts`.
-
-- **A.** Cache the built lookup per locale, but only after a successful load (failures still retry).
-- **B.** A, plus `setLocale(name, { reload: true })` to force a fresh fetch.
-- **C.** Keep re-fetching and document it.
-
-Recommendation: A. Add B only if someone needs it.
-
 ## Optional optimizations
 
 ### Virtual list scroll handler

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createAtom } from "../core/signals.js";
 import { compile, createTranslate, getTranslate, parseTemplate, type TranslatorOptions } from "./index.js";
 
@@ -117,6 +117,108 @@ describe("translator", () => {
     expect(t("greeting", { context: "formal", count: 2 })()).toBe("Good day");
     expect(t("pears", { context: "casual", count: 2 })()).toBe("2 pears, mate");
     expect(t("missing", { context: "formal", count: 2 })()).toBe("missing");
+  });
+});
+
+describe("locale caching", () => {
+  const MINUTE = 60 * 1000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function counted(strings: { hello: string }) {
+    const fetch = vi.fn(async () => strings);
+    return fetch;
+  }
+
+  test("switching back to a recently used locale doesn't fetch it again", async () => {
+    const fr = counted({ hello: "Bonjour" });
+    const translator = await createTestTranslator({ locale: "en", translations: { en: { hello: "Hello" }, fr } });
+    const hello = translator.t("hello");
+
+    await translator.setLocale("fr");
+    await translator.setLocale("en");
+    await translator.setLocale("fr");
+
+    expect(fr).toHaveBeenCalledTimes(1);
+    expect(hello()).toBe("Bonjour");
+  });
+
+  test("a failed load is not cached", async () => {
+    const fr = vi
+      .fn<() => Promise<{ hello: string }>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ hello: "Bonjour" });
+    const translator = await createTestTranslator({ locale: "en", translations: { en: { hello: "Hello" }, fr } });
+
+    await expect(translator.setLocale("fr")).rejects.toThrow("offline");
+    await translator.setLocale("fr");
+
+    expect(fr).toHaveBeenCalledTimes(2);
+    expect(translator.t("hello")()).toBe("Bonjour");
+  });
+
+  test("concurrent loads of one locale share a fetch", async () => {
+    const fr = counted({ hello: "Bonjour" });
+    const translator = await createTestTranslator({ locale: "en", translations: { en: { hello: "Hello" }, fr } });
+
+    await Promise.all([translator.setLocale("fr"), translator.setLocale("fr")]);
+
+    expect(fr).toHaveBeenCalledTimes(1);
+    expect(translator.currentLocale()).toBe("fr");
+  });
+
+  test("a locale unused for over five minutes is fetched again", async () => {
+    vi.useFakeTimers();
+    const fr = counted({ hello: "Bonjour" });
+    const translator = await createTestTranslator({ locale: "en", translations: { en: { hello: "Hello" }, fr } });
+
+    await translator.setLocale("fr");
+    await translator.setLocale("en");
+    vi.advanceTimersByTime(4 * MINUTE);
+    await translator.setLocale("fr");
+    expect(fr).toHaveBeenCalledTimes(1);
+
+    await translator.setLocale("en");
+    vi.advanceTimersByTime(5 * MINUTE + 1);
+    await translator.setLocale("fr");
+    expect(fr).toHaveBeenCalledTimes(2);
+    expect(translator.t("hello")()).toBe("Bonjour");
+  });
+
+  test("the current locale is never evicted", async () => {
+    vi.useFakeTimers();
+    const fr = counted({ hello: "Bonjour" });
+    const translator = await createTestTranslator({ locale: "fr", translations: { en: { hello: "Hello" }, fr } });
+
+    vi.advanceTimersByTime(60 * MINUTE);
+    await translator.setLocale("en");
+    await translator.setLocale("fr");
+
+    expect(fr).toHaveBeenCalledTimes(1);
+  });
+
+  test("a locale that becomes current while its eviction is pending stays cached", async () => {
+    vi.useFakeTimers();
+    let resolveFirst!: (strings: { hello: string }) => void;
+    const fr = vi
+      .fn<() => Promise<{ hello: string }>>()
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValue({ hello: "Bonjour" });
+    const translator = await createTestTranslator({ locale: "en", translations: { en: { hello: "Hello" }, fr } });
+
+    // The first call is superseded by the second, which shares its load.
+    const first = translator.setLocale("fr");
+    const second = translator.setLocale("fr");
+    resolveFirst({ hello: "Bonjour" });
+    await Promise.all([first, second]);
+    expect(translator.currentLocale()).toBe("fr");
+
+    vi.advanceTimersByTime(60 * MINUTE);
+    await translator.setLocale("en");
+    await translator.setLocale("fr");
+    expect(fr).toHaveBeenCalledTimes(1);
   });
 });
 
