@@ -99,6 +99,33 @@ describe("translator", () => {
     expect(hello()).toBe("こんにちは");
   });
 
+  test("setLocale rejects a locale with no translations and keeps the current one", async () => {
+    const translator = await createTestTranslator({
+      locale: "en",
+      translations: { en: { hello: "Hello" }, fr: { hello: "Bonjour" } },
+    });
+
+    await expect(translator.setLocale("xx")).rejects.toThrow("Locale 'xx' has no translation.");
+    expect(translator.currentLocale()).toBe("en");
+    expect(translator.t("hello")()).toBe("Hello");
+  });
+
+  test("setLocale without a name picks the first browser language with translations", async () => {
+    const languages = vi.spyOn(navigator, "languages", "get").mockReturnValue(["de", "fr", "en"]);
+    try {
+      const translator = await createTestTranslator({
+        translations: { en: { hello: "Hello" }, fr: { hello: "Bonjour" } },
+      });
+      expect(translator.currentLocale()).toBe("fr");
+
+      languages.mockReturnValue(["de"]);
+      await translator.setLocale();
+      expect(translator.currentLocale()).toBe("en");
+    } finally {
+      languages.mockRestore();
+    }
+  });
+
   test("missing context or plural variants fall back to the base key", async () => {
     const { t } = await createTestTranslator({
       locale: "en",

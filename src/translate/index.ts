@@ -176,47 +176,17 @@ function createTranslator(options: TranslatorOptions): Translator {
    * Loads translation for the locale.
    */
   async function setLocale(name?: string) {
-    let locale!: string;
+    let locale: string | undefined;
 
     if (name === undefined) {
-      let names = [];
-
-      if (typeof navigator !== "undefined") {
-        const nav = navigator as any;
-
-        if (nav.languages?.length > 0) {
-          names.push(...nav.languages);
-        } else if (nav.language) {
-          names.push(nav.language);
-        } else if (nav.browserLanguage) {
-          names.push(nav.browserLanguage);
-        } else if (nav.userLanguage) {
-          names.push(nav.userLanguage);
-        }
-      }
-
-      for (const name of names) {
-        if (name in options.translations) {
-          // Found a matching language.
-          locale = name;
-          break;
-        }
-      }
-    } else {
-      // Tag is the actual tag to set.
-      if (name in options.translations) {
-        locale = name;
-      }
+      // Use the first browser language with translations, or else the first locale.
+      const languages = typeof navigator === "undefined" ? [] : navigator.languages;
+      locale = languages.find((language) => language in options.translations) ?? supportedLocales[0];
+    } else if (name in options.translations) {
+      locale = name;
     }
 
-    if (locale == null) {
-      const firstLanguage = Object.keys(options.translations).at(0);
-      if (firstLanguage) {
-        locale = firstLanguage;
-      }
-    }
-
-    if (!locale || !(locale in options.translations)) {
+    if (locale === undefined) {
       throw new Error(`Locale '${name}' has no translation.`);
     }
 
