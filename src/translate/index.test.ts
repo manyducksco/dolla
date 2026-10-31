@@ -113,6 +113,26 @@ describe("translator", () => {
     expect(place()).toBe("1st place");
   });
 
+  test("warns once about an unknown formatter and shows the value unformatted", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { t } = await createTestTranslator({
+        locale: "en",
+        translations: { en: { total: "Total: {{n|numbr}}", broken: "{{n|number(}}" } },
+      });
+
+      expect(t("total", { n: 5 })()).toBe("Total: 5");
+      expect(t("total", { n: 6 })()).toBe("Total: 6");
+      expect(t("broken", { n: 7 })()).toBe("7");
+
+      const messages = warn.mock.calls.map((call) => String(call[0]));
+      expect(messages.filter((m) => m.includes('"numbr"'))).toHaveLength(1);
+      expect(messages.filter((m) => m.includes('"number("'))).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("setLocale rejects a locale with no translations and keeps the current one", async () => {
     const translator = await createTestTranslator({
       locale: "en",

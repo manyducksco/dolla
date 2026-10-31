@@ -1,6 +1,6 @@
 import type { Context } from "./context.js";
 import type { ReactiveNode } from "./signals.js";
-import { describeNode, reactiveScopeStack, type ReactiveScopeInfo } from "./signal-debug.js";
+import { describeNode, INTERNAL_FRAME, reactiveScopeStack, type ReactiveScopeInfo } from "./signal-debug.js";
 import { ERROR_HANDLER } from "./symbols.js";
 
 export type { ReactiveScopeInfo };
@@ -28,8 +28,6 @@ export type SignalErrorHandler = (error: SignalError) => void;
 
 const SIGNAL_ERROR_BRAND = Symbol.for("dolla.SignalError");
 
-const INTERNAL_FRAME =
-  /(?:^|[/\\])(?:core|dist)[/\\](?:signals|errors|signal-debug|scheduler|root|context)(?:-[\w-]+)?\.(?:ts|js)(?::\d+:\d+)?/;
 const TRIGGER_BOUNDARY = /\bat (?:flush|createEffect|withReactiveScope)\b/;
 
 /**

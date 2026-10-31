@@ -356,6 +356,9 @@ function parseOptionValue(value: string): string | number | boolean {
 /**
  * Parse a string template into an array of functions that will produce each piece of the output when called.
  */
+// Unknown formatter names that were already reported, so each is reported once.
+const warnedFormatters = new Set<string>();
+
 export function parseTemplate(template: string): CompiledTemplate {
   const tokens = template.split(/(\{\{.*?\}\})/g);
   const segments: TemplateSegmentFn[] = [];
@@ -408,6 +411,11 @@ export function parseTemplate(template: string): CompiledTemplate {
           const formatterFn = formatters.get(fmt.name);
           if (formatterFn) {
             value = formatterFn(locale, value, fmt.options);
+          } else if (!warnedFormatters.has(fmt.name)) {
+            warnedFormatters.add(fmt.name);
+            console.warn(
+              `[dolla:translate] Unknown formatter "${fmt.name}" in a template. The value is shown unformatted.`,
+            );
           }
         }
 

@@ -19,6 +19,10 @@ export interface ReactiveScopeInfo {
 const contextStack: Context[] = [];
 const reactiveScopeStack: ReactiveNode[] = [];
 
+/** Matches stack frames from the reactive runtime, in source or in the built `dist`. */
+export const INTERNAL_FRAME =
+  /(?:^|[/\\])(?:core|dist)[/\\](?:signals|errors|signal-debug|scheduler|root|context)(?:-[\w-]+)?\.(?:ts|js)(?::\d+:\d+)?/;
+
 let forceCreationStacks = false;
 
 /**
@@ -83,12 +87,9 @@ function describeNode(node: ReactiveNode): ReactiveScopeInfo | undefined {
 
 function getCreationFrame(stack?: string): string {
   if (!stack) return "";
-  const entries = stack.split("\n");
-  for (let i = 2; i < entries.length; i++) {
-    const line = entries[i].trim();
-    if (line.startsWith("at ") && !line.includes("signal-debug.ts") && !line.includes("signals.ts")) {
-      return line.replace(/^at /, "");
-    }
+  for (const entry of stack.split("\n")) {
+    const line = entry.trim();
+    if (line.startsWith("at ") && !INTERNAL_FRAME.test(line)) return line.slice(3);
   }
   return "";
 }
