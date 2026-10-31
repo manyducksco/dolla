@@ -47,16 +47,6 @@ Recommendation: A, unless a real integration needs outside classes.
 
 ## CSS and styled
 
-### Style rules are never removed
-
-Static interpolations create one class and one stylesheet rule per distinct value, and these are never freed. Per-instance values (lists, animations) make the stylesheet grow without limit. Files: `src/core/markup/css.ts`.
-
-- **A.** Count references per className, using the disposer `attach()` now returns, and call `deleteRule` when a count reaches zero (possibly after a grace period).
-- **B.** Put an LRU cap on per-value static templates.
-- **C.** Steer per-value styles to getter interpolations (CSS variables), and warn in dev when one call site creates many classNames.
-
-Recommendation: C now, A later if it matters.
-
 ### Styled component overrides don't reliably win
 
 A class passed into a styled component should override the component's base styles. The registry inserts each rule once, at its first attach anywhere in the app. So if the override class was used somewhere else first, its rule comes earlier in the stylesheet and loses. The doc comment in `src/styled/index.ts` now says this. Styled bases and plain `css` deliberately share a className and rule when they are identical, which rules out simple fixes.

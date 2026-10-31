@@ -99,6 +99,22 @@ const tpl = css`
 `;
 ```
 
+Each distinct static value produces its own class and stylesheet rule, and rules are never removed. That's fine for a handful of values such as variants or themes. For values that differ per instance or change over time, such as sizes, positions or colors from data, use a getter instead (see [Reactive variables](#reactive-variables)). A getter shares one class and sets the value as a CSS variable on each element:
+
+```js
+// One class per width: the stylesheet grows with every new value.
+const staticBar = (width) => css`
+  width: ${width}px;
+`;
+
+// One class in total: the width is set on each element.
+const reactiveBar = (width) => css`
+  width: ${() => `${width}px`};
+`;
+```
+
+When one `css` call site has created 50 classes from different static values, Dolla logs a warning naming the template.
+
 ## Reactive variables
 
 Pass a getter to bind a CSS custom property. When the signal changes, the property updates on the element without rebuilding the stylesheet. This is the same getter rule described in [Values flow through getters](./concepts.md#values-flow-through-getters):

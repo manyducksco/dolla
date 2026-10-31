@@ -525,6 +525,24 @@ const staticTemplates = new Map<string, CSSTemplate>();
 const shapesByClassName = new Map<string, TemplateShape>();
 const shapesByStrings = new WeakMap<TemplateStringsArray, TemplateShape>();
 
+// Stylesheet rules are never removed, so a call site that bakes a different
+// static value into every template grows the stylesheet without limit.
+const PER_VALUE_WARNING_THRESHOLD = 50;
+const classCountsByStrings = new WeakMap<TemplateStringsArray, number>();
+
+function countNewClass(strings: TemplateStringsArray): void {
+  const count = (classCountsByStrings.get(strings) ?? 0) + 1;
+  classCountsByStrings.set(strings, count);
+  if (count !== PER_VALUE_WARNING_THRESHOLD) return;
+
+  const source = strings.join("${…}").replace(/\s+/g, " ").trim();
+  console.warn(
+    `[dolla] css\`${source.length > 80 ? source.slice(0, 77) + "..." : source}\` has created ` +
+      `${count} classes from different static values. Each one adds a stylesheet rule that is never removed. ` +
+      `Pass a getter instead (\${() => value}) to set the value as a CSS variable.`,
+  );
+}
+
 class CSSFactoryTemplate implements CSSTemplate {
   readonly [IS_CSS_TEMPLATE] = true;
   readonly className: string;
@@ -614,6 +632,7 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
     shape = shapesByClassName.get(className);
 
     if (!shape) {
+      countNewClass(strings);
       const built = buildStyles(className, strings, interpolations);
       shape = {
         className,

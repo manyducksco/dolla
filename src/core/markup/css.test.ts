@@ -736,3 +736,66 @@ describe("keyframes helper", () => {
     expect(to(17).name).toBe(small.name);
   });
 });
+
+describe("per-value class warning", () => {
+  test("warns once when one call site keeps creating classes from static values", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const sized = (n: number) => css`
+        min-width: ${n}px;
+      `;
+      for (let n = 0; n < 120; n++) sized(1000 + n);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("min-width: ${…}px;");
+      expect(String(warn.mock.calls[0][0])).toContain("getter");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("getter interpolations never warn", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const sized = (n: number) => css`
+        max-width: ${() => `${n}px`};
+      `;
+      for (let n = 0; n < 120; n++) sized(n);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("reusing a few static values does not warn", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const tone = (color: string) => css`
+        outline-color: ${color};
+      `;
+      for (let i = 0; i < 200; i++) tone(["red", "green", "blue"][i % 3]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("classes from different call sites are counted separately", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const a = (n: number) => css`
+        min-height: ${n}px;
+      `;
+      const b = (n: number) => css`
+        max-height: ${n}px;
+      `;
+      for (let n = 0; n < 40; n++) {
+        a(n);
+        b(n);
+      }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
