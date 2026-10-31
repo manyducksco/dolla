@@ -19,6 +19,8 @@ export default defineConfig({
 
 The Vite plugin auto-injects HMR registration into exported view functions. When a module updates, active component instances receive the new view function and their DOM subtree is replaced in place. State inside those views is discarded.
 
+The plugin only runs on the dev server. Production builds are left untouched.
+
 ## Stores
 
 Stores are matched by the store function itself, not its name, so `getStore` finds the instance that `addStore` created with the same function. To keep that working across hot reloads, the Vite plugin wraps exported functions in a stable wrapper. A module can be re-evaluated any number of times and the export stays the same function.

@@ -231,7 +231,7 @@ function* topLevelMatches(re, scan) {
   }
 }
 
-function findExportEntries(code, scan = maskNonCode(code), isDev = false) {
+function findExportEntries(code, scan = maskNonCode(code)) {
   const entries = [];
 
   for (const match of topLevelMatches(EXPORT_FUNC_RE, scan)) {
@@ -243,11 +243,8 @@ function findExportEntries(code, scan = maskNonCode(code), isDev = false) {
   }
 
   for (const match of topLevelMatches(EXPORT_DEFAULT_FUNC_RE, scan)) {
-    // In dev an anonymous default function is named by `applyLiveBindings`.
-    const name = match[1] ?? (isDev ? ANONYMOUS_DEFAULT : undefined);
-    if (name) {
-      entries.push(`default: ${name}`);
-    }
+    // An anonymous default function is named by `applyLiveBindings`.
+    entries.push(`default: ${match[1] ?? ANONYMOUS_DEFAULT}`);
     return entries;
   }
 
@@ -452,13 +449,12 @@ function findDollaStyledImports(code, codeScan) {
  * declarations whose LHS isn't a plain identifier.
  */
 function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
-  let matched = false;
   const masked = codeScan.masked;
 
   // Only rewrite the `styled` exported by dolla. Other libraries also export
   // a `styled` (e.g. `@emotion/styled`) whose components must be left alone.
   const localNames = findDollaStyledImports(code, codeScan);
-  if (localNames.length === 0) return false;
+  if (localNames.length === 0) return;
 
   // Search the masked source so occurrences in comments/strings are skipped.
   const nameRe = new RegExp(`(?<![\\w$])(?:${localNames.map(escapeRegExp).join("|")})(?![\\w$])`, "g");
@@ -486,12 +482,9 @@ function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
     if (/\.named\s*\(/.test(scan.chainText)) continue;
 
     s.appendLeft(scan.backtick, `.named(${JSON.stringify(ident)})`);
-    matched = true;
     // Skip past the backtick to continue scanning.
     nameRe.lastIndex = scan.backtick;
   }
-
-  return matched;
 }
 
 /*============================*\
@@ -668,7 +661,7 @@ function applyLiveBindings(s, code, id, scan) {
     break;
   }
 
-  if (names.length === 0 && !defaultName) return false;
+  if (names.length === 0 && !defaultName) return;
 
   let block = "";
   for (const name of names) {
@@ -682,7 +675,6 @@ function applyLiveBindings(s, code, id, scan) {
   }
 
   s.appendRight(code.length, block + "\n");
-  return true;
 }
 
 /*============================*\
@@ -693,39 +685,29 @@ export default function dollaPlugin() {
   return {
     name: "dolla",
     enforce: "pre",
+    // Everything the plugin adds is for HMR, which a production build doesn't have.
+    apply: "serve",
     transform(code, id) {
       if (!/\.[jt]sx?$/.test(id)) return null;
       if (id.includes("node_modules")) return null;
 
-      const isDev =
-        this.environment?.command === "serve" ||
-        this.environment?.config?.command === "serve" ||
-        this.config?.command === "serve";
-      const hasStyled = isDev && code.includes("styled");
-
-      // In a production build, only transform files that can actually change
-      // app behavior (have exports or `styled`). In dev we process every file
-      // so that even the entry module (which may have no matching exports) gets
-      // an `import.meta.hot.accept` self-accept boundary — that contains HMR
-      // cascades and prevents a full-reload re-mount of the whole app.
-      if (!isDev && !code.match(/\bexport\b/) && !code.includes("styled")) return null;
-
       const s = new MagicString(code);
-      let edited = false;
 
-      // HMR injection (dev + build).
+      // Every file is processed, so even the entry module (which may have no
+      // matching exports) gets an `import.meta.hot.accept` self-accept
+      // boundary. That contains HMR cascades and prevents a full-reload
+      // re-mount of the whole app.
       const scan = maskNonCode(code);
-      const entries = findExportEntries(code, scan, isDev);
+      const entries = findExportEntries(code, scan);
 
-      // Inject `import.meta.hot.accept` into EVERY module that participates in
-      // the HMR graph — including the entry module, which may have no matching
-      // exports. Without a self-accept handler on the entry, an update to a
-      // deeply-nested dependency bubbles all the way up and Vite falls through
-      // to a full reload of the entry. Re-mounting the whole app on every
-      // nested edit re-mounts the current route and duplicates its DOM in
-      // #app. Making each module a boundary contains the update so it resolves
-      // via the in-place `replaceView` path instead.
-      const needsAccept = isDev || entries.length > 0;
+      // Inject `import.meta.hot.accept` into EVERY module — including the
+      // entry module, which may have no matching exports. Without a
+      // self-accept handler on the entry, an update to a deeply-nested
+      // dependency bubbles all the way up and Vite falls through to a full
+      // reload of the entry. Re-mounting the whole app on every nested edit
+      // re-mounts the current route and duplicates its DOM in #app. Making each
+      // module a boundary contains the update so it resolves via the in-place
+      // `replaceView` path instead.
 
       // Register the self-accept boundary at the VERY TOP of the module, before
       // any other top-level code. A heavy view module (many imports, styled
@@ -737,7 +719,7 @@ export default function dollaPlugin() {
       // Placing it at the top guarantees registration regardless of any later
       // throw during re-evaluation. The callback closes over `entries`, which
       // are in lexical scope and defined by the time Vite actually invokes it.
-      if (needsAccept && !HMR_ACCEPT_RE.test(code)) {
+      if (!HMR_ACCEPT_RE.test(code)) {
         const hmrCall = `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`;
         if (!HMR_IMPORT_RE.test(code)) {
           s.appendLeft(0, HMR_IMPORT + ";\n" + hmrCall);
@@ -745,23 +727,13 @@ export default function dollaPlugin() {
           s.appendLeft(0, hmrCall);
         }
       }
-      // Mark as edited whenever we participate in the HMR graph so an
-      // idempotent re-transform still returns the (unchanged) code rather
-      // than null.
-      if (needsAccept) edited = true;
-
-      // Live-binding: wrap named function exports in a stable proxy for HMR (dev only).
+      // Live-binding: wrap named function exports in a stable proxy for HMR.
       // Must run before the HMR call so the proxy is assigned before the callback captures it.
-      const liveBound = isDev && entries.length > 0 && applyLiveBindings(s, code, id, scan);
+      if (entries.length > 0) applyLiveBindings(s, code, id, scan);
 
-      // Styled-namer (dev only).
-      if (hasStyled) {
-        if (applyStyledNamer(s, code, scan)) {
-          edited = true;
-        }
-      }
+      if (code.includes("styled")) applyStyledNamer(s, code, scan);
 
-      if (!edited) return null;
+      // Always return the code, even if unchanged, since every module is an HMR boundary.
       return { code: s.toString(), map: s.generateMap({ source: id, includeContent: true, hires: true }) };
     },
   };

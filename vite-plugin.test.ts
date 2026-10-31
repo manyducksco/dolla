@@ -3,13 +3,9 @@ import dollaPlugin from "./vite-plugin.js";
 import { __dolla_export } from "./src/core/hmr.js";
 import { addStore, createContext, getStore } from "./src/core/context.js";
 
-function runTransform(code: string, id: string, command: "serve" | "build") {
-  const plugin = dollaPlugin();
-  // The transform hook reads `command` from one of several possible locations
-  // depending on Vite version. Set all of them so the test doesn't care.
-  const ctx: any = { environment: { command, config: { command } }, config: { command } };
+function runTransform(code: string, id: string) {
   // @ts-ignore — invoking the hook directly.
-  return plugin.transform.call(ctx, code, id);
+  return dollaPlugin().transform(code, id);
 }
 
 describe("dollaPlugin — HMR injection", () => {
@@ -17,7 +13,6 @@ describe("dollaPlugin — HMR injection", () => {
     const result = runTransform(
       `export const Foo = () => null;\n`,
       "/abs/path/file.tsx",
-      "serve",
     );
     expect(result).not.toBeNull();
     expect(result!.code).toContain('import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"');
@@ -27,7 +22,7 @@ describe("dollaPlugin — HMR injection", () => {
 
   test("does not duplicate the HMR import if already present", () => {
     const code = `import { __dolla_apply } from "@manyducks.co/dolla/hmr";\nexport const Foo = 1;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     // Count the import statements (not the call site reference) to assert dedup.
     const importOccurrences = (result!.code.match(/import\s+\{[^}]*__dolla_apply[^}]*\}\s+from/g) ?? []).length;
@@ -35,15 +30,10 @@ describe("dollaPlugin — HMR injection", () => {
   });
 
   test("injects HMR self-accept for no-export files in dev (entry boundary)", () => {
-    const result = runTransform(`const x = 1;\n`, "/abs/file.tsx", "serve");
+    const result = runTransform(`const x = 1;\n`, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain('import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"');
     expect(result!.code).toContain("import.meta.hot.accept");
-  });
-
-  test("still returns null for no-export files in production build", () => {
-    const result = runTransform(`const x = 1;\n`, "/abs/file.tsx", "build");
-    expect(result).toBeNull();
   });
 
   test("makes the entry module a self-accept boundary (export let without initializer)", () => {
@@ -52,7 +42,7 @@ describe("dollaPlugin — HMR injection", () => {
     // an `import.meta.hot.accept` so an HMR update to a deeply-nested
     // dependency is contained here instead of bubbling to a full reload.
     const code = `export let appContext;\nconst root = createRoot("#app");\n`;
-    const result = runTransform(code, "/abs/app.tsx", "serve");
+    const result = runTransform(code, "/abs/app.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain("import.meta.hot.accept");
     // The export must be preserved verbatim (not rewritten).
@@ -65,7 +55,7 @@ describe("dollaPlugin — HMR injection", () => {
     // the bottom-placed boundary from registering and force a full reload that
     // duplicates the mounted route.
     const code = `import { Something } from "./dep";\nexport function TaskModal() { return null; }\n`;
-    const result = runTransform(code, "/abs/views/TaskModal/TaskModal.tsx", "serve");
+    const result = runTransform(code, "/abs/views/TaskModal/TaskModal.tsx");
     expect(result).not.toBeNull();
     const acceptIdx = result!.code.indexOf("import.meta.hot.accept");
     // The user's own import is the first surviving statement; the boundary
@@ -77,7 +67,7 @@ describe("dollaPlugin — HMR injection", () => {
 
   test("registers `export async function` for HMR and live bindings", () => {
     const code = `export async function Loader() { return null; }\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ Loader \}\)/);
     expect(result!.code).toContain("\nasync function Loader()");
     expect(result!.code).toContain(`Loader = __dolla_export("/abs/file.tsx:Loader", Loader);`);
@@ -86,32 +76,30 @@ describe("dollaPlugin — HMR injection", () => {
 
   test("registers `export default async function Name` for HMR", () => {
     const code = `export default async function Page() { return null; }\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
   });
 
   test("source map names the source file and includes its content", () => {
     const code = `export function Foo() { return null; }\n`;
-    const result = runTransform(code, "/abs/views/Foo.tsx", "serve");
+    const result = runTransform(code, "/abs/views/Foo.tsx");
     const map = result!.map as any;
     expect(map.sources).toEqual(["/abs/views/Foo.tsx"]);
     expect(map.sourcesContent).toEqual([code]);
   });
 
   test("returns null for files inside node_modules", () => {
-    const result = runTransform(`export const Foo = 1;\n`, "/abs/project/node_modules/pkg/file.tsx", "serve");
+    const result = runTransform(`export const Foo = 1;\n`, "/abs/project/node_modules/pkg/file.tsx");
     expect(result).toBeNull();
   });
 
   test("returns null for non-JS extensions", () => {
-    const result = runTransform(`export const Foo = 1;\n`, "/abs/file.css", "serve");
+    const result = runTransform(`export const Foo = 1;\n`, "/abs/file.css");
     expect(result).toBeNull();
   });
 
-  test("still injects HMR in production build", () => {
-    const result = runTransform(`export const Foo = 1;\n`, "/abs/file.tsx", "build");
-    expect(result).not.toBeNull();
-    expect(result!.code).toContain("import.meta.hot.accept");
+  test("only runs in dev", () => {
+    expect(dollaPlugin().apply).toBe("serve");
   });
 });
 
@@ -120,49 +108,49 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 
   test("injects .named(\"IDENT\") for const-styled intrinsic", () => {
     const code = IMPORT + `const MyButton = styled.button\`\n  color: red;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.button.named("MyButton")`);
   });
 
   test("handles export const", () => {
     const code = IMPORT + `export const PageContainer = styled.div\`\n  color: red;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.div.named("PageContainer")`);
   });
 
   test("handles styled(<View>) wrapping", () => {
     const code = IMPORT + `const MyLink = styled(MyButton)\`\n  color: blue;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled(MyButton).named("MyLink")`);
   });
 
   test("handles styled('custom-thing') string tag", () => {
     const code = IMPORT + `const Thing = styled("my-thing")\`\n  color: red;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled("my-thing").named("Thing")`);
   });
 
   test("handles styled['box'] bracket tag", () => {
     const code = IMPORT + `const Box = styled["box"]\`\n  color: red;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled["box"].named("Box")`);
   });
 
   test("injects .named AFTER existing .as(\"tag\") chain (orthogonal)", () => {
     const code = IMPORT + `const MyLink = styled.button.as("a")\`\n  color: blue;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.button.as("a").named("MyLink")`);
   });
 
   test("skips injection if .named already in chain (idempotency)", () => {
     const code = IMPORT + `export const X = styled.button.named("Already")\`\n  color: red;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     // The existing .named("Already") should remain; no second .named injected.
     expect(result!.code).toContain(`.named("Already")`);
@@ -171,7 +159,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 
   test("does not rewrite destructuring assignments", () => {
     const code = IMPORT + `const { Foo } = styled;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     // No styled declaration to rewrite, but HMR self-accept is still injected.
     expect(result).not.toBeNull();
     expect(result!.code).not.toContain(".named(");
@@ -179,7 +167,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 
   test("does not rewrite function returns", () => {
     const code = IMPORT + `function make() { return styled.button\`\`; }\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     // No styled declaration to rewrite, but HMR self-accept is still injected.
     expect(result).not.toBeNull();
     expect(result!.code).not.toContain(".named(");
@@ -190,7 +178,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
       `const A = styled.div\`\n  color: red;\n\`;`,
       `const B = styled.span\`\n  color: blue;\n\`;`,
     ].join("\n");
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.div.named("A")`);
     expect(result!.code).toContain(`styled.span.named("B")`);
@@ -198,23 +186,12 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 
   test("running transform twice is idempotent", () => {
     const code = IMPORT + `export const MyButton = styled.button\`\n  color: red;\n\`;\n`;
-    const first = runTransform(code, "/abs/file.tsx", "serve");
+    const first = runTransform(code, "/abs/file.tsx");
     expect(first).not.toBeNull();
-    const second = runTransform(first!.code, "/abs/file.tsx", "serve");
+    const second = runTransform(first!.code, "/abs/file.tsx");
     expect(second).not.toBeNull();
     // Second pass should not double-inject .named.
     expect((second!.code.match(/\.named\(/g) ?? []).length).toBe(1);
-  });
-
-  test("does NOT inject .named in production build", () => {
-    const code = IMPORT + `const MyButton = styled.button\`\n  color: red;\n\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "build");
-    // Either null or unmodified code (only HMR may have run for a no-export file).
-    if (result == null) {
-      expect(true).toBe(true);
-    } else {
-      expect(result.code).not.toContain(`.named("MyButton")`);
-    }
   });
 
   test("handles multi-line template literals", () => {
@@ -223,14 +200,14 @@ describe("dollaPlugin — styled namer (dev only)", () => {
       background: white;
       padding: 4px;
     \`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.div.named("X")`);
   });
 
   test("skips styled inside an existing string literal", () => {
     const code = IMPORT + `const s = "styled.button";\nconst X = styled.div\`color: red;\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.div.named("X")`);
     // The string-literal occurrence should not be touched.
@@ -239,33 +216,33 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 
   test("does not rewrite a `styled` imported from another library", () => {
     const code = `import styled from "@emotion/styled";\nconst Title = styled.h1\`color: red;\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).not.toContain(".named(");
   });
 
   test("does not rewrite `styled` when no import of it exists", () => {
     const code = `const Title = styled.h1\`color: red;\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).not.toContain(".named(");
   });
 
   test("does not rewrite member access like `theme.styled.span`", () => {
     const code = IMPORT + `const Label = theme.styled.span\`color: red;\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).not.toContain(".named(");
     expect(result!.code).toContain("theme.styled.span`");
   });
 
   test("does not borrow the name of an unrelated earlier const", () => {
     const code = IMPORT + `const theme = { color: "red" };\nfunction make() { return styled.button\`color: red;\`; }\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).not.toContain(".named(");
   });
 
   test("does not borrow a const name across an intervening expression", () => {
     const code = IMPORT + `const Wrapped = wrap(styled.div\`color: red;\`);\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).not.toContain(".named(");
   });
 
@@ -276,7 +253,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
     }
     const code = IMPORT + lines.join("\n") + "\n";
     const start = performance.now();
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     const elapsed = performance.now() - start;
     expect(result!.code).toContain(`const S0 = styled.div.named("S0")`);
     expect(result!.code).toContain(`const S7999 = styled.div.named("S7999")`);
@@ -285,19 +262,19 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 
   test("handles template literals with `${}` inside the chain arguments", () => {
     const code = IMPORT + "const Thing = styled.button.as(`${tag}`)`color: red;`;\n";
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain('styled.button.as(`${tag}`).named("Thing")`color: red;`');
   });
 
   test("handles `${}` containing braces inside the chain arguments", () => {
     const code = IMPORT + "const Thing = styled(make(`${ { a: '}' }.a }`))`color: red;`;\n";
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain(".named(\"Thing\")`color: red;`");
   });
 
   test("rewrites an aliased dolla styled import", () => {
     const code = `import { styled as s } from "@manyducks.co/dolla/styled";\nconst Title = s.h1\`color: red;\`;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain(`s.h1.named("Title")`);
   });
 });
@@ -305,7 +282,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
 describe("dollaPlugin — export detection ignores non-code", () => {
   test("ignores `export function` inside a block comment", () => {
     const code = `/**\n * Usage:\n * export function MyView() {}\n */\nexport const Real = () => null;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result).not.toBeNull();
     expect(result!.code).not.toContain("MyView =");
     expect(result!.code).not.toContain("export { MyView }");
@@ -315,28 +292,28 @@ describe("dollaPlugin — export detection ignores non-code", () => {
 
   test("ignores `export function` inside a line comment", () => {
     const code = `// export function MyView() {}\nexport const Real = 1;\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).not.toContain("MyView =");
     expect(result!.code).toContain("// export function MyView() {}");
   });
 
   test("does not rewrite `export function` inside a template literal", () => {
     const code = "export const snippet = `export function Demo() {}`;\n";
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain("`export function Demo() {}`");
     expect(result!.code).not.toContain("Demo =");
   });
 
   test("does not rewrite `export function` inside a string literal", () => {
     const code = `export const snippet = "export function Demo() {}";\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain(`"export function Demo() {}"`);
     expect(result!.code).not.toContain("Demo =");
   });
 
   test("does not hoist exports nested inside a namespace", () => {
     const code = `export namespace NS {\n  export function helper() {}\n}\nexport function Top() {}\n`;
-    const result = runTransform(code, "/abs/file.ts", "serve");
+    const result = runTransform(code, "/abs/file.ts");
     expect(result!.code).toContain("  export function helper() {}");
     expect(result!.code).not.toContain("helper =");
     expect(result!.code).toContain(`Top = __dolla_export("/abs/file.ts:Top", Top);`);
@@ -345,13 +322,13 @@ describe("dollaPlugin — export detection ignores non-code", () => {
 
   test("still rewrites a top-level export after a template literal with an expression", () => {
     const code = "const a = `x ${{ b: 1 }.b} y`;\nexport function After() {}\n";
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain(`After = __dolla_export("/abs/file.tsx:After", After);`);
   });
 
   test("a regex literal containing a quote does not hide later exports", () => {
     const code = `const re = /["']/g;\nexport function After() {}\n`;
-    const result = runTransform(code, "/abs/file.tsx", "serve");
+    const result = runTransform(code, "/abs/file.tsx");
     expect(result!.code).toContain(`After = __dolla_export("/abs/file.tsx:After", After);`);
   });
 });
@@ -389,12 +366,12 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
   }
 
   function reload(id: string, ...versions: string[]) {
-    return versions.map((code) => evaluateModule(runTransform(code, id, "serve")!.code));
+    return versions.map((code) => evaluateModule(runTransform(code, id)!.code));
   }
 
   test("wraps an exported const arrow function", () => {
     const id = uniqueId();
-    const result = runTransform(`export const useCounter = (props, c) => ({ n: 1 });\n`, id, "serve");
+    const result = runTransform(`export const useCounter = (props, c) => ({ n: 1 });\n`, id);
     expect(result!.code).toContain("let useCounter = (props, c) =>");
     expect(result!.code).toContain(`useCounter = __dolla_export("${id}:useCounter", useCounter);`);
     expect(result!.code).toContain("export { useCounter };");
@@ -439,7 +416,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
   ])("wraps a TypeScript const function with %s", (_label, code) => {
     const id = uniqueId().replace(/\.js$/, ".ts");
     const name = code.match(/export const (\w+)/)![1];
-    const result = runTransform(`${code}\n`, id, "serve");
+    const result = runTransform(`${code}\n`, id);
     expect(result!.code).toContain(`let ${name}`);
     expect(result!.code).toContain(`${name} = __dolla_export("${id}:${name}", ${name});`);
   });
@@ -453,14 +430,14 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     ["several declarators", "export const one = () => 1, two = () => 2;"],
     ["let", "export let mutable = () => 1;"],
   ])("does not wrap an exported const holding %s", (_label, code) => {
-    const result = runTransform(`${code}\n`, uniqueId(), "serve");
+    const result = runTransform(`${code}\n`, uniqueId());
     expect(result!.code).not.toMatch(/\w+ = __dolla_export\(/);
     expect(result!.code).toContain("export ");
   });
 
   test("wraps a named default export function", () => {
     const id = uniqueId();
-    const result = runTransform(`export default function Page() { return 1; }\n`, id, "serve");
+    const result = runTransform(`export default function Page() { return 1; }\n`, id);
     expect(result!.code).toContain("\nfunction Page()");
     expect(result!.code).toContain(`Page = __dolla_export("${id}:default", Page);`);
     expect(result!.code).toContain("export { Page as default };");
@@ -480,7 +457,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
 
   test("an anonymous default export function keeps its identity across reloads", () => {
     const id = uniqueId();
-    const result = runTransform(`export default function () { return 1; }\n`, id, "serve");
+    const result = runTransform(`export default function () { return 1; }\n`, id);
     expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}\)/);
 
     const [v1, v2] = reload(id, `export default function () { return 1; }\n`, `export default function () { return 2; }\n`);
@@ -507,10 +484,5 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     const ctx = createContext(null);
     const store = addStore(ctx, v1.CounterStore);
     expect(getStore(ctx, v2.CounterStore)).toBe(store);
-  });
-
-  test("does not wrap in production builds", () => {
-    const result = runTransform(`export const fn = () => 1;\nexport default function Page() {}\n`, uniqueId(), "build");
-    expect(result?.code ?? "").not.toContain("__dolla_export(");
   });
 });

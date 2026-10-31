@@ -184,38 +184,28 @@ describe("HMR __dolla_apply", () => {
     logSpy.mockRestore();
   });
 
-  test("logs a per-instance locator line for each replaced instance", () => {
+  test("logs one summary line per export, not one per instance", () => {
     const id = `/abs/path/Foo.tsx:${viewCounter++}:Foo`;
     const view = __dolla_export(id, function Foo() {
       return "x";
     }) as any;
-    const div = document.createElement("div");
-    div.id = "host";
-    document.body.appendChild(div);
-    try {
-      registerViewInstance(view, makeMockNode({ root: div }));
-      registerViewInstance(view, makeMockNode({ mounted: false }));
+    registerViewInstance(view, makeMockNode({ mounted: false }));
+    registerViewInstance(view, makeMockNode({ mounted: false }));
 
-      const newView = function Foo() {
-        return "y";
-      } as any;
+    const newView = function Foo() {
+      return "y";
+    } as any;
 
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
 
-      __dolla_apply({ Foo: newView }, { Foo: view });
+    __dolla_apply({ Foo: newView }, { Foo: view });
 
-      const lines = logSpy.mock.calls.map((c) => c[0] as string);
-      const instanceLines = lines.filter((l) => l.includes("<Foo> @"));
-      expect(instanceLines).toHaveLength(2);
-      expect(instanceLines.some((l) => l.includes("#host"))).toBe(true);
-      expect(instanceLines.some((l) => l.includes("<unmounted>"))).toBe(true);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0][0]).toMatch(/\/abs\/path\/Foo\.tsx.*: 2 instances in/);
 
-      vi.mocked(console.groupCollapsed).mockRestore();
-      logSpy.mockRestore();
-    } finally {
-      document.body.removeChild(div);
-    }
+    vi.mocked(console.groupCollapsed).mockRestore();
+    logSpy.mockRestore();
   });
 
   test("skips the whole summary when no instances are replaced", () => {
