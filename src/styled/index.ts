@@ -47,8 +47,14 @@ export interface TemplateFn<BaseProps = {}> {
 /**
  * Flattens an incoming `class` value (which may itself be a nested array
  * when one styled view wraps another) into a single-level array. The styled
- * template is placed first so that wrappers and caller-supplied templates
- * win the cascade through stylesheet insertion order.
+ * template is placed first so it is attached (and, on first use, inserted
+ * into the stylesheet) before wrapper and caller-supplied templates.
+ *
+ * This does NOT guarantee that caller templates win the cascade: each rule
+ * is inserted once, the first time any element uses it, so a caller template
+ * that was already used elsewhere sits *before* this styled rule and loses
+ * to it at equal specificity. Raise the caller rule's specificity (e.g.
+ * `&&`) when an override must always win.
  *
  * Falsy entries are dropped so they don't trip up `ElementNode`'s template
  * extraction, which only inspects one level of nesting for CSSTemplates.
