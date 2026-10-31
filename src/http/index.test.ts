@@ -77,6 +77,28 @@ describe("HTTP client", () => {
     expect(opts.body).toBe(JSON.stringify(body));
   });
 
+  test("POST serializes object and array bodies when a JSON content-type is set", async () => {
+    mockFetch.mockImplementation(async () => mockResponse({}));
+    const client = new HTTP();
+
+    await client.post("/api/items", {
+      body: { name: "test" },
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+    await client.post("/api/items", {
+      body: [1, 2],
+      headers: { "Content-Type": "application/vnd.api+json" },
+    });
+
+    const [, first] = mockFetch.mock.calls[0];
+    expect(first.body).toBe('{"name":"test"}');
+    expect(first.headers.get("content-type")).toBe("application/json; charset=utf-8");
+
+    const [, second] = mockFetch.mock.calls[1];
+    expect(second.body).toBe("[1,2]");
+    expect(second.headers.get("content-type")).toBe("application/vnd.api+json");
+  });
+
   test("DELETE request", async () => {
     mockFetch.mockImplementation(async () => mockResponse({ deleted: true }));
     const client = new HTTP();

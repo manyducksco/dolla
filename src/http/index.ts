@@ -330,8 +330,8 @@ export class HTTP {
     let body = options.body;
     const isPlainObject = body && typeof body === "object" && body.constructor === Object;
 
-    if (!headers.has("content-type") && (isPlainObject || Array.isArray(body))) {
-      headers.set("content-type", "application/json");
+    if ((isPlainObject || Array.isArray(body)) && (!headers.has("content-type") || isJsonContentType(headers))) {
+      if (!headers.has("content-type")) headers.set("content-type", "application/json");
       body = JSON.stringify(body);
     }
 
