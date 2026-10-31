@@ -358,6 +358,18 @@ describe("createVirtualList", () => {
     expect(content.style.height).toBe("30px");
   });
 
+  test("detects a prepend when the previous first key is 0", async () => {
+    const [items, setItems] = createAtom(range(0, 3));
+    const { viewport, scrollTo } = await setup({ items });
+    scrollTo(100);
+    expect(viewport.scrollTop).toBe(100);
+
+    // Two items prepended in front of key 0: keep the same content in view.
+    setItems(range(-2, 3));
+    flushPendingUpdates();
+    expect(viewport.scrollTop).toBe(200);
+  });
+
   test("keeps heights with their items when the list is reordered", async () => {
     const [items, setItems] = createAtom(range(0, 4));
     const { slots } = await setup({ items, poolSize: 10 });

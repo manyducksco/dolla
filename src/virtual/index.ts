@@ -285,7 +285,7 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
 
       if (
         currentCount > previousCount &&
-        previousFirstKey &&
+        previousFirstKey !== null &&
         props.keyFn(currentItems[currentCount - previousCount]) === previousFirstKey
       ) {
         if (viewport) {
