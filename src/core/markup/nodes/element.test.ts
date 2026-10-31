@@ -738,6 +738,35 @@ describe("ElementNode", () => {
   });
 
   describe("styles", () => {
+    test("reactive style value 0 is applied, not removed", () => {
+      const { context, container } = setup();
+      const [opacity, setOpacity] = createAtom<number | null>(0.5);
+      const node = new ElementNode(context, "div", { style: { opacity: () => opacity(), zIndex: () => 0 } });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.zIndex).toBe("0");
+
+      setOpacity(0);
+      flushPendingUpdates();
+      expect(el.style.opacity).toBe("0");
+
+      setOpacity(null);
+      flushPendingUpdates();
+      expect(el.style.opacity).toBe("");
+    });
+
+    test("reactive style value false removes the property", () => {
+      const { context, container } = setup();
+      const [color, setColor] = createAtom<string | false>("red");
+      const node = new ElementNode(context, "div", { style: { color: () => color() } });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+
+      setColor(false);
+      flushPendingUpdates();
+      expect(el.style.color).toBe("");
+    });
+
     test("sets styles via string", () => {
       const { context, container } = setup();
       const node = new ElementNode(context, "div", { style: "color: red; font-size: 16px" });
@@ -1222,6 +1251,34 @@ describe("ElementNode", () => {
       expect(() => new ElementNode(context, "div", { className: " " })).toThrow(
         "Empty class string will cause a DOMException.",
       );
+    });
+  });
+
+  describe("clearing properties", () => {
+    test.each(["value", "prop:value"])("setting %s to null clears an input's current value", (key) => {
+      const { context, container } = setup();
+      const [value, setValue] = createAtom<string | null>("hello");
+      const node = new ElementNode(context, "input", { [key]: () => value() });
+      node.mount(container);
+      const input = container.children[0] as HTMLInputElement;
+      expect(input.value).toBe("hello");
+
+      setValue(null);
+      flushPendingUpdates();
+      expect(input.value).toBe("");
+    });
+
+    test("setting textContent to undefined clears the text", () => {
+      const { context, container } = setup();
+      const [text, setText] = createAtom<string | undefined>("hi");
+      const node = new ElementNode(context, "div", { textContent: () => text() });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.textContent).toBe("hi");
+
+      setText(undefined);
+      flushPendingUpdates();
+      expect(el.textContent).toBe("");
     });
   });
 

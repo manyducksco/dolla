@@ -474,8 +474,8 @@ export class ElementNode extends MarkupNode {
         const unsub = this.#subscribe(
           value,
           (v) => {
-            if (v) setStyleValue(element, name, property, v, priority);
-            else element.style.removeProperty(name);
+            if (v == null || v === false) element.style.removeProperty(name);
+            else setStyleValue(element, name, property, v, priority);
           },
           `element:style:${name}`,
         );
@@ -1011,6 +1011,9 @@ function setAttribute(element: Element, name: string, value: any) {
 
 function setProp(element: Element, key: string, value: unknown) {
   if (value == null) {
+    // Removing the attribute doesn't reset live properties like `value` or
+    // `textContent`, so clear string properties directly as well.
+    if (typeof (element as any)[key] === "string") (element as any)[key] = "";
     element.removeAttribute(key);
   } else {
     (element as any)[key] = value;
