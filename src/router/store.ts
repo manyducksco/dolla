@@ -2,7 +2,7 @@ import { getStore, type Context } from "../core/context.js";
 import { getDebug } from "../core/debug.js";
 import { compose, get, peek, type Getter, type MaybeGetter, type Setter } from "../core/signals.js";
 import type { Router } from "./types";
-import { mergeQueryParams, resolvePath, type HistoryAdapter, type Match } from "./utils";
+import { mergeQueryParams, resolvePath, splitUrl, type HistoryAdapter, type Match } from "./utils";
 
 export interface RouterStoreProps {
   currentMatch: Getter<Match>;
@@ -23,16 +23,10 @@ export function RouterStore(props: RouterStoreProps, c: Context): Router {
     console.info(`🗺️ navigating to '${path}'${replace ? " (replace)" : ""}`);
 
     // Resolve only the path part so the query string and fragment are passed through as-is.
-    const hashIndex = path.indexOf("#");
-    const fragment = hashIndex === -1 ? "" : path.slice(hashIndex);
-    if (hashIndex !== -1) path = path.slice(0, hashIndex);
-
-    const queryIndex = path.indexOf("?");
-    let search = queryIndex === -1 ? "" : path.slice(queryIndex);
-    const pathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
+    const [pathname, query, fragment] = splitUrl(path);
 
     // A fragment-only href ("#top") stays on the current path and query, like in a browser.
-    if (!pathname && !search && fragment) search = history.getSearch();
+    const search = !pathname && !query && fragment ? history.getSearch() : query;
 
     // A query-only href ("?page=2") keeps the current path.
     const resolved = (pathname ? resolvePath(history.getPath(), pathname) : history.getPath()) + search + fragment;

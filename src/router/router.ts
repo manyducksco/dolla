@@ -74,11 +74,7 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
     context[ROUTER_ROOT_SLOT] = rootSlot;
 
-    const rootLayer: Partial<ActiveLayer> = {
-      context,
-      slot: rootSlot,
-      setSlot: setRootSlot,
-    };
+    const rootLayer: Pick<ActiveLayer, "context" | "setSlot"> = { context, setSlot: setRootSlot };
 
     const activeLayers: ActiveLayer[] = [];
 
@@ -89,13 +85,13 @@ export function createRouter(options: RouterOptions): DollaPlugin {
      * Run when the location changes. Diffs and mounts new routes and updates
      * the signals accordingly.
      */
-    async function updateRoute(href?: string) {
+    async function updateRoute() {
       scrollCache.set(currentKey, window.scrollY);
 
       const token = ++navigationToken;
       const isStale = () => token !== navigationToken;
 
-      const path = href ?? history.getPath() + history.getSearch();
+      const path = history.getPath() + history.getSearch();
       const { match, journey } = await resolveRoute(routeTree, path);
       if (isStale()) return;
 
@@ -247,16 +243,14 @@ export function createRouter(options: RouterOptions): DollaPlugin {
             propsToPass = { error: caughtError };
           }
 
-          const node = new ViewNode(parent.context!, viewToMount, propsToPass);
+          const node = new ViewNode(parent.context, viewToMount, propsToPass);
           parent.setSlot(node);
 
           activeLayers.push({
-            id: layer.id,
             // Error layers never match a key, so the next navigation remounts the real view.
             key: isErrorLayer ? "" : targetKeys[i],
             node,
             context: node.context,
-            slot,
             setSlot,
           });
 

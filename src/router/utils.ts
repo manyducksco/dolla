@@ -1,4 +1,5 @@
 import type { View } from "../types.js";
+import { addListener } from "../core/markup/utils.js";
 import { assert, isArray, isFunction, isObject, isString, uniqueId } from "../utils.js";
 import type { JourneyStep, Route, RouteLayer, Stringable } from "./types.js";
 
@@ -47,9 +48,18 @@ type RoutePayload = {
   redirect?: string | ((match: Match) => string) | ((match: Match) => Promise<string>);
 };
 
-type RouteMatchOptions = {
-  willMatch?: (route: RoutePayload) => boolean;
-};
+/**
+ * Splits a URL into its path, query string (with its `?`) and fragment (with its `#`).
+ * Only the first `?` starts the query, since query values may contain `?`.
+ */
+export function splitUrl(url: string): [path: string, search: string, fragment: string] {
+  const hashIndex = url.indexOf("#");
+  const fragment = hashIndex === -1 ? "" : url.slice(hashIndex);
+  if (hashIndex !== -1) url = url.slice(0, hashIndex);
+  const queryIndex = url.indexOf("?");
+  if (queryIndex === -1) return [url, "", fragment];
+  return [url.slice(0, queryIndex), url.slice(queryIndex), fragment];
+}
 
 /**
  * Separates a URL path into multiple fragments.
@@ -234,24 +244,18 @@ export function buildRouteTree(routes: Route[]): RouteNode {
       throw new TypeError(`Expected view function for ${route.path}`);
     }
 
+    const layer: RouteLayer = {
+      id: uniqueId(),
+      pattern: rawPattern,
+      view,
+      preload: route.preload,
+      errorView: route.errorView,
+    };
+
     if (route.routes) {
-      // For parent nodes, create the layer using the raw pattern and recurse
-      const layer: RouteLayer = {
-        id: uniqueId(),
-        pattern: rawPattern,
-        view,
-        preload: route.preload,
-        errorView: route.errorView,
-      };
+      // Parent routes add their layer to every subroute.
       for (const subroute of route.routes) parse(subroute, [...parents, route], [...layers, layer]);
     } else {
-      const layer: RouteLayer = {
-        id: uniqueId(),
-        pattern: rawPattern,
-        view,
-        preload: route.preload,
-        errorView: route.errorView,
-      };
       insertIntoTree(rawPattern, { pattern: rawPattern, meta, layers: [...layers, layer] });
     }
   }
@@ -260,7 +264,7 @@ export function buildRouteTree(routes: Route[]): RouteNode {
 
   for (const payload of redirectsToValidate) {
     assert(
-      matchRoute(root, payload.redirect as string, { willMatch: (r) => r !== payload }),
+      matchRoute(root, payload.redirect as string, payload),
       `Dead redirect: ${payload.pattern} -> ${payload.redirect}`,
     );
   }
@@ -268,13 +272,12 @@ export function buildRouteTree(routes: Route[]): RouteNode {
   return root;
 }
 
-export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatchOptions = {}): RouteMatch | undefined {
-  // The fragment never takes part in matching. Split on the first '?' only, since query values may contain '?'.
-  const hashIndex = url.indexOf("#");
-  if (hashIndex !== -1) url = url.slice(0, hashIndex);
-  const queryIndex = url.indexOf("?");
-  const path = queryIndex === -1 ? url : url.slice(0, queryIndex);
-  const query = queryIndex === -1 ? "" : url.slice(queryIndex + 1);
+/**
+ * Finds the route that matches `url`. A route passed as `skip` never matches.
+ */
+export function matchRoute(rootNode: RouteNode, url: string, skip?: RoutePayload): RouteMatch | undefined {
+  // The fragment never takes part in matching.
+  const [path, query] = splitUrl(url);
   const parts = splitPath(path);
   function createMatch(route: RoutePayload, wildcard?: string): RouteMatch {
     const params: Record<string, string> = {};
@@ -287,28 +290,25 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
       path: path || "/",
       pattern: route.pattern,
       params,
-      query: parseQueryParams(query || ""),
+      query: parseQueryParams(query.slice(1)),
       meta: route.meta,
       layers: route.layers ?? [],
       redirect: route.redirect,
     };
   }
 
+  const usable = (route: RoutePayload | undefined) => (route !== skip ? route : undefined);
+
   function search(node: RouteNode, index: number): RouteMatch | undefined {
+    const wildcard = usable(node.wildcardChild?.route);
+
     // if we've consumed all URL parts
     if (index === parts.length) {
-      if (node.route && (!options.willMatch || options.willMatch(node.route))) {
-        return createMatch(node.route);
-      }
+      const route = usable(node.route);
+      if (route) return createMatch(route);
 
       // Allow wildcards to match zero remaining segments
-      if (node.wildcardChild && node.wildcardChild.route) {
-        if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-          return createMatch(node.wildcardChild.route, "/");
-        }
-      }
-
-      return undefined;
+      return wildcard && createMatch(wildcard, "/");
     }
 
     const part = parts[index];
@@ -325,13 +325,7 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
       if (result) return result;
     }
 
-    if (node.wildcardChild && node.wildcardChild.route) {
-      if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-        return createMatch(node.wildcardChild.route, "/" + parts.slice(index).map(decodeSegment).join("/"));
-      }
-    }
-
-    return undefined;
+    return wildcard && createMatch(wildcard, "/" + parts.slice(index).map(decodeSegment).join("/"));
   }
 
   return search(rootNode, 0);
@@ -394,15 +388,10 @@ export async function resolveRoute(
  *
  * @param root - Element under which to intercept link clicks
  * @param callback - Function to call when a click event is intercepted
- * @param _window - (optional) Override for global window object
  */
-export function catchLinks(
-  root: Element,
-  callback: (href: string, anchor: HTMLAnchorElement) => void,
-  _window = window,
-) {
-  function handler(e: MouseEvent) {
-    if ((e.button && e.button !== 0) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
+export function catchLinks(root: Element, callback: (href: string) => void) {
+  return addListener<MouseEvent>(root, "click", (e) => {
+    if (e.button || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
 
     const anchor = (e.target as Element).closest("a");
     if (!anchor || !root.contains(anchor)) return;
@@ -412,23 +401,18 @@ export function catchLinks(
     if (!href || href.startsWith("#")) return;
 
     if (
-      _window.location.protocol !== anchor.protocol ||
-      _window.location.hostname !== anchor.hostname ||
-      _window.location.port !== anchor.port ||
+      anchor.origin !== window.location.origin ||
       anchor.hasAttribute("data-router-ignore") ||
       anchor.hasAttribute("download") ||
       anchor.getAttribute("target") === "_blank" ||
-      /^[\w-_]+:/.test(href)
+      /^[\w-]+:/.test(href)
     ) {
       return;
     }
 
     e.preventDefault();
-    callback(href, anchor);
-  }
-
-  root.addEventListener("click", handler as any);
-  return () => root.removeEventListener("click", handler as any);
+    callback(href);
+  });
 }
 
 const PARAM_RE = /:([A-Za-z0-9_]+)/g;
@@ -468,17 +452,9 @@ export function createHistoryAdapter(useHash: boolean): HistoryAdapter {
   }
 
   // In hash mode the URL lives in the hash, as "#/path?query#fragment".
-  const hashParts = (): [path: string, search: string, fragment: string] => {
-    let url = window.location.hash.slice(1);
-    const hashIndex = url.indexOf("#");
-    const fragment = hashIndex === -1 ? "" : url.slice(hashIndex);
-    if (hashIndex !== -1) url = url.slice(0, hashIndex);
-    const queryIndex = url.indexOf("?");
-    if (queryIndex === -1) return [url || "/", "", fragment];
-    return [url.slice(0, queryIndex) || "/", url.slice(queryIndex), fragment];
-  };
+  const hashParts = () => splitUrl(window.location.hash.slice(1));
 
-  const getPath = useHash ? () => hashParts()[0] : () => window.location.pathname;
+  const getPath = useHash ? () => hashParts()[0] || "/" : () => window.location.pathname;
   const getSearch = useHash ? () => hashParts()[1] : () => window.location.search;
   const getFragment = useHash ? () => hashParts()[2] : () => window.location.hash;
 

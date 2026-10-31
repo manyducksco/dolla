@@ -1,5 +1,5 @@
-import { describe, test, expect } from "vitest";
-import { buildRouteTree, createHistoryAdapter, joinPath, matchRoute, resolvePath, resolveRoute } from "./utils.js";
+import { describe, test, expect, vi } from "vitest";
+import { buildRouteTree, catchLinks, createHistoryAdapter, joinPath, matchRoute, resolvePath, resolveRoute } from "./utils.js";
 import type { Route } from "./types.js";
 
 test("add and match routes", () => {
@@ -211,5 +211,38 @@ describe("createHistoryAdapter", () => {
     expect(history.getSearch()).toBe("");
 
     window.history.replaceState(null, "", "/");
+  });
+});
+
+describe("catchLinks", () => {
+  function click(root: Element, href: string, init: MouseEventInit = {}) {
+    const anchor = document.createElement("a");
+    anchor.setAttribute("href", href);
+    root.appendChild(anchor);
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...init });
+    anchor.dispatchEvent(event);
+    anchor.remove();
+    return event.defaultPrevented;
+  }
+
+  test("intercepts plain same-origin links and leaves the rest to the browser", () => {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const callback = vi.fn();
+    const stop = catchLinks(root, callback);
+
+    expect(click(root, "/users")).toBe(true);
+    expect(callback).toHaveBeenCalledWith("/users");
+
+    expect(click(root, "https://example.com/x")).toBe(false);
+    expect(click(root, "mailto:a@example.com")).toBe(false);
+    expect(click(root, "#top")).toBe(false);
+    expect(click(root, "/users", { button: 1 })).toBe(false);
+    expect(click(root, "/users", { metaKey: true })).toBe(false);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    stop();
+    expect(click(root, "/users")).toBe(false);
+    root.remove();
   });
 });

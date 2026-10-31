@@ -63,11 +63,9 @@ export interface RouteLayer {
  * An active route layer whose markup has been initialized into a view.
  */
 export interface ActiveLayer {
-  id: string;
   key: string;
   node: MarkupNode;
   context: Context;
-  slot: Getter<MarkupNode | undefined>;
   setSlot: Setter<MarkupNode | undefined>;
 }
 
@@ -77,15 +75,6 @@ export interface ActiveLayer {
 export interface JourneyStep {
   kind: "match" | "redirect" | "miss";
   message: string;
-}
-
-export interface NavigateOptions {
-  /**
-   * Preserve existing query params (if any) when navigating. Defaults to false.
-   * If true, all existing query params are preserved and merged with new ones.
-   * If an array of strings is passed only those keys will be preserved, then merged with any new ones.
-   */
-  preserveQuery?: boolean | string[];
 }
 
 export interface RouterOptions {
