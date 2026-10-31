@@ -92,6 +92,8 @@ Available built-in formatters:
 - `{{value|datetime}}` — uses `Intl.DateTimeFormat`
 - `{{value|list}}` — uses `Intl.ListFormat`
 
+Pass formatter options in parentheses: `{{value|number(style: percent, useGrouping: false)}}`. `true`, `false` and numbers are converted to booleans and numbers; other values are strings.
+
 ### Custom formatters
 
 Register custom formatters in the plugin options:

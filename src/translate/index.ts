@@ -326,6 +326,17 @@ export type TemplateSegmentFn = (
 export type CompiledTemplate = TemplateSegmentFn[];
 
 /**
+ * Converts a formatter option written in a template to the type `Intl` APIs expect.
+ * "true"/"false" become booleans and numeric strings become numbers; anything else stays a string.
+ */
+function parseOptionValue(value: string): string | number | boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  return value;
+}
+
+/**
  * Parse a string template into an array of functions that will produce each piece of the output when called.
  */
 export function parseTemplate(template: string): CompiledTemplate {
@@ -341,7 +352,7 @@ export function parseTemplate(template: string): CompiledTemplate {
       const parts = inner.split("|").map((p) => p.trim());
 
       const name = parts[0];
-      const parsedFormats: { name: string; options: Record<string, string> }[] = [];
+      const parsedFormats: { name: string; options: Record<string, string | number | boolean> }[] = [];
 
       // Parse formatters at build-time to prevent string splitting on every render
       for (let j = 1; j < parts.length; j++) {
@@ -351,7 +362,7 @@ export function parseTemplate(template: string): CompiledTemplate {
         if (match) {
           const formatName = match[1];
           const optionsStr = match[2];
-          const optsObj: Record<string, string> = {};
+          const optsObj: Record<string, string | number | boolean> = {};
 
           if (optionsStr) {
             const pairs = optionsStr.split(",");
@@ -359,7 +370,7 @@ export function parseTemplate(template: string): CompiledTemplate {
               const pair = pairs[k];
               const colonIndex = pair.indexOf(":");
               if (colonIndex > -1) {
-                optsObj[pair.slice(0, colonIndex).trim()] = pair.slice(colonIndex + 1).trim();
+                optsObj[pair.slice(0, colonIndex).trim()] = parseOptionValue(pair.slice(colonIndex + 1).trim());
               }
             }
           }

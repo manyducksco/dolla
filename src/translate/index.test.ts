@@ -172,6 +172,19 @@ describe("parseTemplate", () => {
     expect(capturedOptions).toEqual({ currency: "USD" });
   });
 
+  test("formatter options coerce booleans and numbers", () => {
+    const segments = parseTemplate("{{n|number(useGrouping:false, minimumFractionDigits: 2, style: percent, x: true)}}");
+    let capturedOptions: any;
+    const formatters = new Map();
+    formatters.set("number", (_locale: string, value: any, options: any) => {
+      capturedOptions = options;
+      return new Intl.NumberFormat("en", options).format(value);
+    });
+    const result = segments.map((s) => s({ n: 12345 }, formatters, "en")).join("");
+    expect(capturedOptions).toEqual({ useGrouping: false, minimumFractionDigits: 2, style: "percent", x: true });
+    expect(result).toBe("1234500.00%");
+  });
+
   test("empty template produces no segments", () => {
     const segments = parseTemplate("");
     expect(segments.length).toBe(0);
