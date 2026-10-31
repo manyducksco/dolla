@@ -126,6 +126,25 @@ describe("stores", () => {
     expect(store.theme).toBe("dark");
   });
 
+  test("addStore can omit props when the store's props have no required keys", () => {
+    let received: unknown;
+    function EmptyStore(props: {}, _ctx: Context) {
+      received = props;
+      return {};
+    }
+    function OptionalStore(props: { label?: string }, _ctx: Context) {
+      return { label: props.label ?? "none" };
+    }
+    const ctx = createContext(null);
+
+    addStore(ctx, EmptyStore);
+    expect(received).toEqual({});
+    expect(addStore(ctx, OptionalStore).label).toBe("none");
+
+    // @ts-expect-error props with required keys must still be passed
+    addStore(createContext(null), ConfigStore);
+  });
+
   test("adding the same store twice on the same context returns existing store", () => {
     const ctx = createContext(null);
     const first = addStore(ctx, CounterStore);
