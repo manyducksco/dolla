@@ -117,6 +117,17 @@ export function resolvePath(base: string, part: string | null = null): string {
   return joinPath([base, part]);
 }
 
+/**
+ * Decodes a path segment, falling back to the raw segment if it isn't valid percent-encoding.
+ */
+function decodeSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
 function parseQueryParams(query: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(query));
 }
@@ -261,7 +272,7 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
   function createMatch(route: RoutePayload, wildcard?: string): RouteMatch {
     const params: Record<string, string> = {};
     for (const [index, name] of route.params ?? []) {
-      params[name] = decodeURIComponent(parts[index]);
+      params[name] = decodeSegment(parts[index]);
     }
     if (wildcard != null) params.wildcard = wildcard;
 
@@ -309,7 +320,7 @@ export function matchRoute(rootNode: RouteNode, url: string, options: RouteMatch
 
     if (node.wildcardChild && node.wildcardChild.route) {
       if (!options.willMatch || options.willMatch(node.wildcardChild.route)) {
-        return createMatch(node.wildcardChild.route, "/" + parts.slice(index).map(decodeURIComponent).join("/"));
+        return createMatch(node.wildcardChild.route, "/" + parts.slice(index).map(decodeSegment).join("/"));
       }
     }
 

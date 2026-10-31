@@ -42,6 +42,11 @@ describe("Radix Tree Routing Algorithm", () => {
     expect(match?.params.id).toBe("john doe");
   });
 
+  it("falls back to the raw segment for malformed percent-encoding", () => {
+    expect(matchRoute(tree, "/users/100%")?.params).toEqual({ id: "100%" });
+    expect(matchRoute(tree, "/files/a/100%")?.params).toEqual({ wildcard: "/a/100%" });
+  });
+
   it("captures wildcards", () => {
     const match = matchRoute(tree, "/files/documents/2026/report.pdf");
     expect(match?.pattern).toBe("/files/*");
