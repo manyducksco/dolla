@@ -74,6 +74,8 @@ function UsersLayout(props) {
 
 Route params are always strings. Convert explicitly when needed, for example `Number(router.params().id)`.
 
+`*` must be the last segment of a pattern, and each pattern may only be defined once (`/users/:id` and `/users/:userId` count as the same pattern). `createRouter` throws on either mistake.
+
 ### Reading route state
 
 `path`, `pattern`, `params`, `query`, and `meta` are getters. Interpolate them directly for a reactive value, or wrap property access in a getter:

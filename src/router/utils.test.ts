@@ -95,6 +95,34 @@ test("rejects invalid route params", () => {
   ).toThrow("Invalid route param");
 });
 
+test("rejects duplicate route patterns", () => {
+  const view = () => "test";
+  expect(() =>
+    buildRouteTree([
+      { path: "/users", view },
+      { path: "/users", view },
+    ]),
+  ).toThrow("Duplicate route: /users");
+  expect(() =>
+    buildRouteTree([
+      { path: "/users/:id", view },
+      { path: "/users/:userId", view },
+    ]),
+  ).toThrow("Duplicate route: /users/:userId");
+  expect(() =>
+    buildRouteTree([
+      { path: "/users", view, routes: [{ path: "/:id", view }] },
+      { path: "/users/:id", view },
+    ]),
+  ).toThrow("Duplicate route: /users/:id");
+});
+
+test("rejects segments after a wildcard", () => {
+  expect(() => buildRouteTree([{ path: "/files/*/edit", view: () => "test" }])).toThrow(
+    "Wildcard must be the last segment: /files/*/edit",
+  );
+});
+
 test("static joinPath: joins simple path fragments", () => {
   expect(joinPath(["users", 5, "edit"])).toBe("users/5/edit");
   expect(joinPath(["/lots", "/of/", "/slashes/"])).toBe("/lots/of/slashes");

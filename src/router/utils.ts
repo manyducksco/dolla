@@ -179,6 +179,7 @@ export function buildRouteTree(routes: Route[]): RouteNode {
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       if (part === "*") {
+        assert(i === parts.length - 1, `Wildcard must be the last segment: ${pattern}`);
         current = current.wildcardChild ??= new RouteNode();
       } else if (part.startsWith(":")) {
         const name = part.slice(1);
@@ -192,6 +193,7 @@ export function buildRouteTree(routes: Route[]): RouteNode {
         current = next;
       }
     }
+    assert(!current.route, `Duplicate route: ${pattern}`);
     payload.params = params;
     current.route = payload;
   }
