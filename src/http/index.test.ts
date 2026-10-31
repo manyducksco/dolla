@@ -173,6 +173,53 @@ describe("HTTP client", () => {
     await expect(client.get("/api/missing")).rejects.toThrow(HTTPResponseError);
   });
 
+  describe("responses without a JSON body", () => {
+    const jsonHeaders = { "content-type": "application/json" };
+
+    test("HEAD with a JSON content-type does not parse the body", async () => {
+      mockFetch.mockImplementation(async () => new Response(null, { status: 200, headers: jsonHeaders }));
+      const res = await new HTTP().head("/api/items");
+      expect(res.status).toBe(200);
+      expect(res.body).toBeUndefined();
+    });
+
+    test.each([204, 205])("%i with a JSON content-type has an undefined body", async (status) => {
+      mockFetch.mockImplementation(async () => new Response(null, { status, headers: jsonHeaders }));
+      const res = await new HTTP().delete("/api/items/1");
+      expect(res.status).toBe(status);
+      expect(res.body).toBeUndefined();
+    });
+
+    test("empty 200 JSON body is undefined", async () => {
+      mockFetch.mockImplementation(async () => new Response("", { status: 200, headers: jsonHeaders }));
+      const res = await new HTTP().post("/api/items", { body: { a: 1 } });
+      expect(res.body).toBeUndefined();
+    });
+
+    test("non-2xx with an unparseable JSON body still throws HTTPResponseError", async () => {
+      mockFetch.mockImplementation(
+        async () =>
+          new Response("<html>Bad Gateway</html>", { status: 502, statusText: "Bad Gateway", headers: jsonHeaders }),
+      );
+      const error = await new HTTP().get("/api/data").catch((e) => e);
+      expect(error).toBeInstanceOf(HTTPResponseError);
+      expect(error.response.status).toBe(502);
+      expect(error.response.body).toBe("<html>Bad Gateway</html>");
+    });
+
+    test("non-2xx with an empty JSON body throws HTTPResponseError", async () => {
+      mockFetch.mockImplementation(
+        async () => new Response("", { status: 500, statusText: "Internal Server Error", headers: jsonHeaders }),
+      );
+      await expect(new HTTP().get("/api/data")).rejects.toThrow(HTTPResponseError);
+    });
+
+    test("2xx with invalid JSON still rejects with a SyntaxError", async () => {
+      mockFetch.mockImplementation(async () => new Response("{nope", { status: 200, headers: jsonHeaders }));
+      await expect(new HTTP().get("/api/data")).rejects.toThrow(SyntaxError);
+    });
+  });
+
   test("HTTPResponseError has response property", async () => {
     mockFetch.mockImplementation(
       async () =>

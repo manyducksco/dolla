@@ -130,6 +130,39 @@ function withJson<T>(
   return promise as HTTPResponsePromise<T>;
 }
 
+const NO_BODY_STATUS_CODES = new Set([204, 205, 304]);
+
+/**
+ * Decodes a response body based on its content-type. Empty JSON bodies decode to `undefined`.
+ * Error responses whose body can't be decoded keep the raw text, so an `HTTPResponseError` is still thrown.
+ */
+async function parseBody(response: Response): Promise<unknown> {
+  const type = response.headers.get("content-type") || "";
+
+  if (type.includes("json")) {
+    const text = await response.text();
+    if (!text.trim()) return undefined;
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      if (response.ok) throw error;
+      return text;
+    }
+  }
+
+  if (type.includes("form")) {
+    if (response.ok) return response.formData();
+    const fallback = response.clone();
+    try {
+      return await response.formData();
+    } catch {
+      return fallback.text();
+    }
+  }
+
+  return response.text();
+}
+
 const RETRY_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE", "PUT", "DELETE"]);
 const RETRY_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 const RETRY_BASE_DELAY = 300;
@@ -365,11 +398,10 @@ export class HTTP {
       let resBody: any;
       if (options.parse) {
         resBody = await options.parse(fetched);
+      } else if (req.method.toUpperCase() === "HEAD" || NO_BODY_STATUS_CODES.has(fetched.status)) {
+        resBody = undefined;
       } else {
-        const type = fetched.headers.get("content-type") || "";
-        if (type.includes("json")) resBody = await fetched.json();
-        else if (type.includes("form")) resBody = await fetched.formData();
-        else resBody = await fetched.text();
+        resBody = await parseBody(fetched);
       }
 
       const response: HTTPResponse<any> = {

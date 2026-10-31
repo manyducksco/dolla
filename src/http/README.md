@@ -160,6 +160,8 @@ By default, the client parses the response body based on the `Content-Type` head
 - `*/*form*` → `response.formData()`
 - everything else → `response.text()`
 
+`HEAD` requests and `204`, `205` and `304` responses have an `undefined` body, as do empty JSON bodies. If an error response's body can't be decoded, `HTTPResponseError` is still thrown, with the raw text as `response.body`.
+
 Override this with a custom `parse` function in the request options. `parse` receives the raw `Response`; use `schema` when you want to validate the decoded body instead.
 
 ## Schema-validated JSON
