@@ -19,6 +19,21 @@ export default defineConfig({
 
 The Vite plugin auto-injects HMR registration into exported view functions. When a module updates, active component instances receive the new view function and their DOM subtree is replaced in place. State inside those views is discarded.
 
+## Stores
+
+Stores are matched by the store function itself, not its name, so `getStore` finds the instance that `addStore` created with the same function. To keep that working across hot reloads, the Vite plugin wraps exported functions in a stable wrapper. A module can be re-evaluated any number of times and the export stays the same function.
+
+Exported stores keep their existing instance and state when their module reloads, as long as they are declared in one of these forms:
+
+```js
+export function AuthStore(props, c) {}
+export const AuthStore = (props, c) => {};
+export const AuthStore = function (props, c) {};
+export default function AuthStore(props, c) {}
+```
+
+Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. This covers stores that aren't exported, stores created by a function call (`export const AuthStore = makeStore()`), and stores exported in a separate statement (`export { AuthStore }`).
+
 ## Manual API
 
 If you're not using Vite, you can wire up HMR yourself:
@@ -32,7 +47,7 @@ import {
 } from "@manyducks.co/dolla/hmr";
 ```
 
-- `__dolla_export(id, view)` wraps a view so updates can be matched to it.
+- `__dolla_export(id, view)` wraps a view or store so updates can be matched to it. It returns the same wrapper every time it is called with the same `id`, which is what keeps stores' identity across reloads.
 - `registerViewInstance(view, node)` registers a mounted `ViewNode` so it can be replaced.
 - `unregisterViewInstance(view, node)` removes the registration on unmount.
 - `__dolla_apply(newModule, exports)` applies the updated view exports to matching instances.

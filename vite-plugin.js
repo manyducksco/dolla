@@ -231,7 +231,7 @@ function* topLevelMatches(re, scan) {
   }
 }
 
-function findExportEntries(code, scan = maskNonCode(code)) {
+function findExportEntries(code, scan = maskNonCode(code), isDev = false) {
   const entries = [];
 
   for (const match of topLevelMatches(EXPORT_FUNC_RE, scan)) {
@@ -243,7 +243,8 @@ function findExportEntries(code, scan = maskNonCode(code)) {
   }
 
   for (const match of topLevelMatches(EXPORT_DEFAULT_FUNC_RE, scan)) {
-    const name = match[1];
+    // In dev an anonymous default function is named by `applyLiveBindings`.
+    const name = match[1] ?? (isDev ? ANONYMOUS_DEFAULT : undefined);
     if (name) {
       entries.push(`default: ${name}`);
     }
@@ -498,16 +499,133 @@ function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
 \*============================*/
 
 /**
- * Rewrites `export function Foo` into `function Foo` (local) and appends
- * `Foo = __dolla_export("<id>:Foo", Foo); export { Foo };` at the bottom.
- * Skips `export default function` (handled separately).
+ * Local name given to an anonymous `export default function` so it can be
+ * wrapped like a named one.
+ */
+const ANONYMOUS_DEFAULT = "__dolla_default";
+
+const EXPORT_CONST_DECL_RE = /export\s+const\s+([a-zA-Z_$][\w$]*)/g;
+const STATEMENT_START_RE = /^(?:export|import|const|let|var|function|class|async|if|for|while|do|switch|try|return|throw)\b/;
+
+/**
+ * Returns the index of the `=` that starts a declaration's initializer, given
+ * the index just after the declared name. Skips a TypeScript type annotation
+ * (which may contain `=>`). Returns -1 if there is no initializer.
+ */
+function findInitializer(code, scan, i) {
+  i = skipSpaceAndComments(code, i);
+  if (code[i] === "=" && code[i + 1] !== "=") return i;
+  if (code[i] !== ":") return -1;
+
+  let depth = 0;
+  for (i++; i < code.length; i++) {
+    const c = scan.masked[i];
+    if (c === "=" && code[i + 1] === ">") {
+      i++; // `=>` inside a function type
+    } else if (c === "(" || c === "[" || c === "{" || c === "<") {
+      depth++;
+    } else if (c === ")" || c === "]" || c === "}" || c === ">") {
+      depth--;
+    } else if (depth === 0 && c === "=") {
+      return i;
+    } else if (depth === 0 && c === ";") {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Returns true if the expression starting after the `=` at `eq` is a function
+ * or arrow function literal. Anything else (classes, calls, styled components,
+ * other values) is left alone, because the HMR wrapper is a plain function and
+ * would hide their properties or break `new`.
+ */
+function isFunctionInitializer(code, scan, eq) {
+  let i = skipSpaceAndComments(code, eq + 1);
+
+  if (/^async\b/.test(code.slice(i, i + 6))) {
+    const next = skipSpaceAndComments(code, i + 5);
+    // `async => ...` is an arrow whose parameter is named "async".
+    if (!code.startsWith("=>", next)) i = next;
+  }
+  if (/^function\b/.test(code.slice(i, i + 9))) return true;
+
+  if (code[i] === "<") {
+    const end = matchAngleBalance(code, i);
+    if (end === -1) return false;
+    i = skipSpaceAndComments(code, end);
+  }
+
+  if (code[i] === "(") {
+    const end = matchParenBalance(code, i);
+    if (end === -1) return false;
+    i = skipSpaceAndComments(code, end);
+    if (code.startsWith("=>", i)) return true;
+    if (code[i] !== ":") return false;
+
+    // Return type annotation: look for the arrow at depth 0.
+    let depth = 0;
+    for (i++; i < code.length; i++) {
+      const c = scan.masked[i];
+      if (c === "=" && code[i + 1] === ">") {
+        if (depth === 0) return true;
+        i++;
+      } else if (c === "(" || c === "[" || c === "{" || c === "<") depth++;
+      else if (c === ")" || c === "]" || c === "}" || c === ">") depth--;
+      else if (depth === 0 && (c === ";" || c === "=" || c === ",")) return false;
+    }
+    return false;
+  }
+
+  return /^[A-Za-z_$][\w$]*\s*=>/.test(code.slice(i, i + 256));
+}
+
+/**
+ * Returns true if the declaration whose initializer starts at `eq` declares
+ * more than one name (`const a = ..., b = ...`). Stops at the end of the
+ * statement; when unsure it reports more than one, so nothing is wrapped.
+ */
+function hasMoreDeclarators(code, scan, eq) {
+  let start = skipSpaceAndComments(code, eq + 1);
+  // Skip a generic arrow's type parameters, e.g. the comma in `<T,>(x: T) => x`.
+  if (code[start] === "<") {
+    start = matchAngleBalance(code, start);
+    if (start === -1) return true;
+  }
+
+  let depth = 0;
+  for (let i = start; i < code.length; i++) {
+    const c = scan.masked[i];
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (depth === 0 && c === ";") return false;
+    else if (depth === 0 && c === ",") return true;
+    else if (depth === 0 && c === "\n") {
+      const next = skipSpaceAndComments(code, i);
+      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Rewrites exported functions so they are bound to a stable HMR wrapper, which
+ * keeps their identity across hot reloads (stores rely on this):
+ *
+ * - `export function Foo` and `export const Foo = <function>` become local
+ *   (`function Foo` / `let Foo`), followed at the bottom by
+ *   `Foo = __dolla_export("<id>:Foo", Foo); export { Foo };`.
+ * - `export default function [Name]` becomes a local function, followed by
+ *   `Name = __dolla_export("<id>:default", Name); export { Name as default };`.
+ *   An anonymous one is named `__dolla_default`.
  */
 function applyLiveBindings(s, code, id, scan) {
-  // Only wrap named-function exports. Skips default, const, etc.
   const EXPORT_NAMED_FUNC_RE = /export\s+(?:async\s+)?function\s+\*?\s*([a-zA-Z_$]\w*)/g;
 
   const seen = new Set();
   const names = [];
+  let defaultName;
 
   for (const match of topLevelMatches(EXPORT_NAMED_FUNC_RE, scan)) {
     const name = match[1];
@@ -522,16 +640,48 @@ function applyLiveBindings(s, code, id, scan) {
     }
   }
 
-  if (names.length === 0) return false;
+  for (const match of topLevelMatches(EXPORT_CONST_DECL_RE, scan)) {
+    const name = match[1];
+    const eq = findInitializer(code, scan, match.index + match[0].length);
+    if (eq === -1 || !isFunctionInitializer(code, scan, eq) || hasMoreDeclarators(code, scan, eq)) continue;
+
+    // `export const Foo` -> `let Foo` so the wrapper can be assigned to it.
+    const nameStart = match.index + match[0].length - name.length;
+    s.overwrite(match.index, nameStart, "let ");
+
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  for (const match of topLevelMatches(EXPORT_DEFAULT_FUNC_RE, scan)) {
+    const functionStart = match.index + match[0].search(/(?:async\s+)?function\b/);
+    s.remove(match.index, functionStart);
+
+    defaultName = match[1];
+    if (!defaultName) {
+      // Name the anonymous function just before its parameter list.
+      defaultName = ANONYMOUS_DEFAULT;
+      s.appendLeft(match.index + match[0].length - 1, ` ${ANONYMOUS_DEFAULT}`);
+    }
+    break;
+  }
+
+  if (names.length === 0 && !defaultName) return false;
 
   let block = "";
   for (const name of names) {
     const strId = JSON.stringify(`${id}:${name}`);
     block += `\n${name} = __dolla_export(${strId}, ${name});`;
   }
-  block += `\nexport { ${names.join(", ")} };\n`;
+  if (names.length) block += `\nexport { ${names.join(", ")} };`;
+  if (defaultName) {
+    block += `\n${defaultName} = __dolla_export(${JSON.stringify(`${id}:default`)}, ${defaultName});`;
+    block += `\nexport { ${defaultName} as default };`;
+  }
 
-  s.appendRight(code.length, block);
+  s.appendRight(code.length, block + "\n");
   return true;
 }
 
@@ -565,7 +715,7 @@ export default function dollaPlugin() {
 
       // HMR injection (dev + build).
       const scan = maskNonCode(code);
-      const entries = findExportEntries(code, scan);
+      const entries = findExportEntries(code, scan, isDev);
 
       // Inject `import.meta.hot.accept` into EVERY module that participates in
       // the HMR graph — including the entry module, which may have no matching

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import dollaPlugin from "./vite-plugin.js";
+import { __dolla_export } from "./src/core/hmr.js";
+import { addStore, createContext, getStore } from "./src/core/context.js";
 
 function runTransform(code: string, id: string, command: "serve" | "build") {
   const plugin = dollaPlugin();
@@ -351,5 +353,164 @@ describe("dollaPlugin — export detection ignores non-code", () => {
     const code = `const re = /["']/g;\nexport function After() {}\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result!.code).toContain(`After = __dolla_export("/abs/file.tsx:After", After);`);
+  });
+});
+
+describe("dollaPlugin — live bindings for const and default exports", () => {
+  let fileCount = 0;
+  const uniqueId = () => `/abs/live-${fileCount++}.js`;
+
+  /**
+   * Runs a transformed module (plain JS only) with the real `__dolla_export`
+   * and returns its exports, so hot-reload identity can be checked directly.
+   */
+  function evaluateModule(code: string): Record<string, any> {
+    const declared: string[] = [];
+    const body = code
+      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla\/hmr";\n/m, "")
+      .replace(/import\.meta\.hot/g, "undefined")
+      .replace(/export \{([^}]*)\};/g, (_m, names: string) =>
+        names
+          .split(",")
+          .map((part) => {
+            const [local, exported = local] = part.trim().split(/\s+as\s+/);
+            return `__exports[${JSON.stringify(exported.trim())}] = ${local.trim()};`;
+          })
+          .join(" "),
+      )
+      .replace(/^export (const|let|function|class) ([A-Za-z_$][\w$]*)/gm, (_m, kw: string, name: string) => {
+        declared.push(name);
+        return `${kw} ${name}`;
+      });
+    const exports: Record<string, any> = {};
+    const tail = declared.map((name) => `__exports.${name} = ${name};`).join("\n");
+    new Function("__dolla_export", "__exports", `${body}\n${tail}`)(__dolla_export, exports);
+    return exports;
+  }
+
+  function reload(id: string, ...versions: string[]) {
+    return versions.map((code) => evaluateModule(runTransform(code, id, "serve")!.code));
+  }
+
+  test("wraps an exported const arrow function", () => {
+    const id = uniqueId();
+    const result = runTransform(`export const useCounter = (props, c) => ({ n: 1 });\n`, id, "serve");
+    expect(result!.code).toContain("let useCounter = (props, c) =>");
+    expect(result!.code).toContain(`useCounter = __dolla_export("${id}:useCounter", useCounter);`);
+    expect(result!.code).toContain("export { useCounter };");
+  });
+
+  test("an exported const function keeps its identity across reloads and runs the new code", () => {
+    const [v1, v2] = reload(
+      uniqueId(),
+      `export const getValue = () => 1;\n`,
+      `export const getValue = () => 2;\n`,
+    );
+    expect(v2.getValue).toBe(v1.getValue);
+    expect(v1.getValue()).toBe(2);
+  });
+
+  test("references inside the module use the wrapped function", () => {
+    const [mod] = reload(uniqueId(), `export const Store = () => ({});\nexport function getStoreRef() { return Store; }\n`);
+    expect(mod.getStoreRef()).toBe(mod.Store);
+  });
+
+  test.each([
+    ["function expression", "function () { return 1; }"],
+    ["named function expression", "function inner() { return 1; }"],
+    ["async function expression", "async function () { return 1; }"],
+    ["arrow with no params", "() => 1"],
+    ["arrow with one bare param", "x => 1"],
+    ["async arrow", "async () => 1"],
+    ["async arrow with a bare param", "async x => 1"],
+    ["arrow with a call in a default param", "(a = Math.max(1, 2)) => 1"],
+    ["arrow with a block body", "(a, b) => {\n  return 1;\n}"],
+  ])("wraps a const initialized with a %s", (_label, init) => {
+    const [v1, v2] = reload(uniqueId(), `export const fn = ${init};\n`, `export const fn = ${init};\n`);
+    expect(typeof v1.fn).toBe("function");
+    expect(v2.fn).toBe(v1.fn);
+  });
+
+  test.each([
+    ["a type annotation", "export const S: Store<{}, { n: number }> = (props, c) => ({ n: 1 });"],
+    ["a function type annotation", "export const T: (a: number) => void = (a) => {};"],
+    ["generic arrow", "export const G = <T,>(x: T): T => x;"],
+    ["return type annotation", "export const R = (x: number): number => x;"],
+  ])("wraps a TypeScript const function with %s", (_label, code) => {
+    const id = uniqueId().replace(/\.js$/, ".ts");
+    const name = code.match(/export const (\w+)/)![1];
+    const result = runTransform(`${code}\n`, id, "serve");
+    expect(result!.code).toContain(`let ${name}`);
+    expect(result!.code).toContain(`${name} = __dolla_export("${id}:${name}", ${name});`);
+  });
+
+  test.each([
+    ["a class", "export const C = class {};"],
+    ["a number", "export const n = 1;"],
+    ["a call result", "export const made = make(() => 1);"],
+    ["a styled component", 'import { styled } from "@manyducks.co/dolla/styled";\nexport const Box = styled.div`color: red;`;'],
+    ["destructuring", "export const { a } = obj;"],
+    ["several declarators", "export const one = () => 1, two = () => 2;"],
+    ["let", "export let mutable = () => 1;"],
+  ])("does not wrap an exported const holding %s", (_label, code) => {
+    const result = runTransform(`${code}\n`, uniqueId(), "serve");
+    expect(result!.code).not.toMatch(/\w+ = __dolla_export\(/);
+    expect(result!.code).toContain("export ");
+  });
+
+  test("wraps a named default export function", () => {
+    const id = uniqueId();
+    const result = runTransform(`export default function Page() { return 1; }\n`, id, "serve");
+    expect(result!.code).toContain("\nfunction Page()");
+    expect(result!.code).toContain(`Page = __dolla_export("${id}:default", Page);`);
+    expect(result!.code).toContain("export { Page as default };");
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
+  });
+
+  test("a named default export keeps its identity across reloads", () => {
+    const [v1, v2] = reload(
+      uniqueId(),
+      `export default function Page() { return 1; }\n`,
+      `export default function Page() { return 2; }\n`,
+    );
+    expect(v2.default).toBe(v1.default);
+    expect(v1.default()).toBe(2);
+    expect(v1.default.name).toBe("Page");
+  });
+
+  test("an anonymous default export function keeps its identity across reloads", () => {
+    const id = uniqueId();
+    const result = runTransform(`export default function () { return 1; }\n`, id, "serve");
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}\)/);
+
+    const [v1, v2] = reload(id, `export default function () { return 1; }\n`, `export default function () { return 2; }\n`);
+    expect(v2.default).toBe(v1.default);
+    expect(v1.default()).toBe(2);
+  });
+
+  test("wraps a default export async function", async () => {
+    const [v1, v2] = reload(
+      uniqueId(),
+      `export default async function load() { return 1; }\n`,
+      `export default async function load() { return 2; }\n`,
+    );
+    expect(v2.default).toBe(v1.default);
+    await expect(v1.default()).resolves.toBe(2);
+  });
+
+  test("a const store found before a reload is still found after it", () => {
+    const [v1, v2] = reload(
+      uniqueId(),
+      `export const CounterStore = (props, c) => ({ count: 1 });\n`,
+      `export const CounterStore = (props, c) => ({ count: 2 });\n`,
+    );
+    const ctx = createContext(null);
+    const store = addStore(ctx, v1.CounterStore);
+    expect(getStore(ctx, v2.CounterStore)).toBe(store);
+  });
+
+  test("does not wrap in production builds", () => {
+    const result = runTransform(`export const fn = () => 1;\nexport default function Page() {}\n`, uniqueId(), "build");
+    expect(result?.code ?? "").not.toContain("__dolla_export(");
   });
 });
