@@ -139,6 +139,26 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   const [stickyPushOffset, setStickyPushOffset] = createAtom(0);
   let phantomHeight = 0;
 
+  // Measured heights by item key; the engine's index-based measurements are
+  // rebuilt from this whenever the list changes.
+  const heightsByKey = new Map<string | number, number>();
+
+  function remapHeights(items: T[]) {
+    const entries: { index: number; height: number }[] = [];
+    const liveKeys = new Set<string | number>();
+    for (let i = 0; i < items.length; i++) {
+      const key = props.keyFn(items[i]);
+      liveKeys.add(key);
+      const height = heightsByKey.get(key);
+      if (height !== undefined) entries.push({ index: i, height });
+    }
+    for (const key of heightsByKey.keys()) {
+      if (!liveKeys.has(key)) heightsByKey.delete(key);
+    }
+    engine.clearCache();
+    engine.updateHeights(entries, peek(engine.averageHeight));
+  }
+
   const stickyIndices = compose(() => {
     if (!props.isSticky) return [];
     return props
@@ -219,11 +239,14 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
       const anchorIndex = engine.findIndexAtScroll(currentScroll, totalItems, oldAvg);
       const oldAnchorOffset = engine.getOffset(anchorIndex, oldAvg);
 
+      const data = peek(props.items);
       const parsedEntries = [];
       for (let i = 0; i < entries.length; i++) {
         const dataIndex = Number((entries[i].target as HTMLElement).dataset.index);
-        if (!isNaN(dataIndex)) {
-          parsedEntries.push({ index: dataIndex, height: Math.round(entries[i].borderBoxSize[0].blockSize) });
+        if (!isNaN(dataIndex) && dataIndex >= 0 && dataIndex < data.length) {
+          const height = Math.round(entries[i].borderBoxSize[0].blockSize);
+          parsedEntries.push({ index: dataIndex, height });
+          if (height > 0) heightsByKey.set(props.keyFn(data[dataIndex]), height);
         }
       }
 
@@ -269,9 +292,13 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
           viewport.scrollTop += (currentCount - previousCount) * peek(engine.averageHeight);
           setScrollTop(viewport.scrollTop);
         }
-        engine.clearCache();
         hasReachedStart = false; // Unlock prepends
       }
+
+      // Measured heights belong to items, not positions. Re-key them to the
+      // new indices so prepends, removals and reorders don't leave stale
+      // heights (and totals) behind.
+      remapHeights(currentItems);
 
       if (currentCount > previousCount && currentFirstKey === previousFirstKey) {
         hasReachedEnd = false; // Unlock appends
@@ -509,6 +536,10 @@ export function createOffsetEngine(defaultAssumption: number) {
     offsetCache.length = 0;
     lastCalculatedIndex = -1;
     measuredHeights.clear();
+    batch(() => {
+      setMeasuredCount(0);
+      setTotalMeasuredHeight(0);
+    });
   }
 
   function getItemHeight(index: number) {
