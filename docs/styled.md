@@ -4,7 +4,7 @@
 
 `styled` is a thin layer over the [`css`](./css.md) helper. It generates the class, attaches the reactive bindings, and renders either an intrinsic element or an existing View with the class merged in.
 
-Every styled element uses the same `css-<hash>` class format as `css`. Identical styles share one class and one stylesheet rule, whether they come from `styled` or `css`.
+Every styled element uses the same `css-<hash>` class format as `css`. Each styled component gets its own class, even when another component or a `css` template has identical styles. To reuse a style, export the component and use it, or wrap it with `styled(Component)`.
 
 Examples use `class` in JSX; `className` also works.
 
@@ -82,7 +82,7 @@ const [getIsActive] = createAtom(false);
 <Button class={["compact", { active: getIsActive }]}>Save</Button>;
 ```
 
-Styled classes are placed before caller-supplied classes, so caller templates win when both set the same property.
+When a caller's class and the styled class set the same property, the caller's class wins. Styled rules are kept in their own stylesheet, which comes before the one `css` templates use, so a `css` template passed as `class` always overrides the component's base styles, wherever else it has been used. A plain class string from your own stylesheet follows normal cascade order, so it wins if that stylesheet comes later in the page.
 
 ## Props
 
@@ -118,7 +118,7 @@ await createRoot("#app", { debug: true }).mount(App);
 <button class="css-1a2b3c" data-view="Styled(PrimaryButton)"></button>
 ```
 
-The class name is unchanged. Names are only debug metadata, so differently named components with identical styles still share one `css-<hash>` class and rule.
+The class name is unchanged. Names are only debug metadata.
 
 When the Vite plugin is active, top-level styled declarations are named automatically in development:
 
@@ -169,7 +169,7 @@ const ElevatedCard = styled(Card)`
 <ElevatedCard>Content</ElevatedCard>;
 ```
 
-The wrapped View should forward `class` and `as` to its root element. When the wrapped View is another styled component, those props are handled automatically.
+The wrapped View should forward `class` and `as` to its root element. When the wrapped View is another styled component, those props are handled automatically, and the wrapper's styles win over the styles of the component it wraps.
 
 ## Tree shaking
 
@@ -187,7 +187,7 @@ Creates a styled View from an existing View.
 
 ### `.named(name)`
 
-Returns a new styled builder whose View name is `Styled(name)`. The name appears in the `data-view` attribute when debug mode is enabled. It does not change class names or stylesheet deduplication.
+Returns a new styled builder whose View name is `Styled(name)`. The name appears in the `data-view` attribute when debug mode is enabled. It does not change class names.
 
 ### `.as(tag)`
 

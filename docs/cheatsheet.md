@@ -178,7 +178,7 @@ const Button = styled.button`
 <Button onClick={save}>Save</Button>;
 ```
 
-Add `.named("Button")` to set the View name to `Styled(Button)`, shown via `data-view` in debug mode. The class stays `css-<hash>`, so identical styles still dedupe.
+Add `.named("Button")` to set the View name to `Styled(Button)`, shown via `data-view` in debug mode. The class stays `css-<hash>`.
 
 ## Navigate with the router
 

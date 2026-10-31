@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { createAtom, createRoot } from "../core/index.js";
 import { css } from "../core/markup/css.js";
 import { IS_STYLED_VIEW } from "../core/markup/css-template.js";
@@ -11,8 +11,9 @@ function mount(target: Element, view: any, debug = false) {
   return root.mount(view);
 }
 
-function getStaticSheet(): CSSStyleSheet {
-  return document.adoptedStyleSheets[document.adoptedStyleSheets.length - 1];
+/** Every adopted rule in cascade order (later sheets win at equal specificity). */
+function allRules(): CSSRule[] {
+  return document.adoptedStyleSheets.flatMap((sheet) => Array.from(sheet.cssRules));
 }
 
 function norm(value: string): string {
@@ -23,7 +24,7 @@ function norm(value: string): string {
 }
 
 function ruleText(selector: string): string {
-  for (const rule of Array.from(getStaticSheet().cssRules)) {
+  for (const rule of allRules()) {
     if ((rule as CSSStyleRule).selectorText === selector) {
       return norm((rule as CSSStyleRule).cssText);
     }
@@ -32,7 +33,7 @@ function ruleText(selector: string): string {
 }
 
 function ruleIndex(selector: string): number {
-  const rules = Array.from(getStaticSheet().cssRules);
+  const rules = allRules();
   for (let i = 0; i < rules.length; i++) {
     if ((rules[i] as CSSStyleRule).selectorText === selector) return i;
   }
@@ -64,12 +65,11 @@ describe("styled", () => {
     const target = document.createElement("div");
     document.body.append(target);
 
-    const A = styled.div.named("A")`
+    const make = (builder: typeof styled.div) => builder`
       color: red;
     `;
-    const B = styled.div.named("B")`
-      color: red;
-    `;
+    const A = make(styled.div.named("A"));
+    const B = make(styled.div.named("B"));
 
     expect(classNameOf(A)).toBe(classNameOf(B));
     expect(classNameOf(A)).toMatch(/^css-/);
@@ -83,29 +83,31 @@ describe("styled", () => {
     expect(a.getAttribute("class")).toBe(b.getAttribute("class"));
   });
 
-  test("dedupes with an equivalent plain css template", async () => {
-    const target = document.createElement("div");
-    document.body.append(target);
-
+  test("does not share a class with an equivalent plain css template", () => {
     const plain = css`
       color: red;
     `;
     const Styled = styled.div`
       color: red;
     `;
+    expect(classNameOf(Styled)).not.toBe(plain.className);
+  });
 
-    expect(classNameOf(Styled)).toBe(plain.className);
+  test("identical styles at different call sites get different classes", () => {
+    const A = styled.div`
+      color: teal;
+    `;
+    const B = styled.div`
+      color: teal;
+    `;
+    expect(classNameOf(A)).not.toBe(classNameOf(B));
+  });
 
-    await mount(
-      target,
-      () =>
-        html`<div id="plain" class=${plain}></div>
-          <${Styled} id="styled"><//>`,
-    );
-
-    expect(target.querySelector("#plain")!.getAttribute("class")).toBe(
-      target.querySelector("#styled")!.getAttribute("class"),
-    );
+  test("one call site reuses its class for identical styles", () => {
+    const make = () => styled.div`
+      color: olive;
+    `;
+    expect(classNameOf(make())).toBe(classNameOf(make()));
   });
 
   test("merges caller class and className", async () => {
@@ -346,17 +348,60 @@ describe("styled selector interpolation", () => {
       }
     `;
 
-    await mount(target, () => html`<${Label}>x<//>`);
-
-    const textClass = classNameOf(Text);
-    const matching = Array.from(getStaticSheet().cssRules).filter((rule) =>
-      norm((rule as CSSStyleRule).cssText).includes(`.${textClass}`),
-    );
-    expect(matching.length).toBeGreaterThanOrEqual(1);
-
-    for (const rule of Array.from(getStaticSheet().cssRules)) {
-      expect((rule as CSSStyleRule).style.cssText).not.toMatch(/\[object Object\]/);
+    // happy-dom drops nested rules from `cssText`, so check the inserted text.
+    const insertRule = vi.spyOn(CSSStyleSheet.prototype, "insertRule");
+    let inserted: string[];
+    try {
+      await mount(target, () => html`<${Label}>x<//>`);
+      inserted = insertRule.mock.calls.map((call) => norm(call[0]));
+    } finally {
+      insertRule.mockRestore();
     }
+
+    const labelRule = inserted.find((rule) => rule.startsWith(`.${classNameOf(Label)}{`));
+    expect(labelRule).toContain(`&:hover .${classNameOf(Text)}{opacity:1;}`);
+    expect(labelRule).not.toMatch(/\[object Object\]/);
+  });
+});
+
+describe("styled override order", () => {
+  test("a css class passed in wins even when it was registered first", async () => {
+    const target = document.createElement("div");
+    document.body.append(target);
+
+    const override = css`
+      color: purple;
+    `;
+    // Register the override's rule before the styled base exists.
+    await mount(document.body.appendChild(document.createElement("div")), () => html`<p class=${override}></p>`);
+
+    const Button = styled.button`
+      color: orange;
+    `;
+    await mount(target, () => html`<${Button} class=${override}>x<//>`);
+
+    expect(ruleIndex(`.${override.className}`)).toBeGreaterThan(ruleIndex(`.${classNameOf(Button)}`));
+  });
+
+  test("a wrapping styled view wins over the view it wraps, even when its styles match an earlier one", async () => {
+    const target = document.createElement("div");
+    document.body.append(target);
+
+    // An unrelated component with the same styles as Outer, registered first.
+    const Unrelated = styled.div`
+      color: maroon;
+    `;
+    await mount(document.body.appendChild(document.createElement("div")), () => html`<${Unrelated} />`);
+
+    const Inner = styled.button`
+      color: navy;
+    `;
+    const Outer = styled(Inner)`
+      color: maroon;
+    `;
+    await mount(target, () => html`<${Outer}>x<//>`);
+
+    expect(ruleIndex(`.${classNameOf(Outer)}`)).toBeGreaterThan(ruleIndex(`.${classNameOf(Inner)}`));
   });
 });
 

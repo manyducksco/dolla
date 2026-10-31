@@ -1,5 +1,5 @@
 import type { Context } from "../core/context.js";
-import { css, type CSSTemplate, type Interpolation } from "../core/markup/css.js";
+import { styledTemplate, type CSSTemplate, type Interpolation } from "../core/markup/css.js";
 import { IS_STYLED_VIEW, type StyledTemplate } from "../core/markup/css-template.js";
 import { ElementNode } from "../core/markup/nodes/element.js";
 import { ViewNode } from "../core/markup/nodes/view.js";
@@ -29,7 +29,7 @@ export interface TemplateFn<BaseProps = {}> {
   /**
    * Sets the styled component's View name to `Styled(name)`. In debug mode,
    * `data-view` shows this name on rendered elements. Class names are not
-   * affected, so identical styles still share one `css-<hash>` rule.
+   * affected.
    */
   named(name: string): TemplateFn<BaseProps>;
   /**
@@ -48,13 +48,9 @@ export interface TemplateFn<BaseProps = {}> {
  * Flattens an incoming `class` value (which may itself be a nested array
  * when one styled view wraps another) into a single-level array. The styled
  * template is placed first so it is attached (and, on first use, inserted
- * into the stylesheet) before wrapper and caller-supplied templates.
- *
- * This does NOT guarantee that caller templates win the cascade: each rule
- * is inserted once, the first time any element uses it, so a caller template
- * that was already used elsewhere sits *before* this styled rule and loses
- * to it at equal specificity. Raise the caller rule's specificity (e.g.
- * `&&`) when an override must always win.
+ * into the stylesheet) before wrapper templates. A wrapper's rule therefore
+ * comes after the rule of the view it wraps. Caller `css` classes win because
+ * styled rules live in an earlier stylesheet.
  *
  * Falsy entries are dropped so they don't trip up `ElementNode`'s template
  * extraction, which only inspects one level of nesting for CSSTemplates.
@@ -113,7 +109,7 @@ function createBuilder(tagOrView: string | View<any>, boundName?: string, boundA
     // A single template serves both selector interpolation and rendering.
     // `css` recognizes styled views in interpolations and emits their class
     // names, so no separate "render-time" template is needed.
-    const template = css(strings, ...interpolations);
+    const template = styledTemplate(strings, interpolations);
 
     const StyledView = function StyledView(props: any, context: Context) {
       const rawProps = props ?? {};

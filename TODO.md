@@ -45,18 +45,6 @@ The class fast paths added in `a3b7e4b` call `setAttribute("class", …)` when o
 
 Recommendation: A, unless a real integration needs outside classes.
 
-## CSS and styled
-
-### Styled component overrides don't reliably win
-
-A class passed into a styled component should override the component's base styles. The registry inserts each rule once, at its first attach anywhere in the app. So if the override class was used somewhere else first, its rule comes earlier in the stylesheet and loses. The doc comment in `src/styled/index.ts` now says this. Styled bases and plain `css` deliberately share a className and rule when they are identical, which rules out simple fixes.
-
-- **A.** Use separate stylesheets for styled bases and plain `css`. This needs distinct classNames, which breaks the dedup.
-- **B.** Wrap styled base rules in `:where()` or a cascade layer. Unlayered and element selectors would then beat styled rules, which is a big behavior change.
-- **C.** Document a specificity bump (`&&`) for overrides.
-
-Recommendation: C (now in the doc comment). Consider A if guaranteed overrides matter.
-
 ## Router, HTTP, translate
 
 ### Translation caching

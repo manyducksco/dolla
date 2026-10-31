@@ -160,18 +160,20 @@ const namesByKey = new Map<string, string>();
 const claimedNames = new Set<string>();
 
 /**
- * Returns a stable `<prefix>-<hash>` name for a key. The short hash can collide
- * for different keys, so a colliding key gets a numbered suffix instead of
- * reusing another key's name.
+ * Returns a stable `<prefix>-<hash>` name for a key. Equal keys share a name
+ * only within the same `scope`. The short hash can collide for different keys,
+ * so a colliding key gets a numbered suffix instead of reusing another key's name.
  */
-function nameForKey(prefix: string, key: string): string {
-  const fullKey = `${prefix}${SLOT}${key}`;
+function nameForKey(prefix: string, key: string, scope = prefix): string {
+  const fullKey = `${scope}${SLOT}${key}`;
   let name = namesByKey.get(fullKey);
   if (name !== undefined) return name;
 
+  // Hash the scope too when it isn't the default, so scoped names rarely need a suffix.
+  const hashed = scope === prefix ? key : fullKey;
   let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    hash = (Math.imul(31, hash) + key.charCodeAt(i)) | 0;
+  for (let i = 0; i < hashed.length; i++) {
+    hash = (Math.imul(31, hash) + hashed.charCodeAt(i)) | 0;
   }
 
   const base = `${prefix}-${Math.abs(hash).toString(36)}`;
@@ -369,32 +371,35 @@ function extractNonNestableAtRules(css: string): { cleanCss: string; extracted: 
 \*============================*/
 
 class StyleRegistry {
+  // Styled component bases come before plain `css` rules in the cascade, so a
+  // `css` class passed to a styled component always overrides its base styles.
+  styledSheet = new CSSStyleSheet();
   sheet = new CSSStyleSheet();
   classes = new Set<string>();
   properties = new Set<string>();
 
   constructor() {
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.sheet];
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.styledSheet, this.sheet];
     if (typeof window !== "undefined") {
       const dbg = ((window as any).__dollaDbg ??= {});
       dbg.registry = this;
     }
   }
 
-  insertClass(className: string, rawCss: string): void {
+  insertClass(className: string, rawCss: string, sheet = this.sheet): void {
     if (this.classes.has(className)) return;
 
     const { cleanCss, extracted } = extractNonNestableAtRules(rawCss);
 
     for (const rule of extracted) {
       try {
-        this.sheet.insertRule(rule, this.sheet.cssRules.length);
+        sheet.insertRule(rule, sheet.cssRules.length);
       } catch (e) {}
     }
 
     if (cleanCss.trim()) {
       try {
-        this.sheet.insertRule(`.${className}{${cleanCss}}`, this.sheet.cssRules.length);
+        sheet.insertRule(`.${className}{${cleanCss}}`, sheet.cssRules.length);
       } catch (e) {}
     }
 
@@ -516,6 +521,7 @@ type TemplateShape = {
   styles: string;
   bindings: CSSTemplateBinding[];
   registered: boolean;
+  styled: boolean;
 };
 
 // Template literals keep the same `strings` object per call site, so these
@@ -567,7 +573,7 @@ class CSSFactoryTemplate implements CSSTemplate {
     const shape = this.#shape;
 
     if (!shape.registered) {
-      registry.insertClass(this.className, shape.styles);
+      registry.insertClass(this.className, shape.styles, shape.styled ? registry.styledSheet : registry.sheet);
       shape.registered = true;
     }
 
@@ -607,7 +613,11 @@ class CSSFactoryTemplate implements CSSTemplate {
   }
 }
 
-function createTemplate(strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
+// Each styled call site gets its own class names (see `styledTemplate`).
+const styledSites = new WeakMap<TemplateStringsArray, number>();
+let nextStyledSite = 0;
+
+function createTemplate(strings: TemplateStringsArray, interpolations: any[], styled = false): CSSTemplate {
   if (interpolations.length === 0) {
     const cached = staticTemplatesByStrings.get(strings);
     if (cached) return cached;
@@ -621,7 +631,13 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
   if (shape) {
     className = shape.className;
   } else {
-    className = nameForKey("css", templateKey(strings, interpolations));
+    let scope: string | undefined;
+    if (styled) {
+      let site = styledSites.get(strings);
+      if (site === undefined) styledSites.set(strings, (site = nextStyledSite++));
+      scope = `styled:${site}`;
+    }
+    className = nameForKey("css", templateKey(strings, interpolations), scope);
     isStatic = interpolations.every((expr) => !isReactiveFunction(expr) && !isPropertyConfig(expr));
 
     if (isStatic) {
@@ -639,6 +655,7 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
         styles: built.styles,
         bindings: built.bindings,
         registered: false,
+        styled,
       };
       shapesByClassName.set(className, shape);
     }
@@ -666,6 +683,17 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[]): C
 
 export function css<P = {}>(strings: TemplateStringsArray, ...interpolations: Interpolation<P>[]): CSSTemplate {
   return createTemplate(strings, interpolations);
+}
+
+/**
+ * Builds the base template of a styled component. Its rule goes in the styled
+ * stylesheet, which comes before plain `css` rules, so classes passed into the
+ * component win. Each call site gets its own class even when another component
+ * has identical styles. Otherwise a wrapping styled component could share a
+ * rule that was registered before the component it wraps, and lose to it.
+ */
+export function styledTemplate(strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
+  return createTemplate(strings, interpolations, true);
 }
 
 /**
