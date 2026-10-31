@@ -275,6 +275,14 @@ describe("HTTP client", () => {
     expect(url).toBe("https://example.com/api/data");
   });
 
+  test("treats relative paths starting with 'http' as relative", async () => {
+    mockFetch.mockImplementation(async () => mockResponse({}));
+    const client = new HTTP();
+    await client.get("httpbin/get");
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toBe(new URL("/httpbin/get", window.location.origin).toString());
+  });
+
   test("reports the final response URL after redirects", async () => {
     mockFetch.mockImplementation(async () => mockRedirectedResponse({}, "https://example.com/final"));
     const client = new HTTP();

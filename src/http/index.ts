@@ -311,7 +311,8 @@ export class HTTP {
     options: RequestOptions<any, ResBody> = {},
   ): Promise<HTTPResponse<ResBody>> {
     const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-    const url = new URL(uri, uri.startsWith("http") ? undefined : base);
+    // Only URIs with a scheme ("https:", "blob:", ...) are absolute.
+    const url = new URL(uri, /^[a-z][a-z\d+.-]*:/i.test(uri) ? undefined : base);
     const retries = normalizeRetry(options.retry, this.#retry);
 
     if (options.query) {
