@@ -1,0 +1,31 @@
+# Agent Instructions
+
+## Test-driven development
+
+Use test-driven development for every bug fix and behavior change.
+
+1. **Write the test first.** Before touching source code, write a test that captures the expected behavior. For a bug, reproduce it with the smallest input that shows the wrong result.
+2. **Watch it fail.** Run the test and confirm it fails *for the reason you expect*. Check the actual vs. expected output, not just that it failed. A test that passes before the fix doesn't reproduce the bug: tighten it until it fails, or reconsider whether the bug exists.
+3. **Fix the code.** Make the smallest change that makes the test pass.
+4. **Run the full suite.** Confirm nothing else broke, then typecheck.
+
+Use tests to check your assumptions about how the code works, too. If you're unsure what a function does with some input, write a quick test and run it instead of guessing from the source.
+
+### Writing tests
+
+- Tests live next to the code they cover as `*.test.ts` (e.g. `src/core/signals.ts` → `src/core/signals.test.ts`). Add to the existing file and `describe` block where one fits. Use a new file only for behavior that spans several modules (e.g. `src/core/markup/nodes/ordering.test.ts`).
+- Tests run in vitest with happy-dom. happy-dom has no layout and doesn't implement some newer DOM APIs (e.g. `Element.moveBefore`). Polyfill them in the test when the code path depends on them, and restore the original afterwards.
+- Assert on observable results such as DOM output (`textContent`, `innerHTML`), signal values and call counts, not on private internals.
+- Keep regression tests after the fix. They are the record that the bug stays fixed.
+
+### Commands
+
+```sh
+npx vitest run path/to/file.test.ts           # run one file
+npx vitest run path/to/file.test.ts -t "name" # run matching tests
+npx vitest run                                # full suite
+npx tsc --noEmit -p .                         # typecheck
+npm run build && npm run bundle:check         # bundle size and tree-shaking budgets
+```
+
+Run `bundle:check` after changes to `src/core`. It enforces gzip size budgets and runs before publishing. If a change goes over budget, report it rather than raising the budget yourself.
