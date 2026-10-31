@@ -273,6 +273,18 @@ describe("dollaPlugin — styled namer (dev only)", () => {
     expect(elapsed).toBeLessThan(1000);
   });
 
+  test("handles template literals with `${}` inside the chain arguments", () => {
+    const code = IMPORT + "const Thing = styled.button.as(`${tag}`)`color: red;`;\n";
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain('styled.button.as(`${tag}`).named("Thing")`color: red;`');
+  });
+
+  test("handles `${}` containing braces inside the chain arguments", () => {
+    const code = IMPORT + "const Thing = styled(make(`${ { a: '}' }.a }`))`color: red;`;\n";
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain(".named(\"Thing\")`color: red;`");
+  });
+
   test("rewrites an aliased dolla styled import", () => {
     const code = `import { styled as s } from "@manyducks.co/dolla/styled";\nconst Title = s.h1\`color: red;\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");

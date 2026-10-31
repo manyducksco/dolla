@@ -335,7 +335,11 @@ function skipSpaceAndComments(code, i) {
   return i;
 }
 
-function matchParenBalance(code, openIndex) {
+/**
+ * Returns the index just past the bracket that closes the one at `openIndex`
+ * (`(` by default), skipping strings and comments. Returns -1 if unbalanced.
+ */
+function matchParenBalance(code, openIndex, open = "(", close = ")") {
   let depth = 0;
   let i = openIndex;
   while (i < code.length) {
@@ -357,8 +361,8 @@ function matchParenBalance(code, openIndex) {
       i += 2;
       continue;
     }
-    if (c === "(") depth++;
-    else if (c === ")") {
+    if (c === open) depth++;
+    else if (c === close) {
       depth--;
       if (depth === 0) return i + 1;
     }
@@ -404,7 +408,7 @@ function skipString(code, startIndex) {
       continue;
     }
     if (quote === "`" && c === "$" && code[i + 1] === "{") {
-      const end = matchParenBalance(code, i + 1);
+      const end = matchParenBalance(code, i + 1, "{", "}");
       if (end === -1) return -1;
       i = end;
       continue;
