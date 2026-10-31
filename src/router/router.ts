@@ -82,6 +82,9 @@ export function createRouter(options: RouterOptions): DollaPlugin {
 
     const activeLayers: ActiveLayer[] = [];
 
+    // Incremented on every navigation; a run that no longer holds the latest token is stale.
+    let navigationToken = 0;
+
     /**
      * Run when the location changes. Diffs and mounts new routes and updates
      * the signals accordingly.
@@ -89,8 +92,12 @@ export function createRouter(options: RouterOptions): DollaPlugin {
     async function updateRoute(href?: string) {
       scrollCache.set(currentKey, window.scrollY);
 
+      const token = ++navigationToken;
+      const isStale = () => token !== navigationToken;
+
       const path = href ?? history.getPath() + history.getSearch();
       const { match, journey } = await resolveRoute(routeTree, path);
+      if (isStale()) return;
 
       if (context[DEBUG]) {
         for (let i = 0; i < journey.length; i++) {
@@ -172,11 +179,15 @@ export function createRouter(options: RouterOptions): DollaPlugin {
         let completed = 0;
         const increment = 0.8 / tasks.length;
 
-        tasks.forEach((p) => p.then(() => setProgress(0.1 + ++completed * increment)).catch(() => {}));
+        tasks.forEach((p) =>
+          p.then(() => !isStale() && setProgress(0.1 + ++completed * increment)).catch(() => {}),
+        );
 
         try {
           await Promise.all(tasks);
+          if (isStale()) return;
         } catch (failure) {
+          if (isStale()) return;
           const { layerIndex, error } = failure as { layerIndex: number; error: unknown };
           setProgress(0);
           if (error instanceof RedirectError) return api.replace(error.redirectPath);

@@ -338,6 +338,48 @@ describe("Router Engine - Query strings", () => {
   });
 });
 
+describe("Router Engine - Navigation order", () => {
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("ignores a slow earlier navigation that finishes after a later one", async () => {
+    let resolveSlow!: (value: string) => void;
+    const slowView = vi.fn(() => "slow");
+
+    const router = createRouter({
+      routes: [
+        { path: "/", view: () => "home" },
+        { path: "/slow", view: slowView, preload: () => new Promise<string>((r) => (resolveSlow = r)) },
+        { path: "/fast", view: () => "fast" },
+      ],
+    });
+
+    await withRouter(router, async (context) => {
+      await settle();
+      const store = getRouter(context);
+
+      store.push("/slow");
+      await settle();
+      store.push("/fast");
+      await settle();
+
+      expect(document.body.textContent).toBe("fast");
+
+      resolveSlow("data");
+      await settle();
+
+      expect(slowView).not.toHaveBeenCalled();
+      expect(document.body.textContent).toBe("fast");
+      expect(store.path()).toBe("/fast");
+      expect(window.location.pathname).toBe("/fast");
+      expect(store.progress()).toBe(0);
+    });
+  });
+});
+
 describe("Router Engine - Error boundaries", () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
