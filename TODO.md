@@ -2,20 +2,16 @@
 
 These came up while fixing the bugs found in the October 2026 audit (branch `fix/audit-bugs`). Each one needs a product or API decision, so none has been implemented. Each entry gives the problem, the options, and a recommendation.
 
-## Release blocker
+## Build
 
-### Bundle size budget
+### `mangleProps` is ignored
 
-`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **9,895 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). `main` measures 9,582 B. The increase is correctness code in paths the minimal app uses: signals, ElementNode, the scheduler, `isFunction` and the markup utils.
+Both `vite.config.ts` and `scripts/check-tree-shaking.mjs` pass `oxc: { mangleProps: /^_/ }`, but Vite 8's oxc minifier has no property mangling. The option does nothing, and the published `dist` keeps names like `_depsTail` and `_flags`. Mangling them would save about 110 B gzipped in the minimal app. The bundle check passes without it (9,500 B against a 9,625.6 B budget).
 
-Code trimming without behavior or speed changes has been done: from 10,084 B to 9,895 B gzipped, and from 28,907 B to 27,363 B minified. What remains are changes of a few bytes each.
+- **A.** Remove the dead option from both files.
+- **B.** Get mangling working, for example with terser's `mangle.properties` (a new devDependency), for both `dist` and the check.
 
-Property mangling doesn't work. Both `vite.config.ts` and the check pass `oxc: { mangleProps: /^_/ }`, but Vite 8's oxc minifier has no property mangling, so the option is ignored and the published `dist` keeps names like `_depsTail` and `_flags`. Renaming those properties in the output would save about 110 B, which still isn't enough on its own.
-
-- **A.** Raise the budget to cover the fixes (earlier feature commits have done this). About 9.7 KB would fit.
-- **B.** Get property mangling working (for example with terser's `mangle.properties`, which needs a new devDependency) for both `dist` and the check, then raise the budget by the remaining ~160 B.
-
-Recommendation: B if smaller published output matters, otherwise A.
+Recommendation: A, unless the extra headroom is wanted.
 
 ## Signals and core
 

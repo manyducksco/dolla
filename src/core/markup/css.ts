@@ -526,10 +526,8 @@ type TemplateShape = {
 
 // Template literals keep the same `strings` object per call site, so these
 // caches let inline `css` calls in views reuse work across mounts.
-const staticTemplatesByStrings = new WeakMap<TemplateStringsArray, CSSTemplate>();
 const staticTemplates = new Map<string, CSSTemplate>();
 const shapesByClassName = new Map<string, TemplateShape>();
-const shapesByStrings = new WeakMap<TemplateStringsArray, TemplateShape>();
 
 // Stylesheet rules are never removed, so a call site that bakes a different
 // static value into every template grows the stylesheet without limit.
@@ -618,19 +616,11 @@ const styledSites = new WeakMap<TemplateStringsArray, number>();
 let nextStyledSite = 0;
 
 function createTemplate(strings: TemplateStringsArray, interpolations: any[], styled = false): CSSTemplate {
-  if (interpolations.length === 0) {
-    const cached = staticTemplatesByStrings.get(strings);
-    if (cached) return cached;
-  }
-
-  const allFunctions = interpolations.length > 0 && interpolations.every((expr) => isReactiveFunction(expr));
-  let shape = allFunctions ? shapesByStrings.get(strings) : undefined;
+  let shape: TemplateShape | undefined;
   let className: string;
   let isStatic = false;
 
-  if (shape) {
-    className = shape.className;
-  } else {
+  {
     let scope: string | undefined;
     if (styled) {
       let site = styledSites.get(strings);
@@ -659,19 +649,12 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[], st
       };
       shapesByClassName.set(className, shape);
     }
-
-    if (allFunctions) {
-      shapesByStrings.set(strings, shape);
-    }
   }
 
   const template = new CSSFactoryTemplate(shape, interpolations);
 
   if (isStatic) {
     staticTemplates.set(className, template);
-    if (interpolations.length === 0) {
-      staticTemplatesByStrings.set(strings, template);
-    }
   }
 
   return template;

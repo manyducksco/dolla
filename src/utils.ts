@@ -73,17 +73,8 @@ export function isFunction<T = (...args: unknown[]) => unknown>(value: unknown):
   return typeof value === "function" && (value.prototype === undefined || !isClass(value));
 }
 
-// Caches class detection, which needs a `toString()` of the function source.
-const classCache = new WeakMap<Function, boolean>();
-
 export function isClass(value: unknown): boolean {
-  if (typeof value !== "function") return false;
-  let result = classCache.get(value);
-  if (result === undefined) {
-    result = value.toString().startsWith("class ");
-    classCache.set(value, result);
-  }
-  return result;
+  return typeof value === "function" && value.toString().startsWith("class ");
 }
 
 /**

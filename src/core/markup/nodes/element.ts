@@ -284,16 +284,13 @@ export class ElementNode extends MarkupNode {
 
   /** Applies one prop, binding it when `value` is a getter. */
   #applyProp(element: any, key: string, value: unknown, isSvg: boolean) {
-    // Getters count as reactive in both checks below.
     if (key === "style") {
       if (isString(value)) {
         // Static CSS text can be assigned directly; the browser parser does
         // everything `getStyleMap` would otherwise do manually.
         element.style.cssText = value;
-      } else if (hasReactiveValue(value)) {
-        this.#applyStyles(element, value);
       } else {
-        this.#applyStaticStyles(element, value);
+        this.#applyStyles(element, value);
       }
       return;
     }
@@ -304,13 +301,10 @@ export class ElementNode extends MarkupNode {
         // SVGAnimatedString on SVG elements.
         element.setAttribute("class", value);
       } else if (isCSSTemplate(value)) {
-        // Fast path for the common single-template case. Avoids building
-        // the name/template/condition collections in #applyStaticClasses.
+        // A single template only needs attaching; there is nothing to track.
         value.attach(this.#context, element);
-      } else if (hasReactiveValue(value, true)) {
-        this.#applyClasses(element, value);
       } else {
-        this.#applyStaticClasses(element, value);
+        this.#applyClasses(element, value);
       }
       return;
     }
@@ -339,42 +333,6 @@ export class ElementNode extends MarkupNode {
       this.#unsubscribers.add(this.#subscribe(value, (current) => set(element, name, current), `element:${key}`));
     } else {
       set(element, name, value);
-    }
-  }
-
-  #applyStaticStyles(element: HTMLElement | SVGElement, styles: unknown) {
-    assertNotTemplate(styles, "style", this.#context.name);
-
-    if (isObject(styles)) {
-      for (const key in styles) {
-        const value = (styles as Record<string, unknown>)[key];
-        if (value == null) continue;
-
-        const name = key.startsWith("--") ? key : camelToKebab(key);
-        setStyleValue(element, name, getStyleProperty(element, key), value);
-      }
-      return;
-    }
-
-    const mapped = getStyleMap(styles);
-    for (const [name, { value, priority }] of Object.entries(mapped)) {
-      if (value != null) {
-        setStyleValue(element, name, undefined, value, priority);
-      }
-    }
-  }
-
-  #applyStaticClasses(element: HTMLElement | SVGElement, classes: unknown) {
-    const names = new Set<string>();
-    const templates = new Set<CSSTemplate>();
-    const conditions = new Map<CSSTemplate, boolean>();
-    collectStaticClasses(classes, names, templates, conditions);
-
-    if (names.size > 0) element.setAttribute("class", Array.from(names).join(" "));
-
-    for (const tpl of templates) tpl.attach(this.#context, element);
-    for (const [tpl, active] of conditions) {
-      element.classList.toggle(tpl.className, active);
     }
   }
 
@@ -471,27 +429,6 @@ export class ElementNode extends MarkupNode {
       const canReplaceClassAttribute =
         currentTemplates.size === 0 && attachedTemplates.size === 0 && conditionSubs.size === 0;
 
-      // Fast path when this value owns the entire class attribute: no
-      // templates, conditions, or reactive entries. Replacing the attribute
-      // avoids DOMTokenList add/remove churn on every update.
-      if (canReplaceClassAttribute && isString(processedValue)) {
-        if (processedValue !== "undefined" && processedValue.indexOf(" ") === -1) {
-          element.setAttribute("class", processedValue);
-          staticClasses.clear();
-          if (processedValue) staticClasses.add(processedValue);
-          return;
-        }
-
-        const names = new Set<string>();
-        for (const name of processedValue.split(" ")) {
-          if (name && name !== "undefined") names.add(name);
-        }
-        element.setAttribute("class", Array.from(names).join(" "));
-        staticClasses.clear();
-        for (const name of names) staticClasses.add(name);
-        return;
-      }
-
       const mapped = getClassMap(processedValue);
       const names: string[] = [];
       const reactive: { name: string; value: Getter<unknown> }[] = [];
@@ -506,6 +443,8 @@ export class ElementNode extends MarkupNode {
         }
       }
 
+      // When this value owns every class on the element, set the attribute in
+      // one write instead of adding and removing classes one by one.
       if (canReplaceClassAttribute && reactive.length === 0) {
         element.setAttribute("class", names.join(" "));
         staticClasses.clear();
@@ -710,73 +649,6 @@ export class ElementNode extends MarkupNode {
     });
     localUnsubs.clear();
   }
-}
-
-function collectStaticClasses(
-  value: unknown,
-  names: Set<string>,
-  templates: Set<CSSTemplate>,
-  conditions: Map<CSSTemplate, boolean>,
-): void {
-  if (value == null || value === false) return;
-
-  if (isCSSTemplate(value)) {
-    templates.add(value);
-    return;
-  }
-
-  if (isConditionalTemplate(value)) {
-    templates.add(value.template);
-    conditions.set(value.template, Boolean(value.condition));
-    return;
-  }
-
-  if (isString(value)) {
-    for (const name of value.split(" ")) {
-      if (name && name !== "undefined") names.add(name);
-    }
-    return;
-  }
-
-  if (isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      collectStaticClasses(value[i], names, templates, conditions);
-    }
-    return;
-  }
-
-  if (isObject(value)) {
-    for (const key in value) {
-      if (key === "undefined") continue;
-      if ((value as Record<string, unknown>)[key]) names.add(key);
-    }
-  }
-}
-
-/**
- * Whether a `style` (or, with `forClass`, a `class`) value needs the reactive
- * path. CSS templates always do for `style`, where they are rejected. For
- * `class` only a getter condition does.
- */
-function hasReactiveValue(value: unknown, forClass?: boolean): boolean {
-  if (isFunction(value)) return true;
-  if (isConditionalTemplate(value)) return !forClass || isFunction(value.condition);
-  if (isCSSTemplate(value)) return !forClass;
-
-  if (isArray(value)) {
-    for (let i = 0; i < value.length; i++) {
-      if (hasReactiveValue(value[i], forClass)) return true;
-    }
-    return false;
-  }
-
-  if (isObject(value)) {
-    for (const key in value) {
-      if (isFunction((value as Record<string, unknown>)[key])) return true;
-    }
-  }
-
-  return false;
 }
 
 /**

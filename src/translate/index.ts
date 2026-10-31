@@ -282,14 +282,13 @@ async function createLookup(
   const strings = isFunction(translation) ? await translation() : translation;
   const entries = compile(strings);
   const templates = new Map(entries);
-  const pluralRulesCache = new Map<string, Intl.PluralRules>();
-  const ordinalRulesCache = new Map<string, Intl.PluralRules>();
+  // Created on first use, since building plural rules is relatively slow.
+  let pluralRules: Intl.PluralRules | undefined;
+  let ordinalRules: Intl.PluralRules | undefined;
 
   function getPluralRules(ordinal: boolean): Intl.PluralRules {
-    const cache = ordinal ? ordinalRulesCache : pluralRulesCache;
-    let rules = cache.get(locale);
-    if (!rules) cache.set(locale, rules = new Intl.PluralRules(locale, ordinal ? { type: "ordinal" } : undefined));
-    return rules;
+    if (ordinal) return (ordinalRules ??= new Intl.PluralRules(locale, { type: "ordinal" }));
+    return (pluralRules ??= new Intl.PluralRules(locale));
   }
 
   /**

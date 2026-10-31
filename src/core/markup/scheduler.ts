@@ -5,15 +5,10 @@ import { DEBUG } from "../symbols.js";
 export interface UpdateMeta {
   label?: string;
   context?: Context;
-  /** Cached debug setting of `context`, so the context chain is walked once per meta. */
-  _debug?: boolean;
 }
 
-// Two maps are swapped for each wave so updates scheduled during a flush are
-// processed in the next wave. This avoids allocating a snapshot array and an
-// object per update.
+// Updates scheduled during a flush go into a new map, processed in the next wave.
 let pendingUpdates = new Map<() => void, UpdateMeta | undefined>();
-let flushingUpdates = new Map<() => void, UpdateMeta | undefined>();
 let isScheduled = false;
 let isFlushing = false;
 let collectUpdateStats = false;
@@ -35,8 +30,7 @@ export function setUpdateStats(enabled: boolean): void {
 
 function isMeasured(meta: UpdateMeta | undefined): boolean {
   if (collectUpdateStats) return true;
-  if (meta === undefined) return false;
-  return (meta._debug ??= Boolean(meta.context?.[DEBUG]));
+  return Boolean(meta?.context?.[DEBUG]);
 }
 
 /**
@@ -81,8 +75,7 @@ function flushUpdates() {
       }
 
       const wave = pendingUpdates;
-      pendingUpdates = flushingUpdates;
-      flushingUpdates = wave;
+      pendingUpdates = new Map();
 
       for (const [fn, meta] of wave) {
         if (!isMeasured(meta)) {
@@ -102,8 +95,6 @@ function flushUpdates() {
         runUpdate(fn, meta);
         elapsed += performance.now() - start;
       }
-
-      wave.clear();
     }
   } finally {
     isScheduled = false;

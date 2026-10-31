@@ -233,20 +233,6 @@ function findStableItems(items: { _order: number }[]): boolean[] {
   const n = items.length;
   const stable = new Array<boolean>(n).fill(false);
 
-  // Fast path: nothing was reordered (appends, removals, in-place updates).
-  let last = -1;
-  let ordered = true;
-  for (let i = 0; i < n; i++) {
-    const order = items[i]._order;
-    if (order === -1) continue;
-    if (order < last) {
-      ordered = false;
-      break;
-    }
-    last = order;
-  }
-  if (ordered) return stable.fill(true);
-
   // Longest increasing subsequence of old orders, tracking predecessors.
   const tails: number[] = []; // index into items of the smallest tail for each length
   const prev = new Int32Array(n).fill(-1);
