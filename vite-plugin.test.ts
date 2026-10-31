@@ -106,50 +106,52 @@ describe("dollaPlugin — HMR injection", () => {
 });
 
 describe("dollaPlugin — styled namer (dev only)", () => {
+  const IMPORT = `import { styled } from "@manyducks.co/dolla/styled";\n`;
+
   test("injects .named(\"IDENT\") for const-styled intrinsic", () => {
-    const code = `const MyButton = styled.button\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `const MyButton = styled.button\`\n  color: red;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.button.named("MyButton")`);
   });
 
   test("handles export const", () => {
-    const code = `export const PageContainer = styled.div\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `export const PageContainer = styled.div\`\n  color: red;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.div.named("PageContainer")`);
   });
 
   test("handles styled(<View>) wrapping", () => {
-    const code = `const MyLink = styled(MyButton)\`\n  color: blue;\n\`;\n`;
+    const code = IMPORT + `const MyLink = styled(MyButton)\`\n  color: blue;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled(MyButton).named("MyLink")`);
   });
 
   test("handles styled('custom-thing') string tag", () => {
-    const code = `const Thing = styled("my-thing")\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `const Thing = styled("my-thing")\`\n  color: red;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled("my-thing").named("Thing")`);
   });
 
   test("handles styled['box'] bracket tag", () => {
-    const code = `const Box = styled["box"]\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `const Box = styled["box"]\`\n  color: red;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled["box"].named("Box")`);
   });
 
   test("injects .named AFTER existing .as(\"tag\") chain (orthogonal)", () => {
-    const code = `const MyLink = styled.button.as("a")\`\n  color: blue;\n\`;\n`;
+    const code = IMPORT + `const MyLink = styled.button.as("a")\`\n  color: blue;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.button.as("a").named("MyLink")`);
   });
 
   test("skips injection if .named already in chain (idempotency)", () => {
-    const code = `export const X = styled.button.named("Already")\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `export const X = styled.button.named("Already")\`\n  color: red;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     // The existing .named("Already") should remain; no second .named injected.
@@ -158,7 +160,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("does not rewrite destructuring assignments", () => {
-    const code = `const { Foo } = styled;\n`;
+    const code = IMPORT + `const { Foo } = styled;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     // No styled declaration to rewrite, but HMR self-accept is still injected.
     expect(result).not.toBeNull();
@@ -166,7 +168,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("does not rewrite function returns", () => {
-    const code = `function make() { return styled.button\`\`; }\n`;
+    const code = IMPORT + `function make() { return styled.button\`\`; }\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     // No styled declaration to rewrite, but HMR self-accept is still injected.
     expect(result).not.toBeNull();
@@ -174,7 +176,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("rewrites multiple styled declarations in one file", () => {
-    const code = [
+    const code = IMPORT + [
       `const A = styled.div\`\n  color: red;\n\`;`,
       `const B = styled.span\`\n  color: blue;\n\`;`,
     ].join("\n");
@@ -185,7 +187,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("running transform twice is idempotent", () => {
-    const code = `export const MyButton = styled.button\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `export const MyButton = styled.button\`\n  color: red;\n\`;\n`;
     const first = runTransform(code, "/abs/file.tsx", "serve");
     expect(first).not.toBeNull();
     const second = runTransform(first!.code, "/abs/file.tsx", "serve");
@@ -195,7 +197,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("does NOT inject .named in production build", () => {
-    const code = `const MyButton = styled.button\`\n  color: red;\n\`;\n`;
+    const code = IMPORT + `const MyButton = styled.button\`\n  color: red;\n\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "build");
     // Either null or unmodified code (only HMR may have run for a no-export file).
     if (result == null) {
@@ -206,7 +208,7 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("handles multi-line template literals", () => {
-    const code = `const X = styled.div\`
+    const code = IMPORT + `const X = styled.div\`
       color: red;
       background: white;
       padding: 4px;
@@ -217,12 +219,38 @@ describe("dollaPlugin — styled namer (dev only)", () => {
   });
 
   test("skips styled inside an existing string literal", () => {
-    const code = `const s = "styled.button";\nconst X = styled.div\`color: red;\`;\n`;
+    const code = IMPORT + `const s = "styled.button";\nconst X = styled.div\`color: red;\`;\n`;
     const result = runTransform(code, "/abs/file.tsx", "serve");
     expect(result).not.toBeNull();
     expect(result!.code).toContain(`styled.div.named("X")`);
     // The string-literal occurrence should not be touched.
     expect(result!.code).toContain(`"styled.button";`);
+  });
+
+  test("does not rewrite a `styled` imported from another library", () => {
+    const code = `import styled from "@emotion/styled";\nconst Title = styled.h1\`color: red;\`;\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result).not.toBeNull();
+    expect(result!.code).not.toContain(".named(");
+  });
+
+  test("does not rewrite `styled` when no import of it exists", () => {
+    const code = `const Title = styled.h1\`color: red;\`;\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).not.toContain(".named(");
+  });
+
+  test("does not rewrite member access like `theme.styled.span`", () => {
+    const code = IMPORT + `const Label = theme.styled.span\`color: red;\`;\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).not.toContain(".named(");
+    expect(result!.code).toContain("theme.styled.span`");
+  });
+
+  test("rewrites an aliased dolla styled import", () => {
+    const code = `import { styled as s } from "@manyducks.co/dolla/styled";\nconst Title = s.h1\`color: red;\`;\n`;
+    const result = runTransform(code, "/abs/file.tsx", "serve");
+    expect(result!.code).toContain(`s.h1.named("Title")`);
   });
 });
 

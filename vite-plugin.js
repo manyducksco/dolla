@@ -414,28 +414,58 @@ function skipString(code, startIndex) {
   return -1;
 }
 
+const DOLLA_STYLED_IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*["']@manyducks\.co\/dolla\/styled["']/g;
+
+function escapeRegExp(text) {
+  return text.replace(/\$/g, "\\$");
+}
+
+/**
+ * Returns the local names that `styled` from `@manyducks.co/dolla/styled` is
+ * bound to in this module (usually just `["styled"]`).
+ */
+function findDollaStyledImports(code, codeScan) {
+  const names = [];
+  DOLLA_STYLED_IMPORT_RE.lastIndex = 0;
+  let match;
+  while ((match = DOLLA_STYLED_IMPORT_RE.exec(code)) !== null) {
+    // Ignore matches inside comments or strings.
+    if (codeScan.masked.slice(match.index, match.index + 6) !== "import") continue;
+    for (const spec of match[1].split(",")) {
+      const m = /^\s*styled(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(spec);
+      if (m) names.push(m[1] ?? "styled");
+    }
+  }
+  return names;
+}
+
 /**
  * Finds all `styled` declarations in the source and rewrites them to
  * `styled(...).named("IDENT")` so the CSS className is debug-friendly in
  * dev. Skips chains that already call `.named(...)` (idempotency) and
  * declarations whose LHS isn't a plain identifier.
  */
-function applyStyledNamer(s, code) {
+function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
   let matched = false;
+  const masked = codeScan.masked;
 
-  // Find every `styled` keyword at a word boundary.
-  for (let i = 0; i < code.length; i++) {
-    if (code[i] !== "s" || code.slice(i, i + 6) !== "styled") continue;
-    // Word boundary check on the left.
-    const prev = i > 0 ? code[i - 1] : "";
-    if (/[\w$]/.test(prev)) continue;
-    // The char after `styled` must be one of: `.`, `[`, `(`, `<`, or whitespace.
-    const next = code[i + 6] ?? "";
-    if (!/[.\[(\s<]/.test(next) && next !== "<") continue;
-    // Skip if this is a member access on something else (e.g. `obj.styled`).
-    // We rely on the left boundary check above; if it passed, we're clear.
+  // Only rewrite the `styled` exported by dolla. Other libraries also export
+  // a `styled` (e.g. `@emotion/styled`) whose components must be left alone.
+  const localNames = findDollaStyledImports(code, codeScan);
+  if (localNames.length === 0) return false;
 
-    const scan = scanStyledChain(code, i + 6);
+  // Search the masked source so occurrences in comments/strings are skipped.
+  const nameRe = new RegExp(`(?<![\\w$])(?:${localNames.map(escapeRegExp).join("|")})(?![\\w$])`, "g");
+  let found;
+  while ((found = nameRe.exec(masked)) !== null) {
+    const i = found.index;
+    const nameEnd = i + found[0].length;
+    // Skip member access on something else (e.g. `theme.styled`).
+    let p = i - 1;
+    while (p >= 0 && /\s/.test(masked[p])) p--;
+    if (p >= 0 && masked[p] === ".") continue;
+
+    const scan = scanStyledChain(code, nameEnd);
     if (!scan) continue;
 
     // Look backward for the enclosing declarator. We need a simple
@@ -464,7 +494,7 @@ function applyStyledNamer(s, code) {
     s.appendLeft(scan.backtick, `.named(${JSON.stringify(ident)})`);
     matched = true;
     // Skip past the backtick to continue scanning.
-    i = scan.backtick;
+    nameRe.lastIndex = scan.backtick;
   }
 
   return matched;
@@ -583,7 +613,7 @@ export default function dollaPlugin() {
 
       // Styled-namer (dev only).
       if (hasStyled) {
-        if (applyStyledNamer(s, code)) {
+        if (applyStyledNamer(s, code, scan)) {
           edited = true;
         }
       }
