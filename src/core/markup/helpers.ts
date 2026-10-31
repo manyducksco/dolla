@@ -1,8 +1,8 @@
 import type { MaybeGetter, Renderable } from "../../types.js";
 import { isArray, isFunction } from "../../utils.js";
 import { createMarkup } from "./utils.js";
-import { type Getter } from "../signals.js";
-import { BranchNode, type BranchEntry } from "./nodes/branch.js";
+import { compose, type Getter } from "../signals.js";
+import { DynamicNode } from "./nodes/dynamic.js";
 import { PortalNode } from "./nodes/portal.js";
 import { RepeatNode, type KeyFn, type RenderFn } from "./nodes/repeat.js";
 
@@ -68,16 +68,13 @@ export function hideIf(condition: MaybeGetter<any>, content: Renderable, fallbac
  */
 function _conditional(condition: any, whenTruthy?: Renderable, whenFalsy?: Renderable): Renderable {
   if (isFunction(condition)) {
-    return createMarkup(BranchNode, {
-      args: [
-        () => Boolean(condition()),
-        [
-          [true, whenTruthy],
-          [false, whenFalsy],
-        ] as const,
-        undefined,
+    return reactiveBranch(
+      () => Boolean(condition()),
+      [
+        [true, whenTruthy],
+        [false, whenFalsy],
       ],
-    });
+    );
   } else if (condition) {
     return whenTruthy;
   } else {
@@ -131,15 +128,32 @@ export function branch<T>(
     return Object.hasOwn(cases as object, key) ? (cases as Partial<Record<PropertyKey, Renderable>>)[key] : fallback;
   }
 
-  const entries: readonly BranchEntry[] = tupleForm
+  const entries: readonly BranchTuple[] = tupleForm
     ? (cases as readonly BranchTuple<T>[])
     : Reflect.ownKeys(cases as object).map(
-        (key): BranchEntry => [key, (cases as Partial<Record<PropertyKey, Renderable>>)[key]],
+        (key): BranchTuple => [key, (cases as Partial<Record<PropertyKey, Renderable>>)[key]],
       );
 
   const selector = tupleForm ? (value as Getter<unknown>) : () => toPropertyKey((value as Getter<T>)());
 
-  return createMarkup(BranchNode, {
-    args: [selector, entries, fallback],
+  return reactiveBranch(selector, entries, fallback);
+}
+
+/**
+ * Renders the content of the case matching `selector`. Content is rebuilt only
+ * when a different case is selected, so each case starts fresh when it becomes
+ * active.
+ */
+function reactiveBranch(selector: Getter<unknown>, entries: readonly BranchTuple[], fallback?: Renderable): Renderable {
+  // Wrap each case in an object so the fallback and a case whose key is
+  // `undefined` stay distinct, even when they hold the same content.
+  const cases = entries.map(([key, content]) => ({ key, content }));
+  const fallbackCase = { content: fallback };
+
+  const active = compose(() => {
+    const key = selector();
+    return cases.find((c) => c.key === key) ?? fallbackCase;
   });
+
+  return createMarkup(DynamicNode, { args: [() => active().content] });
 }

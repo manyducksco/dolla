@@ -3,7 +3,7 @@ import { createContext, type Context } from "../../context.js";
 import { createAtom, type Getter } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
 import { createMarkup, render } from "../utils.js";
-import { BranchNode } from "./branch.js";
+import { branch } from "../helpers.js";
 import { DOMNode } from "./dom.js";
 import { FragmentNode } from "./fragment.js";
 import { RepeatNode } from "./repeat.js";
@@ -55,8 +55,7 @@ describe("sibling ordering", () => {
     test("branch followed by static text", () => {
       const { context, container } = setup();
       const [which] = createAtom("a");
-      const branch = new BranchNode(context, which, [["a", ["a1", "a2"]]]);
-      render([branch, "x"], context).mount(container);
+      render([branch(which, [["a", ["a1", "a2"]]]), "x"], context).mount(container);
       expect(container.textContent).toBe("a1a2x");
     });
 

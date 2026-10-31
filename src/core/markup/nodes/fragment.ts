@@ -12,6 +12,7 @@ export class FragmentNode extends MarkupNode {
   #anchor: Text | null = null;
   #children: MarkupNode[];
   #context: Context;
+  #mounted = false;
 
   constructor(context: Context, children: MarkupNode[]) {
     super();
@@ -33,6 +34,7 @@ export class FragmentNode extends MarkupNode {
 
   override mount(parent: MountTarget, after?: Node | null) {
     if (this.isMounted()) return;
+    this.#mounted = true;
 
     this.#anchor = createTextNode("");
     addChild(parent, this.#anchor, after);
@@ -40,11 +42,12 @@ export class FragmentNode extends MarkupNode {
   }
 
   override unmount(skipDOM = false) {
-    if (!this.isMounted()) return;
+    // Tracked separately from `isMounted()`, so children are cleaned up even
+    // if something else already detached the anchor.
+    if (!this.#mounted) return;
+    this.#mounted = false;
 
-    if (!skipDOM) {
-      this.#anchor!.parentNode?.removeChild(this.#anchor!);
-    }
+    if (!skipDOM) this.#anchor!.parentNode?.removeChild(this.#anchor!);
 
     for (const child of this.#children) {
       runSafely(() => child.unmount(skipDOM), { phase: "unmount", context: this.#context });

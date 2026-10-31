@@ -1,11 +1,11 @@
 import type { Renderable } from "../../../types.js";
 import type { Context } from "../../context.js";
-import { batch, type Getter, createAtom, subscribe, type Setter, withoutOwner } from "../../signals.js";
+import { batch, type Getter, createAtom, type Setter } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { getDebug } from "../../debug.js";
-import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
-import { MarkupNode, type MountTarget } from "../types.js";
-import { addChild, createTextNode, moveAfter, render } from "../utils.js";
+import type { MarkupNode, MountTarget } from "../types.js";
+import { lastNodeOf, moveChildrenAfter, render } from "../utils.js";
+import { AnchoredNode } from "./anchored.js";
 
 // ----- Types ----- //
 
@@ -15,7 +15,6 @@ export type KeyFn<T> = (item: T, index: number) => Key;
 export type RenderFn<T> = (item: Getter<T>, index: Getter<number>) => Renderable;
 
 type ConnectedItem<T> = {
-  _key: Key;
   _item: Getter<T>;
   _setItem: Setter<T>;
   _index: Getter<number>;
@@ -30,121 +29,45 @@ type ConnectedItem<T> = {
 /**
  * Renders a list of items.
  */
-export class RepeatNode<T> extends MarkupNode {
-  #root: Text | null = null;
-
-  #context;
-
-  #items: Getter<Iterable<T>>;
+export class RepeatNode<T> extends AnchoredNode<Iterable<T>> {
   #key: KeyFn<T>;
   #render: RenderFn<T>;
 
-  #unsubscribe: (() => void) | null = null;
   #connectedItems: Map<Key, ConnectedItem<T>> = new Map();
-  #pendingItems?: Iterable<T>;
-  readonly #meta: UpdateMeta;
+  /** Nodes of the connected items, in rendered order. */
+  #nodes: MarkupNode[] = [];
 
   constructor(context: Context, items: Getter<Iterable<T>>, key: KeyFn<T>, render: RenderFn<T>) {
-    super();
-    this.#context = context;
-
-    this.#items = items;
+    super(context, items, "RepeatNode", "repeat:items");
     this.#key = key;
     this.#render = render;
-    this.#meta = { label: "RepeatNode", context };
-  }
-
-  #updatePending = () => {
-    const items = this.#pendingItems;
-    this.#pendingItems = undefined;
-    if (items !== undefined) this._update(Array.from(items));
-  };
-
-  override getRoot() {
-    return this.#root ?? undefined;
   }
 
   override getLastNode() {
-    let last: Node | undefined;
-    for (const connected of this.#connectedItems.values()) {
-      last = connected._node.getLastNode() ?? last;
-    }
-    return last ?? this.#root ?? undefined;
+    return lastNodeOf(this.#nodes, this.getRoot() ?? null);
   }
 
-  override isMounted() {
-    return this.#root?.parentNode != null;
+  protected override moveContent(parent: MountTarget, anchor: Node) {
+    moveChildrenAfter(parent, anchor, this.#nodes);
   }
 
-  override mount(parent: Element, after?: Node | null) {
-    if (!this.isMounted()) {
-      this.#root = createTextNode("");
-      addChild(parent, this.#root, after);
-
-      let initial = true;
-      let hasInitial = false;
-      this.#unsubscribe = withoutOwner(() =>
-        subscribe(
-          this.#items,
-          (items) => {
-            this.#pendingItems = items;
-            if (initial) {
-              hasInitial = true;
-              return;
-            }
-            scheduleUpdate(this.#updatePending, this.#meta);
-          },
-          { name: "repeat:items", context: this.#context },
-        ),
-      );
-      initial = false;
-      // Apply the initial value after the subscription is registered so the
-      // node can be safely torn down from inside its own items.
-      if (hasInitial) runUpdate(this.#updatePending, this.#meta);
-      flushPendingUpdates();
-    }
-  }
-
-  override unmount(skipDOM = false) {
-    if (this.#unsubscribe) {
-      this.#unsubscribe();
-      this.#unsubscribe = null;
-    }
-
-    if (!skipDOM && this.isMounted()) {
-      this.#root!.parentNode?.removeChild(this.#root!);
-    }
-
-    this._cleanup(skipDOM);
-  }
-
-  override move(parent: MountTarget, after?: Node | null) {
-    if (!this.#root) return;
-
-    moveAfter(parent, this.#root, after);
-
-    let ref: Node = this.#root;
-    for (const connected of this.#connectedItems.values()) {
-      connected._node.move(parent, ref);
-      ref = connected._node.getLastNode() ?? ref;
-    }
-  }
-
-  private _cleanup(skipDOM: boolean) {
+  protected override clear(skipDOM: boolean) {
     for (const item of this.#connectedItems.values()) {
       runSafely(() => item._node.unmount(skipDOM), {
         phase: "unmount",
-        context: this.#context,
+        context: this.context,
       });
     }
     this.#connectedItems.clear();
+    this.#nodes = [];
   }
 
-  private _update(value: T[]) {
-    if (!this.isMounted() || !this.#root) return;
+  protected override update(iterable: Iterable<T>) {
+    if (iterable === undefined) return;
+    const value = Array.from(iterable);
 
     if (value.length === 0) {
-      return this._cleanup(false);
+      return this.clear(false);
     }
 
     const nextItems = new Map<Key, ConnectedItem<T>>();
@@ -157,7 +80,7 @@ export class RepeatNode<T> extends MarkupNode {
 
         if (nextItems.has(key)) {
           // Only the first item with a given key is rendered.
-          getDebug(this.#context).warn(`repeat: duplicate key at index ${i} was skipped`, key);
+          getDebug(this.context).warn(`repeat: duplicate key at index ${i} was skipped`, key);
           continue;
         }
 
@@ -171,10 +94,9 @@ export class RepeatNode<T> extends MarkupNode {
           const [_index, _setIndex] = createAtom(i);
 
           const renderContent = this.#render(_item, _index);
-          const _node = render(renderContent, this.#context);
+          const _node = render(renderContent, this.context);
 
           connected = {
-            _key: key,
             _node,
             _item,
             _setItem,
@@ -191,23 +113,24 @@ export class RepeatNode<T> extends MarkupNode {
         if (!nextItems.has(key)) {
           runSafely(() => connected._node.unmount(false), {
             phase: "unmount",
-            context: this.#context,
+            context: this.context,
           });
         }
       }
     });
 
+    const items = Array.from(nextItems.values());
     this.#connectedItems = nextItems;
+    this.#nodes = items.map((connected) => connected._node);
 
-    const parent = this.#root.parentNode as MountTarget | null;
+    const parent = this.anchor!.parentNode as MountTarget | null;
     if (!parent) return;
 
-    const items = Array.from(nextItems.values());
     const stable = findStableItems(items);
 
     // Forward pass to insert or move nodes. Items in the stable set keep their
     // relative order, so only the others need to move.
-    let referenceNode: Node = this.#root;
+    let referenceNode: Node = this.anchor!;
 
     for (let i = 0; i < items.length; i++) {
       const connected = items[i];

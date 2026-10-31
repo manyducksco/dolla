@@ -106,7 +106,6 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
     "/src/core/markup/debounce.ts",
     "/src/core/markup/throttle.ts",
     "/src/core/markup/nodes/repeat.ts",
-    "/src/core/markup/nodes/branch.ts",
     "/src/core/markup/nodes/portal.ts",
     "/src/styled/index.ts",
     "/src/core/ref.ts",

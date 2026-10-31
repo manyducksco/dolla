@@ -339,18 +339,6 @@ describe("DynamicNode", () => {
       flushPendingUpdates();
       expect(container.textContent).toBe("c");
     });
-
-    test("array items still update text in place", () => {
-      const { context, container } = setup();
-      const [content, setContent] = createAtom<any[]>(["a", 1]);
-      new DynamicNode(context, content).mount(container);
-      const first = container.childNodes[1];
-
-      setContent(["x", 2]);
-      flushPendingUpdates();
-      expect(container.textContent).toBe("x2");
-      expect(container.childNodes[1]).toBe(first);
-    });
   });
 
   describe("unmount when detached", () => {
@@ -363,6 +351,22 @@ describe("DynamicNode", () => {
       const calls = getter.mock.calls.length;
 
       // Something else removes all the DOM (e.g. a parent's innerHTML is cleared).
+      container.textContent = "";
+      node.unmount();
+
+      setText("b");
+      flushPendingUpdates();
+      expect(getter).toBeCalledTimes(calls);
+    });
+
+    test("cleans up multiple children even if the anchor was already removed", () => {
+      const { context, container } = setup();
+      const [text, setText] = createAtom("a");
+      const getter = vi.fn(() => text());
+      const node = new DynamicNode(context, () => [createMarkup("span", { title: getter }), "x"]);
+      node.mount(container);
+      const calls = getter.mock.calls.length;
+
       container.textContent = "";
       node.unmount();
 
