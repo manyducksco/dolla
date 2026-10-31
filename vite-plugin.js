@@ -311,7 +311,7 @@ function scanStyledChain(code, startOffset) {
   const chainText = code.slice(chainStart, chainEnd);
 
   if (code[i] !== "`") return null;
-  return { backtick: i, chainText, baseEnd: chainStart };
+  return { backtick: i, chainText };
 }
 
 function skipSpaceAndComments(code, i) {
@@ -614,13 +614,11 @@ function hasMoreDeclarators(code, scan, eq) {
  *   An anonymous one is named `__dolla_default`.
  */
 function applyLiveBindings(s, code, id, scan) {
-  const EXPORT_NAMED_FUNC_RE = /export\s+(?:async\s+)?function\s+\*?\s*([a-zA-Z_$]\w*)/g;
-
   const seen = new Set();
   const names = [];
   let defaultName;
 
-  for (const match of topLevelMatches(EXPORT_NAMED_FUNC_RE, scan)) {
+  for (const match of topLevelMatches(EXPORT_FUNC_RE, scan)) {
     const name = match[1];
     const exportStart = match.index;
 
