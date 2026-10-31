@@ -144,6 +144,28 @@ export function moveAfter(parent: MountTarget, node: Node, after?: Node | null) 
   parent.insertBefore(node, before);
 }
 
+/**
+ * Returns the last DOM node occupied by a list of sibling nodes, or `fallback` if they occupy none.
+ */
+export function lastNodeOf(nodes: MarkupNode[], fallback: Node | null): Node | undefined {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const last = nodes[i].getLastNode();
+    if (last) return last;
+  }
+  return fallback ?? undefined;
+}
+
+/**
+ * Moves a list of sibling nodes, in order, so the first one directly follows `after`.
+ */
+export function moveChildrenAfter(parent: MountTarget, after: Node, nodes: MarkupNode[]) {
+  let ref = after;
+  for (const node of nodes) {
+    node.move(parent, ref);
+    ref = node.getLastNode() ?? ref;
+  }
+}
+
 export function addListener<T extends Event>(target: EventTarget, event: string, listener: (event: T) => any) {
   target.addEventListener(event, listener as any);
   return () => target.removeEventListener(event, listener as any);

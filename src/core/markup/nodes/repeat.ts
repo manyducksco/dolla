@@ -4,7 +4,7 @@ import { batch, type Getter, createAtom, subscribe, type Setter } from "../../si
 import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
-import { addChild, createTextNode, render } from "../utils.js";
+import { addChild, createTextNode, moveAfter, render } from "../utils.js";
 
 // ----- Types ----- //
 
@@ -61,6 +61,14 @@ export class RepeatNode<T> extends MarkupNode {
     return this.#root ?? undefined;
   }
 
+  override getLastNode() {
+    let last: Node | undefined;
+    for (const connected of this.#connectedItems.values()) {
+      last = connected._node.getLastNode() ?? last;
+    }
+    return last ?? this.#root ?? undefined;
+  }
+
   override isMounted() {
     return this.#root?.parentNode != null;
   }
@@ -105,33 +113,15 @@ export class RepeatNode<T> extends MarkupNode {
     this._cleanup(skipDOM);
   }
 
-  override move(parent: Element, after?: Node | null) {
+  override move(parent: MountTarget, after?: Node | null) {
     if (!this.#root) return;
 
-    let referenceNode: Node | null = after?.nextSibling ?? null;
+    moveAfter(parent, this.#root, after);
 
-    if (parent.moveBefore) {
-      try {
-        parent.moveBefore(this.#root, referenceNode);
-        referenceNode = this.#root.nextSibling;
-
-        for (const connected of this.#connectedItems.values()) {
-          const childRoot = connected._node.getRoot();
-          if (childRoot) {
-            (parent as any).moveBefore(childRoot, referenceNode);
-          }
-        }
-        return;
-      } catch {}
-    }
-
-    parent.insertBefore(this.#root, referenceNode);
-    referenceNode = this.#root.nextSibling;
-
+    let ref: Node = this.#root;
     for (const connected of this.#connectedItems.values()) {
-      connected._node.move(parent, referenceNode ?? undefined);
-      const childRoot = connected._node.getRoot();
-      if (childRoot) referenceNode = childRoot;
+      connected._node.move(parent, ref);
+      ref = connected._node.getLastNode() ?? ref;
     }
   }
 
@@ -210,7 +200,7 @@ export class RepeatNode<T> extends MarkupNode {
         connected._node.move(parent, referenceNode);
       }
 
-      referenceNode = connected._node.getRoot()!;
+      referenceNode = connected._node.getLastNode() ?? referenceNode;
     }
   }
 }

@@ -4,7 +4,7 @@ import { subscribe, type Getter } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate, type UpdateMeta } from "../scheduler.js";
 import { MarkupNode, type MountTarget } from "../types.js";
-import { addChild, createTextNode, toMarkupNodes } from "../utils.js";
+import { addChild, createTextNode, lastNodeOf, moveAfter, moveChildrenAfter, toMarkupNodes } from "../utils.js";
 import { DOMNode } from "./dom.js";
 
 /**
@@ -34,6 +34,10 @@ export class DynamicNode extends MarkupNode {
 
   override getRoot() {
     return this.#root ?? undefined;
+  }
+
+  override getLastNode() {
+    return lastNodeOf(this.#children, this.#root);
   }
 
   override isMounted() {
@@ -80,32 +84,8 @@ export class DynamicNode extends MarkupNode {
   override move(parent: MountTarget, after?: Node | null) {
     if (!this.#root) return;
 
-    let referenceNode: Node | null = after?.nextSibling ?? null;
-
-    if (parent.moveBefore) {
-      try {
-        parent.moveBefore(this.#root, referenceNode);
-        referenceNode = this.#root.nextSibling;
-
-        for (let i = 0; i < this.#children.length; i++) {
-          const childRoot = this.#children[i].getRoot();
-          if (childRoot) {
-            (parent as any).moveBefore(childRoot, referenceNode);
-          }
-        }
-        return;
-      } catch {
-        // Fallthrough to standard insertBefore
-      }
-    }
-
-    // Standard DOM fallback (moves root AND children)
-    parent.insertBefore(this.#root, referenceNode);
-    referenceNode = this.#root.nextSibling;
-
-    for (let i = 0; i < this.#children.length; i++) {
-      this.#children[i].move(parent, this.#children[i - 1]?.getRoot() ?? this.#root);
-    }
+    moveAfter(parent, this.#root, after);
+    moveChildrenAfter(parent, this.#root, this.#children);
   }
 
   #cleanup(skipDOM: boolean) {
@@ -162,8 +142,7 @@ export class DynamicNode extends MarkupNode {
       node.mount(parent, referenceNode);
       this.#children.push(node);
 
-      const nextRoot = node.getRoot();
-      if (nextRoot) referenceNode = nextRoot;
+      referenceNode = node.getLastNode() ?? referenceNode;
     }
   }
 }

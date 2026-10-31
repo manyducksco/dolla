@@ -34,6 +34,10 @@ export class ViewNode<P> extends MarkupNode {
     return this.#node?.getRoot();
   }
 
+  getLastNode() {
+    return this.#node?.getLastNode();
+  }
+
   isMounted() {
     return isMounted(this.context);
   }

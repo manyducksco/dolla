@@ -59,6 +59,15 @@ export abstract class MarkupNode {
   abstract getRoot(): Node | undefined;
 
   /**
+   * Returns the last DOM node this MarkupNode occupies, so that a following sibling can be mounted after it.
+   * Defaults to `getRoot()`, which is correct for nodes that occupy a single DOM node. Nodes that render content
+   * after a marker node must override this to return the last node of that content (or the marker when empty).
+   */
+  getLastNode(): Node | undefined {
+    return this.getRoot();
+  }
+
+  /**
    * Returns true while this node is mounted.
    */
   abstract isMounted(): boolean;

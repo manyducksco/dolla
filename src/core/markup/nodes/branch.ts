@@ -47,6 +47,10 @@ export class BranchNode extends MarkupNode {
     return this.#anchor ?? undefined;
   }
 
+  override getLastNode() {
+    return this.#node?.getLastNode() ?? this.#anchor ?? undefined;
+  }
+
   override isMounted() {
     return this.#mounted && this.#anchor?.parentNode != null;
   }

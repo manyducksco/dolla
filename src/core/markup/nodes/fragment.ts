@@ -1,7 +1,7 @@
 import type { Context } from "../../context.js";
 import { runSafely } from "../../errors.js";
 import { MarkupNode, type MountTarget } from "../types.js";
-import { addChild, createTextNode, moveAfter } from "../utils.js";
+import { addChild, createTextNode, lastNodeOf, moveAfter, moveChildrenAfter } from "../utils.js";
 
 /**
  * A lightweight MarkupNode that holds multiple child nodes without any
@@ -23,6 +23,10 @@ export class FragmentNode extends MarkupNode {
     return this.#anchor ?? undefined;
   }
 
+  override getLastNode() {
+    return lastNodeOf(this.#children, this.#anchor);
+  }
+
   override isMounted() {
     return this.#anchor?.parentNode != null;
   }
@@ -36,8 +40,7 @@ export class FragmentNode extends MarkupNode {
     let ref: Node = this.#anchor;
     for (const child of this.#children) {
       child.mount(parent, ref);
-      const root = child.getRoot();
-      if (root) ref = root;
+      ref = child.getLastNode() ?? ref;
     }
   }
 
@@ -58,11 +61,6 @@ export class FragmentNode extends MarkupNode {
 
     moveAfter(parent, this.#anchor, after);
 
-    let ref: Node = this.#anchor;
-    for (const child of this.#children) {
-      child.move(parent, ref);
-      const root = child.getRoot();
-      if (root) ref = root;
-    }
+    moveChildrenAfter(parent, this.#anchor, this.#children);
   }
 }
