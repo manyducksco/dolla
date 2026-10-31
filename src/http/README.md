@@ -61,7 +61,7 @@ http.use(async (request, next) => {
 | --------- | ---------------------------------------- | ------------------------------------------------------------------ |
 | `body`    | any                                      | Request body. Plain objects are auto-serialized as JSON.           |
 | `headers` | `Record<string, any> \| Headers`         | Custom headers.                                                    |
-| `query`   | `Record<string, any> \| URLSearchParams` | URL query parameters.                                              |
+| `query`   | `Record<string, any> \| URLSearchParams` | URL query parameters. Arrays and repeated keys become repeated params. |
 | `parse`   | `(response: Response) => Promise<Body>`  | Custom parser for the raw `Response`.                              |
 | `schema`  | `StandardSchemaV1`                       | Validates the decoded body and replaces it with the schema output. |
 | `retry`   | `number`                                 | Number of retries. Defaults to the client setting, or `0`.         |

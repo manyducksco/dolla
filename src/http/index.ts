@@ -349,12 +349,18 @@ export class HTTP {
     const retries = normalizeRetry(options.retry, this.#retry);
 
     if (options.query) {
-      if (options.query instanceof URLSearchParams) {
-        options.query.forEach((v, k) => url.searchParams.set(k, v));
-      } else {
-        for (const [k, v] of Object.entries(options.query)) {
-          if (v != null) url.searchParams.set(k, v instanceof Date ? v.toISOString() : String(v));
-        }
+      // Query options replace same-named params in the URI; repeated keys and arrays become repeated params.
+      const entries: [string, unknown][] =
+        options.query instanceof URLSearchParams
+          ? [...options.query]
+          : Object.entries(options.query).flatMap(([k, v]) =>
+              Array.isArray(v) ? v.map((item): [string, unknown] => [k, item]) : [[k, v]],
+            );
+
+      const values = entries.filter(([, v]) => v != null);
+      for (const [k] of values) url.searchParams.delete(k);
+      for (const [k, v] of values) {
+        url.searchParams.append(k, v instanceof Date ? v.toISOString() : String(v));
       }
     }
 

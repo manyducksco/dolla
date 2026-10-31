@@ -152,6 +152,38 @@ describe("HTTP client", () => {
     expect(url).toContain("filter=active");
   });
 
+  test("query URLSearchParams keeps repeated keys", async () => {
+    mockFetch.mockImplementation(async () => mockResponse([]));
+    const client = new HTTP();
+    const params = new URLSearchParams([
+      ["tag", "a"],
+      ["tag", "b"],
+    ]);
+    await client.get("/api/items", { query: params });
+    const [url] = mockFetch.mock.calls[0];
+    expect(new URL(url).searchParams.getAll("tag")).toEqual(["a", "b"]);
+  });
+
+  test("query object arrays become repeated keys", async () => {
+    mockFetch.mockImplementation(async () => mockResponse([]));
+    const client = new HTTP();
+    await client.get("/api/items", { query: { tag: ["a", "b"], skip: [null, "c"] } });
+    const [url] = mockFetch.mock.calls[0];
+    expect(new URL(url).searchParams.getAll("tag")).toEqual(["a", "b"]);
+    expect(new URL(url).searchParams.getAll("skip")).toEqual(["c"]);
+  });
+
+  test("query options replace same-named params already in the URL", async () => {
+    mockFetch.mockImplementation(async () => mockResponse([]));
+    const client = new HTTP();
+    await client.get("/api/items?page=1&keep=yes", { query: { page: 2 } });
+    await client.get("/api/items?tag=x", { query: new URLSearchParams([["tag", "a"], ["tag", "b"]]) });
+    const first = new URL(mockFetch.mock.calls[0][0]).searchParams;
+    expect(first.getAll("page")).toEqual(["2"]);
+    expect(first.get("keep")).toBe("yes");
+    expect(new URL(mockFetch.mock.calls[1][0]).searchParams.getAll("tag")).toEqual(["a", "b"]);
+  });
+
   test("custom headers are passed to fetch", async () => {
     mockFetch.mockImplementation(async () => mockResponse({}));
     const client = new HTTP();
