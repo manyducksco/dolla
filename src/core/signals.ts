@@ -591,28 +591,32 @@ function computedGetter(node: ComputedNode) {
 }
 
 function computedSetter(node: ComputedNode, next: SetterAction<any>) {
+  // Bring the node up to date first (without tracking) so that it has linked
+  // its dependencies and any pending source change is applied before the
+  // override. Otherwise a later read would re-run the getter and discard it.
+  const prevSub = setActiveSub(undefined);
+  try {
+    computedGetter(node);
+  } catch {
+    // An explicit value replaces a failed derivation.
+  } finally {
+    activeSub = prevSub;
+  }
+
   const value = resolveValue(next, node._value);
-  if (node._value !== value) {
+  if (node._value !== value || node._error !== undefined) {
     node._value = value;
     node._error = undefined;
 
-    node._flags &= ~(ReactiveFlags.Dirty | ReactiveFlags.Pending);
-
-    let link = node._subs;
-    while (link !== undefined) {
-      const sub = link._sub;
-      const subFlags = sub._flags;
-
-      if ((subFlags & (ReactiveFlags.Dirty | ReactiveFlags.Pending)) === 0) {
-        sub._flags = subFlags | ReactiveFlags.Dirty;
-        notify(sub as EffectNode);
+    const subs = node._subs;
+    if (subs !== undefined) {
+      // Mark everything downstream as pending, then the direct subscribers as
+      // dirty so they re-read this node's new value instead of re-deriving it.
+      propagate(subs);
+      shallowPropagate(subs);
+      if (!batchDepth) {
+        flush();
       }
-
-      link = link._nextSub;
-    }
-
-    if (!batchDepth) {
-      flush();
     }
   }
   return value;

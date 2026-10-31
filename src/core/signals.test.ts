@@ -133,6 +133,92 @@ test("mutable computed state", () => {
   stop();
 });
 
+describe("mutable computed state propagation", () => {
+  afterEach(() => {
+    setErrorHandler(null);
+  });
+
+  test("setting a mutable computed updates composed values downstream", () => {
+    const errors: unknown[] = [];
+    setErrorHandler((error) => errors.push(error));
+
+    const [source, setSource] = createAtom(1);
+    const [input, setInput] = createAtom(() => source());
+    const doubled = compose(() => input() * 2);
+
+    const spy = vi.fn();
+    const stop = createEffect(() => {
+      spy(doubled());
+    });
+    expect(spy).toHaveBeenLastCalledWith(2);
+
+    setInput(5);
+    expect(errors).toEqual([]);
+    expect(doubled()).toBe(10);
+    expect(spy).toHaveBeenLastCalledWith(10);
+
+    // The chain keeps working after the manual override.
+    setSource(7);
+    expect(doubled()).toBe(14);
+    expect(spy).toHaveBeenLastCalledWith(14);
+
+    stop();
+  });
+
+  test("setting a mutable computed propagates through several composed layers", () => {
+    const [source] = createAtom(1);
+    const [input, setInput] = createAtom(() => source());
+    const plusOne = compose(() => input() + 1);
+    const timesTen = compose(() => plusOne() * 10);
+
+    const spy = vi.fn();
+    const stop = createEffect(() => {
+      spy(timesTen());
+    });
+    expect(spy).toHaveBeenLastCalledWith(20);
+
+    setInput(4);
+    expect(spy).toHaveBeenLastCalledWith(50);
+    expect(spy).toBeCalledTimes(2);
+
+    stop();
+  });
+
+  test("setting a mutable computed before it was ever read keeps the set value", () => {
+    const [source, setSource] = createAtom("a");
+    const [input, setInput] = createAtom(() => source());
+
+    setInput("temp");
+    expect(input()).toBe("temp");
+
+    setSource("b");
+    expect(input()).toBe("b");
+  });
+
+  test("setting a mutable computed inside a batch wins over a pending source change", () => {
+    const [source, setSource] = createAtom("a");
+    const [input, setInput] = createAtom(() => source());
+    expect(input()).toBe("a");
+
+    batch(() => {
+      setSource("x");
+      setInput("a");
+    });
+
+    expect(input()).toBe("a");
+  });
+
+  test("updater functions receive the current derived value", () => {
+    const [source, setSource] = createAtom(1);
+    const [input, setInput] = createAtom(() => source() * 10);
+    expect(input()).toBe(10);
+
+    setSource(2);
+    expect(setInput((current) => current + 1)).toBe(21);
+    expect(input()).toBe(21);
+  });
+});
+
 test("effect cleanup", () => {
   const [count, setCount] = createAtom(5);
 
