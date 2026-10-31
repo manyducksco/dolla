@@ -1,7 +1,8 @@
 import { isFunction } from "../../utils";
 import type { MaybeGetter } from "../../types.js";
-import { onCleanup, onEffect, type Context } from "../context";
-import type { Getter } from "../signals";
+import { isMounted, onCleanup, onMount, REPLACING, type Context } from "../context";
+import { createEffect, type Getter } from "../signals";
+import { popComponentName, pushComponentName } from "../signal-debug.js";
 import {
   IS_CONDITIONAL_TEMPLATE,
   IS_CSS_TEMPLATE,
@@ -177,17 +178,57 @@ function isPropertyConfig(value: any): boolean {
   return typeof value === "object" && value !== null && !Array.isArray(value) && "syntax" in value && "value" in value;
 }
 
-function attachClass(c: Context, className: string, element: HTMLElement | SVGElement, condition?: MaybeGetter<any>) {
+const noop = () => {};
+
+/**
+ * Like `onEffect`, but returns a function that stops the effect early (before
+ * the context is cleaned up). Stopping is idempotent.
+ */
+function disposableEffect(c: Context, fn: () => void): () => void {
+  let stop: (() => void) | undefined;
+  let stopped = false;
+
+  const start = () => {
+    if (stopped) return;
+    pushComponentName(c.name);
+    stop = createEffect(fn, { context: c });
+    popComponentName();
+  };
+
+  const dispose = () => {
+    if (stopped) return;
+    stopped = true;
+    stop?.();
+    stop = undefined;
+  };
+
+  if (isMounted(c) || c[REPLACING]) start();
+  else onMount(c, start);
+  onCleanup(c, dispose);
+
+  return dispose;
+}
+
+/**
+ * Adds `className` to `element` (reactively when `condition` is a getter).
+ * Returns `null` when the class is not applied at all, otherwise a function
+ * that stops any condition tracking.
+ */
+function attachClass(
+  c: Context,
+  className: string,
+  element: HTMLElement | SVGElement,
+  condition?: MaybeGetter<any>,
+): (() => void) | null {
   if (isFunction(condition)) {
-    onEffect(c, () => {
+    return disposableEffect(c, () => {
       element.classList.toggle(className, Boolean(condition()));
     });
-    return true;
   } else if (Boolean(condition)) {
     element.classList.add(className);
-    return true;
+    return noop;
   } else {
-    return false;
+    return null;
   }
 }
 
@@ -432,8 +473,9 @@ class CSSFactoryTemplate implements CSSTemplate {
     return this.className;
   }
 
-  attach(c: Context, element: HTMLElement | SVGElement, condition: MaybeGetter<any> = true): void {
-    if (!attachClass(c, this.className, element, condition)) return;
+  attach(c: Context, element: HTMLElement | SVGElement, condition: MaybeGetter<any> = true): () => void {
+    const stopCondition = attachClass(c, this.className, element, condition);
+    if (!stopCondition) return noop;
 
     const shape = this.#shape;
 
@@ -442,27 +484,35 @@ class CSSFactoryTemplate implements CSSTemplate {
       shape.registered = true;
     }
 
-    if (shape.bindings.length > 0) {
-      const interpolations = this.#interpolations;
+    if (shape.bindings.length === 0) return stopCondition;
 
-      onEffect(c, () => {
-        for (const binding of shape.bindings) {
-          const value = binding.read(interpolations);
+    const interpolations = this.#interpolations;
 
-          if (value === null || value === undefined || value === binding.initialValue) {
-            element.style.removeProperty(binding.varName);
-          } else {
-            element.style.setProperty(binding.varName, value);
-          }
-        }
-      });
+    const stopBindings = disposableEffect(c, () => {
+      for (const binding of shape.bindings) {
+        const value = binding.read(interpolations);
 
-      onCleanup(c, () => {
-        for (const binding of shape.bindings) {
+        if (value === null || value === undefined || value === binding.initialValue) {
           element.style.removeProperty(binding.varName);
+        } else {
+          element.style.setProperty(binding.varName, value);
         }
-      });
-    }
+      }
+    });
+
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
+      stopCondition();
+      stopBindings();
+      for (const binding of shape.bindings) {
+        element.style.removeProperty(binding.varName);
+      }
+    };
+
+    onCleanup(c, detach);
+    return detach;
   }
 
   when(condition: MaybeGetter<any>): ConditionalTemplate {

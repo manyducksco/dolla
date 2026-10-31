@@ -652,34 +652,47 @@ export class ElementNode extends MarkupNode {
    * Synchronise the live set of attached CSSTemplates with what the current
    * value requires.  Must be called after `#extractTemplates` on every apply.
    *
-   * 1. **Attach newcomers** — templates in `currentTemplates` that aren't yet
+   * 1. **Detach removed** — templates that were in `attachedTemplates` but are
+   *    no longer in `currentTemplates` have their reactive bindings disposed
+   *    (via the function `.attach()` returned) and their class name removed.
+   *    Any condition subscription is cleaned up separately by
+   *    `#applyConditions`.
+   * 2. **Attach newcomers** — templates in `currentTemplates` that aren't yet
    *    in `attachedTemplates` get a one-time `.attach()` call, in the order the
    *    user supplied them.  This is what determines stylesheet insertion order
-   *    and therefore CSS cascade for same-specificity rules.
-   * 2. **Detach removed** — templates that were in `attachedTemplates` but are
-   *    no longer in `currentTemplates` have their class name removed.  Any
-   *    condition subscription is cleaned up separately by `#applyConditions`.
+   *    and therefore CSS cascade for same-specificity rules.  Detaching first
+   *    means a new instance of a template with the same className (e.g. an
+   *    inline `css` with a getter, re-created on every run) keeps its class
+   *    and custom properties.
    * 3. **Sync state** — `attachedTemplates` is reset to match
    *    `currentTemplates`, ready for the next call.
    *
-   * Because CSSTemplate attachment happens through the CSSOM (class-name based
-   * rules), a detach is simply `element.classList.remove(tpl.className)` —
-   * the CSSStyleRule stays in the sheet but is orphaned until garbage
-   * collection reclaims the template reference.
+   * The CSSStyleRule for a detached template stays in the sheet; rules are
+   * never removed.
    */
+  static #templateDisposers = new WeakMap<Set<CSSTemplate>, Map<CSSTemplate, () => void>>();
+
   #syncTemplates(
     currentTemplates: Set<CSSTemplate>,
     attachedTemplates: Set<CSSTemplate>,
     element: HTMLElement | SVGElement,
   ): void {
-    for (const tpl of currentTemplates) {
-      if (!attachedTemplates.has(tpl)) {
-        tpl.attach(this.#context, element);
-      }
+    let disposers = ElementNode.#templateDisposers.get(attachedTemplates);
+    if (!disposers) {
+      disposers = new Map();
+      ElementNode.#templateDisposers.set(attachedTemplates, disposers);
     }
+
     for (const tpl of attachedTemplates) {
       if (!currentTemplates.has(tpl)) {
+        disposers.get(tpl)?.();
+        disposers.delete(tpl);
         element.classList.remove(tpl.className);
+      }
+    }
+    for (const tpl of currentTemplates) {
+      if (!attachedTemplates.has(tpl)) {
+        disposers.set(tpl, tpl.attach(this.#context, element));
       }
     }
     attachedTemplates.clear();

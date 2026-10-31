@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import { cleanupContext, createContext, mountContext } from "../context.js";
 import { createAtom } from "../signals.js";
 import { css, isConditionalTemplate, isCSSTemplate } from "./css.js";
+import { ElementNode } from "./nodes/element.js";
+import { flushPendingUpdates } from "./scheduler.js";
 
 describe("css tagged template", () => {
   test("returns a CSSTemplate", () => {
@@ -521,5 +523,78 @@ describe("hash collision prevention", () => {
     const tplA = css`content: "Aa";`;
     const tplB = css`content: "BB";`;
     expect(tplA.className).not.toBe(tplB.className);
+  });
+});
+
+describe("detaching templates from an element", () => {
+  test("disposes reactive bindings when a template is swapped out without unmounting", () => {
+    const context = createContext(null);
+    const container = document.createElement("div");
+    const [on, setOn] = createAtom(true);
+    const [color, setColor] = createAtom("red");
+    let reads = 0;
+    const readColor = () => {
+      reads++;
+      return color();
+    };
+
+    const node = new ElementNode(context, "div", {
+      class: () => (on() ? css`color: ${readColor};` : "plain"),
+    });
+    node.mount(container);
+    const el = container.children[0] as HTMLElement;
+
+    for (let n = 0; n < 10; n++) {
+      setOn(!on());
+      flushPendingUpdates();
+    }
+    // 10 toggles from `true` ends back on `true`: exactly one live binding.
+    expect(on()).toBe(true);
+
+    reads = 0;
+    setColor("blue");
+    flushPendingUpdates();
+    expect(reads).toBe(1);
+
+    setOn(false);
+    flushPendingUpdates();
+    expect(el.getAttribute("style") ?? "").not.toContain("--css-");
+
+    reads = 0;
+    setColor("green");
+    flushPendingUpdates();
+    expect(reads).toBe(0);
+
+    node.unmount();
+  });
+
+  test("swapping to a new instance of the same template keeps its class and value", () => {
+    const context = createContext(null);
+    const container = document.createElement("div");
+    const [tick, setTick] = createAtom(0);
+    const [color, setColor] = createAtom("red");
+
+    const node = new ElementNode(context, "div", {
+      class: () => {
+        tick();
+        // A new template instance with the same className on every run.
+        return css`color: ${() => color()};`;
+      },
+    });
+    node.mount(container);
+    const el = container.children[0] as HTMLElement;
+    const className = el.className;
+    expect(className).toMatch(/^css-/);
+
+    setTick(1);
+    flushPendingUpdates();
+    expect(el.classList.contains(className)).toBe(true);
+    expect(el.style.getPropertyValue(`--${className}-0`)).toBe("red");
+
+    setColor("blue");
+    flushPendingUpdates();
+    expect(el.style.getPropertyValue(`--${className}-0`)).toBe("blue");
+
+    node.unmount();
   });
 });
