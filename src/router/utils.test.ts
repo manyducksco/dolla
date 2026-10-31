@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { buildRouteTree, joinPath, matchRoute, resolvePath } from "./utils.js";
+import { buildRouteTree, joinPath, matchRoute, resolvePath, resolveRoute } from "./utils.js";
 import type { Route } from "./types.js";
 
 test("add and match routes", () => {
@@ -113,6 +113,22 @@ test("static resolvePath: resolves relative paths", () => {
   expect(resolvePath("/users/5", "./edit")).toBe("/users/5/edit");
   expect(resolvePath("/users/5", "edit")).toBe("/users/5/edit");
   expect(resolvePath("/users/5/edit", "../delete")).toBe("/users/5/delete");
+});
+
+test("resolveRoute: reports redirect loops with a clear error", async () => {
+  const tree = buildRouteTree([
+    { path: "/a", redirect: "/b" },
+    { path: "/b", redirect: "/a" },
+  ]);
+  await expect(resolveRoute(tree, "/a")).rejects.toThrow("Redirect loop: /a -> /b -> /a");
+});
+
+test("resolveRoute: reports endless dynamic redirects", async () => {
+  let n = 0;
+  const tree = buildRouteTree([
+    { path: "/n/:id", redirect: () => `/n/${++n}` },
+  ]);
+  await expect(resolveRoute(tree, "/n/0")).rejects.toThrow("Redirect loop");
 });
 
 test("merges meta from all ancestor layers", () => {

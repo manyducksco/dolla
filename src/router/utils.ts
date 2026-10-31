@@ -340,14 +340,19 @@ interface ResolvedRoute {
   journey: JourneyStep[];
 }
 
+const MAX_REDIRECTS = 20;
+
 /**
  * Takes a URL and finds a match, following redirects.
+ * Throws if redirects loop back to an already visited path or exceed `MAX_REDIRECTS`.
  */
 export async function resolveRoute(
   rootNode: RouteNode,
   path: string,
   journey: JourneyStep[] = [],
+  visited: string[] = [],
 ): Promise<ResolvedRoute> {
+  visited = [...visited, path];
   const match = matchRoute(rootNode, path);
 
   if (!match) return { journey: [...journey, { kind: "miss", message: `no match for '${path}'` }] };
@@ -363,10 +368,16 @@ export async function resolveRoute(
       if (!target.startsWith("/")) target = resolvePath(match.path, target);
     }
 
-    return resolveRoute(rootNode, target, [
-      ...journey,
-      { kind: "redirect", message: `redirecting '${match.path}' -> '${target}'` },
-    ]);
+    if (visited.includes(target) || visited.length > MAX_REDIRECTS) {
+      throw new Error(`Redirect loop: ${[...visited, target].join(" -> ")}`);
+    }
+
+    return resolveRoute(
+      rootNode,
+      target,
+      [...journey, { kind: "redirect", message: `redirecting '${match.path}' -> '${target}'` }],
+      visited,
+    );
   }
 
   // TODO: Data preload
