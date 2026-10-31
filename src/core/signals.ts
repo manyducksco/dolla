@@ -449,21 +449,13 @@ function run(e: EffectNode): void {
     }
 
     if (shouldRun) {
+      runCleanup(e);
+
       ++cycle;
       e._depsTail = undefined;
       e._flags = ReactiveFlags.Watching | ReactiveFlags.RecursedCheck;
       const prevSub = setActiveSub(e);
       let bodyFailed = false;
-
-      const cleanup = e._cleanup;
-      e._cleanup = undefined;
-      if (cleanup) {
-        try {
-          cleanup();
-        } catch (error) {
-          reportSignalError(toSignalError(error, effectErrorInfo(e, "effect-cleanup")), e._context);
-        }
-      }
 
       try {
         const result = e._fn();
@@ -669,18 +661,32 @@ function effectCleanup(node: ReactiveNode): void {
   }
 
   const effect = node as EffectNode;
-  const cleanup = effect._cleanup;
-  effect._cleanup = undefined;
-  if (!cleanup) return;
+  if (!effect._cleanup) return;
 
   const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(node);
   try {
-    cleanup();
-  } catch (error) {
-    reportSignalError(toSignalError(error, effectErrorInfo(effect, "effect-cleanup")), effect._context);
+    runCleanup(effect);
   } finally {
     reactiveScopeStack.length = scopeLen;
+  }
+}
+
+/**
+ * Runs and clears an effect's cleanup function, untracked so that signals it
+ * reads don't become dependencies of the effect or of whoever triggered it.
+ */
+function runCleanup(e: EffectNode): void {
+  const cleanup = e._cleanup;
+  if (!cleanup) return;
+  e._cleanup = undefined;
+  const prevSub = setActiveSub(undefined);
+  try {
+    cleanup();
+  } catch (error) {
+    reportSignalError(toSignalError(error, effectErrorInfo(e, "effect-cleanup")), e._context);
+  } finally {
+    activeSub = prevSub;
   }
 }
 

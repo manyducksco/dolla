@@ -865,3 +865,42 @@ describe("error enhancement", () => {
     expect(c()).toBe(4);
   });
 });
+
+describe("effect cleanup", () => {
+  test("signals read inside a re-run cleanup are not tracked", () => {
+    const [a, setA] = createAtom(1);
+    const [b, setB] = createAtom(1);
+    let runs = 0;
+    createEffect(() => {
+      runs++;
+      a();
+      return () => {
+        b();
+      };
+    });
+
+    setA(2);
+    expect(runs).toBe(2);
+    setB(2);
+    expect(runs).toBe(2);
+  });
+
+  test("signals read inside a disposed effect's cleanup are not tracked by the caller", () => {
+    const [b, setB] = createAtom(1);
+    const [trigger, setTrigger] = createAtom(0);
+    const dispose = createEffect(() => () => {
+      b();
+    });
+
+    let runs = 0;
+    createEffect(() => {
+      runs++;
+      if (trigger() === 1) dispose();
+    });
+
+    setTrigger(1);
+    expect(runs).toBe(2);
+    setB(2);
+    expect(runs).toBe(2);
+  });
+});
