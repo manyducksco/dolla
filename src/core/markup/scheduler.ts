@@ -1,9 +1,12 @@
 import type { Context } from "../context.js";
 import { reportSignalError, toSignalError } from "../errors.js";
+import { DEBUG } from "../symbols.js";
 
 export interface UpdateMeta {
   label?: string;
   context?: Context;
+  /** Cached debug setting of `context`, so the context chain is walked once per meta. */
+  _debug?: boolean;
 }
 
 // Two maps are swapped for each wave so updates scheduled during a flush are
@@ -23,11 +26,17 @@ let collectUpdateStats = false;
 const MAX_WAVES = 1000;
 
 /**
- * Enables flush timing and update-label statistics. Enabled by `createRoot`
- * in debug mode; disabled by default so production flushes do no extra work.
+ * Forces timing and label statistics for every update. Normally only updates
+ * from a root created with `debug: true` are measured.
  */
 export function setUpdateStats(enabled: boolean): void {
   collectUpdateStats = enabled;
+}
+
+function isMeasured(meta: UpdateMeta | undefined): boolean {
+  if (collectUpdateStats) return true;
+  if (meta === undefined) return false;
+  return (meta._debug ??= Boolean(meta.context?.[DEBUG]));
 }
 
 /**
@@ -53,12 +62,10 @@ function flushUpdates() {
   if (isFlushing) return;
   isFlushing = true;
 
-  const stats = collectUpdateStats;
-  let t0 = 0;
+  // Only updates from debug roots are timed and counted.
+  let elapsed = 0;
   let count = 0;
   let labels: Record<string, number> | undefined;
-
-  if (stats) t0 = performance.now();
 
   try {
     // Snapshot the updates so any updates added during the flush are also
@@ -78,16 +85,22 @@ function flushUpdates() {
       flushingUpdates = wave;
 
       for (const [fn, meta] of wave) {
-        if (stats) {
-          count++;
-          const label = meta?.label;
-          if (label) {
-            if (labels === undefined) labels = Object.create(null) as Record<string, number>;
-            const current = labels[label];
-            labels[label] = current === undefined ? 1 : current + 1;
-          }
+        if (!isMeasured(meta)) {
+          runUpdate(fn, meta);
+          continue;
         }
+
+        count++;
+        const label = meta?.label;
+        if (label) {
+          if (labels === undefined) labels = Object.create(null) as Record<string, number>;
+          const current = labels[label];
+          labels[label] = current === undefined ? 1 : current + 1;
+        }
+
+        const start = performance.now();
         runUpdate(fn, meta);
+        elapsed += performance.now() - start;
       }
 
       wave.clear();
@@ -97,9 +110,9 @@ function flushUpdates() {
     isFlushing = false;
   }
 
-  if (!stats) return;
+  if (count === 0) return;
 
-  const ms = performance.now() - t0;
+  const ms = elapsed;
   if (ms > 10) {
     let breakdown = "";
     if (labels) {

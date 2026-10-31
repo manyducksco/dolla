@@ -6,7 +6,7 @@ These came up while fixing the bugs found in the October 2026 audit (branch `fix
 
 ### Bundle size budget
 
-`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **10,079 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). The check passed before the audit fixes. The increase is correctness code in paths the minimal app uses: signals, ElementNode, DynamicNode, FragmentNode, the scheduler and `isFunction`.
+`npm run bundle:check` (run by `prepublishOnly`) fails. The "minimal component app" is **10,084 B** gzipped against a budget of **9,625.6 B** (`9.4 * KB` in `scripts/check-tree-shaking.mjs`). The check passed before the audit fixes. The increase is correctness code in paths the minimal app uses: signals, ElementNode, DynamicNode, FragmentNode, the scheduler and `isFunction`.
 
 - **A.** Raise the budget to cover the fixes (earlier feature commits have done this).
 - **B.** Look for bytes to cut in the affected modules first, then raise the budget by whatever remains.
@@ -14,16 +14,6 @@ These came up while fixing the bugs found in the October 2026 audit (branch `fix
 Recommendation: B, with a time limit. Most of the new code is unavoidable.
 
 ## Signals and core
-
-### Debug settings are global
-
-`createRoot` calls `setSignalDebug`/`setUpdateStats`, which set module-level flags. A second root created without `debug` turns debugging off for the first. Files: `src/core/root.ts`, `src/core/signal-debug.ts`, `src/core/markup/scheduler.ts`.
-
-- **A.** Make debug per root by reading it from the context. This is invasive, because stack capture happens when a signal is created, when no context is available.
-- **B.** Count references: debug stays on while any mounted root asked for it, and the count drops on unmount.
-- **C.** Only change the global flags when `debug` is passed explicitly.
-
-Recommendation: B. C is the smallest change.
 
 ### Debounce behavior after an abort
 

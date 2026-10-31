@@ -12,8 +12,6 @@ import { ViewNode } from "./markup/nodes/view.js";
 import { type MarkupNode } from "./markup/types.js";
 import { render } from "./markup/utils.js";
 import { runSafely, type SignalError } from "./errors.js";
-import { setSignalDebug } from "./signal-debug.js";
-import { setUpdateStats } from "./markup/scheduler.js";
 import { DEBUG, ERROR_HANDLER, PARENT_ELEMENT } from "./symbols.js";
 
 // Marks an element that already hosts a dolla root (holds its DollaRoot), so a subsequent mount into
@@ -78,8 +76,6 @@ export function createRoot(target: string | Element, options?: DollaRootOptions)
   context[PARENT_ELEMENT] = element;
   context[DEBUG] = Boolean(options?.debug);
   context[ERROR_HANDLER] = options?.onError;
-  setSignalDebug(context[DEBUG]);
-  setUpdateStats(context[DEBUG]);
 
   let rootNode: MarkupNode | null = null;
 

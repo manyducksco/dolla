@@ -2,7 +2,7 @@ import type { View } from "../../../types.js";
 import { createContext, mountContext, cleanupContext, REPLACING, isMounted, type Context } from "../../context.js";
 import { peek, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
-import { pushComponentName, popComponentName } from "../../signal-debug.js";
+import { pushContext, popContext } from "../../signal-debug.js";
 import { MarkupNode, type MountTarget } from "../types.js";
 import { createTextNode, render } from "../utils.js";
 import { DOMNode } from "./dom.js";
@@ -46,12 +46,12 @@ export class ViewNode<P> extends MarkupNode {
     const wasMounted = this.isMounted();
 
     if (!wasMounted) {
-      pushComponentName(this.context.name);
+      pushContext(this.context);
       const viewContent = withoutOwner(() =>
         // The view's context owns its effects, not a surrounding effect.
         peek(() => this.#view.call(this.context, this.#props, this.context)),
       );
-      popComponentName();
+      popContext();
 
       if (viewContent != null && viewContent !== false) {
         this.#node = render(viewContent, this.context);
@@ -114,7 +114,7 @@ export class ViewNode<P> extends MarkupNode {
 
     try {
       this.context[REPLACING] = true;
-      pushComponentName(this.context.name);
+      pushContext(this.context);
       const viewContent = withoutOwner(() =>
         // The view's context owns its effects, not a surrounding effect.
         peek(() => this.#view.call(this.context, this.#props, this.context)),
@@ -145,7 +145,7 @@ export class ViewNode<P> extends MarkupNode {
       throw e;
     } finally {
       this.context[REPLACING] = false;
-      popComponentName();
+      popContext();
     }
   }
 }

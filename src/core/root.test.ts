@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { createContext, onCleanup, onEffect } from "../core/context.js";
+import { addStore, createContext, onCleanup, onEffect } from "../core/context.js";
 import { setErrorHandler, isSignalError } from "./errors.js";
 import { compose, createAtom } from "./signals.js";
 import { setSignalDebug } from "./signal-debug.js";
@@ -38,36 +38,141 @@ describe("createRoot", () => {
     expect(root).toBeDefined();
   });
 
-  test("debug mode records signal creation frames", () => {
-    createRoot(container, { debug: true });
-
-    const getter = compose(() => {
-      throw new Error("debug frame");
+  /** Mounts a view in `root` and returns the error thrown by a computed created in its body. */
+  async function errorFromView(root: ReturnType<typeof createRoot>): Promise<Error> {
+    let getter!: () => unknown;
+    await root.mount(function DebugView() {
+      getter = compose(() => {
+        throw new Error("debug frame");
+      });
+      return null;
     });
-
     try {
       getter();
-      throw new Error("did not throw");
     } catch (error) {
-      expect(isSignalError(error)).toBe(true);
-      expect((error as Error).message).toContain("created at");
+      return error as Error;
     }
+    throw new Error("did not throw");
+  }
+
+  function makeContainer() {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    return el;
+  }
+
+  test("debug mode records signal creation frames", async () => {
+    const error = await errorFromView(createRoot(container, { debug: true }));
+    expect(isSignalError(error)).toBe(true);
+    expect(error.message).toContain("created at");
   });
 
-  test("debug mode enables slow-flush statistics", () => {
+  test("signals in a root without debug mode have no creation frames", async () => {
+    const error = await errorFromView(createRoot(container));
+    expect(error.message).not.toContain("created at");
+  });
+
+  test("creating a root without debug does not turn debug off for an earlier root", async () => {
+    const other = makeContainer();
+    const debugRoot = createRoot(container, { debug: true });
+    const plainRoot = createRoot(other);
+
+    expect((await errorFromView(debugRoot)).message).toContain("created at");
+    expect((await errorFromView(plainRoot)).message).not.toContain("created at");
+
+    plainRoot.unmount();
+    other.remove();
+  });
+
+  test("creating a debug root does not turn debug on for an earlier root", async () => {
+    const other = makeContainer();
+    const plainRoot = createRoot(other);
     createRoot(container, { debug: true });
+
+    expect((await errorFromView(plainRoot)).message).not.toContain("created at");
+
+    plainRoot.unmount();
+    other.remove();
+  });
+
+  test("signals created outside any root have no creation frames, even with a debug root", () => {
+    createRoot(container, { debug: true });
+    const getter = compose(() => {
+      throw new Error("no context");
+    });
+    expect(() => getter()).toThrow(expect.objectContaining({ message: expect.not.stringContaining("created at") }));
+  });
+
+  test("a store added by a plugin records creation frames and is named after the store", async () => {
+    const root = createRoot(container, { debug: true });
+    let getter!: () => unknown;
+    function SessionStore() {
+      getter = compose(function session() {
+        throw new Error("store frame");
+      });
+      return {};
+    }
+    root.plugin((ctx) => {
+      addStore(ctx, SessionStore);
+    });
+    await root.mount(null);
+
+    let message = "";
+    try {
+      getter();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("created at");
+    expect(message).toContain('composed "SessionStore → session"');
+  });
+
+  test("debug mode enables slow-flush statistics for that root's updates", async () => {
+    const root = createRoot(container, { debug: true });
+    let ctx: any;
+    root.plugin((c) => {
+      ctx = c;
+    });
+    await root.mount(null);
 
     const now = vi.spyOn(performance, "now").mockReturnValueOnce(0).mockReturnValueOnce(20);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    scheduleUpdate(() => {}, { label: "debug flush" });
+    scheduleUpdate(() => {}, { label: "debug flush", context: ctx });
     flushPendingUpdates();
 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain("debug flush: 1");
+  });
 
-    now.mockRestore();
-    warn.mockRestore();
+  test("slow updates from a root without debug mode are not reported", async () => {
+    const other = makeContainer();
+    // Created in this order, the old global flag would be on for both roots.
+    const plainRoot = createRoot(other);
+    const debugRoot = createRoot(container, { debug: true });
+    let debugCtx: any;
+    let plainCtx: any;
+    debugRoot.plugin((c) => {
+      debugCtx = c;
+    });
+    plainRoot.plugin((c) => {
+      plainCtx = c;
+    });
+    await debugRoot.mount(null);
+    await plainRoot.mount(null);
+
+    let time = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => time);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    scheduleUpdate(() => (time += 1), { label: "fast debug update", context: debugCtx });
+    scheduleUpdate(() => (time += 50), { label: "slow plain update", context: plainCtx });
+    flushPendingUpdates();
+
+    expect(warn).not.toHaveBeenCalled();
+
+    plainRoot.unmount();
+    other.remove();
   });
 
   test("mount renders content into the target element", async () => {

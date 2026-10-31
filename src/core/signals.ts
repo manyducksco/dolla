@@ -884,7 +884,7 @@ export function createEffect(fn: () => void, options?: { name?: string; context?
     _depsTail: undefined,
     _flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
   };
-  setNodeDebug(e, "effect", fn, options?.name);
+  setNodeDebug(e, "effect", fn, options?.name, options?.context);
   const prevSub = setActiveSub(e);
   const prevOwner = setActiveOwner(e);
   if (prevOwner !== undefined) {

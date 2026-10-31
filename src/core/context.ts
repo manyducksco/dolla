@@ -2,7 +2,7 @@ import type { Store } from "../types.js";
 import { assert } from "../utils.js";
 import { VIEW, type ViewNode } from "./markup/nodes/view.js";
 import { createEffect, withoutOwner } from "./signals.js";
-import { pushComponentName, popComponentName } from "./signal-debug.js";
+import { pushContext, popContext } from "./signal-debug.js";
 import { runSafely } from "./errors.js";
 import { MOUNTED, PARENT_ELEMENT } from "./symbols.js";
 
@@ -106,11 +106,11 @@ export function onCleanup(context: Context, fn: LifecycleListener) {
  */
 export function onEffect(context: Context, fn: () => void, options?: { name?: string }): void {
   const runEffect = () => {
-    pushComponentName(context.name);
+    pushContext(context);
     // The context disposes this effect, so it must not also belong to whatever
     // effect happens to be running when the context mounts.
     const cleanup = withoutOwner(() => createEffect(fn, { ...options, context }));
-    popComponentName();
+    popContext();
     return cleanup;
   };
 
@@ -193,7 +193,14 @@ export function addStore<Props, Returns>(
   onMount(context, () => mountContext(storeContext));
   onCleanup(context, () => cleanupContext(storeContext));
 
-  const result = store.call(storeContext, args[0] as Props, storeContext);
+  // Signals created by the store take its name and its root's debug setting.
+  pushContext(storeContext);
+  let result: Returns;
+  try {
+    result = store.call(storeContext, args[0] as Props, storeContext);
+  } finally {
+    popContext();
+  }
   if (result != null) (result as any)[STORE_CONTEXT] = storeContext;
   return (context[id] = result);
 }

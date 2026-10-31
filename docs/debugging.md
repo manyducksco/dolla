@@ -70,6 +70,8 @@ Debug mode also records where each effect and computed value was created, so rep
 
 It also enables flush statistics: DOM updates are timed, and flushes that take longer than 10ms log a warning with an update-label breakdown. Timing and label collection are skipped entirely when debug mode is off.
 
+Debug mode applies only to the root it is passed to. A page can mount a debug root next to plain roots, and each keeps its own setting. Effects, computed values and stores created by a debug root's views and stores record their locations, and only that root's updates are timed. Signals created outside any view or store, such as module-level atoms, never record a location.
+
 ## Notes
 
 - Loggers are cheap no-ops when the level or filter excludes them, but the call sites still execute.

@@ -10,8 +10,9 @@ import {
   subscribe,
   type Getter,
 } from "./signals";
-import { pushComponentName, popComponentName, setSignalDebug } from "./signal-debug";
+import { pushContext, popContext, setSignalDebug } from "./signal-debug";
 import { SignalError, isSignalError, setErrorHandler } from "./errors";
+import { DEBUG } from "./symbols";
 
 test("basic composition & tracking", () => {
   const [count, setCount] = createAtom(5);
@@ -636,8 +637,31 @@ describe("error enhancement", () => {
     expect(errors[0].message).toContain('effect "MyEffect"');
   });
 
+  test("an effect created with a debug context records its creation frame", () => {
+    const errors = captureErrors();
+    const debugContext = createContext(null, { name: "DebugRoot", [DEBUG]: true });
+    const plainContext = createContext(null, { name: "PlainRoot" });
+
+    createEffect(
+      function debugEffect() {
+        throw new Error("debug");
+      },
+      { context: debugContext },
+    );
+    createEffect(
+      function plainEffect() {
+        throw new Error("plain");
+      },
+      { context: plainContext },
+    );
+
+    expect(errors).toHaveLength(2);
+    expect(errors[0].message).toContain("created at");
+    expect(errors[1].message).not.toContain("created at");
+  });
+
   test("includes component name via push/pop", () => {
-    pushComponentName("UserProfile");
+    pushContext(createContext(null, { name: "UserProfile" }));
 
     const err = catchError(() => {
       const getter = compose(() => {
@@ -646,7 +670,7 @@ describe("error enhancement", () => {
       getter();
     });
 
-    popComponentName();
+    popContext();
 
     expect(err.message).toContain('composed "UserProfile → (anonymous)"');
   });
