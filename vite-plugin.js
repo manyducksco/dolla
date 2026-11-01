@@ -1,7 +1,7 @@
 import MagicString from "magic-string";
 
-const HMR_IMPORT = 'import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"';
-const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export).*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
+const HMR_IMPORT = 'import { __dolla_apply, __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"';
+const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export|store).*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
 const HMR_ACCEPT_RE = /import\.meta\.hot\.accept\s*\(/;
 
 // Match `export function Foo` — NOT `export default function`
@@ -575,17 +575,16 @@ function isFunctionInitializer(code, scan, eq) {
 }
 
 /**
- * Scans the declaration whose initializer starts at `eq` to the end of its
- * statement. Returns `multiple: true` if it declares more than one name
- * (`const a = ..., b = ...`), and otherwise `end`, the index just past the
- * statement. When unsure it reports more than one, so nothing is wrapped.
+ * Returns true if the declaration whose initializer starts at `eq` declares
+ * more than one name (`const a = ..., b = ...`). Stops at the end of the
+ * statement; when unsure it reports more than one, so nothing is wrapped.
  */
-function scanDeclaration(code, scan, eq) {
+function hasMoreDeclarators(code, scan, eq) {
   let start = skipSpaceAndComments(code, eq + 1);
   // Skip a generic arrow's type parameters, e.g. the comma in `<T,>(x: T) => x`.
   if (code[start] === "<") {
     start = matchAngleBalance(code, start);
-    if (start === -1) return { multiple: true, end: -1 };
+    if (start === -1) return true;
   }
 
   let depth = 0;
@@ -593,20 +592,14 @@ function scanDeclaration(code, scan, eq) {
     const c = scan.masked[i];
     if (c === "(" || c === "[" || c === "{") depth++;
     else if (c === ")" || c === "]" || c === "}") depth--;
-    else if (depth === 0 && c === ";") return { multiple: false, end: i + 1 };
-    else if (depth === 0 && c === ",") return { multiple: true, end: -1 };
+    else if (depth === 0 && c === ";") return false;
+    else if (depth === 0 && c === ",") return true;
     else if (depth === 0 && c === "\n") {
       const next = skipSpaceAndComments(code, i);
-      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) {
-        return { multiple: false, end: i };
-      }
+      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) return false;
     }
   }
-  return { multiple: false, end: code.length };
-}
-
-function hasMoreDeclarators(code, scan, eq) {
-  return scanDeclaration(code, scan, eq).multiple;
+  return false;
 }
 
 // A call to one of dolla's store functions, but not a method like `obj.getStore`.
@@ -617,11 +610,12 @@ const FUNC_DECL_RE = /(?<![\w$.])(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*
 const LOCAL_DECL_RE = /(?<![\w$.])(?:const|let)\s+([A-Za-z_$][\w$]*)/g;
 
 /**
- * Returns the identifiers passed as the store argument (the second) of
- * `addStore`, `getStore`, `hasStore` and `hasOwnStore` calls anywhere in the module.
+ * Finds identifiers passed as the store argument (the second) of `addStore`,
+ * `getStore`, `hasStore` and `hasOwnStore` calls anywhere in the module.
+ * Returns `{ name, start, end }` for each, with the identifier's position.
  */
-function findStoreArgNames(code, scan) {
-  const names = new Set();
+function findStoreArgs(code, scan) {
+  const args = [];
   STORE_CALL_RE.lastIndex = 0;
   let match;
   while ((match = STORE_CALL_RE.exec(scan.masked)) !== null) {
@@ -645,10 +639,12 @@ function findStoreArgNames(code, scan) {
     }
     if (scan.masked[i] !== ",") continue;
 
-    const arg = /^\s*([A-Za-z_$][\w$]*)\s*[,)]/.exec(scan.masked.slice(i + 1, i + 257));
-    if (arg) names.add(arg[1]);
+    const arg = /^(\s*)([A-Za-z_$][\w$]*)\s*[,)]/.exec(scan.masked.slice(i + 1, i + 257));
+    if (!arg) continue;
+    const start = i + 1 + arg[1].length;
+    args.push({ name: arg[2], start, end: start + arg[2].length });
   }
-  return names;
+  return args;
 }
 
 /**
@@ -676,9 +672,10 @@ function isPrivateDeclaration(scan, index) {
  * - `export default function [Name]` becomes a local function, followed by
  *   `Name = __dolla_export("<id>:default", Name); export { Name as default };`.
  *   An anonymous one is named `__dolla_default`.
- * - Private functions passed by name to `addStore`/`getStore`/`hasStore`/`hasOwnStore`
- *   are wrapped in place: a `function Foo` at the top of the module (it is hoisted),
- *   a `const Foo = <function>` (made `let`) right after its declaration.
+ * - Functions declared in the module and passed by name to `addStore`/`getStore`/
+ *   `hasStore`/`hasOwnStore` are tagged at each call: `getStore(c, Foo)` becomes
+ *   `getStore(c, __dolla_store("<id>:Foo", Foo))`, so every version of `Foo` shares one
+ *   store identity, including one used before its module has finished evaluating.
  */
 function applyLiveBindings(s, code, id, scan) {
   const seen = new Set();
@@ -726,31 +723,26 @@ function applyLiveBindings(s, code, id, scan) {
     break;
   }
 
-  // Private stores (functions passed to addStore/getStore but not exported) are wrapped too,
-  // or a reload gives them a new identity and existing instances can no longer be found.
-  const storeNames = findStoreArgNames(code, scan);
-
+  // Tag store arguments that name a function declared in this module with the store identity of
+  // its HMR id. In an import cycle a reloaded module's hoisted functions can be used as stores before
+  // the module has wrapped them, and without the tag they would get an identity of their own.
+  const storeIds = new Map();
+  for (const name of names) storeIds.set(name, `${id}:${name}`);
+  if (defaultName) storeIds.set(defaultName, `${id}:default`);
   for (const match of topLevelMatches(FUNC_DECL_RE, scan)) {
-    const name = match[1];
-    if (!storeNames.has(name) || seen.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
-    seen.add(name);
-    // Function declarations are hoisted, so wrap first in case the module adds the store while it evaluates.
-    s.appendLeft(0, `${name} = __dolla_export(${JSON.stringify(`${id}:${name}`)}, ${name});\n`);
+    if (!storeIds.has(match[1]) && isPrivateDeclaration(scan, match.index)) storeIds.set(match[1], `${id}:${match[1]}`);
   }
-
   for (const match of topLevelMatches(LOCAL_DECL_RE, scan)) {
     const name = match[1];
-    if (!storeNames.has(name) || seen.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
+    if (storeIds.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
     const eq = findInitializer(code, scan, match.index + match[0].length);
-    if (eq === -1 || !isFunctionInitializer(code, scan, eq)) continue;
-    const { multiple, end } = scanDeclaration(code, scan, eq);
-    if (multiple) continue;
-    seen.add(name);
-
-    // `const Foo` -> `let Foo`, wrapped right after its declaration.
-    const nameStart = match.index + match[0].length - name.length;
-    s.overwrite(match.index, nameStart, "let ");
-    s.appendRight(end, `\n${name} = __dolla_export(${JSON.stringify(`${id}:${name}`)}, ${name});`);
+    if (eq !== -1 && isFunctionInitializer(code, scan, eq) && !hasMoreDeclarators(code, scan, eq)) {
+      storeIds.set(name, `${id}:${name}`);
+    }
+  }
+  for (const arg of findStoreArgs(code, scan)) {
+    const storeId = storeIds.get(arg.name);
+    if (storeId) s.overwrite(arg.start, arg.end, `__dolla_store(${JSON.stringify(storeId)}, ${arg.name})`);
   }
 
   if (names.length === 0 && !defaultName) return;

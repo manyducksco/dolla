@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import dollaPlugin from "./vite-plugin.js";
-import { __dolla_export } from "./src/core/hmr.js";
+import { __dolla_export, __dolla_store } from "./src/core/hmr.js";
 import { addStore, createContext, getStore } from "./src/core/context.js";
 
 function runTransform(code: string, id: string) {
@@ -15,7 +15,7 @@ describe("dollaPlugin — HMR injection", () => {
       "/abs/path/file.tsx",
     );
     expect(result).not.toBeNull();
-    expect(result!.code).toContain('import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"');
+    expect(result!.code).toContain('import { __dolla_apply, __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"');
     expect(result!.code).toContain("Foo");
     expect(result!.code).toContain("import.meta.hot.accept");
   });
@@ -32,7 +32,7 @@ describe("dollaPlugin — HMR injection", () => {
   test("injects HMR self-accept for no-export files in dev (entry boundary)", () => {
     const result = runTransform(`const x = 1;\n`, "/abs/file.tsx");
     expect(result).not.toBeNull();
-    expect(result!.code).toContain('import { __dolla_apply, __dolla_export } from "@manyducks.co/dolla/hmr"');
+    expect(result!.code).toContain('import { __dolla_apply, __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"');
     expect(result!.code).toContain("import.meta.hot.accept");
   });
 
@@ -322,7 +322,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
    * Runs a transformed module (plain JS only) with the real `__dolla_export`
    * and returns its exports, so hot-reload identity can be checked directly.
    */
-  function evaluateModule(code: string): Record<string, any> {
+  function evaluateModule(code: string, prelude = ""): Record<string, any> {
     const declared: string[] = [];
     const body = code
       .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla\/hmr";\n/m, "")
@@ -343,13 +343,17 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       });
     const exports: Record<string, any> = {};
     const tail = declared.map((name) => `__exports.${name} = ${name};`).join("\n");
-    new Function("__dolla_export", "__exports", "addStore", "getStore", "createContext", `${body}\n${tail}`)(
-      __dolla_export,
-      exports,
-      addStore,
-      getStore,
-      createContext,
-    );
+    // `prelude` runs before any of the module's own statements, as a module in an import cycle can be
+    // called into before it evaluates. Its function declarations are hoisted but not yet wrapped.
+    new Function(
+      "__dolla_export",
+      "__dolla_store",
+      "__exports",
+      "addStore",
+      "getStore",
+      "createContext",
+      `${prelude}\n${body}\n${tail}`,
+    )(__dolla_export, __dolla_store, exports, addStore, getStore, createContext);
     return exports;
   }
 
@@ -521,6 +525,31 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     expect(v1.getSession().id).toBe(1);
   });
 
+  test("a private store keeps working when the reloaded module is used before it evaluates", () => {
+    // Quack's case: auth.ts -> rpc.ts -> app.tsx -> Workspace.tsx -> stores. Editing Workspace.tsx
+    // re-runs the cycle, and the new app.tsx calls the new auth.ts's addAuth before auth.ts evaluates.
+    const authModule = (user: string) =>
+      [
+        `function AuthStore(_, c) { return { user: ${JSON.stringify(user)} }; }`,
+        `export function addAuth(c) { return addStore(c, AuthStore); }`,
+        `export function getAuth(c) { return getStore(c, AuthStore); }`,
+        ``,
+      ].join("\n");
+    const id = uniqueId();
+    const oldRoot = createContext(null);
+    const [v1] = reload(id, authModule("first"));
+    const oldStore = v1.addAuth(oldRoot);
+
+    // The new app.tsx builds a new root and calls the hoisted, still unwrapped addAuth.
+    const prelude = `__exports.newRoot = createContext(null); __exports.newStore = addAuth(__exports.newRoot);`;
+    const v2 = evaluateModule(runTransform(authModule("second"), id)!.code, prelude);
+
+    expect(v2.newStore.user).toBe("second");
+    // HMR then re-renders the old root's views, which look the store up with the new getAuth.
+    expect(v2.getAuth(createContext(oldRoot))).toBe(oldStore);
+    expect(v2.getAuth(createContext(v2.newRoot))).toBe(v2.newStore);
+  });
+
   test("leaves functions that aren't passed to a store function alone", () => {
     const { code } = runTransform(
       [
@@ -534,10 +563,10 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       ].join("\n"),
       uniqueId(),
     )!;
-    expect(code).not.toMatch(/__dolla_export\("[^"]*:(helper|InComment|InString)"/);
+    expect(code).not.toMatch(/__dolla_store\(/);
   });
 
-  test("doesn't wrap store names that aren't module declarations", () => {
+  test("doesn't tag store names that aren't module declarations", () => {
     const { code } = runTransform(
       [
         `declare function Ambient(): {};`,
@@ -548,6 +577,6 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       ].join("\n"),
       uniqueId(),
     )!;
-    expect(code).not.toMatch(/__dolla_export\("[^"]*:(Ambient|Named|Iife)"/);
+    expect(code).not.toMatch(/__dolla_store\(/);
   });
 });

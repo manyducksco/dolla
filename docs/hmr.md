@@ -34,7 +34,7 @@ export const AuthStore = function (props, c) {};
 export default function AuthStore(props, c) {}
 ```
 
-A store that isn't exported is wrapped too when the module passes it to `addStore`, `getStore`, `hasStore` or `hasOwnStore` by name, so a store kept private behind helpers keeps working:
+A store kept private behind helpers keeps working too:
 
 ```js
 function AuthStore(props, c) {}
@@ -42,7 +42,9 @@ export const addAuth = (c) => addStore(c, AuthStore);
 export const getAuth = (c) => getStore(c, AuthStore);
 ```
 
-Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`), stores exported in a separate statement (`export { AuthStore }`), and private stores only passed to dolla through another variable.
+When a module passes a function it declares to `addStore`, `getStore`, `hasStore` or `hasOwnStore` by name, the plugin tags that argument with the store's HMR id, so every version of the function shares one identity. This also covers import cycles, where a reloaded module's helpers can be called before the module has finished evaluating.
+
+Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`), stores exported in a separate statement (`export { AuthStore }`), and stores passed to dolla through another variable.
 
 ## Manual API
 
@@ -51,6 +53,7 @@ If you're not using Vite, you can wire up HMR yourself:
 ```js
 import {
   __dolla_export,
+  __dolla_store,
   __dolla_apply,
   registerViewInstance,
   unregisterViewInstance,
@@ -58,6 +61,7 @@ import {
 ```
 
 - `__dolla_export(id, view)` wraps a view or store so updates can be matched to it. It returns the same wrapper every time it is called with the same `id`, which is what keeps stores' identity across reloads.
+- `__dolla_store(id, store)` gives a store function the same store identity as the wrapper for `id`, and returns it. Use it on store arguments (`getStore(c, __dolla_store(id, AuthStore))`) when a function can be used as a store before `__dolla_export` has wrapped it.
 - `registerViewInstance(view, node)` registers a mounted `ViewNode` so it can be replaced.
 - `unregisterViewInstance(view, node)` removes the registration on unmount.
 - `__dolla_apply(newModule, exports)` applies the updated view exports to matching instances.

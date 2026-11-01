@@ -5,6 +5,23 @@ const activeInstances = new WeakMap<View<any>, Set<ViewNode<any>>>();
 
 const liveViews = new Map<string, View<any>>();
 
+/** Same as `STORE_ID` in context.ts. Defined here so this module stays standalone. */
+const STORE_ID = Symbol.for("$_STORE_ID");
+
+/** The store identity for an HMR id, shared by every function with that id. */
+const storeSymbol = (id: string) => Symbol.for(`$_DOLLA_STORE:${id}`);
+
+/**
+ * Gives `store` the stable store identity for `id`, the one its HMR wrapper has.
+ * The Vite plugin wraps store arguments in this, because in an import cycle a
+ * reloaded module's functions can be used as stores before the module has run
+ * far enough to wrap them.
+ */
+export function __dolla_store<T extends Function>(id: string, store: T): T {
+  (store as any)[STORE_ID] ??= storeSymbol(id);
+  return store;
+}
+
 export function __dolla_export<P>(id: string, impl: View<P> | P): View<P> | P {
   if (typeof impl !== "function") return impl;
   const existing = liveViews.get(id) as View<P> | undefined;
@@ -25,11 +42,13 @@ export function __dolla_export<P>(id: string, impl: View<P> | P): View<P> | P {
   Object.defineProperty(live, "length", { get: () => current.length });
   Object.defineProperty(live, "name", { get: () => current.name });
   Object.defineProperty(live, "__dolla_id", { value: id, enumerable: false });
+  (live as any)[STORE_ID] ??= storeSymbol(id);
   liveViews.set(id, live);
   return live;
 }
 
-const SKIPPED_KEYS = new Set<PropertyKey>(["length", "name", "prototype", "arguments", "caller"]);
+// The store id is the wrapper's own, so instances stay findable when the implementation changes.
+const SKIPPED_KEYS = new Set<PropertyKey>(["length", "name", "prototype", "arguments", "caller", STORE_ID]);
 
 /**
  * Copies `source`'s own properties onto `target`, removing those copied previously that `source` no longer has.

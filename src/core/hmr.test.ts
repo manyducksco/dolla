@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { __dolla_apply, __dolla_export, registerViewInstance, unregisterViewInstance } from "./hmr.js";
+import { addStore, createContext, getStore } from "./context.js";
+import { __dolla_apply, __dolla_export, __dolla_store, registerViewInstance, unregisterViewInstance } from "./hmr.js";
 
 let viewCounter = 0;
 function makeView(name: string) {
@@ -45,6 +46,47 @@ describe("HMR __dolla_export", () => {
     expect(live()).toBe("second");
     expect(live.info()).toBe("second info");
     expect("old" in live).toBe(false);
+  });
+
+  test("keeps its store identity when the new implementation was already used as a store", () => {
+    const id = `/test/${viewCounter++}.ts:AuthStore`;
+    const live = __dolla_export(id, () => ({ version: 1 })) as any;
+    const oldRoot = createContext(null);
+    const store = addStore(oldRoot, live);
+
+    // In an import cycle the reloaded module's raw function can be used before the module wraps it.
+    const next = () => ({ version: 2 });
+    addStore(createContext(null), next);
+    __dolla_export(id, next);
+
+    expect(getStore(oldRoot, live)).toBe(store);
+  });
+});
+
+describe("HMR __dolla_store", () => {
+  test("gives a function the same store identity as its wrapper", () => {
+    const id = `/test/${viewCounter++}.ts:AuthStore`;
+    const raw = () => ({});
+    const ctx = createContext(null);
+    const store = addStore(ctx, __dolla_store(id, raw));
+
+    expect(getStore(ctx, __dolla_export(id, raw) as any)).toBe(store);
+  });
+
+  test("a reloaded function used before its module wraps it still finds existing instances", () => {
+    const id = `/test/${viewCounter++}.ts:AuthStore`;
+    const live = __dolla_export(id, __dolla_store(id, () => ({ version: 1 }))) as any;
+    const oldRoot = createContext(null);
+    const oldStore = addStore(oldRoot, live);
+
+    // The reloaded module's hoisted function runs before the module evaluates (import cycle).
+    const next = () => ({ version: 2 });
+    const newRoot = createContext(null);
+    const newStore = addStore(newRoot, __dolla_store(id, next));
+    __dolla_export(id, next);
+
+    expect(getStore(oldRoot, __dolla_store(id, next))).toBe(oldStore);
+    expect(getStore(newRoot, live)).toBe(newStore);
   });
 });
 
