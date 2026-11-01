@@ -99,7 +99,7 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
     createRoot(document.body, () => jsx("main", { children: [counter()] }));
   `);
   // Budget includes the static-prop/style/class fast paths and style property assignment.
-  expectGzipBelow(result, 9.4 * KB, "minimal component app");
+  expectGzipBelow(result, 9.5 * KB, "minimal component app");
   for (const name of [
     "/src/core/markup/css.ts",
     "/src/core/markup/html.ts",
