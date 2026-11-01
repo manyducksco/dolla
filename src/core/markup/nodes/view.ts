@@ -1,5 +1,5 @@
 import type { View } from "../../../types.js";
-import { createContext, mountContext, cleanupContext, REPLACING, isMounted, type Context } from "../../context.js";
+import { createContext, mountContext, cleanupContext, isMounted, type Context } from "../../context.js";
 import { peek, withoutOwner } from "../../signals.js";
 import { runSafely } from "../../errors.js";
 import { pushContext, popContext } from "../../signal-debug.js";
@@ -117,8 +117,9 @@ export class ViewNode<P> extends MarkupNode {
     this.#view = newView;
     this.context.name = newView.name;
 
+    // The context was cleaned up above, so effects in the new view wait for `mountContext`
+    // below, after their elements are in the DOM, just like on a first mount.
     try {
-      this.context[REPLACING] = true;
       pushContext(this.context);
       this.#node = this.#render();
 
@@ -142,7 +143,6 @@ export class ViewNode<P> extends MarkupNode {
       }
       throw e;
     } finally {
-      this.context[REPLACING] = false;
       popContext();
     }
   }

@@ -1,8 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 import { compose, createAtom, createEffect } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
-import { createContext, onCleanup, onEffect, onMount, REPLACING } from "../../context.js";
+import { createContext, onCleanup, onEffect, onMount } from "../../context.js";
 import type { View } from "../../index.js";
+import { createRef } from "../../ref.js";
 import { createMarkup } from "../utils.js";
 import { VIEW, ViewNode } from "./view.js";
 
@@ -308,7 +309,7 @@ describe("ViewNode", () => {
       expect(mountSpy2).toHaveBeenCalledTimes(1);
     });
 
-    test("replaceView runs onEffect immediately via REPLACING flag", () => {
+    test("replaceView starts the new view's effects", () => {
       const { context, container } = setup();
       const effectSpy = vi.fn();
       const view1 = vi.fn(function (this: any) {
@@ -324,8 +325,34 @@ describe("ViewNode", () => {
       effectSpy.mockClear();
 
       node.replaceView(view2);
-      // onEffect should have run immediately during replacement, not deferred
       expect(effectSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test("replaceView runs the new view's effects, and its children's, after their elements render", () => {
+      const { context, container } = setup();
+      const seen: Array<[string, Element | undefined]> = [];
+
+      function Child(_: {}, c: any) {
+        const ref = createRef<Element>();
+        onEffect(c, () => seen.push(["child", ref()]));
+        return createMarkup("span", { ref, children: "child" });
+      }
+      const view1 = vi.fn(() => createMarkup("div", { children: "v1" }));
+      function view2(_: {}, c: any) {
+        const ref = createRef<Element>();
+        onEffect(c, () => seen.push(["parent", ref()]));
+        return createMarkup("div", { ref, children: createMarkup(Child, {}) });
+      }
+
+      const node = new ViewNode(context, view1, {});
+      node.mount(container);
+      node.replaceView(view2 as any);
+
+      expect(seen.map(([name]) => name).sort()).toEqual(["child", "parent"]);
+      // As on a first mount, refs are set by the time effects run.
+      for (const [name, element] of seen) {
+        expect(element, `${name} ref`).toBeInstanceOf(Element);
+      }
     });
 
     test("replaceView leaves exactly one instance in the container (no overlaid duplication)", () => {
@@ -380,39 +407,6 @@ describe("ViewNode", () => {
       expect(pages).toHaveLength(1);
       expect(pages[0].textContent).toBe("v2");
       expect(container.textContent).not.toContain("v1");
-    });
-
-    test("replaceView resets REPLACING flag when view function throws", () => {
-      const { context, container } = setup();
-      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
-      const throwingView = vi.fn(() => {
-        throw new Error("view render failed");
-      });
-      const node = new ViewNode(context, view1, {});
-      node.mount(container);
-      expect(container.querySelector("span")!.textContent).toBe("v1");
-
-      expect(() => node.replaceView(throwingView as any)).toThrow("view render failed");
-      expect(node.context[REPLACING]).toBe(false);
-    });
-
-    test("replaceView resets REPLACING flag when mount throws", () => {
-      const { context, container } = setup();
-      const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
-      const view2 = vi.fn(() => createMarkup("span", { children: "v2" }));
-      const node = new ViewNode(context, view1, {});
-      node.mount(container);
-
-      // Patch container.insertBefore to throw during mount
-      const realInsert = container.insertBefore.bind(container);
-      container.insertBefore = ((child: Node, ref: Node | null) => {
-        throw new Error("mount failed");
-      }) as typeof container.insertBefore;
-
-      expect(() => node.replaceView(view2)).toThrow("mount failed");
-      expect(node.context[REPLACING]).toBe(false);
-
-      container.insertBefore = realInsert as typeof container.insertBefore;
     });
 
     test("replaceView recovers on next HMR cycle after a failed replacement", () => {

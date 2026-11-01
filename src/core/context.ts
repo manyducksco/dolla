@@ -23,12 +23,6 @@ export type Context<T = GenericState> = ContextState & T;
 const MOUNT_LISTENERS = Symbol.for("$_CONTEXT_MOUNT_LISTENERS");
 const CLEANUP_LISTENERS = Symbol.for("$_CONTEXT_CLEANUP_LISTENERS");
 
-/**
- * Set on a context during `replaceView` to tell `onEffect` to run
- * immediately instead of deferring to `onMount` (which won't fire).
- */
-export const REPLACING = Symbol.for("$_CONTEXT_REPLACING");
-
 export function createContext<State extends GenericState>(
   parent: Context | null,
   values?: Partial<State>,
@@ -125,7 +119,7 @@ export function onEffect(context: Context, fn: () => void, options?: { name?: st
     stop = undefined;
   };
 
-  if (isMounted(context) || context[REPLACING]) start();
+  if (isMounted(context)) start();
   else onMount(context, start);
 
   return dispose;
