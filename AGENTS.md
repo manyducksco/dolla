@@ -29,3 +29,9 @@ npm run build && npm run bundle:check         # bundle size and tree-shaking bud
 ```
 
 Run `bundle:check` after changes to `src/core`. It enforces gzip size budgets and runs before publishing. If a change goes over budget, report it rather than raising the budget yourself.
+
+## Releases
+
+Every release gets a changelog file at `docs/changelogs/<version>.md` (e.g. `docs/changelogs/5.0.3.md`). Generate it from the commits since the previous release tag (`git log v<previous>..HEAD`) and commit it with the version bump in the "Prepare the <version> release" commit.
+
+Write it for people upgrading, not for contributors: describe what changed for users and why it matters, grouped under headings such as Breaking changes, Features and Fixes (leave out empty groups). Skip changes with no effect on users, such as tests and internal refactors, and link to the relevant page in `docs/` where one exists.
