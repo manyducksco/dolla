@@ -46,6 +46,24 @@ When a module passes a function it declares to `addStore`, `getStore`, `hasStore
 
 Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`), stores exported in a separate statement (`export { AuthStore }`), and stores passed to dolla through another variable.
 
+## Import cycles
+
+When you edit a module, Vite gives every module that imports it a new URL, and the edited module imports again whichever of those it imports itself. So a hot update re-runs every module that's in an import cycle with the edited one. If the module that calls `createRoot` is in the cycle, each edit runs it again and mounts the app a second time.
+
+The Vite plugin warns in the terminal when an edit does this, once per cycle, and shows the chain:
+
+```
+[dolla:hmr] Editing src/pages/Workspace.tsx re-runs src/app.tsx, which creates the app root, because they import each other:
+  src/pages/Workspace.tsx
+  -> src/stores/auth.ts
+  -> src/rpc.ts
+  -> src/app.tsx
+  -> src/pages/Workspace.tsx
+src/rpc.ts imports src/app.tsx, so a hot update to any module in this cycle runs src/app.tsx again and mounts the app a second time. Remove that import to break the cycle.
+```
+
+The usual cause is a module importing something from the entry module, such as a shared context. Pass the value to that module instead, or move it into a module of its own.
+
 ## Manual API
 
 If you're not using Vite, you can wire up HMR yourself:

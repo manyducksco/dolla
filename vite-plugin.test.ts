@@ -580,3 +580,132 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     expect(code).not.toMatch(/__dolla_store\(/);
   });
 });
+
+describe("dollaPlugin — import cycle warning", () => {
+  const ROOT = "/project";
+
+  type FakeModule = {
+    url: string;
+    file: string;
+    importers: Set<FakeModule>;
+    importedModules: Set<FakeModule>;
+    staticImportedUrls: Set<string>;
+  };
+
+  /** Builds a fake Vite module graph. `dynamic` lists edges that are dynamic `import()`s. */
+  function moduleGraph(imports: Record<string, string[]>, dynamic: Record<string, string[]> = {}) {
+    const mods = new Map<string, FakeModule>();
+    const get = (url: string) => {
+      let mod = mods.get(url);
+      if (!mod) {
+        mod = { url, file: ROOT + url, importers: new Set(), importedModules: new Set(), staticImportedUrls: new Set() };
+        mods.set(url, mod);
+      }
+      return mod;
+    };
+    const link = (from: string, to: string, isStatic: boolean) => {
+      get(from).importedModules.add(get(to));
+      get(to).importers.add(get(from));
+      if (isStatic) get(from).staticImportedUrls.add(to);
+    };
+    for (const [from, tos] of Object.entries(imports)) for (const to of tos) link(from, to, true);
+    for (const [from, tos] of Object.entries(dynamic)) for (const to of tos) link(from, to, false);
+    return get;
+  }
+
+  /** A plugin that has seen `rootModule` call createRoot, plus a function to send it hot updates. */
+  function setup(rootModule = "/src/app.tsx") {
+    const plugin: any = dollaPlugin();
+    plugin.configResolved({ root: ROOT });
+    plugin.transform(`import { createRoot } from "@manyducks.co/dolla";\ncreateRoot("#app").mount(App);\n`, ROOT + rootModule);
+    const warnings: string[] = [];
+    const update = (mod: FakeModule, environment = "client") =>
+      plugin.hotUpdate.call(
+        { environment: { name: environment, logger: { warn: (msg: string) => warnings.push(msg) } } },
+        { type: "update", file: mod.file, modules: [mod] },
+      );
+    return { warnings, update };
+  }
+
+  // Quack's graph: the auth store imports rpc.ts, which imports the app entry.
+  const quackImports = {
+    "/src/app.tsx": ["/src/pages/Workspace.tsx", "/src/stores/index.ts"],
+    "/src/pages/Workspace.tsx": ["/src/stores/index.ts"],
+    "/src/stores/index.ts": ["/src/stores/auth.ts"],
+    "/src/stores/auth.ts": ["/src/rpc.ts"],
+    "/src/rpc.ts": ["/src/app.tsx"],
+  };
+
+  test("warns with the cycle when an edit re-runs the module that creates the root", () => {
+    const mod = moduleGraph(quackImports);
+    const { warnings, update } = setup();
+
+    expect(update(mod("/src/pages/Workspace.tsx"))).toBeUndefined();
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Editing src/pages/Workspace.tsx re-runs src/app.tsx");
+    expect(warnings[0]).toContain(
+      [
+        "  src/pages/Workspace.tsx",
+        "  -> src/stores/index.ts",
+        "  -> src/stores/auth.ts",
+        "  -> src/rpc.ts",
+        "  -> src/app.tsx",
+        "  -> src/pages/Workspace.tsx",
+      ].join("\n"),
+    );
+    expect(warnings[0]).toContain("src/rpc.ts imports src/app.tsx");
+  });
+
+  test("warns once per cycle", () => {
+    const mod = moduleGraph(quackImports);
+    const { warnings, update } = setup();
+
+    update(mod("/src/pages/Workspace.tsx"));
+    update(mod("/src/pages/Workspace.tsx"));
+    update(mod("/src/stores/auth.ts"));
+
+    expect(warnings).toHaveLength(1);
+  });
+
+  test("doesn't warn when nothing imports the root module back", () => {
+    const mod = moduleGraph({ ...quackImports, "/src/rpc.ts": [] });
+    const { warnings, update } = setup();
+
+    update(mod("/src/pages/Workspace.tsx"));
+    update(mod("/src/stores/auth.ts"));
+
+    expect(warnings).toEqual([]);
+  });
+
+  test("doesn't warn about a cycle the root module isn't part of", () => {
+    const mod = moduleGraph({
+      "/src/app.tsx": ["/src/stores/a.ts"],
+      "/src/stores/a.ts": ["/src/stores/b.ts"],
+      "/src/stores/b.ts": ["/src/stores/a.ts"],
+    });
+    const { warnings, update } = setup();
+
+    update(mod("/src/stores/a.ts"));
+
+    expect(warnings).toEqual([]);
+  });
+
+  test("ignores cycles closed by a dynamic import", () => {
+    const mod = moduleGraph({ ...quackImports, "/src/rpc.ts": [] }, { "/src/rpc.ts": ["/src/app.tsx"] });
+    const { warnings, update } = setup();
+
+    update(mod("/src/pages/Workspace.tsx"));
+
+    expect(warnings).toEqual([]);
+  });
+
+  test("only checks the client environment", () => {
+    const mod = moduleGraph(quackImports);
+    const { warnings, update } = setup();
+
+    update(mod("/src/pages/Workspace.tsx"), "ssr");
+
+    expect(warnings).toEqual([]);
+  });
+});

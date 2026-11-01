@@ -1,4 +1,5 @@
 import MagicString from "magic-string";
+import path from "node:path";
 
 const HMR_IMPORT = 'import { __dolla_apply, __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"';
 const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export|store).*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
@@ -762,15 +763,114 @@ function applyLiveBindings(s, code, id, scan) {
 }
 
 /*============================*\
+||    Import Cycle Warning    ||
+\*============================*/
+
+// A call to `createRoot`, but not a method like `obj.createRoot`.
+const CREATE_ROOT_RE = /(?<![\w$.])createRoot\s*\(/;
+
+/** The modules `mod` imports statically. Dynamic `import()`s don't re-run when `mod` does. */
+function staticImports(mod) {
+  // `staticImportedUrls` isn't in Vite's public types, so fall back to every import without it.
+  const urls = mod.staticImportedUrls;
+  return [...mod.importedModules].filter((dep) => !urls || urls.has(dep.url));
+}
+
+/** Breadth-first search from `start` to a module matching `isEnd`. Returns the path, or null. */
+function findPath(start, isEnd, next) {
+  const prev = new Map([[start, null]]);
+  const queue = [start];
+  while (queue.length) {
+    const mod = queue.shift();
+    if (mod !== start && isEnd(mod)) {
+      const path = [];
+      for (let m = mod; m; m = prev.get(m)) path.unshift(m);
+      return path;
+    }
+    for (const dep of next(mod)) {
+      if (!prev.has(dep)) {
+        prev.set(dep, mod);
+        queue.push(dep);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the import cycle through which a hot update to `changed` re-runs a module that calls
+ * `createRoot`, as a list of modules from `changed` back to itself, or null if there is none.
+ *
+ * On an update Vite gives every module that imports `changed`, directly or not, a new URL. When
+ * the browser imports `changed` again, each of its imports with a new URL runs again, and so on
+ * down the chain. So a module re-runs if `changed` reaches it by static imports through modules
+ * that import `changed`, which only happens when they're in an import cycle with it.
+ */
+function findRootCycle(changed, rootFiles) {
+  const importers = new Set();
+  const stack = [changed];
+  while (stack.length) {
+    for (const importer of stack.pop().importers) {
+      if (!importers.has(importer)) {
+        importers.add(importer);
+        stack.push(importer);
+      }
+    }
+  }
+
+  const toRoot = findPath(
+    changed,
+    (mod) => rootFiles.has(mod.file),
+    (mod) => staticImports(mod).filter((dep) => importers.has(dep)),
+  );
+  if (!toRoot) return null;
+  const back = findPath(toRoot[toRoot.length - 1], (mod) => mod === changed, (mod) => mod.importedModules);
+  return back ? [...toRoot, ...back.slice(1)] : null;
+}
+
+/*============================*\
 ||         Plugin Default     ||
 \*============================*/
 
 export default function dollaPlugin() {
+  let projectRoot = process.cwd();
+  // Files that call `createRoot`, as seen by `transform`.
+  const rootFiles = new Set();
+  // Import edges into a root module that were already warned about, e.g. "/src/rpc.ts -> /src/app.tsx".
+  const warnedEdges = new Set();
+
   return {
     name: "dolla",
     enforce: "pre",
     // Everything the plugin adds is for HMR, which a production build doesn't have.
     apply: "serve",
+    configResolved(config) {
+      projectRoot = config.root;
+    },
+    hotUpdate({ modules }) {
+      if (this.environment.name !== "client" || rootFiles.size === 0) return;
+      const rel = (mod) => path.relative(projectRoot, mod.file);
+
+      for (const changed of modules) {
+        const cycle = findRootCycle(changed, rootFiles);
+        if (!cycle) continue;
+
+        // The cycle closes where something imports the root module; report each such import once.
+        const rootIndex = cycle.findIndex((mod) => rootFiles.has(mod.file));
+        const root = cycle[rootIndex];
+        const into = cycle[rootIndex - 1];
+        const edge = `${into.file} -> ${root.file}`;
+        if (warnedEdges.has(edge)) continue;
+        warnedEdges.add(edge);
+
+        this.environment.logger.warn(
+          `[dolla:hmr] Editing ${rel(changed)} re-runs ${rel(root)}, which creates the app root, because they import each other:\n` +
+            cycle.map((mod, i) => `  ${i ? "-> " : ""}${rel(mod)}`).join("\n") +
+            `\n${rel(into)} imports ${rel(root)}, so a hot update to any module in this cycle runs ${rel(root)} again` +
+            ` and mounts the app a second time. Remove that import to break the cycle.`,
+        );
+      }
+    },
     transform(code, id) {
       if (!/\.[jt]sx?$/.test(id)) return null;
       if (id.includes("node_modules")) return null;
@@ -783,6 +883,9 @@ export default function dollaPlugin() {
       // re-mount of the whole app.
       const scan = maskNonCode(code);
       const entries = findExportEntries(code, scan);
+
+      if (CREATE_ROOT_RE.test(scan.masked)) rootFiles.add(id);
+      else rootFiles.delete(id);
 
       // Inject `import.meta.hot.accept` into EVERY module — including the
       // entry module, which may have no matching exports. Without a
