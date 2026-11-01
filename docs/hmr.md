@@ -46,6 +46,22 @@ When a module passes a function it declares to `addStore`, `getStore`, `hasStore
 
 Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`), stores exported in a separate statement (`export { AuthStore }`), and stores passed to dolla through another variable.
 
+## CSS templates
+
+A `css` template declared at the top level of a module restyles in place when you edit it. Elements that use it keep their class, its rule is replaced at the same position in the stylesheet, and no view re-runs, so state is kept. This works for modules that import the template too:
+
+```js
+import { css } from "@manyducks.co/dolla";
+
+export const fieldControl = css`
+  border: 2px solid var(--theme-border);
+`;
+```
+
+The plugin rewrites the template to `__dolla_css("<file>:fieldControl")` followed by the same template literal. Every version of the template is the same object, and its class name comes from the module and the variable name, not its contents. Reactive values in the template are rebound on elements it's attached to.
+
+This only applies when the tagged template is the whole initializer of a top-level `const` or `let`, and `css` is imported from `@manyducks.co/dolla` (an alias like `css as style` works too). Templates inside views already update because the view runs again. Expressions such as `` css`...`.when(on) `` or `` on ? css`...` : null `` are left alone, so modules that import them keep the old version until they reload.
+
 ## Import cycles
 
 When you edit a module, Vite gives every module that imports it a new URL, and the edited module imports again whichever of those it imports itself. So a hot update re-runs every module that's in an import cycle with the edited one. If the module that calls `createRoot` is in the cycle, each edit runs it again and mounts the app a second time.
@@ -70,6 +86,7 @@ If you're not using Vite, you can wire up HMR yourself:
 
 ```js
 import {
+  __dolla_css,
   __dolla_export,
   __dolla_store,
   __dolla_apply,
@@ -79,6 +96,7 @@ import {
 ```
 
 - `__dolla_export(id, view)` wraps a view or store so updates can be matched to it. It returns the same wrapper every time it is called with the same `id`, which is what keeps stores' identity across reloads.
+- `` __dolla_css(id)`...` `` creates a `css` template that keeps its identity and class name for `id`. A later call with the same `id` updates the template's rule in place.
 - `__dolla_store(id, store)` gives a store function the same store identity as the wrapper for `id`, and returns it. Use it on store arguments (`getStore(c, __dolla_store(id, AuthStore))`) when a function can be used as a store before `__dolla_export` has wrapped it.
 - `registerViewInstance(view, node)` registers a mounted `ViewNode` so it can be replaced.
 - `unregisterViewInstance(view, node)` removes the registration on unmount.
@@ -88,4 +106,5 @@ import {
 
 - State local to a replaced view is lost. Move state you want to survive into a store or a context outside the replaced view.
 - A full page reload discards all application state, as expected.
-- HMR only applies to view modules; changes to stores, utility modules, or global CSS may trigger a full reload depending on your bundler setup.
+- HMR only applies to view modules and top-level `css` templates; changes to stores, utility modules, or global CSS may trigger a full reload depending on your bundler setup.
+- Other exported values, such as constants and config objects, are not updated in modules that import them.

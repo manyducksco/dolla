@@ -489,6 +489,72 @@ function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
 }
 
 /*============================*\
+||     Hot CSS Templates      ||
+\*============================*/
+
+const DOLLA_IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*["']@manyducks\.co\/dolla["']/g;
+const HOT_CSS_IMPORT = 'import { __dolla_css } from "@manyducks.co/dolla/hmr";\n';
+// Tokens that continue an expression onto the next line, so a newline after a template doesn't end it.
+const CONTINUES_EXPRESSION_RE = /[.[(`?:+\-*/%&|^<>=!]/;
+
+/**
+ * Returns the local names that `css` from `@manyducks.co/dolla` is bound to in
+ * this module (usually just `["css"]`).
+ */
+function findDollaCssImports(code, codeScan) {
+  const names = [];
+  DOLLA_IMPORT_RE.lastIndex = 0;
+  let match;
+  while ((match = DOLLA_IMPORT_RE.exec(code)) !== null) {
+    // Ignore matches inside comments or strings.
+    if (codeScan.masked.slice(match.index, match.index + 6) !== "import") continue;
+    for (const spec of match[1].split(",")) {
+      const m = /^\s*css(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(spec);
+      if (m) names.push(m[1] ?? "css");
+    }
+  }
+  return names;
+}
+
+/** Returns true if the expression that ends at `end` is the whole initializer of its declarator. */
+function endsInitializer(code, end) {
+  const next = skipSpaceAndComments(code, end);
+  if (next >= code.length || code[next] === ";" || code[next] === ",") return true;
+  return code.slice(end, next).includes("\n") && !CONTINUES_EXPRESSION_RE.test(code[next]);
+}
+
+/**
+ * Rewrites top-level `const|let Name = css\`...\`` declarations to
+ * `const Name = __dolla_css("<id>:Name")\`...\``. Every version of the template is
+ * then the same object with the same class name, so modules that imported it see
+ * each update. Only templates that are the whole initializer are rewritten.
+ * Returns true if anything was rewritten.
+ */
+function applyHotCss(s, code, id, scan) {
+  const tags = findDollaCssImports(code, scan);
+  if (tags.length === 0) return false;
+
+  let rewritten = false;
+  for (const match of topLevelMatches(LOCAL_DECL_RE, scan)) {
+    const name = match[1];
+    const eq = findInitializer(code, scan, match.index + match[0].length);
+    if (eq === -1) continue;
+
+    const start = skipSpaceAndComments(code, eq + 1);
+    const tag = tags.find((t) => code.startsWith(t, start) && !/[\w$]/.test(code[start + t.length] ?? ""));
+    if (!tag) continue;
+    const backtick = skipSpaceAndComments(code, start + tag.length);
+    if (code[backtick] !== "`") continue;
+    const end = skipString(code, backtick);
+    if (end === -1 || !endsInitializer(code, end)) continue;
+
+    s.overwrite(start, start + tag.length, `__dolla_css(${JSON.stringify(`${id}:${name}`)})`);
+    rewritten = true;
+  }
+  return rewritten;
+}
+
+/*============================*\
 ||   Live-Binding Rewriter   ||
 \*============================*/
 
@@ -917,6 +983,8 @@ export default function dollaPlugin() {
       // Live-binding: wrap named function exports and private stores in a stable proxy for HMR.
       // Must run before the HMR call so the proxy is assigned before the callback captures it.
       applyLiveBindings(s, code, id, scan);
+
+      if (code.includes("css") && applyHotCss(s, code, id, scan)) s.appendLeft(0, HOT_CSS_IMPORT);
 
       if (code.includes("styled")) applyStyledNamer(s, code, scan);
 

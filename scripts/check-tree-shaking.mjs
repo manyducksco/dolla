@@ -45,9 +45,10 @@ async function measure(code) {
   const modules = new Set(
     chunks.flatMap((chunk) => Object.keys(chunk.modules ?? {}).map((id) => id.replaceAll("\\", "/"))),
   );
+  const text = chunks.map((chunk) => chunk.code).join("\n");
   const gzip = chunks.reduce((total, chunk) => total + gzipSync(Buffer.from(chunk.code), { level: 9 }).length, 0);
 
-  return { gzip, modules };
+  return { text, gzip, modules };
 }
 
 function expectModuleAbsent(result, name, context) {
@@ -151,6 +152,20 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
   `);
   expectModuleAbsent(result, "/src/core/markup/html.ts", "transition app");
   expectModuleAbsent(result, "/src/core/markup/nodes/repeat.ts", "transition app");
+}
+
+// The hot-reload support for css templates is only reached through the HMR entry.
+{
+  const result = await measure(`
+    ${imports.core}
+    import { css } from ${JSON.stringify(core)};
+    createRoot(document.body, () => null);
+    console.log(css\`color: red;\`);
+  `);
+  // `deleteRule` is a DOM method, so minifying doesn't rename it. Only hot templates remove rules.
+  if (result.text.includes("deleteRule")) {
+    report("css app: unexpected hot template code");
+  }
 }
 
 // Importing internals store inspection must not pull in the renderer.

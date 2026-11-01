@@ -340,6 +340,39 @@ function extractNonNestableAtRules(css: string): { cleanCss: string; extracted: 
 ||          Registry          ||
 \*============================*/
 
+/** Inserts the rules for a class at `index` and returns them. */
+function insertRules(className: string, rawCss: string, sheet: CSSStyleSheet, index: number): CSSRule[] {
+  const { cleanCss, extracted } = extractNonNestableAtRules(rawCss);
+  if (cleanCss.trim()) extracted.push(`.${className}{${cleanCss}}`);
+
+  const inserted: CSSRule[] = [];
+  for (const rule of extracted) {
+    try {
+      sheet.insertRule(rule, index);
+      inserted.push(sheet.cssRules[index]);
+      index++;
+    } catch (e) {}
+  }
+  return inserted;
+}
+
+/**
+ * Replaces a class's `rules` with ones built from `rawCss`, at the position of the
+ * first old rule so the class keeps its place in the cascade. Returns the new rules.
+ * A function rather than a registry method so production builds can drop it with
+ * the rest of the HMR code.
+ */
+function replaceRules(className: string, rawCss: string, rules: CSSRule[], sheet: CSSStyleSheet): CSSRule[] {
+  let index = sheet.cssRules.length;
+  for (const rule of rules) {
+    const i = Array.prototype.indexOf.call(sheet.cssRules, rule);
+    if (i === -1) continue;
+    sheet.deleteRule(i);
+    index = Math.min(index, i);
+  }
+  return insertRules(className, rawCss, sheet, index);
+}
+
 class StyleRegistry {
   // Styled component bases come before plain `css` rules in the cascade, so a
   // `css` class passed to a styled component always overrides its base styles.
@@ -356,24 +389,11 @@ class StyleRegistry {
     }
   }
 
-  insertClass(className: string, rawCss: string, sheet = this.sheet): void {
-    if (this.classes.has(className)) return;
-
-    const { cleanCss, extracted } = extractNonNestableAtRules(rawCss);
-
-    for (const rule of extracted) {
-      try {
-        sheet.insertRule(rule, sheet.cssRules.length);
-      } catch (e) {}
-    }
-
-    if (cleanCss.trim()) {
-      try {
-        sheet.insertRule(`.${className}{${cleanCss}}`, sheet.cssRules.length);
-      } catch (e) {}
-    }
-
+  /** Inserts a class's rules and returns them, or nothing if the class is already registered. */
+  insertClass(className: string, rawCss: string, sheet = this.sheet): CSSRule[] {
+    if (this.classes.has(className)) return [];
     this.classes.add(className);
+    return insertRules(className, rawCss, sheet, sheet.cssRules.length);
   }
 
   insertKeyframes(name: string, body: string): void {
@@ -517,6 +537,38 @@ function countNewClass(strings: TemplateStringsArray): void {
   );
 }
 
+/**
+ * Sets the custom properties of a template's reactive values on `element` and keeps them
+ * updated. Returns a function that stops updating them and removes them.
+ */
+function bindValues(
+  c: Context,
+  element: HTMLElement | SVGElement,
+  bindings: CSSTemplateBinding[],
+  interpolations: any[],
+): () => void {
+  if (bindings.length === 0) return noop;
+
+  const stop = onEffect(c, () => {
+    for (const binding of bindings) {
+      const value = binding.read(interpolations);
+
+      if (value === null || value === undefined || value === binding.initialValue) {
+        element.style.removeProperty(binding.varName);
+      } else {
+        element.style.setProperty(binding.varName, value);
+      }
+    }
+  });
+
+  return () => {
+    stop();
+    for (const binding of bindings) {
+      element.style.removeProperty(binding.varName);
+    }
+  };
+}
+
 class CSSFactoryTemplate implements CSSTemplate {
   readonly [IS_CSS_TEMPLATE] = true;
   readonly className: string;
@@ -547,19 +599,7 @@ class CSSFactoryTemplate implements CSSTemplate {
 
     if (shape.bindings.length === 0) return stopCondition;
 
-    const interpolations = this.#interpolations;
-
-    const stopBindings = onEffect(c, () => {
-      for (const binding of shape.bindings) {
-        const value = binding.read(interpolations);
-
-        if (value === null || value === undefined || value === binding.initialValue) {
-          element.style.removeProperty(binding.varName);
-        } else {
-          element.style.setProperty(binding.varName, value);
-        }
-      }
-    });
+    const stopBindings = bindValues(c, element, shape.bindings, this.#interpolations);
 
     let detached = false;
     const detach = () => {
@@ -567,9 +607,6 @@ class CSSFactoryTemplate implements CSSTemplate {
       detached = true;
       stopCondition();
       stopBindings();
-      for (const binding of shape.bindings) {
-        element.style.removeProperty(binding.varName);
-      }
     };
 
     onCleanup(c, detach);
@@ -627,6 +664,102 @@ function createTemplate(strings: TemplateStringsArray, interpolations: any[], st
     staticTemplates.set(className, template);
   }
 
+  return template;
+}
+
+/*============================*\
+||        Hot templates       ||
+\*============================*/
+
+type HotAttachment = {
+  c: Context;
+  element: HTMLElement | SVGElement;
+  stopBindings: () => void;
+};
+
+/**
+ * A module-level `css` template that keeps its identity and class name across hot reloads.
+ * When its module reloads, its rule is replaced in the stylesheet and its reactive values
+ * are rebound on attached elements, so elements restyle without re-rendering their views.
+ */
+class HotTemplate implements CSSTemplate {
+  readonly [IS_CSS_TEMPLATE] = true;
+  readonly className: string;
+
+  #styles = "";
+  #bindings: CSSTemplateBinding[] = [];
+  #interpolations: any[] = [];
+  /** The rules in the stylesheet, once the template has been attached. */
+  #rules: CSSRule[] | undefined;
+  #attachments = new Set<HotAttachment>();
+
+  constructor(className: string) {
+    this.className = className;
+  }
+
+  update(strings: TemplateStringsArray, interpolations: any[]): void {
+    const { styles, bindings } = buildStyles(this.className, strings, interpolations);
+    this.#styles = styles;
+    this.#bindings = bindings;
+    this.#interpolations = interpolations;
+
+    if (this.#rules) {
+      this.#rules = replaceRules(this.className, styles, this.#rules, registry.sheet);
+    }
+    for (const attachment of this.#attachments) {
+      attachment.stopBindings();
+      attachment.stopBindings = bindValues(attachment.c, attachment.element, bindings, interpolations);
+    }
+  }
+
+  toString(): string {
+    return this.className;
+  }
+
+  attach(c: Context, element: HTMLElement | SVGElement, condition: MaybeGetter<any> = true): () => void {
+    const stopCondition = attachClass(c, this.className, element, condition);
+    if (!stopCondition) return noop;
+
+    this.#rules ??= registry.insertClass(this.className, this.#styles);
+
+    const attachment: HotAttachment = {
+      c,
+      element,
+      stopBindings: bindValues(c, element, this.#bindings, this.#interpolations),
+    };
+    this.#attachments.add(attachment);
+
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
+      stopCondition();
+      attachment.stopBindings();
+      this.#attachments.delete(attachment);
+    };
+
+    onCleanup(c, detach);
+    return detach;
+  }
+
+  when(condition: MaybeGetter<any>): ConditionalTemplate {
+    return { [IS_CONDITIONAL_TEMPLATE]: true, template: this, condition };
+  }
+}
+
+const hotTemplates = new Map<string, HotTemplate>();
+
+/**
+ * Returns the hot template for `id` (a module path and export name) with the given contents.
+ * Used by the HMR runtime; see `__dolla_css`.
+ */
+export function hotTemplate(id: string, strings: TemplateStringsArray, interpolations: any[]): CSSTemplate {
+  let template = hotTemplates.get(id);
+  if (!template) {
+    template = new HotTemplate(nameForKey("css", id, "hmr"));
+    hotTemplates.set(id, template);
+  }
+  template.update(strings, interpolations);
   return template;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import dollaPlugin from "./vite-plugin.js";
-import { __dolla_export, __dolla_store } from "./src/core/hmr.js";
+import { __dolla_css, __dolla_export, __dolla_store } from "./src/core/hmr.js";
+import { css } from "./src/core/markup/css.js";
 import { addStore, createContext, getStore } from "./src/core/context.js";
 
 function runTransform(code: string, id: string) {
@@ -578,6 +579,62 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       uniqueId(),
     )!;
     expect(code).not.toMatch(/__dolla_store\(/);
+  });
+});
+
+describe("dollaPlugin — hot css templates", () => {
+  let fileCount = 0;
+  const uniqueId = () => `/abs/styles-${fileCount++}.ts`;
+  const transform = (code: string, id = uniqueId()) => runTransform(code, id)!.code;
+
+  /** Runs a transformed module (plain JS only) and returns its top-level `box` binding. */
+  function evaluateBox(code: string) {
+    const body = code
+      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla(?:\/hmr)?";\n/gm, "")
+      .replace(/import\.meta\.hot/g, "undefined")
+      .replace(/^export /gm, "");
+    return new Function("__dolla_css", "css", "style", `${body}\nreturn box;`)(__dolla_css, css, css);
+  }
+
+  test("wraps an exported css template in a hot template", () => {
+    const id = uniqueId();
+    const code = transform(`import { css } from "@manyducks.co/dolla";\nexport const box = css\`color: red;\`;\n`, id);
+    expect(code).toContain("__dolla_css");
+    expect(code).toContain(`export const box = __dolla_css(${JSON.stringify(`${id}:box`)})\`color: red;\`;`);
+  });
+
+  test("keeps the template's identity and class name when the module reloads", () => {
+    const id = uniqueId();
+    const first = evaluateBox(transform(`import { css } from "@manyducks.co/dolla";\nexport const box = css\`color: red;\`;\n`, id));
+    const second = evaluateBox(transform(`import { css } from "@manyducks.co/dolla";\nexport const box = css\`color: blue;\`;\n`, id));
+    expect(second).toBe(first);
+  });
+
+  test("wraps templates with an aliased tag, a type annotation, or no export", () => {
+    const aliased = transform(`import { type Context, css as style } from "@manyducks.co/dolla";\nexport const box = style\`a: b;\`;\n`);
+    expect(aliased).toMatch(/const box = __dolla_css\("[^"]+:box"\)`a: b;`/);
+
+    const annotated = transform(`import { css, type CSSTemplate } from "@manyducks.co/dolla";\nexport const box: CSSTemplate = css\`a: b;\`;\n`);
+    expect(annotated).toMatch(/const box: CSSTemplate = __dolla_css\("[^"]+:box"\)`a: b;`/);
+
+    const local = transform(`import { css } from "@manyducks.co/dolla";\nconst box = css\`a: b;\`\nexport { box };\n`);
+    expect(local).toMatch(/const box = __dolla_css\("[^"]+:box"\)`a: b;`/);
+  });
+
+  test("leaves templates it can't keep stable alone", () => {
+    const cases = [
+      // Not dolla's css.
+      `import { css } from "@emotion/css";\nexport const box = css\`a: b;\`;\n`,
+      // The template is not the whole initializer.
+      `import { css } from "@manyducks.co/dolla";\nexport const box = css\`a: \${\`b\`};\`.when(on);\n`,
+      `import { css } from "@manyducks.co/dolla";\nexport const box = css\`a: b;\`\n  .when(on);\n`,
+      `import { css } from "@manyducks.co/dolla";\nexport const box = on ? css\`a: b;\` : null;\n`,
+      // Not at the top level.
+      `import { css } from "@manyducks.co/dolla";\nexport function View() {\n  const box = css\`a: b;\`;\n  return box;\n}\n`,
+    ];
+    for (const code of cases) {
+      expect(transform(code)).not.toContain("__dolla_css(");
+    }
   });
 });
 

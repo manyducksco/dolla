@@ -1,4 +1,5 @@
 import type { View } from "../types.js";
+import { hotTemplate, type CSSTemplate } from "./markup/css.js";
 import type { ViewNode } from "./markup/nodes/view.js";
 
 const activeInstances = new WeakMap<View<any>, Set<ViewNode<any>>>();
@@ -20,6 +21,16 @@ const storeSymbol = (id: string) => Symbol.for(`$_DOLLA_STORE:${id}`);
 export function __dolla_store<T extends Function>(id: string, store: T): T {
   (store as any)[STORE_ID] ??= storeSymbol(id);
   return store;
+}
+
+/**
+ * Returns a `css` tag for the module-level template `id`. Every version of the template
+ * is the same object with the same class name, so modules that imported it see each
+ * update, and its rule is replaced in the stylesheet when its module reloads.
+ */
+export function __dolla_css(id: string) {
+  return (strings: TemplateStringsArray, ...interpolations: any[]): CSSTemplate =>
+    hotTemplate(id, strings, interpolations);
 }
 
 export function __dolla_export<P>(id: string, impl: View<P> | P): View<P> | P {

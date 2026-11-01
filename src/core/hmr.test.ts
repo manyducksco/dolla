@@ -1,6 +1,16 @@
 import { describe, expect, test, vi } from "vitest";
-import { addStore, createContext, getStore } from "./context.js";
-import { __dolla_apply, __dolla_export, __dolla_store, registerViewInstance, unregisterViewInstance } from "./hmr.js";
+import { addStore, cleanupContext, createContext, getStore, mountContext } from "./context.js";
+import {
+  __dolla_apply,
+  __dolla_css,
+  __dolla_export,
+  __dolla_store,
+  registerViewInstance,
+  unregisterViewInstance,
+} from "./hmr.js";
+import { css, isCSSTemplate } from "./markup/css.js";
+import { flushPendingUpdates } from "./markup/scheduler.js";
+import { createAtom } from "./signals.js";
 
 let viewCounter = 0;
 function makeView(name: string) {
@@ -286,5 +296,119 @@ describe("HMR __dolla_apply", () => {
 
     groupSpy.mockRestore();
     logSpy.mockRestore();
+  });
+});
+
+describe("HMR __dolla_css", () => {
+  let cssCounter = 0;
+  const nextId = () => `/test/${cssCounter++}.tsx:styles`;
+
+  function plainSheet() {
+    const sheets = document.adoptedStyleSheets;
+    return sheets[sheets.length - 1];
+  }
+
+  /** Rule texts in the plain `css` stylesheet that mention `className`, in sheet order. */
+  function rulesFor(className: string): string[] {
+    return Array.from(plainSheet().cssRules)
+      .map((r) => r.cssText.replace(/\s+/g, " "))
+      .filter((text) => text.includes(className));
+  }
+
+  function attached(tpl: any) {
+    const ctx = createContext(null);
+    mountContext(ctx);
+    const el = document.createElement("div");
+    tpl.attach(ctx, el);
+    return { ctx, el };
+  }
+
+  test("returns the same template with the same class name when its module reloads", () => {
+    const id = nextId();
+    const first = __dolla_css(id)`color: red;`;
+    const second = __dolla_css(id)`color: blue;`;
+
+    expect(second).toBe(first);
+    expect(isCSSTemplate(first)).toBe(true);
+    expect(`${first}`).toBe(first.className);
+  });
+
+  test("does not share a class with an identical template", () => {
+    const hot = __dolla_css(nextId())`text-align: justify;`;
+    const plain = css`text-align: justify;`;
+    expect(hot.className).not.toBe(plain.className);
+  });
+
+  test("replaces the rule of an attached template in place", () => {
+    const id = nextId();
+    const tpl = __dolla_css(id)`color: red;`;
+    const { el } = attached(tpl);
+    // A later template whose rule must keep coming after the hot one in the cascade.
+    const later = css`outline-color: ${"#" + cssCounter};`;
+    attached(later);
+
+    __dolla_css(id)`color: blue;`;
+
+    expect(rulesFor(tpl.className)).toEqual([expect.stringContaining("color: blue")]);
+    const texts = Array.from(plainSheet().cssRules).map((r) => r.cssText);
+    const hotIndex = texts.findIndex((t) => t.includes(tpl.className));
+    const laterIndex = texts.findIndex((t) => t.includes(later.className));
+    expect(hotIndex).toBeLessThan(laterIndex);
+    expect(el.classList.contains(tpl.className)).toBe(true);
+  });
+
+  test("replaces extracted at-rules along with the class rule", () => {
+    const id = nextId();
+    const name = `hot-spin-${cssCounter}`;
+    const tpl = __dolla_css(id)`
+      @keyframes ${name} { from { opacity: 0; } to { opacity: 1; } }
+      animation: ${name} 1s;
+    `;
+    attached(tpl);
+
+    __dolla_css(id)`color: green;`;
+
+    const texts = Array.from(plainSheet().cssRules).map((r) => r.cssText);
+    expect(texts.some((t) => t.includes(name))).toBe(false);
+    expect(rulesFor(tpl.className)).toEqual([expect.stringContaining("color: green")]);
+  });
+
+  test("does not insert a rule when updated before it is attached", () => {
+    const id = nextId();
+    const tpl = __dolla_css(id)`color: red;`;
+    __dolla_css(id)`color: blue;`;
+    expect(rulesFor(tpl.className)).toEqual([]);
+
+    attached(tpl);
+    expect(rulesFor(tpl.className)).toEqual([expect.stringContaining("color: blue")]);
+  });
+
+  test("rebinds reactive values on attached elements", () => {
+    const id = nextId();
+    const [color, setColor] = createAtom("red");
+    const [size] = createAtom("10px");
+    const tpl = __dolla_css(id)`color: ${color};`;
+    const { el } = attached(tpl);
+    expect(el.style.getPropertyValue(`--${tpl.className}-0`)).toBe("red");
+
+    __dolla_css(id)`margin: ${"0"}; font-size: ${size};`;
+    expect(el.style.getPropertyValue(`--${tpl.className}-0`)).toBe("");
+    expect(el.style.getPropertyValue(`--${tpl.className}-1`)).toBe("10px");
+
+    // The old binding is gone.
+    setColor("blue");
+    flushPendingUpdates();
+    expect(el.style.getPropertyValue(`--${tpl.className}-0`)).toBe("");
+  });
+
+  test("leaves elements alone after their context is cleaned up", () => {
+    const id = nextId();
+    const [color] = createAtom("red");
+    const tpl = __dolla_css(id)`color: red;`;
+    const { ctx, el } = attached(tpl);
+    cleanupContext(ctx);
+
+    __dolla_css(id)`color: ${color};`;
+    expect(el.style.getPropertyValue(`--${tpl.className}-0`)).toBe("");
   });
 });
