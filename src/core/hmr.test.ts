@@ -1,5 +1,16 @@
 import { describe, expect, test, vi } from "vitest";
-import { addStore, cleanupContext, createContext, getStore, mountContext } from "./context.js";
+import {
+  addStore,
+  cleanupContext,
+  createContext,
+  getStore,
+  hasOwnStore,
+  mountContext,
+  onCleanup,
+  onEffect,
+  onMount,
+  type Context,
+} from "./context.js";
 import {
   __dolla_apply,
   __dolla_css,
@@ -9,6 +20,7 @@ import {
   unregisterViewInstance,
 } from "./hmr.js";
 import { css, isCSSTemplate } from "./markup/css.js";
+import { DOMNode } from "./markup/nodes/dom.js";
 import { ViewNode } from "./markup/nodes/view.js";
 import { flushPendingUpdates } from "./markup/scheduler.js";
 import { createAtom } from "./signals.js";
@@ -279,6 +291,79 @@ describe("HMR __dolla_apply", () => {
     logSpy.mockRestore();
   });
 
+  test("tolerates an undefined module from a failed update", () => {
+    expect(() => __dolla_apply(undefined as any, {})).not.toThrow();
+  });
+
+  test("logs a reloaded export that has no mounted views", () => {
+    const id = `/abs/path/auth.ts:${viewCounter++}:AuthStore`;
+    const live = __dolla_export(id, function AuthStore() {
+      return { version: 1 };
+    }) as any;
+    __dolla_export(id, function AuthStore() {
+      return { version: 2 };
+    });
+
+    const groupSpy = vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    __dolla_apply({ AuthStore: live }, { AuthStore: live });
+
+    expect(groupSpy).toHaveBeenCalledTimes(1);
+    const lines = logSpy.mock.calls.map((c) => c[0] as string);
+    expect(lines).toEqual([
+      expect.stringMatching(
+        /AuthStore \(\/abs\/path\/auth\.ts:\d+\): no mounted views; running instances keep the old code until they remount/,
+      ),
+    ]);
+
+    // The change is reported once.
+    groupSpy.mockClear();
+    logSpy.mockClear();
+    __dolla_apply({ AuthStore: live }, { AuthStore: live });
+    expect(groupSpy).not.toHaveBeenCalled();
+
+    groupSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  test("does not log the no-mounted-views line for an export whose views were replaced", () => {
+    const id = `/abs/path/Foo.tsx:${viewCounter++}:Foo`;
+    const live = __dolla_export(id, function Foo() {
+      return "x";
+    }) as any;
+    makeNode(live);
+    __dolla_export(id, function Foo() {
+      return "y";
+    });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
+
+    __dolla_apply({ Foo: live }, { Foo: live });
+
+    const lines = logSpy.mock.calls.map((c) => c[0] as string);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toMatch(/no mounted views/);
+
+    vi.mocked(console.groupCollapsed).mockRestore();
+    logSpy.mockRestore();
+  });
+
+  test("prints nothing when no wrapped export changed", () => {
+    const live = __dolla_export(`/test/${viewCounter++}.ts:util`, function util() {}) as any;
+
+    const groupSpy = vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    __dolla_apply({ util: live }, { util: live });
+
+    expect(groupSpy).not.toHaveBeenCalled();
+    expect(logSpy).not.toHaveBeenCalled();
+    groupSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
   test("skips the whole summary when no instances are replaced", () => {
     const view = makeView("Foo");
     const newView = makeView("Foo");
@@ -293,6 +378,146 @@ describe("HMR __dolla_apply", () => {
 
     groupSpy.mockRestore();
     logSpy.mockRestore();
+  });
+});
+
+describe("HMR replaceView", () => {
+  let storeCounter = 0;
+  /** A store that counts its effect runs, mounts, cleanups and instances. */
+  function makeStore() {
+    const [count, setCount] = createAtom(0);
+    const stats = { effectRuns: 0, mounts: 0, cleanups: 0, instances: 0 };
+    const Store = function (_: any, c: Context) {
+      stats.instances++;
+      onEffect(c, () => {
+        count();
+        stats.effectRuns++;
+      });
+      onMount(c, () => stats.mounts++);
+      onCleanup(c, () => stats.cleanups++);
+      return { value: 1 };
+    };
+    return { Store, stats, setCount };
+  }
+  const nextId = () => `/test/store-${storeCounter++}.tsx:View`;
+
+  test("store effects and lifecycle survive an HMR replace of the providing view", () => {
+    const { Store, stats, setCount } = makeStore();
+    const View = __dolla_export(nextId(), function (_: any, c: Context) {
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    makeNode(View);
+    setCount(1);
+    flushPendingUpdates();
+    expect(stats.effectRuns).toBe(2);
+
+    __dolla_apply({ View }, { View });
+    setCount(2);
+    flushPendingUpdates();
+    expect(stats.effectRuns).toBe(3);
+    expect(stats.mounts).toBe(1);
+    expect(stats.cleanups).toBe(0);
+    expect(stats.instances).toBe(1);
+  });
+
+  test("cleans up a store the new view no longer adds", () => {
+    const { Store, stats } = makeStore();
+    const id = nextId();
+    const View = __dolla_export(id, function (_: any, c: Context) {
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    const { node } = makeNode(View);
+
+    const next = function () {
+      return "w";
+    };
+    __dolla_export(id, next);
+    __dolla_apply({ View }, { View });
+
+    expect(stats.cleanups).toBe(1);
+    expect(hasOwnStore(node.context, Store)).toBe(false);
+  });
+
+  test("a render that throws during replace leaves the store mounted", () => {
+    const { Store, stats, setCount } = makeStore();
+    const id = nextId();
+    let fail = false;
+    const View = __dolla_export(id, function (_: any, c: Context) {
+      if (fail) throw new Error("boom");
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    const { node, container } = makeNode(View);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    fail = true;
+    __dolla_apply({ View }, { View });
+    expect(stats.cleanups).toBe(0);
+    expect(hasOwnStore(node.context, Store)).toBe(true);
+
+    fail = false;
+    __dolla_apply({ View }, { View });
+    setCount(1);
+    flushPendingUpdates();
+    expect(container.textContent).toBe("v");
+    expect(stats.instances).toBe(1);
+    expect(stats.cleanups).toBe(0);
+    expect(stats.effectRuns).toBe(2);
+    errorSpy.mockRestore();
+  });
+
+  test("a store kept through a failed replace is cleaned up when the view unmounts", () => {
+    const { Store, stats } = makeStore();
+    let fail = false;
+    const View = __dolla_export(nextId(), function (_: any, c: Context) {
+      if (fail) throw new Error("boom");
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    const { node } = makeNode(View);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    fail = true;
+    __dolla_apply({ View }, { View });
+    node.unmount();
+
+    expect(stats.cleanups).toBe(1);
+    errorSpy.mockRestore();
+  });
+
+  test("normal unmount still cleans up a store", () => {
+    const { Store, stats } = makeStore();
+    const View = __dolla_export(nextId(), function (_: any, c: Context) {
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    const { node } = makeNode(View);
+    node.unmount();
+    expect(stats.cleanups).toBe(1);
+  });
+
+  test("unmounts a partially mounted node when mounting the new render throws", () => {
+    const id = nextId();
+    const View = __dolla_export(id, function () {
+      return "v";
+    }) as any;
+    const { container } = makeNode(View);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    __dolla_export(id, function (_: any, c: Context) {
+      const bad = new DOMNode(c, document.createTextNode("bad"));
+      bad.mount = () => {
+        throw new Error("mount boom");
+      };
+      return ["partial", bad];
+    });
+    __dolla_apply({ View }, { View });
+
+    expect(container.childNodes.length).toBe(1);
+    expect(container.textContent).toBe("");
+    errorSpy.mockRestore();
   });
 });
 

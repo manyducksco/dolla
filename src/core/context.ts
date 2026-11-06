@@ -168,6 +168,13 @@ function storeId(store: { name: string; [STORE_ID]?: symbol }): symbol {
 const STORE_CONTEXT = Symbol.for("$_STORE_CONTEXT");
 
 /**
+ * Set on a view's context by the HMR runtime while it re-renders the view in place.
+ * Its stores stay alive through the re-render, and the ids of those the new render
+ * adds again are collected in this Set.
+ */
+const HMR_REPLACING = Symbol.for("$_HMR_REPLACING");
+
+/**
  * Creates a new store instance and attaches it to `context`. Returns the new store.
  * Children of this context can retrieve the nearest store instance from up the chain with `getStore(context)`.
  */
@@ -180,7 +187,9 @@ export function addStore<Props, Returns>(
   const id = storeId(store);
   const bind = (storeContext: Context) => {
     onMount(context, () => mountContext(storeContext));
-    onCleanup(context, () => cleanupContext(storeContext));
+    onCleanup(context, () => {
+      if (!Object.hasOwn(context, HMR_REPLACING)) cleanupContext(storeContext);
+    });
   };
 
   if (Object.hasOwn(context, id)) {
@@ -188,6 +197,7 @@ export function addStore<Props, Returns>(
     // survive cleanupContext clearing MOUNT_LISTENERS during HMR.
     const existing = context[id];
     if (existing?.[STORE_CONTEXT]) bind(existing[STORE_CONTEXT]);
+    context[HMR_REPLACING]?.add(id);
     return existing;
   }
 

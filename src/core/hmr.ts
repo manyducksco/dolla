@@ -1,10 +1,10 @@
 import type { View } from "../types.js";
-import { cleanupContext, mountContext } from "./context.js";
+import { cleanupContext, mountContext, onCleanup } from "./context.js";
 import { runSafely } from "./errors.js";
 import { hotTemplate, type CSSTemplate } from "./markup/css.js";
 import { DOMNode } from "./markup/nodes/dom.js";
 import { trackViewInstances, type ViewNode } from "./markup/nodes/view.js";
-import type { MountTarget } from "./markup/types.js";
+import type { MarkupNode, MountTarget } from "./markup/types.js";
 import { createTextNode } from "./markup/utils.js";
 import { popContext, pushContext } from "./signal-debug.js";
 
@@ -14,6 +14,12 @@ const liveViews = new Map<string, View<any>>();
 
 /** Same as `STORE_ID` in context.ts. Defined here so this module stays standalone. */
 const STORE_ID = Symbol.for("$_STORE_ID");
+
+/** Same as `STORE_CONTEXT` in context.ts. */
+const STORE_CONTEXT = Symbol.for("$_STORE_CONTEXT");
+
+/** Same as `HMR_REPLACING` in context.ts. */
+const HMR_REPLACING = Symbol.for("$_HMR_REPLACING");
 
 /** The store identity for an HMR id, shared by every function with that id. */
 const storeSymbol = (id: string) => Symbol.for(`$_DOLLA_STORE:${id}`);
@@ -53,6 +59,8 @@ export function __dolla_export<P>(id: string, impl: View<P> | P): View<P> | P {
   // Properties attached to the function (e.g. `log.info = ...`) are copied so they survive wrapping.
   let copied = copyOwnProps(live, impl, []);
   live.__dolla_setImpl = (fn) => {
+    // Read and cleared by `__dolla_apply`, which reports changed exports that reached no view.
+    if (fn !== current) (live as any).__dolla_changed = true;
     current = fn;
     copied = copyOwnProps(live, fn, copied);
   };
@@ -130,17 +138,25 @@ export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
     oldRoot.parentNode.removeChild(oldRoot);
   }
 
-  cleanupContext(node.context);
+  // Stores the view provides stay alive through the re-render. `addStore` skips their
+  // cleanup while the marker is set and records the ones the new render adds again.
+  const context = node.context;
+  const stores = Reflect.ownKeys(context).filter((key) => context[key as symbol]?.[STORE_CONTEXT]) as symbol[];
+  const readded = new Set<symbol>();
+  context[HMR_REPLACING] = readded;
+
+  cleanupContext(context);
   unregisterViewInstance(node._view, node);
 
   node._view = newView;
-  node.context.name = newView.name;
+  context.name = newView.name;
 
   // The context was cleaned up above, so effects in the new view wait for `mountContext`
   // below, after their elements are in the DOM, just like on a first mount.
+  let rendered: MarkupNode | undefined;
   try {
-    pushContext(node.context);
-    node._node = node._render();
+    pushContext(context);
+    node._node = rendered = node._render();
 
     registerViewInstance(newView, node);
 
@@ -148,9 +164,28 @@ export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
       node._node.mount(parent, after);
     }
 
-    mountContext(node.context);
+    mountContext(context);
+
+    // Stores the new view no longer adds are done.
+    for (const id of stores) {
+      if (readded.has(id)) continue;
+      cleanupContext(context[id][STORE_CONTEXT]);
+      delete context[id];
+    }
   } catch (e) {
     registerViewInstance(newView, node);
+    // Stores the failed render didn't add again are kept for the next cycle, but must
+    // still be cleaned up if the view unmounts before then.
+    for (const id of stores) {
+      if (readded.has(id)) continue;
+      const storeContext = context[id][STORE_CONTEXT];
+      onCleanup(context, () => {
+        if (!Object.hasOwn(context, HMR_REPLACING)) cleanupContext(storeContext);
+      });
+    }
+    if (rendered) {
+      runSafely(() => rendered!.unmount(), { phase: "unmount", context });
+    }
     try {
       node._node = new DOMNode(node.context, createTextNode(""));
       if (parent) {
@@ -163,6 +198,7 @@ export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
     throw e;
   } finally {
     popContext();
+    delete context[HMR_REPLACING];
   }
 }
 
@@ -173,6 +209,9 @@ function pathFromId(id: string | undefined): string {
 }
 
 export function __dolla_apply(newModule: Record<string, any>, exports: Record<string, View<any>>) {
+  // Vite passes `undefined` when importing the updated module failed. It reports that error itself.
+  if (newModule == null || typeof newModule !== "object") return;
+
   // Track nodes that have already been replaced in this HMR cycle so that
   // a view exposed under multiple keys (e.g. `Foo` and `default: Foo`) is
   // only applied once per node.
@@ -186,6 +225,11 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
     elapsedMs: number;
   }> = [];
 
+  // Wrapped exports whose implementation changed but that had no view instances to replace.
+  // Stores are the usual case: running instances keep the closure they were created with.
+  const unmounted: Array<{ name: string; path: string }> = [];
+  const seen = new Set<Function>();
+
   const t0 = performance.now();
 
   for (const key of Object.keys(newModule)) {
@@ -193,8 +237,18 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
     const oldView = exports[key];
     if (typeof oldView !== "function" || typeof newView !== "function") continue;
 
+    const changed = (newView as any).__dolla_changed === true;
+    if (changed) delete (newView as any).__dolla_changed;
+
     const instances = activeInstances.get(oldView);
-    if (!instances) continue;
+    if (!instances) {
+      if (changed && !seen.has(newView)) {
+        unmounted.push({ name: newView.name || key, path: pathFromId((newView as any).__dolla_id) });
+      }
+      seen.add(newView);
+      continue;
+    }
+    seen.add(newView);
 
     const tExport = performance.now();
 
@@ -222,7 +276,7 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
     });
   }
 
-  if (summary.length === 0) return;
+  if (summary.length === 0 && unmounted.length === 0) return;
 
   const total = summary.reduce((sum, s) => sum + s.count, 0);
   const totalMs = performance.now() - t0;
@@ -235,6 +289,9 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
     console.log(
       `  ${key} (${path}): ${count} instance${count === 1 ? "" : "s"} in ${elapsedMs.toFixed(2)}ms — ${rename}`,
     );
+  }
+  for (const { name, path } of unmounted) {
+    console.log(`  ${name} (${path}): no mounted views; running instances keep the old code until they remount`);
   }
   console.groupEnd();
 }
