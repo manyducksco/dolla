@@ -232,29 +232,30 @@ function* topLevelMatches(re, scan) {
   }
 }
 
-function findExportEntries(code, scan = maskNonCode(code)) {
-  const entries = [];
+/**
+ * Returns `[exported, local]` pairs for the module's exports that the HMR accept
+ * callback passes to `__dolla_apply`, given the pairs `applyLiveBindings` wrapped.
+ */
+function findExportEntries(code, scan, wrappedPairs) {
+  const entries = new Map();
 
   for (const match of topLevelMatches(EXPORT_FUNC_RE, scan)) {
-    entries.push(match[1]);
+    entries.set(match[1], match[1]);
   }
 
   for (const match of topLevelMatches(EXPORT_CONST_RE, scan)) {
-    entries.push(match[1]);
-  }
-
-  for (const match of topLevelMatches(EXPORT_DEFAULT_FUNC_RE, scan)) {
-    // An anonymous default function is named by `applyLiveBindings`.
-    entries.push(`default: ${match[1] ?? ANONYMOUS_DEFAULT}`);
-    return entries;
+    entries.set(match[1], match[1]);
   }
 
   for (const match of topLevelMatches(EXPORT_DEFAULT_IDENT_RE, scan)) {
-    entries.push(`default: ${match[1]}`);
+    entries.set("default", match[1]);
     break;
   }
 
-  return entries;
+  // The wrapped exports, under the local names the rewritten module gives them.
+  for (const [exported, local] of wrappedPairs) entries.set(exported, local);
+
+  return [...entries];
 }
 
 /*============================*\
@@ -636,16 +637,18 @@ function isFunctionInitializer(code, scan, eq) {
 }
 
 /**
- * Returns true if the declaration whose initializer starts at `eq` declares
- * more than one name (`const a = ..., b = ...`). Stops at the end of the
- * statement; when unsure it reports more than one, so nothing is wrapped.
+ * Scans the declaration whose initializer starts at `eq` to the end of its
+ * statement. Returns `more: true` if it declares more than one name
+ * (`const a = ..., b = ...`); when unsure it reports more than one, so nothing
+ * is wrapped. Otherwise `end` is the index just past the statement: after its
+ * `;`, or at the newline that ends it.
  */
-function hasMoreDeclarators(code, scan, eq) {
+function scanDeclarators(code, scan, eq) {
   let start = skipSpaceAndComments(code, eq + 1);
   // Skip a generic arrow's type parameters, e.g. the comma in `<T,>(x: T) => x`.
   if (code[start] === "<") {
     start = matchAngleBalance(code, start);
-    if (start === -1) return true;
+    if (start === -1) return { more: true, end: -1 };
   }
 
   let depth = 0;
@@ -653,14 +656,29 @@ function hasMoreDeclarators(code, scan, eq) {
     const c = scan.masked[i];
     if (c === "(" || c === "[" || c === "{") depth++;
     else if (c === ")" || c === "]" || c === "}") depth--;
-    else if (depth === 0 && c === ";") return false;
-    else if (depth === 0 && c === ",") return true;
+    else if (depth === 0 && c === ";") return { more: false, end: i + 1 };
+    else if (depth === 0 && c === ",") return { more: true, end: -1 };
     else if (depth === 0 && c === "\n") {
       const next = skipSpaceAndComments(code, i);
-      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) return false;
+      if (next >= code.length || STATEMENT_START_RE.test(code.slice(next, next + 8))) return { more: false, end: i };
     }
   }
-  return false;
+  return { more: false, end: code.length };
+}
+
+/**
+ * Returns true if the expression starting after the `=` at `eq` is a whole
+ * styled component, `styled.tag\`...\`` (with any `.as()` / `.named()` chain),
+ * built with one of the local names of dolla's `styled` in `styledNames`.
+ */
+function isStyledInitializer(code, eq, styledNames) {
+  const start = skipSpaceAndComments(code, eq + 1);
+  const name = styledNames.find((n) => code.startsWith(n, start) && !/[\w$]/.test(code[start + n.length] ?? ""));
+  if (!name) return false;
+  const chain = scanStyledChain(code, start + name.length);
+  if (!chain) return false;
+  const end = skipString(code, chain.backtick);
+  return end !== -1 && endsInitializer(code, end);
 }
 
 // A call to one of dolla's store functions, but not a method like `obj.getStore`.
@@ -748,75 +766,176 @@ function isPrivateDeclaration(scan, index) {
   return !NOT_A_STATEMENT_BEFORE.has(scan.masked.slice(start, i + 1));
 }
 
+// `export { a, b as c }`, matched in masked source. Re-exports (`... from "x"`) are skipped by the caller.
+const EXPORT_LIST_RE = /export\s*\{([^}]*)\}/g;
+const EXPORT_DEFAULT_RE = /export\s+default\s+/g;
+const EXPORT_SPECIFIER_RE = /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/;
+// `Name = __dolla_export(`, left by an earlier run of this transform.
+const WRAPPED_RE = /(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*__dolla_export\(/g;
+
+/** Where a wrapper is assigned: at the top of the module, right after its declaration, or at the bottom. */
+const HOIST = "hoist";
+const BOTTOM = "bottom";
+
 /**
  * Rewrites exported functions so they are bound to a stable HMR wrapper, which
  * keeps their identity across hot reloads (stores rely on this):
  *
  * - `export function Foo` and `export const Foo = <function>` become local
- *   (`function Foo` / `let Foo`), followed at the bottom by
- *   `Foo = __dolla_export("<id>:Foo", Foo); export { Foo };`.
- * - `export default function [Name]` becomes a local function, followed by
- *   `Name = __dolla_export("<id>:default", Name); export { Name as default };`.
- *   An anonymous one is named `__dolla_default`.
+ *   (`function Foo` / `let Foo`) and are exported from the bottom with
+ *   `export { Foo };`. Each is assigned `Foo = __dolla_export("<id>:Foo", Foo);`
+ *   where code that runs before it can't see the unwrapped function: at the top
+ *   of the module for a function declaration (they are initialized before any
+ *   statement runs), and right after the declaration for a `const`. So sibling
+ *   exports that capture it eagerly (`export const routes = [{ view: Foo }]`)
+ *   get the wrapper.
+ * - `export default function [Name]`, `export default <arrow or function>` and
+ *   `export default Name` (where `Name` is a function declared in the module) are
+ *   wrapped with the id `<id>:default`. An anonymous one is named `__dolla_default`.
+ * - Functions in `export { Foo, Bar as Baz }` lists are wrapped with the id of
+ *   their (first) exported name and moved to the bottom export.
+ * - Styled components from dolla's `styled` are wrapped like functions.
  * - Functions declared in the module and passed by name to `addStore`/`getStore`/
  *   `hasStore`/`hasOwnStore` are tagged at each call: `getStore(c, Foo)` becomes
  *   `getStore(c, __dolla_store("<id>:Foo", Foo))`, so every version of `Foo` shares one
  *   store identity, including one used before its module has finished evaluating.
  *
- * Returns true if the output calls `__dolla_export` or `__dolla_store`.
+ * Returns the `[exported, local]` pairs of the wrapped exports, the wrapper
+ * assignments that go at the top of the module (after the accept call), and
+ * whether the output calls `__dolla_export` or `__dolla_store`.
  */
 function applyLiveBindings(s, code, id, scan) {
-  const seen = new Set();
-  const names = [];
-  let defaultName;
+  // Local name -> { id, exported: [names], place: HOIST | BOTTOM | index after the declaration }.
+  const wraps = new Map();
+  const wrap = (local, exported, place) => {
+    let entry = wraps.get(local);
+    if (!entry) wraps.set(local, (entry = { id: `${id}:${exported}`, exported: [], place }));
+    if (!entry.exported.includes(exported)) entry.exported.push(exported);
+  };
+
+  const styledNames = code.includes("styled") ? findDollaStyledImports(code, scan) : [];
+  const isWrappable = (eq) => isFunctionInitializer(code, scan, eq) || isStyledInitializer(code, eq, styledNames);
+
+  // Names an earlier run of this transform already wrapped. Their exports are left alone.
+  const wrapped = new Set();
+  WRAPPED_RE.lastIndex = 0;
+  for (let m; (m = WRAPPED_RE.exec(scan.masked)) !== null; ) wrapped.add(m[1]);
+
+  // Module-level declarations that `export default Name` or an export list can wrap.
+  const decls = new Map();
+  for (const match of topLevelMatches(FUNC_DECL_RE, scan)) {
+    if (!decls.has(match[1]) && isPrivateDeclaration(scan, match.index)) decls.set(match[1], { place: HOIST });
+  }
+  for (const match of topLevelMatches(LOCAL_DECL_RE, scan)) {
+    const name = match[1];
+    if (decls.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
+    const eq = findInitializer(code, scan, match.index + match[0].length);
+    if (eq === -1 || !isWrappable(eq)) continue;
+    const { more, end } = scanDeclarators(code, scan, eq);
+    if (more) continue;
+    decls.set(name, { place: end, keyword: match[0].startsWith("const") ? match.index : -1 });
+  }
+  // Wraps a module-level declaration, turning a `const` into a `let` so the wrapper can be assigned to it.
+  const wrapDecl = (local, exported) => {
+    const decl = decls.get(local);
+    if (decl.keyword >= 0) {
+      s.overwrite(decl.keyword, decl.keyword + 5, "let");
+      decl.keyword = -1;
+    }
+    wrap(local, exported, decl.place);
+  };
+  const canWrap = (local) => !wrapped.has(local) && (wraps.has(local) || decls.has(local));
 
   for (const match of topLevelMatches(EXPORT_FUNC_RE, scan)) {
-    const name = match[1];
-    const exportStart = match.index;
-
     // Remove `export ` (7 chars). The regex guarantees they are there.
-    s.remove(exportStart, exportStart + 7);
-
-    if (!seen.has(name)) {
-      seen.add(name);
-      names.push(name);
-    }
+    s.remove(match.index, match.index + 7);
+    wrap(match[1], match[1], HOIST);
   }
 
   for (const match of topLevelMatches(EXPORT_CONST_DECL_RE, scan)) {
     const name = match[1];
     const eq = findInitializer(code, scan, match.index + match[0].length);
-    if (eq === -1 || !isFunctionInitializer(code, scan, eq) || hasMoreDeclarators(code, scan, eq)) continue;
+    if (eq === -1 || !isWrappable(eq)) continue;
+    const { more, end } = scanDeclarators(code, scan, eq);
+    if (more) continue;
 
     // `export const Foo` -> `let Foo` so the wrapper can be assigned to it.
     const nameStart = match.index + match[0].length - name.length;
     s.overwrite(match.index, nameStart, "let ");
-
-    if (!seen.has(name)) {
-      seen.add(name);
-      names.push(name);
-    }
+    wrap(name, name, end);
   }
 
+  let defaultDone = false;
   for (const match of topLevelMatches(EXPORT_DEFAULT_FUNC_RE, scan)) {
     const functionStart = match.index + match[0].search(/(?:async\s+)?function\b/);
     s.remove(match.index, functionStart);
 
-    defaultName = match[1];
-    if (!defaultName) {
+    let name = match[1];
+    if (!name) {
       // Name the anonymous function just before its parameter list.
-      defaultName = ANONYMOUS_DEFAULT;
+      name = ANONYMOUS_DEFAULT;
       s.appendLeft(match.index + match[0].length - 1, ` ${ANONYMOUS_DEFAULT}`);
     }
+    wrap(name, "default", HOIST);
+    defaultDone = true;
     break;
+  }
+
+  for (const match of defaultDone ? [] : topLevelMatches(EXPORT_DEFAULT_RE, scan)) {
+    const after = match.index + match[0].length;
+    if (isFunctionInitializer(code, scan, after - 1)) {
+      // `export default () => ...` -> `let __dolla_default = () => ...`
+      s.overwrite(match.index, after, `let ${ANONYMOUS_DEFAULT} = `);
+      wrap(ANONYMOUS_DEFAULT, "default", BOTTOM);
+    } else {
+      // `export default Name;` where `Name` is a function declared in this module.
+      const ident = /^([A-Za-z_$][\w$]*)[ \t]*;?[ \t]*(?=\r?\n|$)/.exec(scan.masked.slice(after));
+      if (ident && canWrap(ident[1])) {
+        s.remove(match.index, after + ident[0].length);
+        if (wraps.has(ident[1])) wrap(ident[1], "default");
+        else wrapDecl(ident[1], "default");
+      }
+    }
+    break;
+  }
+
+  for (const match of topLevelMatches(EXPORT_LIST_RE, scan)) {
+    const close = match.index + match[0].length;
+    if (/^\s*from\b/.test(scan.masked.slice(close))) continue;
+
+    const open = match.index + match[0].indexOf("{");
+    const kept = [];
+    let changed = false;
+    // Split the masked list, so commas in string specifiers don't count, and keep the original text.
+    let from = open + 1;
+    for (const spec of match[1].split(",")) {
+      const text = code.slice(from, from + spec.length).trim();
+      from += spec.length + 1;
+      const m = EXPORT_SPECIFIER_RE.exec(spec.trim());
+      if (m && canWrap(m[1])) {
+        if (wraps.has(m[1])) wrap(m[1], m[2] ?? m[1]);
+        else wrapDecl(m[1], m[2] ?? m[1]);
+        changed = true;
+      } else if (text) {
+        kept.push(text);
+      }
+    }
+    if (!changed) continue;
+
+    if (kept.length) {
+      s.overwrite(open + 1, close - 1, ` ${kept.join(", ")} `);
+    } else {
+      // Remove the whole statement, with its semicolon.
+      const semi = /^[ \t]*;/.exec(scan.masked.slice(close));
+      s.remove(match.index, close + (semi ? semi[0].length : 0));
+    }
   }
 
   // Tag store arguments that name a function declared in this module with the store identity of
   // its HMR id. In an import cycle a reloaded module's hoisted functions can be used as stores before
   // the module has wrapped them, and without the tag they would get an identity of their own.
   const storeIds = new Map();
-  for (const name of names) storeIds.set(name, `${id}:${name}`);
-  if (defaultName) storeIds.set(defaultName, `${id}:default`);
+  for (const [local, entry] of wraps) storeIds.set(local, entry.id);
   for (const match of topLevelMatches(FUNC_DECL_RE, scan)) {
     if (!storeIds.has(match[1]) && isPrivateDeclaration(scan, match.index)) storeIds.set(match[1], `${id}:${match[1]}`);
   }
@@ -824,7 +943,7 @@ function applyLiveBindings(s, code, id, scan) {
     const name = match[1];
     if (storeIds.has(name) || !isPrivateDeclaration(scan, match.index)) continue;
     const eq = findInitializer(code, scan, match.index + match[0].length);
-    if (eq !== -1 && isFunctionInitializer(code, scan, eq) && !hasMoreDeclarators(code, scan, eq)) {
+    if (eq !== -1 && isFunctionInitializer(code, scan, eq) && !scanDeclarators(code, scan, eq).more) {
       storeIds.set(name, `${id}:${name}`);
     }
   }
@@ -837,21 +956,22 @@ function applyLiveBindings(s, code, id, scan) {
     }
   }
 
-  if (names.length === 0 && !defaultName) return tagged;
-
-  let block = "";
-  for (const name of names) {
-    const strId = JSON.stringify(`${id}:${name}`);
-    block += `\n${name} = __dolla_export(${strId}, ${name});`;
+  const pairs = [];
+  let hoisted = "";
+  let bottom = "";
+  for (const [local, entry] of wraps) {
+    const assign = `${local} = __dolla_export(${JSON.stringify(entry.id)}, ${local});`;
+    if (entry.place === HOIST) hoisted += `${assign}\n`;
+    else if (entry.place === BOTTOM || entry.place === -1) bottom += `\n${assign}`;
+    else s.appendLeft(entry.place, `${code[entry.place - 1] === ";" ? "" : ";"} ${assign}`);
+    for (const exported of entry.exported) pairs.push([exported, local]);
   }
-  if (names.length) block += `\nexport { ${names.join(", ")} };`;
-  if (defaultName) {
-    block += `\n${defaultName} = __dolla_export(${JSON.stringify(`${id}:default`)}, ${defaultName});`;
-    block += `\nexport { ${defaultName} as default };`;
+  if (pairs.length) {
+    const specs = pairs.map(([exported, local]) => (exported === local ? local : `${local} as ${exported}`));
+    s.appendRight(code.length, `${bottom}\nexport { ${specs.join(", ")} };\n`);
   }
 
-  s.appendRight(code.length, block + "\n");
-  return true;
+  return { pairs, hoisted, usesHelpers: tagged || wraps.size > 0 };
 }
 
 /*============================*\
@@ -980,7 +1100,6 @@ export default function dollaPlugin() {
       // boundary. That contains HMR cascades and prevents a full-reload
       // re-mount of the whole app.
       const scan = maskNonCode(code);
-      const entries = findExportEntries(code, scan);
 
       if (CREATE_ROOT_RE.test(scan.masked)) rootFiles.add(id);
       else rootFiles.delete(id);
@@ -1004,17 +1123,24 @@ export default function dollaPlugin() {
       // Placing it at the top guarantees registration regardless of any later
       // throw during re-evaluation. The callback closes over `entries`, which
       // are in lexical scope and defined by the time Vite actually invokes it.
+      // Live-binding: wrap named function exports and private stores in a stable proxy for HMR.
+      const live = applyLiveBindings(s, code, id, scan);
+      let usesHelpers = live.usesHelpers;
+
       // A module that accepts its own updates is left to handle them.
-      let usesHelpers = false;
       if (!HMR_ACCEPT_RE.test(scan.masked)) {
+        const entries = findExportEntries(code, scan, live.pairs).map(([exported, local]) =>
+          exported === local ? local : `${exported}: ${local}`,
+        );
         s.appendLeft(
           0,
           `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`,
         );
         usesHelpers = true;
       }
-      // Live-binding: wrap named function exports and private stores in a stable proxy for HMR.
-      if (applyLiveBindings(s, code, id, scan)) usesHelpers = true;
+      // Wrapper assignments for function declarations go right after the accept call, before any
+      // module code runs, so everything in the module that captures the function gets the wrapper.
+      s.appendLeft(0, live.hoisted);
 
       // Import the helpers the module doesn't already import itself.
       if (usesHelpers) {

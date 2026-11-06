@@ -3,6 +3,10 @@ import dollaPlugin from "./vite-plugin.js";
 import { __dolla_css, __dolla_export, __dolla_store } from "./src/core/hmr.js";
 import { css } from "./src/core/markup/css.js";
 import { addStore, createContext, getStore } from "./src/core/context.js";
+import { __dolla_apply } from "./src/core/hmr.js";
+import { IS_STYLED_VIEW } from "./src/core/markup/css-template.js";
+import { ViewNode } from "./src/core/markup/nodes/view.js";
+import { styled } from "./src/styled/index.js";
 
 function runTransform(code: string, id: string) {
   // @ts-ignore — invoking the hook directly.
@@ -375,8 +379,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
   function evaluateModule(code: string, prelude = ""): Record<string, any> {
     const declared: string[] = [];
     const body = code
-      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla\/hmr";\n/m, "")
-      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla";\n/m, "")
+      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla(?:\/hmr|\/styled)?";?\n/gm, "")
       .replace(/import\.meta\.hot/g, "undefined")
       .replace(/export \{([^}]*)\};/g, (_m, names: string) =>
         names
@@ -402,8 +405,9 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       "addStore",
       "getStore",
       "createContext",
+      "styled",
       `${prelude}\n${body}\n${tail}`,
-    )(__dolla_export, __dolla_store, exports, addStore, getStore, createContext);
+    )(__dolla_export, __dolla_store, exports, addStore, getStore, createContext, styled);
     return exports;
   }
 
@@ -467,7 +471,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     ["a class", "export const C = class {};"],
     ["a number", "export const n = 1;"],
     ["a call result", "export const made = make(() => 1);"],
-    ["a styled component", 'import { styled } from "@manyducks.co/dolla/styled";\nexport const Box = styled.div`color: red;`;'],
+    ["a styled component from another library", 'import styled from "@emotion/styled";\nexport const Box = styled.div`color: red;`;'],
     ["destructuring", "export const { a } = obj;"],
     ["several declarators", "export const one = () => 1, two = () => 2;"],
     ["let", "export let mutable = () => 1;"],
@@ -660,6 +664,302 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
       uniqueId(),
     )!;
     expect(code).not.toMatch(/__dolla_store\(/);
+  });
+});
+
+describe("dollaPlugin — more export shapes", () => {
+  let fileCount = 0;
+  const uniqueId = () => `/abs/shapes-${fileCount++}.js`;
+
+  /** Same as the live-bindings helper: runs a transformed plain-JS module and returns its exports. */
+  function evaluateModule(code: string): Record<string, any> {
+    const declared: string[] = [];
+    const body = code
+      .replace(/^import \{[^}]*\} from "@manyducks\.co\/dolla(?:\/hmr|\/styled)?";?\n/gm, "")
+      .replace(/import\.meta\.hot/g, "undefined")
+      .replace(/export \{([^}]*)\};?/g, (_m, names: string) =>
+        names
+          .split(",")
+          .filter((part) => part.trim())
+          .map((part) => {
+            const [local, exported = local] = part.trim().split(/\s+as\s+/);
+            return `__exports[${JSON.stringify(exported.trim())}] = ${local.trim()};`;
+          })
+          .join(" "),
+      )
+      .replace(/^export (const|let|function|class) ([A-Za-z_$][\w$]*)/gm, (_m, kw: string, name: string) => {
+        declared.push(name);
+        return `${kw} ${name}`;
+      });
+    const exports: Record<string, any> = {};
+    const tail = declared.map((name) => `__exports.${name} = ${name};`).join("\n");
+    new Function(
+      "__dolla_export",
+      "__dolla_store",
+      "__exports",
+      "addStore",
+      "getStore",
+      "styled",
+      `${body}\n${tail}`,
+    )(__dolla_export, __dolla_store, exports, addStore, getStore, styled);
+    return exports;
+  }
+
+  const transform = (code: string, id: string) => runTransform(code, id)!.code;
+  const reload = (id: string, ...versions: string[]) => versions.map((code) => evaluateModule(transform(code, id)));
+
+  function mount(view: any) {
+    const el = document.createElement("div");
+    new ViewNode(createContext(null), view, {}).mount(el);
+    return el;
+  }
+
+  describe("views captured by sibling exports", () => {
+    test("a function view referenced from a sibling export is replaced", () => {
+      const id = uniqueId();
+      const version = (text: string) =>
+        `export function Home() { return "${text}"; }\nexport const routes = [{ view: Home }];\n`;
+      const [v1] = reload(id, version("home"));
+      expect(v1.routes[0].view).toBe(v1.Home);
+      const el = mount(v1.routes[0].view);
+      expect(el.textContent).toBe("home");
+
+      const [v2] = reload(id, version("HOME"));
+      __dolla_apply(v2, { Home: v1.Home, routes: v1.routes });
+      expect(el.textContent).toBe("HOME");
+    });
+
+    test("a const arrow view referenced from a sibling export is replaced", () => {
+      const id = uniqueId();
+      const version = (text: string) =>
+        `export const Home = () => "${text}";\nexport const routes = [{ view: Home }];\n`;
+      const [v1] = reload(id, version("home"));
+      expect(v1.routes[0].view).toBe(v1.Home);
+      const el = mount(v1.routes[0].view);
+
+      const [v2] = reload(id, version("HOME"));
+      __dolla_apply(v2, { Home: v1.Home, routes: v1.routes });
+      expect(el.textContent).toBe("HOME");
+    });
+
+    test("wraps a const arrow right after its declaration", () => {
+      const id = uniqueId();
+      const out = transform(`export const Home = () => "home"\nexport const routes = [{ view: Home }]\n`, id);
+      const wrap = out.indexOf(`Home = __dolla_export("${id}:Home", Home)`);
+      expect(wrap).toBeGreaterThan(out.indexOf("let Home"));
+      expect(wrap).toBeLessThan(out.indexOf("routes ="));
+      expect(() => evaluateModule(out)).not.toThrow();
+    });
+
+    test("calling a const arrow before its declaration still throws", () => {
+      const code = `useIt();\nexport const useIt = () => 1;\n`;
+      expect(() => evaluateModule(transform(code, uniqueId()))).toThrow(ReferenceError);
+    });
+  });
+
+  describe("export default <function literal>", () => {
+    test.each([
+      ["an arrow", (n: number) => `export default (props) => ${n};\n`],
+      ["an arrow without a semicolon", (n: number) => `export default () => ${n}\n`],
+      ["an async arrow", (n: number) => `export default async () => ${n};\n`],
+      ["an anonymous function", (n: number) => `export default function () { return ${n}; }\n`],
+    ])("keeps the identity of %s across reloads", async (_label, version) => {
+      const id = uniqueId();
+      const [v1, v2] = reload(id, version(1), version(2));
+      expect(typeof v1.default).toBe("function");
+      expect(v2.default).toBe(v1.default);
+      expect(await v1.default({})).toBe(2);
+      expect(transform(version(1), id)).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}\)/);
+    });
+
+    test.each([
+      ["a class", "export default class {}\n"],
+      ["an object", "export default {};\n"],
+      ["a call result", "export default make(() => 1);\n"],
+    ])("leaves %s alone", (_label, code) => {
+      const out = transform(code, uniqueId());
+      expect(out).toContain(code.trim());
+      expect(out).not.toMatch(/__dolla_export\(/);
+    });
+  });
+
+  describe("export default <identifier>", () => {
+    test.each([
+      ["a function declaration", (n: number) => `function Page() { return ${n}; }\nexport default Page;\n`],
+      ["a const arrow", (n: number) => `const Page = () => ${n}\nexport default Page\n`],
+    ])("keeps the identity of %s across reloads", (_label, version) => {
+      const id = uniqueId();
+      const out = transform(version(1), id);
+      expect(out).toContain(`Page = __dolla_export("${id}:default", Page)`);
+      expect(out).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
+      const [v1, v2] = reload(id, version(1), version(2));
+      expect(v2.default).toBe(v1.default);
+      expect(v1.default()).toBe(2);
+    });
+
+    test("a store exported as the default is still found after a reload", () => {
+      const version = (n: number) =>
+        [
+          `function AuthStore() { return { n: ${n} }; }`,
+          `export const getAuth = (c) => getStore(c, AuthStore);`,
+          `export default AuthStore;`,
+          ``,
+        ].join("\n");
+      const id = uniqueId();
+      const ctx = createContext(null);
+      const [v1] = reload(id, version(1));
+      const store = addStore(ctx, v1.default);
+      const [v2] = reload(id, version(2));
+      expect(v2.getAuth(ctx)).toBe(store);
+    });
+
+    test("leaves an identifier that isn't a function alone", () => {
+      const out = transform(`const obj = {};\nexport default obj;\n`, uniqueId());
+      expect(out).toContain("export default obj;");
+      expect(out).not.toMatch(/__dolla_export\(/);
+    });
+  });
+
+  describe("export lists", () => {
+    test("wraps the functions in a plain list and keeps their identity", () => {
+      const id = uniqueId();
+      const version = (n: number) => `function A() { return ${n}; }\nconst B = () => ${n};\nexport { A, B };\n`;
+      const out = transform(version(1), id);
+      expect(out).toContain(`A = __dolla_export("${id}:A", A)`);
+      expect(out).toContain(`B = __dolla_export("${id}:B", B)`);
+      expect(out).toMatch(/__dolla_apply\(newModule, \{ A, B \}\)/);
+      const [v1, v2] = reload(id, version(1), version(2));
+      expect(v2.A).toBe(v1.A);
+      expect(v2.B).toBe(v1.B);
+      expect(v1.A()).toBe(2);
+      expect(v1.B()).toBe(2);
+    });
+
+    test("wraps an aliased function under its exported name", () => {
+      const id = uniqueId();
+      const version = (n: number) => `function A() { return ${n}; }\nexport { A as Alpha };\n`;
+      const out = transform(version(1), id);
+      expect(out).toContain(`A = __dolla_export("${id}:Alpha", A)`);
+      expect(out).toMatch(/__dolla_apply\(newModule, \{ Alpha: A \}\)/);
+      const [v1, v2] = reload(id, version(1), version(2));
+      expect(v2.Alpha).toBe(v1.Alpha);
+      expect(v1.Alpha()).toBe(2);
+    });
+
+    test("keeps constants in a mixed list", () => {
+      const id = uniqueId();
+      const out = transform(`const n = 1;\nfunction A() { return n; }\nexport { n, A };\n`, id);
+      expect(out).toContain(`A = __dolla_export("${id}:A", A)`);
+      expect(out).toMatch(/export \{ n \}/);
+      const mod = evaluateModule(out);
+      expect(mod.n).toBe(1);
+      expect(mod.A()).toBe(1);
+    });
+
+    test("keeps a string specifier in a list as written", () => {
+      const out = transform(`const n = 1;\nfunction A() {}\nexport { n as "a, b", A };\n`, uniqueId());
+      expect(out).toContain(`export { n as "a, b" }`);
+    });
+
+    test("exports `default` from a list", () => {
+      const id = uniqueId();
+      const version = (n: number) => `function Page() { return ${n}; }\nexport { Page as default };\n`;
+      expect(transform(version(1), id)).toContain(`Page = __dolla_export("${id}:default", Page)`);
+      const [v1, v2] = reload(id, version(1), version(2));
+      expect(v2.default).toBe(v1.default);
+      expect(v1.default()).toBe(2);
+    });
+
+    test("a function exported twice gets one wrapper", () => {
+      const id = uniqueId();
+      const out = transform(`export function Foo() { return 1; }\nexport { Foo as Bar };\n`, id);
+      expect(out.match(/__dolla_export\(/g)).toHaveLength(1);
+      const mod = evaluateModule(out);
+      expect(mod.Bar).toBe(mod.Foo);
+    });
+
+    test.each([
+      ["a re-export", `export { A } from "./a";\n`],
+      ["a type-only list", `type T = {};\nexport type { T };\n`],
+    ])("leaves %s alone", (_label, code) => {
+      const out = transform(code, uniqueId().replace(/\.js$/, ".ts"));
+      expect(out).toContain(code.trim().split("\n").pop());
+      expect(out).not.toMatch(/__dolla_export\(/);
+    });
+  });
+
+  describe("styled components", () => {
+    const IMPORT = `import { styled } from "@manyducks.co/dolla/styled";\n`;
+    const version = (color: string) => IMPORT + `export const Button = styled.button\`color: ${color};\`;\n`;
+
+    test("keep their identity and take the new template", () => {
+      const id = uniqueId();
+      const [v1] = reload(id, version("red"));
+      const oldTemplate = v1.Button[IS_STYLED_VIEW];
+      const [v2] = reload(id, version("blue"));
+      expect(v2.Button).toBe(v1.Button);
+      expect(v1.Button.name).toBe("Styled(Button)");
+      expect(v1.Button[IS_STYLED_VIEW]).toBe(v2.Button[IS_STYLED_VIEW]);
+      expect(v1.Button[IS_STYLED_VIEW]).not.toBe(oldTemplate);
+    });
+
+    test("restyle mounted instances and new ones use the new class", () => {
+      const id = uniqueId();
+      const [v1] = reload(id, version("red"));
+      const oldClass = v1.Button[IS_STYLED_VIEW].className;
+      const el = mount(v1.Button);
+      expect(el.firstElementChild!.classList.contains(oldClass)).toBe(true);
+
+      const [v2] = reload(id, version("blue"));
+      const newClass = v1.Button[IS_STYLED_VIEW].className;
+      expect(newClass).not.toBe(oldClass);
+      __dolla_apply(v2, { Button: v1.Button });
+
+      expect(el.firstElementChild!.classList.contains(newClass)).toBe(true);
+      expect(mount(v1.Button).firstElementChild!.classList.contains(newClass)).toBe(true);
+    });
+
+    test("wraps a chain with .as() and .named()", () => {
+      const id = uniqueId();
+      const out = transform(IMPORT + `export const Link = styled.button.as("a").named("L")\`color: red;\`;\n`, id);
+      expect(out).toContain(`Link = __dolla_export("${id}:Link", Link)`);
+    });
+
+    test("leaves a styled component that isn't the whole initializer alone", () => {
+      const out = transform(IMPORT + `export const Box = styled.div\`color: red;\` || null;\n`, uniqueId());
+      expect(out).not.toMatch(/__dolla_export\(/);
+    });
+  });
+
+  test.each([
+    ["a function view with a sibling", `export function Home() { return 1; }\nexport const routes = [{ view: Home }];\n`],
+    ["a const arrow", `export const Home = () => 1\n`],
+    ["a default arrow", `export default () => 1;\n`],
+    ["a default identifier", `function Page() {}\nexport default Page;\n`],
+    ["an export list", `function A() {}\nconst B = () => 1;\nconst n = 1;\nexport { A, B as Bee, n };\n`],
+    [
+      "a styled component",
+      `import { styled } from "@manyducks.co/dolla/styled";\nexport const Button = styled.button\`color: red;\`;\n`,
+    ],
+  ])("transforming %s twice wraps nothing twice", (_label, code) => {
+    const id = uniqueId();
+    const first = transform(code, id);
+    const second = transform(first, id);
+    expect(second.match(/__dolla_export\(/g)?.length).toBe(first.match(/__dolla_export\(/g)?.length);
+    expect(second.match(/import\.meta\.hot\.accept\(/g)).toHaveLength(1);
+    expect(() => evaluateModule(second)).not.toThrow();
+  });
+
+  test.each([
+    ["a default arrow", `export default () => 1;\n`],
+    ["an export list", `function A() {}\nexport { A as Alpha };\n`],
+    ["a const arrow", `export const Home = () => 1;\nexport const routes = [Home];\n`],
+  ])("the source map for %s maps back to the source", (_label, code) => {
+    const id = uniqueId();
+    const map = runTransform(code, id)!.map as any;
+    expect(map.sources).toEqual([id]);
+    expect(map.sourcesContent).toEqual([code]);
+    expect(map.mappings.length).toBeGreaterThan(0);
   });
 });
 
