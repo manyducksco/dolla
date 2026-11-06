@@ -99,8 +99,57 @@ describe("dollaPlugin — HMR injection", () => {
     expect(result).toBeNull();
   });
 
-  test("only runs in dev", () => {
-    expect(dollaPlugin().apply).toBe("serve");
+  test("only runs on the dev server, not in builds or Vitest", () => {
+    const apply = dollaPlugin().apply as (config: object, env: object) => boolean;
+    expect(apply({}, { command: "serve", mode: "development" })).toBe(true);
+    expect(apply({}, { command: "serve", mode: "test" })).toBe(false);
+    expect(apply({}, { command: "build", mode: "production" })).toBe(false);
+  });
+
+  test("pre-bundles the HMR runtime so the first dev start doesn't reload", () => {
+    const config = (dollaPlugin() as any).config();
+    expect(config).toEqual({ optimizeDeps: { include: ["@manyducks.co/dolla/hmr"] } });
+  });
+
+  test("imports the HMR helpers in a module that has its own accept call", () => {
+    const out = runTransform(
+      `export function View() { return 1; }\nif (import.meta.hot) import.meta.hot.accept(() => {});\n`,
+      "/abs/x.js",
+    )!.code;
+    expect(out).toContain("__dolla_export(");
+    expect(out).toMatch(/import .*__dolla_export.*from "@manyducks\.co\/dolla\/hmr"/);
+    // The module's own accept call is the only one.
+    expect(out.match(/import\.meta\.hot\.accept\(/g)).toHaveLength(1);
+  });
+
+  test("an accept call in a comment doesn't stop the module becoming a boundary", () => {
+    const out = runTransform(`// import.meta.hot.accept(() => {})\nexport function View() { return 1; }\n`, "/abs/x.js")!.code;
+    expect(out).toContain("__dolla_apply(newModule");
+  });
+
+  test("an HMR import in a comment doesn't count as importing the helpers", () => {
+    const out = runTransform(
+      `// import { __dolla_apply } from "@manyducks.co/dolla/hmr"\nexport function View() { return 1; }\n`,
+      "/abs/x.js",
+    )!.code;
+    expect(out).toContain('import { __dolla_apply, __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"');
+  });
+
+  test("adds the helpers a hand-written HMR import is missing", () => {
+    const out = runTransform(
+      `import { __dolla_apply } from "@manyducks.co/dolla/hmr";\nexport function View() { return 1; }\n`,
+      "/abs/x.js",
+    )!.code;
+    expect(out).toContain('import { __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"');
+    expect(out.match(/import\s+\{[^}]*__dolla_apply[^}]*\}\s+from/g)).toHaveLength(1);
+  });
+
+  test("running the transform twice adds no second import or accept call", () => {
+    const code = `export function View() { return 1; }\n`;
+    const first = runTransform(code, "/abs/twice.js")!.code;
+    const second = runTransform(first, "/abs/twice.js")!.code;
+    expect(second.match(/from "@manyducks\.co\/dolla\/hmr"/g)).toHaveLength(1);
+    expect(second.match(/import\.meta\.hot\.accept\(/g)).toHaveLength(1);
   });
 });
 
@@ -563,6 +612,38 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
         ``,
       ].join("\n"),
       uniqueId(),
+    )!;
+    expect(code).not.toMatch(/__dolla_store\(/);
+  });
+
+  test.each([
+    [
+      "without semicolons",
+      `import { addStore } from "@manyducks.co/dolla"\nfunction AuthStore() { return {} }\nexport const addAuth = (c) => addStore(c, AuthStore)\n`,
+    ],
+    [
+      "after a statement without a semicolon",
+      `import { addStore } from "@manyducks.co/dolla";\nconst x = 1\nfunction AuthStore() { return {} }\nexport const addAuth = (c) => addStore(c, AuthStore);\n`,
+    ],
+    [
+      "as a const after a statement without a semicolon",
+      `const x = 1\nconst AuthStore = () => ({})\nexport const addAuth = (c) => addStore(c, AuthStore)\n`,
+    ],
+  ])("tags a private store declared %s", (_label, code) => {
+    const id = uniqueId();
+    const out = runTransform(code, id)!.code;
+    expect(out).toContain(`__dolla_store("${id}:AuthStore", AuthStore)`);
+  });
+
+  test("doesn't tag a named function expression or an ambient declaration without semicolons", () => {
+    const { code } = runTransform(
+      [
+        `export declare function Ambient(): {}`,
+        `const value = function Named() {}`,
+        `export const use = (c) => [getStore(c, Ambient), getStore(c, Named)]`,
+        ``,
+      ].join("\n"),
+      uniqueId().replace(/\.js$/, ".ts"),
     )!;
     expect(code).not.toMatch(/__dolla_store\(/);
   });

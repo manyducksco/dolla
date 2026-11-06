@@ -1,8 +1,8 @@
 import MagicString from "magic-string";
 import path from "node:path";
 
-const HMR_IMPORT = 'import { __dolla_apply, __dolla_export, __dolla_store } from "@manyducks.co/dolla/hmr"';
-const HMR_IMPORT_RE = /import\s+.*__dolla_(?:apply|export|store).*from\s+["']@manyducks\.co\/dolla\/hmr["']/;
+const HMR_MODULE = "@manyducks.co/dolla/hmr";
+const HMR_HELPERS = ["__dolla_apply", "__dolla_export", "__dolla_store"];
 const HMR_ACCEPT_RE = /import\.meta\.hot\.accept\s*\(/;
 
 // Match `export function Foo` — NOT `export default function`
@@ -418,10 +418,27 @@ function skipString(code, startIndex) {
   return -1;
 }
 
-const DOLLA_STYLED_IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*["']@manyducks\.co\/dolla\/styled["']/g;
-
 function escapeRegExp(text) {
   return text.replace(/\$/g, "\\$");
+}
+
+/**
+ * Returns the local names that the named export `name` of module `source` is
+ * bound to by this module's `import { ... } from "<source>"` statements.
+ */
+function findNamedImports(code, codeScan, source, name) {
+  const re = new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*["']${source.replace(/[.\/]/g, "\\$&")}["']`, "g");
+  const names = [];
+  let match;
+  while ((match = re.exec(code)) !== null) {
+    // Ignore matches inside comments or strings.
+    if (codeScan.masked.slice(match.index, match.index + 6) !== "import") continue;
+    for (const spec of match[1].split(",")) {
+      const m = /^\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(spec);
+      if (m && m[1] === name) names.push(m[2] ?? name);
+    }
+  }
+  return names;
 }
 
 /**
@@ -429,18 +446,7 @@ function escapeRegExp(text) {
  * bound to in this module (usually just `["styled"]`).
  */
 function findDollaStyledImports(code, codeScan) {
-  const names = [];
-  DOLLA_STYLED_IMPORT_RE.lastIndex = 0;
-  let match;
-  while ((match = DOLLA_STYLED_IMPORT_RE.exec(code)) !== null) {
-    // Ignore matches inside comments or strings.
-    if (codeScan.masked.slice(match.index, match.index + 6) !== "import") continue;
-    for (const spec of match[1].split(",")) {
-      const m = /^\s*styled(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(spec);
-      if (m) names.push(m[1] ?? "styled");
-    }
-  }
-  return names;
+  return findNamedImports(code, codeScan, "@manyducks.co/dolla/styled", "styled");
 }
 
 /**
@@ -492,7 +498,6 @@ function applyStyledNamer(s, code, codeScan = maskNonCode(code)) {
 ||     Hot CSS Templates      ||
 \*============================*/
 
-const DOLLA_IMPORT_RE = /import\s*\{([^}]*)\}\s*from\s*["']@manyducks\.co\/dolla["']/g;
 const HOT_CSS_IMPORT = 'import { __dolla_css } from "@manyducks.co/dolla/hmr";\n';
 // Tokens that continue an expression onto the next line, so a newline after a template doesn't end it.
 const CONTINUES_EXPRESSION_RE = /[.[(`?:+\-*/%&|^<>=!]/;
@@ -502,18 +507,7 @@ const CONTINUES_EXPRESSION_RE = /[.[(`?:+\-*/%&|^<>=!]/;
  * this module (usually just `["css"]`).
  */
 function findDollaCssImports(code, codeScan) {
-  const names = [];
-  DOLLA_IMPORT_RE.lastIndex = 0;
-  let match;
-  while ((match = DOLLA_IMPORT_RE.exec(code)) !== null) {
-    // Ignore matches inside comments or strings.
-    if (codeScan.masked.slice(match.index, match.index + 6) !== "import") continue;
-    for (const spec of match[1].split(",")) {
-      const m = /^\s*css(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*$/.exec(spec);
-      if (m) names.push(m[1] ?? "css");
-    }
-  }
-  return names;
+  return findNamedImports(code, codeScan, "@manyducks.co/dolla", "css");
 }
 
 /** Returns true if the expression that ends at `end` is the whole initializer of its declarator. */
@@ -714,6 +708,25 @@ function findStoreArgs(code, scan) {
   return args;
 }
 
+// A keyword after one of these characters is part of an expression. (`(` covers `for (let`.)
+const EXPRESSION_CONTINUES = new Set("=(,:?[!&|+-*/%<>~^.");
+// A keyword after one of these words doesn't start a statement of its own.
+const NOT_A_STATEMENT_BEFORE = new Set([
+  "export",
+  "declare",
+  "default",
+  "return",
+  "typeof",
+  "new",
+  "await",
+  "yield",
+  "void",
+  "case",
+  "else",
+  "in",
+  "of",
+]);
+
 /**
  * Returns true if the keyword at `index` starts a declaration statement:
  * not exported, not `declare`d, and not part of an expression such as
@@ -725,8 +738,14 @@ function isPrivateDeclaration(scan, index) {
   while (i >= 0 && /\s/.test(scan.masked[i])) i--;
   if (i < 0) return true;
   const last = scan.masked[i];
-  // A statement boundary. (A preceding word could be `export`, `declare`, `return`, `=` etc.)
-  return last === ";" || last === "}" || last === ")" || last === "]";
+  // An operator or opening bracket means the keyword is inside an expression.
+  if (EXPRESSION_CONTINUES.has(last)) return false;
+  if (!/[\w$]/.test(last)) return true;
+  // A word: the declaration is part of an export, ambient declaration or expression after one of
+  // these, and otherwise starts a new statement (code without semicolons, as in `const x = 1\n`).
+  let start = i;
+  while (start > 0 && /[\w$]/.test(scan.masked[start - 1])) start--;
+  return !NOT_A_STATEMENT_BEFORE.has(scan.masked.slice(start, i + 1));
 }
 
 /**
@@ -743,6 +762,8 @@ function isPrivateDeclaration(scan, index) {
  *   `hasStore`/`hasOwnStore` are tagged at each call: `getStore(c, Foo)` becomes
  *   `getStore(c, __dolla_store("<id>:Foo", Foo))`, so every version of `Foo` shares one
  *   store identity, including one used before its module has finished evaluating.
+ *
+ * Returns true if the output calls `__dolla_export` or `__dolla_store`.
  */
 function applyLiveBindings(s, code, id, scan) {
   const seen = new Set();
@@ -807,12 +828,16 @@ function applyLiveBindings(s, code, id, scan) {
       storeIds.set(name, `${id}:${name}`);
     }
   }
+  let tagged = false;
   for (const arg of findStoreArgs(code, scan)) {
     const storeId = storeIds.get(arg.name);
-    if (storeId) s.overwrite(arg.start, arg.end, `__dolla_store(${JSON.stringify(storeId)}, ${arg.name})`);
+    if (storeId) {
+      s.overwrite(arg.start, arg.end, `__dolla_store(${JSON.stringify(storeId)}, ${arg.name})`);
+      tagged = true;
+    }
   }
 
-  if (names.length === 0 && !defaultName) return;
+  if (names.length === 0 && !defaultName) return tagged;
 
   let block = "";
   for (const name of names) {
@@ -826,6 +851,7 @@ function applyLiveBindings(s, code, id, scan) {
   }
 
   s.appendRight(code.length, block + "\n");
+  return true;
 }
 
 /*============================*\
@@ -908,8 +934,14 @@ export default function dollaPlugin() {
   return {
     name: "dolla",
     enforce: "pre",
-    // Everything the plugin adds is for HMR, which a production build doesn't have.
-    apply: "serve",
+    // Everything the plugin adds is for HMR, which a production build doesn't have. Vitest also
+    // runs a dev server, in `test` mode, where wrapping every exported function only gets in the way.
+    apply: (_config, env) => env.command === "serve" && env.mode !== "test",
+    config() {
+      // The import of the HMR runtime is added by `transform`, which Vite's dependency scanner
+      // doesn't run. Without this the first dev start finds it late and reloads the page.
+      return { optimizeDeps: { include: [HMR_MODULE] } };
+    },
     configResolved(config) {
       projectRoot = config.root;
     },
@@ -972,19 +1004,31 @@ export default function dollaPlugin() {
       // Placing it at the top guarantees registration regardless of any later
       // throw during re-evaluation. The callback closes over `entries`, which
       // are in lexical scope and defined by the time Vite actually invokes it.
-      if (!HMR_ACCEPT_RE.test(code)) {
-        const hmrCall = `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`;
-        if (!HMR_IMPORT_RE.test(code)) {
-          s.appendLeft(0, HMR_IMPORT + ";\n" + hmrCall);
-        } else {
-          s.appendLeft(0, hmrCall);
-        }
+      // A module that accepts its own updates is left to handle them.
+      let usesHelpers = false;
+      if (!HMR_ACCEPT_RE.test(scan.masked)) {
+        s.appendLeft(
+          0,
+          `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`,
+        );
+        usesHelpers = true;
       }
       // Live-binding: wrap named function exports and private stores in a stable proxy for HMR.
-      // Must run before the HMR call so the proxy is assigned before the callback captures it.
-      applyLiveBindings(s, code, id, scan);
+      if (applyLiveBindings(s, code, id, scan)) usesHelpers = true;
 
-      if (code.includes("css") && applyHotCss(s, code, id, scan)) s.appendLeft(0, HOT_CSS_IMPORT);
+      // Import the helpers the module doesn't already import itself.
+      if (usesHelpers) {
+        const missing = HMR_HELPERS.filter((name) => !findNamedImports(code, scan, HMR_MODULE, name).includes(name));
+        if (missing.length) s.prepend(`import { ${missing.join(", ")} } from "${HMR_MODULE}";\n`);
+      }
+
+      if (
+        code.includes("css") &&
+        applyHotCss(s, code, id, scan) &&
+        !findNamedImports(code, scan, HMR_MODULE, "__dolla_css").includes("__dolla_css")
+      ) {
+        s.appendLeft(0, HOT_CSS_IMPORT);
+      }
 
       if (code.includes("styled")) applyStyledNamer(s, code, scan);
 
