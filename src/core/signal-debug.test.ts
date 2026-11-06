@@ -10,7 +10,7 @@ describe("describeNode", () => {
       "    at onEffect (http://localhost/node_modules/@manyducks.co/dolla/dist/context-DdWvQyaN.js:30:5)",
       "    at Counter (http://localhost/src/Counter.tsx:4:3)",
     ].join("\n");
-    const node: any = { _debugType: "effect", _debugName: "Counter → effect", _debugStack: stack };
+    const node: any = { _fn: function effect() {}, _debugContext: { name: "Counter" }, _debugStack: stack };
 
     expect(describeNode(node)?.creationFrame).toBe("Counter (http://localhost/src/Counter.tsx:4:3)");
   });

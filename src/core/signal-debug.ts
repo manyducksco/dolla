@@ -8,9 +8,14 @@ export interface ReactiveScopeInfo {
   creationFrame?: string;
 }
 
+/** The fields `describeNode` reads. Computed nodes have `_getter`, effects `_fn`. */
+type DescribableNode = ReactiveNode & { _getter?: Function; _fn?: Function };
+
 // Contexts of the views, stores and context effects currently being set up.
 // Signals created meanwhile take their debug name and debug setting from the top.
 const contextStack: Context[] = [];
+// Entered and left with push() and pop() only. Restoring `length` instead goes through
+// V8's slow array-length path and doubled the cost of running an effect.
 const reactiveScopeStack: ReactiveNode[] = [];
 
 /** Matches stack frames from the reactive runtime, in source or in the built `dist`. */
@@ -38,33 +43,34 @@ export function popContext(): void {
 }
 
 /**
- * Records a node's debug name, and its creation stack when the context it was
- * created in belongs to a debug root. `context` is used when the creator passes
- * one explicitly (e.g. `createEffect`'s `context` option); otherwise the
- * context on top of the stack is used.
+ * Records where a node was created: the context (for its name in error
+ * messages), an optional name override, and a creation stack when that context
+ * belongs to a debug root. `context` is used when the creator passes one
+ * explicitly (e.g. `createEffect`'s `context` option); otherwise the context on
+ * top of the stack is used.
+ *
+ * Only references are stored. The display name is built by `describeNode` when
+ * an error is reported, so creating a signal does no string work.
  */
-function setNodeDebug(
-  node: ReactiveNode,
-  type: ReactiveScopeInfo["type"],
-  fn: Function,
-  nameOverride?: string,
-  context?: Context,
-): void {
-  const current = contextStack.at(-1);
-  const componentName = current?.name;
-  const fnName = nameOverride || fn.name || "(anonymous)";
-
-  node._debugType = type;
-  node._debugName = componentName ? `${componentName} → ${fnName}` : fnName;
-  if (forceCreationStacks || (context ?? current)?.[DEBUG]) node._debugStack = new Error().stack;
+function setNodeDebug(node: ReactiveNode, nameOverride?: string, context?: Context): void {
+  const current = context ?? contextStack[contextStack.length - 1];
+  if (current !== undefined) node._debugContext = current;
+  if (nameOverride !== undefined) node._debugName = nameOverride;
+  if (forceCreationStacks || current?.[DEBUG]) node._debugStack = new Error().stack;
 }
 
 function describeNode(node: ReactiveNode): ReactiveScopeInfo | undefined {
-  if (node._debugName === undefined) return undefined;
+  const { _getter, _fn } = node as DescribableNode;
+  const fn = _getter ?? _fn;
+  // Plain value atoms have neither and are never described.
+  if (fn === undefined) return undefined;
+
+  const fnName = node._debugName || fn.name || "(anonymous)";
+  const componentName = node._debugContext?.name;
 
   return {
-    type: node._debugType!,
-    name: node._debugName,
+    type: _getter !== undefined ? "composed" : "effect",
+    name: componentName ? `${componentName} → ${fnName}` : fnName,
     creationFrame: getCreationFrame(node._debugStack),
   };
 }
@@ -78,8 +84,4 @@ function getCreationFrame(stack?: string): string {
   return "";
 }
 
-export {
-  reactiveScopeStack,
-  setNodeDebug,
-  describeNode,
-};
+export { reactiveScopeStack, setNodeDebug, describeNode };

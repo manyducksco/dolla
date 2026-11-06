@@ -421,7 +421,16 @@ class StyleRegistry {
   }
 }
 
-const registry = new StyleRegistry();
+let registry: StyleRegistry | undefined;
+
+/**
+ * The registry is created on first use, so importing this module has no side effects
+ * and apps that never attach a template never create a stylesheet. It also lets the
+ * main entry load without a DOM.
+ */
+function getRegistry(): StyleRegistry {
+  return (registry ??= new StyleRegistry());
+}
 
 /*============================*\
 ||     Template builder       ||
@@ -472,7 +481,7 @@ function buildStyles(
         if (initialValue != null) {
           styles += `var(${varName}, ${initialValue})`;
           if (syntax !== "*") {
-            registry.addProperty(varName, syntax, initialValue, inherits ?? false);
+            getRegistry().addProperty(varName, syntax, initialValue, inherits ?? false);
           }
         } else {
           styles += `var(${varName})`;
@@ -593,7 +602,8 @@ class CSSFactoryTemplate implements CSSTemplate {
     const shape = this.#shape;
 
     if (!shape.registered) {
-      registry.insertClass(this.className, shape.styles, shape.styled ? registry.styledSheet : registry.sheet);
+      const reg = getRegistry();
+      reg.insertClass(this.className, shape.styles, shape.styled ? reg.styledSheet : reg.sheet);
       shape.registered = true;
     }
 
@@ -704,7 +714,7 @@ class HotTemplate implements CSSTemplate {
     this.#interpolations = interpolations;
 
     if (this.#rules) {
-      this.#rules = replaceRules(this.className, styles, this.#rules, registry.sheet);
+      this.#rules = replaceRules(this.className, styles, this.#rules, getRegistry().sheet);
     }
     for (const attachment of this.#attachments) {
       attachment.stopBindings();
@@ -720,7 +730,7 @@ class HotTemplate implements CSSTemplate {
     const stopCondition = attachClass(c, this.className, element, condition);
     if (!stopCondition) return noop;
 
-    this.#rules ??= registry.insertClass(this.className, this.#styles);
+    this.#rules ??= getRegistry().insertClass(this.className, this.#styles);
 
     const attachment: HotAttachment = {
       c,
@@ -802,6 +812,6 @@ export function keyframes(strings: TemplateStringsArray, ...interpolations: Inte
   body = body.trim();
 
   const name = nameForKey("kf", body);
-  registry.insertKeyframes(name, body);
+  getRegistry().insertKeyframes(name, body);
   return { name, toString: () => name };
 }

@@ -1,6 +1,12 @@
 import type { View } from "../types.js";
+import { cleanupContext, mountContext } from "./context.js";
+import { runSafely } from "./errors.js";
 import { hotTemplate, type CSSTemplate } from "./markup/css.js";
-import type { ViewNode } from "./markup/nodes/view.js";
+import { DOMNode } from "./markup/nodes/dom.js";
+import { trackViewInstances, type ViewNode } from "./markup/nodes/view.js";
+import type { MountTarget } from "./markup/types.js";
+import { createTextNode } from "./markup/utils.js";
+import { popContext, pushContext } from "./signal-debug.js";
 
 const activeInstances = new WeakMap<View<any>, Set<ViewNode<any>>>();
 
@@ -93,6 +99,73 @@ export function unregisterViewInstance<P>(view: View<P>, node: ViewNode<P>) {
   }
 }
 
+// Views call these hooks on mount and unmount once this module has loaded.
+trackViewInstances(registerViewInstance, unregisterViewInstance);
+
+/**
+ * Swaps the view function of a mounted (or not yet mounted) `ViewNode` for a hot-reloaded
+ * one and re-renders it in place. Lives here rather than on `ViewNode` so production
+ * builds, which never load this module, don't carry it.
+ */
+export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
+  const wasMounted = node.isMounted();
+  if (!wasMounted) {
+    unregisterViewInstance(node._view, node);
+    node._view = newView;
+    node.context.name = newView.name;
+    registerViewInstance(node._view, node);
+    return;
+  }
+
+  const oldRoot = node._node?.getRoot();
+  const parent = oldRoot?.parentNode as MountTarget | undefined;
+  const after = oldRoot?.previousSibling;
+
+  runSafely(() => node._node?.unmount(), {
+    phase: "unmount",
+    context: node.context,
+  });
+
+  if (oldRoot && oldRoot.parentNode) {
+    oldRoot.parentNode.removeChild(oldRoot);
+  }
+
+  cleanupContext(node.context);
+  unregisterViewInstance(node._view, node);
+
+  node._view = newView;
+  node.context.name = newView.name;
+
+  // The context was cleaned up above, so effects in the new view wait for `mountContext`
+  // below, after their elements are in the DOM, just like on a first mount.
+  try {
+    pushContext(node.context);
+    node._node = node._render();
+
+    registerViewInstance(newView, node);
+
+    if (parent) {
+      node._node.mount(parent, after);
+    }
+
+    mountContext(node.context);
+  } catch (e) {
+    registerViewInstance(newView, node);
+    try {
+      node._node = new DOMNode(node.context, createTextNode(""));
+      if (parent) {
+        node._node.mount(parent, after);
+      }
+      mountContext(node.context);
+    } catch {
+      // Node stays unmounted; next HMR cycle will handle it.
+    }
+    throw e;
+  } finally {
+    popContext();
+  }
+}
+
 function pathFromId(id: string | undefined): string {
   if (!id) return "(unknown)";
   const idx = id.lastIndexOf(":");
@@ -133,7 +206,7 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
       processed.add(node);
       count++;
       try {
-        node.replaceView(newView);
+        replaceView(node, newView);
       } catch (e) {
         console.error(`[dolla:hmr] ${key}: replaceView threw`, e);
       }

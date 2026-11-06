@@ -9,8 +9,9 @@ export interface ReactiveNode {
   _subs?: Link;
   _subsTail?: Link;
   _flags: ReactiveFlags;
-  _debugType?: "composed" | "effect";
+  // Debug info, read only when an error is reported. See `setNodeDebug`.
   _debugName?: string;
+  _debugContext?: Context;
   _debugStack?: string;
 }
 
@@ -360,14 +361,13 @@ function setActiveOwner(owner?: ReactiveNode) {
 }
 
 function withReactiveScope<T>(node: ReactiveNode, prevSub: ReactiveNode | undefined, fn: () => T): T {
-  const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(node);
   try {
     return fn();
   } finally {
     activeSub = prevSub;
     node._flags &= ~ReactiveFlags.RecursedCheck;
-    reactiveScopeStack.length = scopeLen;
+    reactiveScopeStack.pop();
   }
 }
 
@@ -385,7 +385,6 @@ function updateComputed(c: ComputedNode): boolean {
   c._flags = ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
   const prevSub = setActiveSub(c);
   const prevOwner = setActiveOwner(c);
-  const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(c);
 
   let succeeded = false;
@@ -401,7 +400,7 @@ function updateComputed(c: ComputedNode): boolean {
     activeOwner = prevOwner;
     c._flags &= ~ReactiveFlags.RecursedCheck;
     if (succeeded) purgeDeps(c);
-    reactiveScopeStack.length = scopeLen;
+    reactiveScopeStack.pop();
   }
 }
 
@@ -420,10 +419,7 @@ function reportAsyncEffect(e: EffectNode, result: PromiseLike<unknown>): void {
     "Effect callbacks must be synchronous. Return a cleanup function instead, or use an AbortController for async work.",
   );
 
-  reportSignalError(
-    toSignalError(error, { ...effectErrorInfo(e, "effect"), triggerFrames: [] }),
-    e._context,
-  );
+  reportSignalError(toSignalError(error, { ...effectErrorInfo(e, "effect"), triggerFrames: [] }), e._context);
 
   // Prevent an unhandled rejection if the async callback fails later.
   Promise.resolve(result).catch((reason) => {
@@ -446,7 +442,6 @@ function callEffectFn(e: EffectNode): void {
 }
 
 function run(e: EffectNode): void {
-  const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(e);
   try {
     const flags = e._flags;
@@ -487,7 +482,7 @@ function run(e: EffectNode): void {
       e._flags = ReactiveFlags.Watching;
     }
   } finally {
-    reactiveScopeStack.length = scopeLen;
+    reactiveScopeStack.pop();
   }
 }
 
@@ -667,13 +662,11 @@ function effectCleanup(node: ReactiveNode): void {
 
   const effect = node as EffectNode;
   if (!effect._cleanup) return;
-
-  const scopeLen = reactiveScopeStack.length;
   reactiveScopeStack.push(node);
   try {
     runCleanup(effect);
   } finally {
-    reactiveScopeStack.length = scopeLen;
+    reactiveScopeStack.pop();
   }
 }
 
@@ -790,7 +783,7 @@ export function createAtom<T>(value?: T, options?: { name?: string }) {
       _flags: ReactiveFlags.None,
       _getter: value as (previousValue?: T | undefined) => T,
     };
-    setNodeDebug(node, "composed", value, options?.name);
+    setNodeDebug(node, options?.name);
     return [() => computedGetter(node), (next: T) => computedSetter(node, next)];
   } else {
     const node: ValueNode<T> = {
@@ -841,7 +834,7 @@ export function compose<T>(
     _flags: ReactiveFlags.None,
     _getter: getter,
   };
-  setNodeDebug(node, "composed", getter, options?.name);
+  setNodeDebug(node, options?.name);
   return () => computedGetter(node);
 }
 
@@ -859,7 +852,7 @@ export function createEffect(fn: () => void, options?: { name?: string; context?
     _depsTail: undefined,
     _flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
   };
-  setNodeDebug(e, "effect", fn, options?.name, options?.context);
+  setNodeDebug(e, options?.name, options?.context);
   const prevSub = setActiveSub(e);
   const prevOwner = setActiveOwner(e);
   if (prevOwner !== undefined) {

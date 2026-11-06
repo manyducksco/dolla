@@ -6,6 +6,7 @@ import type { View } from "../../index.js";
 import { createRef } from "../../ref.js";
 import { createMarkup } from "../utils.js";
 import { VIEW, ViewNode } from "./view.js";
+import { replaceView } from "../../hmr.js";
 
 describe("ViewNode", () => {
   const noopView = vi.fn(function (this: ReturnType<typeof createContext>, _props: {}) {
@@ -207,7 +208,7 @@ describe("ViewNode", () => {
       const view1 = vi.fn(() => createMarkup("span", { children: "v1" }));
       const view2 = vi.fn(() => createMarkup("span", { children: "v2" }));
       const node = new ViewNode(context, view1, {});
-      node.replaceView(view2);
+      replaceView(node, view2);
       expect(view1).not.toHaveBeenCalled();
       const container = document.createElement("div");
       node.mount(container);
@@ -222,7 +223,7 @@ describe("ViewNode", () => {
       const node = new ViewNode(context, view1, {});
       node.mount(container);
       expect(container.querySelector("span")!.textContent).toBe("v1");
-      node.replaceView(view2);
+      replaceView(node, view2);
       expect(container.querySelector("span")!.textContent).toBe("v2");
       expect(view2).toHaveBeenCalledTimes(1);
     });
@@ -239,7 +240,7 @@ describe("ViewNode", () => {
       const after = document.createElement("div");
       after.textContent = "after";
       container.appendChild(after);
-      node.replaceView(view2);
+      replaceView(node, view2);
       expect(container.children.length).toBe(3);
       expect(container.children[0].textContent).toBe("before");
       expect(container.children[1].textContent).toBe("v2");
@@ -255,7 +256,7 @@ describe("ViewNode", () => {
       const sibling = document.createElement("div");
       sibling.textContent = "sibling";
       container.appendChild(sibling);
-      node.replaceView(view2);
+      replaceView(node, view2);
       expect(container.children.length).toBe(2);
       expect(container.children[0].textContent).toBe("v2");
       expect(container.children[1].textContent).toBe("sibling");
@@ -276,7 +277,7 @@ describe("ViewNode", () => {
       const node = new ViewNode(context, view1, {});
       node.mount(container);
       expect(cleanupSpy).not.toHaveBeenCalled();
-      node.replaceView(view2);
+      replaceView(node, view2);
       expect(cleanupSpy).toHaveBeenCalledTimes(1);
       expect(mountSpy).toHaveBeenCalledTimes(1);
     });
@@ -298,7 +299,7 @@ describe("ViewNode", () => {
 
       // replaceView with view2 — cleanup clears old mount listeners,
       // view2 re-executes and registers mountSpy2
-      node.replaceView(view2);
+      replaceView(node, view2);
 
       // Unmount and remount — only mountSpy2 should fire, not mountSpy1
       node.unmount();
@@ -324,7 +325,7 @@ describe("ViewNode", () => {
       node.mount(container);
       effectSpy.mockClear();
 
-      node.replaceView(view2);
+      replaceView(node, view2);
       expect(effectSpy).toHaveBeenCalledTimes(1);
     });
 
@@ -346,7 +347,7 @@ describe("ViewNode", () => {
 
       const node = new ViewNode(context, view1, {});
       node.mount(container);
-      node.replaceView(view2 as any);
+      replaceView(node, view2 as any);
 
       expect(seen.map(([name]) => name).sort()).toEqual(["child", "parent"]);
       // As on a first mount, refs are set by the time effects run.
@@ -363,7 +364,7 @@ describe("ViewNode", () => {
       node.mount(container);
       expect(container.querySelectorAll(".pg")).toHaveLength(1);
 
-      node.replaceView(view2);
+      replaceView(node, view2);
 
       const pages = container.querySelectorAll(".pg");
       expect(pages).toHaveLength(1);
@@ -397,7 +398,7 @@ describe("ViewNode", () => {
         return realRemove(child);
       }) as typeof container.removeChild;
 
-      node.replaceView(view2);
+      replaceView(node, view2);
 
       // Restore the real removeChild so the guard's force-remove works.
       container.removeChild = realRemove as typeof container.removeChild;
@@ -421,10 +422,10 @@ describe("ViewNode", () => {
       expect(container.querySelectorAll(".pg")).toHaveLength(1);
 
       // First replacement fails
-      expect(() => node.replaceView(throwingView as any)).toThrow("boom");
+      expect(() => replaceView(node, throwingView as any)).toThrow("boom");
 
       // Second replacement with a working view should succeed
-      node.replaceView(view2);
+      replaceView(node, view2);
       const pages = container.querySelectorAll(".pg");
       expect(pages).toHaveLength(1);
       expect(pages[0].textContent).toBe("v2");
@@ -466,5 +467,34 @@ describe("ViewNode", () => {
 
       stop();
     });
+  });
+});
+
+describe("hot reload tracking", () => {
+  function Foo() {
+    return createMarkup("span", { children: "foo" });
+  }
+  function Bar() {
+    return createMarkup("span", { children: "bar" });
+  }
+
+  test("tracks view instances only once the HMR runtime is loaded", async () => {
+    vi.resetModules();
+    const { ViewNode } = await import("./view.js");
+    const { createContext } = await import("../../context.js");
+
+    // Without the HMR runtime, mounting a view does no tracking work.
+    const untracked = document.createElement("div");
+    new ViewNode(createContext(null), Foo, {}).mount(untracked);
+
+    const hmr = await import("../../hmr.js");
+    hmr.__dolla_apply({ Foo: Bar }, { Foo });
+    expect(untracked.textContent).toBe("foo");
+
+    // Once loaded (the Vite plugin imports it at the top of every module), views mounted afterwards are tracked.
+    const tracked = document.createElement("div");
+    new ViewNode(createContext(null), Foo, {}).mount(tracked);
+    hmr.__dolla_apply({ Foo: Bar }, { Foo });
+    expect(tracked.textContent).toBe("bar");
   });
 });

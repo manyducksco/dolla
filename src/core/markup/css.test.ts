@@ -285,7 +285,6 @@ describe("css.when()", () => {
     expect(result.template).toBe(tpl);
     expect(result.condition).toBe(true);
   });
-
 });
 
 describe("hash collision prevention", () => {
@@ -378,22 +377,36 @@ describe("hash collision prevention", () => {
   test("templates differing only in the number of reactive getters get distinct classNames", () => {
     const a = () => "1px";
     const b = () => "2px";
-    const one = css`margin: ${a}`;
-    const two = css`margin: ${a} ${b}`;
+    const one = css`
+      margin: ${a};
+    `;
+    const two = css`
+      margin: ${a} ${b};
+    `;
     expect(one.className).not.toBe(two.className);
   });
 
   test("templates differing only in reactive getter position get distinct classNames", () => {
     const a = () => "1px";
-    const before = css`margin: ${a} 0`;
-    const after = css`margin: 0 ${a}`;
+    const before = css`
+      margin: ${a} 0;
+    `;
+    const after = css`
+      margin: 0 ${a};
+    `;
     expect(before.className).not.toBe(after.className);
   });
 
   test("a static interpolation does not shift the getter index of an equivalent literal template", () => {
     const width = () => "10px";
-    const interpolated = css`color: ${"red"}; width: ${width};`;
-    const literal = css`color: red; width: ${width};`;
+    const interpolated = css`
+      color: ${"red"};
+      width: ${width};
+    `;
+    const literal = css`
+      color: red;
+      width: ${width};
+    `;
 
     for (const tpl of [literal, interpolated]) {
       const ctx = createContext(null);
@@ -415,8 +428,12 @@ describe("hash collision prevention", () => {
     const [a] = createAtom("1px");
     const [b] = createAtom("2px");
     const build = {
-      one: () => css`padding: ${() => a()}`,
-      two: () => css`padding: ${() => a()} ${() => b()}`,
+      one: () => css`
+        padding: ${() => a()};
+      `,
+      two: () => css`
+        padding: ${() => a()} ${() => b()};
+      `,
     };
     const two = longFirst ? build.two() : undefined;
     const one = build.one();
@@ -440,8 +457,12 @@ describe("hash collision prevention", () => {
 
   test("different static templates whose source strings hash identically get distinct classNames", () => {
     // "Aa" and "BB" have the same 31-multiplier string hash.
-    const tplA = css`content: "Aa";`;
-    const tplB = css`content: "BB";`;
+    const tplA = css`
+      content: "Aa";
+    `;
+    const tplB = css`
+      content: "BB";
+    `;
     expect(tplA.className).not.toBe(tplB.className);
   });
 });
@@ -459,7 +480,12 @@ describe("detaching templates from an element", () => {
     };
 
     const node = new ElementNode(context, "div", {
-      class: () => (on() ? css`color: ${readColor};` : "plain"),
+      class: () =>
+        on()
+          ? css`
+              color: ${readColor};
+            `
+          : "plain",
     });
     node.mount(container);
     const el = container.children[0] as HTMLElement;
@@ -498,7 +524,9 @@ describe("detaching templates from an element", () => {
       class: () => {
         tick();
         // A new template instance with the same className on every run.
-        return css`color: ${() => color()};`;
+        return css`
+          color: ${() => color()};
+        `;
       },
     });
     node.mount(container);
@@ -535,7 +563,14 @@ describe("at-rule extraction", () => {
 
   test("a closing brace inside a string does not end a @keyframes block", () => {
     const tpl = css`
-      @keyframes spin-brace { from { content: "}"; } to { content: "x"; } }
+      @keyframes spin-brace {
+        from {
+          content: "}";
+        }
+        to {
+          content: "x";
+        }
+      }
       color: red;
     `;
     const rules = insertedRules(tpl);
@@ -556,7 +591,11 @@ describe("at-rule extraction", () => {
 
   test("vendor-prefixed @keyframes are extracted", () => {
     const tpl = css`
-      @-webkit-keyframes wk-spin { to { opacity: 0; } }
+      @-webkit-keyframes wk-spin {
+        to {
+          opacity: 0;
+        }
+      }
       color: red;
     `;
     const rules = insertedRules(tpl);
@@ -568,7 +607,11 @@ describe("at-rule extraction", () => {
       color: red;
       @media (min-width: 600px) {
         color: blue;
-        @keyframes grow-media { to { width: 10px; } }
+        @keyframes grow-media {
+          to {
+            width: 10px;
+          }
+        }
       }
     `;
     const rules = insertedRules(tpl);
@@ -717,5 +760,21 @@ describe("per-value class warning", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe("stylesheet registry", () => {
+  test("is created when a template is first attached, not when the module loads", async () => {
+    vi.resetModules();
+    const before = document.adoptedStyleSheets.length;
+
+    const fresh = await import("./css.js");
+    const tpl = fresh.css`color: red;`;
+    expect(document.adoptedStyleSheets.length).toBe(before);
+
+    const element = document.createElement("div");
+    tpl.attach(createContext(null), element);
+    expect(document.adoptedStyleSheets.length).toBe(before + 2);
+    expect(element.classList.contains(tpl.className)).toBe(true);
   });
 });

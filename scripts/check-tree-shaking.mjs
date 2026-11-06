@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { build } from "vite";
@@ -180,6 +181,29 @@ const counter = () => jsx("button", { onClick: () => setCount(getCount() + 1), c
   for (const id of result.modules) {
     if (id.includes("/src/core/markup/")) {
       report(`internals store-inspection app: unexpected rendering module ${id}`);
+    }
+  }
+}
+
+// The published entry must not drag the CSS engine or the HMR runtime into apps that use
+// neither. The checks above bundle from `src`; this one bundles from `dist`, where modules
+// are already grouped into chunks, so an import between core and css shows up here first.
+{
+  const dist = resolve(root, "dist");
+  if (!existsSync(resolve(dist, "index.js"))) {
+    report("minimal app from dist: dist/index.js is missing, run `npm run build` first");
+  } else {
+    const result = await measure(`
+      import { createAtom, createRoot } from ${JSON.stringify(resolve(dist, "index.js"))};
+      import { jsx } from ${JSON.stringify(resolve(dist, "jsx-runtime.js"))};
+      ${counter}
+      createRoot(document.body, () => jsx("main", { children: [counter()] }));
+    `);
+    expectGzipBelow(result, 9.5 * KB, "minimal app from dist");
+    for (const needle of ["adoptedStyleSheets", "CSSStyleSheet", "replaceView"]) {
+      if (result.text.includes(needle)) {
+        report(`minimal app from dist: contains ${needle}`);
+      }
     }
   }
 }

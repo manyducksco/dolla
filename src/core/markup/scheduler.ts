@@ -5,6 +5,8 @@ import { DEBUG } from "../symbols.js";
 export interface UpdateMeta {
   label?: string;
   context?: Context;
+  /** Whether `context` belongs to a debug root. Cached by `isMeasured` on first use. */
+  debug?: boolean;
 }
 
 // Updates scheduled during a flush go into a new map, processed in the next wave.
@@ -30,7 +32,9 @@ export function setUpdateStats(enabled: boolean): void {
 
 function isMeasured(meta: UpdateMeta | undefined): boolean {
   if (collectUpdateStats) return true;
-  return Boolean(meta?.context?.[DEBUG]);
+  if (meta === undefined) return false;
+  // A root's debug setting never changes, so the lookup up the context chain is done once per meta.
+  return (meta.debug ??= Boolean(meta.context?.[DEBUG]));
 }
 
 /**

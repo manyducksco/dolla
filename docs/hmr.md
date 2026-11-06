@@ -60,7 +60,7 @@ export const fieldControl = css`
 
 The plugin rewrites the template to `__dolla_css("<file>:fieldControl")` followed by the same template literal. Every version of the template is the same object, and its class name comes from the module and the variable name, not its contents. Reactive values in the template are rebound on elements it's attached to.
 
-This only applies when the tagged template is the whole initializer of a top-level `const` or `let`, and `css` is imported from `@manyducks.co/dolla` (an alias like `css as style` works too). Templates inside views already update because the view runs again. Expressions such as `` css`...`.when(on) `` or `` on ? css`...` : null `` are left alone, so modules that import them keep the old version until they reload.
+This only applies when the tagged template is the whole initializer of a top-level `const` or `let`, and `css` is imported from `@manyducks.co/dolla` (an alias like `css as style` works too). Templates inside views already update because the view runs again. Expressions such as ``css`...`.when(on)`` or ``on ? css`...` : null`` are left alone, so modules that import them keep the old version until they reload.
 
 ## Import cycles
 
@@ -100,7 +100,11 @@ import {
 - `__dolla_store(id, store)` gives a store function the same store identity as the wrapper for `id`, and returns it. Use it on store arguments (`getStore(c, __dolla_store(id, AuthStore))`) when a function can be used as a store before `__dolla_export` has wrapped it.
 - `registerViewInstance(view, node)` registers a mounted `ViewNode` so it can be replaced.
 - `unregisterViewInstance(view, node)` removes the registration on unmount.
+
+Importing the `hmr` entry installs these two as hooks on `ViewNode`, so views mounted after the import are tracked automatically. Import it before mounting anything. A production build that never imports it does no tracking work at all.
+
 - `__dolla_apply(newModule, exports)` applies the updated view exports to matching instances.
+- `replaceView(node, view)` re-renders one registered `ViewNode` with a new view function in place. `__dolla_apply` calls it for every instance it finds.
 
 ## Limitations
 

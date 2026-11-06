@@ -9,6 +9,7 @@ import {
   unregisterViewInstance,
 } from "./hmr.js";
 import { css, isCSSTemplate } from "./markup/css.js";
+import { ViewNode } from "./markup/nodes/view.js";
 import { flushPendingUpdates } from "./markup/scheduler.js";
 import { createAtom } from "./signals.js";
 
@@ -19,17 +20,16 @@ function makeView(name: string) {
   }) as any;
 }
 
-function makeMockNode(opts: { mounted?: boolean; root?: Element | null } = {}) {
-  const calls: string[] = [];
-  const mounted = opts.mounted ?? true;
-  return {
-    calls,
-    replaceView(newView: any) {
-      calls.push(newView());
-    },
-    isMounted: () => mounted,
-    getRoot: () => opts.root ?? null,
-  } as any;
+/**
+ * A real `ViewNode` for `view`. Mounting registers it with the HMR runtime; an
+ * unmounted node is registered by hand, as the Vite plugin's wrapper would.
+ */
+function makeNode(view: any, opts: { mounted?: boolean; props?: any } = {}) {
+  const node = new ViewNode(createContext(null), view, opts.props ?? {});
+  const container = document.createElement("div");
+  if (opts.mounted ?? true) node.mount(container);
+  else registerViewInstance(view, node);
+  return { node, container };
 }
 
 describe("HMR __dolla_export", () => {
@@ -85,7 +85,10 @@ describe("HMR __dolla_store", () => {
 
   test("a reloaded function used before its module wraps it still finds existing instances", () => {
     const id = `/test/${viewCounter++}.ts:AuthStore`;
-    const live = __dolla_export(id, __dolla_store(id, () => ({ version: 1 }))) as any;
+    const live = __dolla_export(
+      id,
+      __dolla_store(id, () => ({ version: 1 })),
+    ) as any;
     const oldRoot = createContext(null);
     const oldStore = addStore(oldRoot, live);
 
@@ -103,80 +106,74 @@ describe("HMR __dolla_store", () => {
 describe("HMR __dolla_apply", () => {
   test("replaces all instances of the same view", () => {
     const view = makeView("Foo");
-    const a = makeMockNode();
-    const b = makeMockNode();
-    const c = makeMockNode();
-    registerViewInstance(view, a as any);
-    registerViewInstance(view, b as any);
-    registerViewInstance(view, c as any);
+    const nodes = [makeNode(view), makeNode(view), makeNode(view)];
+    expect(nodes.map((n) => n.container.textContent)).toEqual(["Foo", "Foo", "Foo"]);
 
-    const newView = makeView("Foo");
+    const newView = makeView("Bar");
     __dolla_apply({ Foo: newView }, { Foo: view });
 
-    expect(a.calls).toEqual(["Foo"]);
-    expect(b.calls).toEqual(["Foo"]);
-    expect(c.calls).toEqual(["Foo"]);
+    expect(nodes.map((n) => n.container.textContent)).toEqual(["Bar", "Bar", "Bar"]);
   });
 
   test("survives a replaceView that throws", () => {
     const view = makeView("Foo");
-    const a = makeMockNode();
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const b = makeMockNode();
-    (a as any).replaceView = () => {
-      throw new Error("boom");
-    };
-    registerViewInstance(view, a as any);
-    registerViewInstance(view, b as any);
-
-    const newView = makeView("Foo");
+    // The new view throws for `a` only, so replacing `a` fails and `b` must still be replaced.
+    const a = makeNode(view, { props: { fail: true } });
+    const b = makeNode(view);
+    const newView = __dolla_export(`/test/${viewCounter++}.tsx:Foo`, function (props: any) {
+      if (props.fail) throw new Error("boom");
+      return "Bar";
+    }) as any;
     __dolla_apply({ Foo: newView }, { Foo: view });
 
-    expect(b.calls).toEqual(["Foo"]);
+    expect(a.container.textContent).toBe("");
+    expect(b.container.textContent).toBe("Bar");
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
   test("handles repeated keys without double-replacing the same instance", () => {
     const view = makeView("Foo");
-    const a = makeMockNode();
-    registerViewInstance(view, a as any);
+    const a = makeNode(view);
 
-    const newView = makeView("Foo");
+    let renders = 0;
+    const newView = __dolla_export(`/test/${viewCounter++}.tsx:Foo`, function () {
+      renders++;
+      return "Bar";
+    }) as any;
     // Simulate a file that has both `Foo` and `default: Foo` in the HMR callback.
     __dolla_apply({ Foo: newView, "default: Foo": newView }, { Foo: view, "default: Foo": view });
 
-    expect(a.calls).toEqual(["Foo"]);
+    expect(a.container.textContent).toBe("Bar");
+    expect(renders).toBe(1);
   });
 
   test("skips non-function exports", () => {
     const view = makeView("Foo");
-    const a = makeMockNode();
-    registerViewInstance(view, a as any);
+    const a = makeNode(view);
 
-    const newView = makeView("Foo");
+    const newView = makeView("Bar");
     const method: any = () => "x";
     // Should not throw even with a non-function export mixed in.
     __dolla_apply({ Foo: newView, Constant: 42, Method: method }, { Foo: view, Constant: 42, Method: method } as any);
 
-    expect(a.calls).toEqual(["Foo"]);
+    expect(a.container.textContent).toBe("Bar");
   });
 
   test("unregisterViewInstance removes the node from the active set", () => {
     const view = makeView("Foo");
-    const a = makeMockNode();
-    const b = makeMockNode();
-    registerViewInstance(view, a as any);
-    registerViewInstance(view, b as any);
+    const a = makeNode(view);
+    const b = makeNode(view);
 
-    unregisterViewInstance(view, a as any);
+    unregisterViewInstance(view, a.node);
 
-    const newView = makeView("Foo");
+    const newView = makeView("Bar");
     __dolla_apply({ Foo: newView }, { Foo: view });
 
-    expect(a.calls).toEqual([]);
-    expect(b.calls).toEqual(["Foo"]);
+    expect(a.container.textContent).toBe("Foo");
+    expect(b.container.textContent).toBe("Bar");
   });
 
   test("returns the same proxy on repeat __dolla_export with the same id", () => {
@@ -193,7 +190,7 @@ describe("HMR __dolla_apply", () => {
 
   test("logs file path and total elapsed time in the group header", () => {
     const view = makeView("Foo");
-    registerViewInstance(view, makeMockNode());
+    makeNode(view);
     const newView = makeView("Foo");
 
     const groupSpy = vi.spyOn(console, "groupCollapsed").mockImplementation(() => {});
@@ -214,7 +211,7 @@ describe("HMR __dolla_apply", () => {
     const view = __dolla_export(id, function OldFoo() {
       return "x";
     }) as any;
-    registerViewInstance(view, makeMockNode({ mounted: false }));
+    makeNode(view, { mounted: false });
 
     const newView = function NewFoo() {
       return "x";
@@ -240,7 +237,7 @@ describe("HMR __dolla_apply", () => {
     const view = __dolla_export(id, function Foo() {
       return "x";
     }) as any;
-    registerViewInstance(view, makeMockNode({ mounted: false }));
+    makeNode(view, { mounted: false });
 
     const newView = function Foo() {
       return "y";
@@ -263,8 +260,8 @@ describe("HMR __dolla_apply", () => {
     const view = __dolla_export(id, function Foo() {
       return "x";
     }) as any;
-    registerViewInstance(view, makeMockNode({ mounted: false }));
-    registerViewInstance(view, makeMockNode({ mounted: false }));
+    makeNode(view, { mounted: false });
+    makeNode(view, { mounted: false });
 
     const newView = function Foo() {
       return "y";
@@ -335,7 +332,9 @@ describe("HMR __dolla_css", () => {
 
   test("does not share a class with an identical template", () => {
     const hot = __dolla_css(nextId())`text-align: justify;`;
-    const plain = css`text-align: justify;`;
+    const plain = css`
+      text-align: justify;
+    `;
     expect(hot.className).not.toBe(plain.className);
   });
 
@@ -344,7 +343,9 @@ describe("HMR __dolla_css", () => {
     const tpl = __dolla_css(id)`color: red;`;
     const { el } = attached(tpl);
     // A later template whose rule must keep coming after the hot one in the cascade.
-    const later = css`outline-color: ${"#" + cssCounter};`;
+    const later = css`
+      outline-color: ${"#" + cssCounter};
+    `;
     attached(later);
 
     __dolla_css(id)`color: blue;`;
