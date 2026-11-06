@@ -73,7 +73,7 @@ describe("dollaPlugin — HMR injection", () => {
   test("registers `export async function` for HMR and live bindings", () => {
     const code = `export async function Loader() { return null; }\n`;
     const result = runTransform(code, "/abs/file.tsx");
-    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ Loader \}\)/);
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ Loader \}, import\.meta\.hot\)/);
     expect(result!.code).toContain("\nasync function Loader()");
     expect(result!.code).toContain(`Loader = __dolla_export("/abs/file.tsx:Loader", Loader);`);
     expect(result!.code).toContain("export { Loader };");
@@ -82,7 +82,7 @@ describe("dollaPlugin — HMR injection", () => {
   test("registers `export default async function Name` for HMR", () => {
     const code = `export default async function Page() { return null; }\n`;
     const result = runTransform(code, "/abs/file.tsx");
-    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}, import\.meta\.hot\)/);
   });
 
   test("source map names the source file and includes its content", () => {
@@ -124,6 +124,11 @@ describe("dollaPlugin — HMR injection", () => {
     expect(out).toMatch(/import .*__dolla_export.*from "@manyducks\.co\/dolla\/hmr"/);
     // The module's own accept call is the only one.
     expect(out.match(/import\.meta\.hot\.accept\(/g)).toHaveLength(1);
+  });
+
+  test("passes the hot context to __dolla_apply so changed constants can invalidate importers", () => {
+    const out = runTransform(`export const API_URL = "/v1";\nexport function View() {}\n`, "/abs/x.js")!.code;
+    expect(out).toContain("__dolla_apply(newModule, { View, API_URL }, import.meta.hot);");
   });
 
   test("an accept call in a comment doesn't stop the module becoming a boundary", () => {
@@ -487,7 +492,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
     expect(result!.code).toContain("\nfunction Page()");
     expect(result!.code).toContain(`Page = __dolla_export("${id}:default", Page);`);
     expect(result!.code).toContain("export { Page as default };");
-    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: Page \}, import\.meta\.hot\)/);
   });
 
   test("a named default export keeps its identity across reloads", () => {
@@ -504,7 +509,7 @@ describe("dollaPlugin — live bindings for const and default exports", () => {
   test("an anonymous default export function keeps its identity across reloads", () => {
     const id = uniqueId();
     const result = runTransform(`export default function () { return 1; }\n`, id);
-    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}\)/);
+    expect(result!.code).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}, import\.meta\.hot\)/);
 
     const [v1, v2] = reload(id, `export default function () { return 1; }\n`, `export default function () { return 2; }\n`);
     expect(v2.default).toBe(v1.default);
@@ -769,7 +774,7 @@ describe("dollaPlugin — more export shapes", () => {
       expect(typeof v1.default).toBe("function");
       expect(v2.default).toBe(v1.default);
       expect(await v1.default({})).toBe(2);
-      expect(transform(version(1), id)).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}\)/);
+      expect(transform(version(1), id)).toMatch(/__dolla_apply\(newModule, \{ default: __dolla_default \}, import\.meta\.hot\)/);
     });
 
     test.each([
@@ -791,7 +796,7 @@ describe("dollaPlugin — more export shapes", () => {
       const id = uniqueId();
       const out = transform(version(1), id);
       expect(out).toContain(`Page = __dolla_export("${id}:default", Page)`);
-      expect(out).toMatch(/__dolla_apply\(newModule, \{ default: Page \}\)/);
+      expect(out).toMatch(/__dolla_apply\(newModule, \{ default: Page \}, import\.meta\.hot\)/);
       const [v1, v2] = reload(id, version(1), version(2));
       expect(v2.default).toBe(v1.default);
       expect(v1.default()).toBe(2);
@@ -827,7 +832,7 @@ describe("dollaPlugin — more export shapes", () => {
       const out = transform(version(1), id);
       expect(out).toContain(`A = __dolla_export("${id}:A", A)`);
       expect(out).toContain(`B = __dolla_export("${id}:B", B)`);
-      expect(out).toMatch(/__dolla_apply\(newModule, \{ A, B \}\)/);
+      expect(out).toMatch(/__dolla_apply\(newModule, \{ A, B \}, import\.meta\.hot\)/);
       const [v1, v2] = reload(id, version(1), version(2));
       expect(v2.A).toBe(v1.A);
       expect(v2.B).toBe(v1.B);
@@ -840,7 +845,7 @@ describe("dollaPlugin — more export shapes", () => {
       const version = (n: number) => `function A() { return ${n}; }\nexport { A as Alpha };\n`;
       const out = transform(version(1), id);
       expect(out).toContain(`A = __dolla_export("${id}:Alpha", A)`);
-      expect(out).toMatch(/__dolla_apply\(newModule, \{ Alpha: A \}\)/);
+      expect(out).toMatch(/__dolla_apply\(newModule, \{ Alpha: A \}, import\.meta\.hot\)/);
       const [v1, v2] = reload(id, version(1), version(2));
       expect(v2.Alpha).toBe(v1.Alpha);
       expect(v1.Alpha()).toBe(2);

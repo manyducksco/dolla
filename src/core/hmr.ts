@@ -208,7 +208,42 @@ function pathFromId(id: string | undefined): string {
   return idx === -1 ? id : id.slice(0, idx);
 }
 
-export function __dolla_apply(newModule: Record<string, any>, exports: Record<string, View<any>>) {
+/** The part of Vite's `import.meta.hot` that `__dolla_apply` uses. */
+type HotContext = { invalidate(message?: string): void };
+
+/**
+ * Applies a hot update of a module: re-renders the mounted instances of its views, and
+ * if an exported value changed, invalidates the module so the update reaches its importers.
+ *
+ * `exports` holds the old module's exports (captured by its accept callback) and `newModule`
+ * is the updated one. `hot` is the old module's `import.meta.hot`.
+ */
+/**
+ * Returns true if an exported value changed between versions of a module. Functions are
+ * left to their wrappers, and values that can't be compared reliably (class instances,
+ * maps, hot css templates, which are the same object anyway) count as unchanged.
+ */
+function exportChanged(oldValue: unknown, newValue: unknown): boolean {
+  if (typeof oldValue === "function" || typeof newValue === "function") return false;
+  if (Object.is(oldValue, newValue)) return false;
+  if (oldValue === null || newValue === null || typeof oldValue !== "object" || typeof newValue !== "object") {
+    return true;
+  }
+  if (!isPlainData(oldValue) || !isPlainData(newValue)) return false;
+  try {
+    return JSON.stringify(oldValue) !== JSON.stringify(newValue);
+  } catch {
+    return false;
+  }
+}
+
+function isPlainData(value: object): boolean {
+  if (Array.isArray(value)) return true;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+export function __dolla_apply(newModule: Record<string, any>, exports: Record<string, View<any>>, hot?: HotContext) {
   // Vite passes `undefined` when importing the updated module failed. It reports that error itself.
   if (newModule == null || typeof newModule !== "object") return;
 
@@ -274,6 +309,17 @@ export function __dolla_apply(newModule: Record<string, any>, exports: Record<st
       count,
       elapsedMs: performance.now() - tExport,
     });
+  }
+
+  // Every module accepts its own updates, so importers keep the values they imported. If an
+  // exported value changed, let Vite pass the update on to them, and say why.
+  if (hot) {
+    for (const key of Object.keys(exports)) {
+      if (exportChanged(exports[key], newModule[key])) {
+        hot.invalidate(`export ${key} changed`);
+        break;
+      }
+    }
   }
 
   if (summary.length === 0 && unmounted.length === 0) return;

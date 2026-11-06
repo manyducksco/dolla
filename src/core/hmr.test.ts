@@ -381,6 +381,62 @@ describe("HMR __dolla_apply", () => {
   });
 });
 
+describe("HMR __dolla_apply with changed exports", () => {
+  const makeHot = () => ({ invalidate: vi.fn() });
+
+  test("invalidates when a string constant changes, naming the export", () => {
+    const hot = makeHot();
+    __dolla_apply({ API_URL: "/v2" }, { API_URL: "/v1" } as any, hot);
+    expect(hot.invalidate).toHaveBeenCalledTimes(1);
+    expect(hot.invalidate.mock.calls[0][0]).toContain("API_URL");
+  });
+
+  test("invalidates when a plain object or array changes", () => {
+    const hot = makeHot();
+    __dolla_apply({ config: { a: 2 } }, { config: { a: 1 } } as any, hot);
+    __dolla_apply({ list: [1, 2] }, { list: [1] } as any, hot);
+    expect(hot.invalidate).toHaveBeenCalledTimes(2);
+  });
+
+  test("invalidates once for several changed exports", () => {
+    const hot = makeHot();
+    __dolla_apply({ a: 2, b: 2 }, { a: 1, b: 1 } as any, hot);
+    expect(hot.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  test("doesn't invalidate for an unchanged object or primitive", () => {
+    const hot = makeHot();
+    __dolla_apply({ config: { a: 1 }, n: 1, s: "x", nan: NaN }, { config: { a: 1 }, n: 1, s: "x", nan: NaN } as any, hot);
+    expect(hot.invalidate).not.toHaveBeenCalled();
+  });
+
+  test("doesn't invalidate a module that exports only views and hot css", () => {
+    const hot = makeHot();
+    const view = makeView("Foo");
+    const id = `/test/${viewCounter++}.tsx:styles`;
+    const oldStyles = __dolla_css(id)`color: red;`;
+    const newStyles = __dolla_css(id)`color: blue;`;
+    __dolla_apply({ Foo: view, styles: newStyles }, { Foo: view, styles: oldStyles } as any, hot);
+    expect(hot.invalidate).not.toHaveBeenCalled();
+  });
+
+  test("skips values it can't compare", () => {
+    const hot = makeHot();
+    const circular: any = {};
+    circular.self = circular;
+    __dolla_apply(
+      { map: new Map([[1, 2]]), date: new Date(1), circular: { ...circular } },
+      { map: new Map(), date: new Date(0), circular } as any,
+      hot,
+    );
+    expect(hot.invalidate).not.toHaveBeenCalled();
+  });
+
+  test("tolerates a missing hot context", () => {
+    expect(() => __dolla_apply({ n: 2 }, { n: 1 } as any)).not.toThrow();
+  });
+});
+
 describe("HMR replaceView", () => {
   let storeCounter = 0;
   /** A store that counts its effect runs, mounts, cleanups and instances. */

@@ -62,13 +62,25 @@ The plugin rewrites the template to `__dolla_css("<file>:fieldControl")` followe
 
 This only applies when the tagged template is the whole initializer of a top-level `const` or `let`, and `css` is imported from `@manyducks.co/dolla` (an alias like `css as style` works too). Templates inside views already update because the view runs again. Expressions such as ``css`...`.when(on)`` or ``on ? css`...` : null`` are left alone, so modules that import them keep the old version until they reload.
 
+## Changed values
+
+Every module accepts its own hot updates, so editing one doesn't re-run the modules that import it. Functions update in place through their wrappers, but an importer still holds the old value of anything else it imported. So when an update changes an exported value, the plugin invalidates the module and Vite passes the update on to its importers, which run again with the new value. The terminal says which export changed:
+
+```text
+[vite] (client) hmr invalidate /src/config.ts export API_URL changed
+```
+
+Strings, numbers and other primitives are compared directly, and plain objects and arrays by their JSON. Other values, such as class instances, maps and `css` templates, never invalidate.
+
+Importers that run again are replaced like any other updated module: their views re-render in place and lose their local state. If the chain of importers reaches the module that calls `createRoot`, the app mounts again and its state is lost. That usually means the module is in an import cycle with the entry (see below).
+
 ## Import cycles
 
 When you edit a module, Vite gives every module that imports it a new URL, and the edited module imports again whichever of those it imports itself. So a hot update re-runs every module that's in an import cycle with the edited one. If the module that calls `createRoot` is in the cycle, each edit runs it again and mounts the app a second time.
 
 The Vite plugin warns in the terminal when an edit does this, once per cycle, and shows the chain:
 
-```
+```text
 [dolla:hmr] Editing src/pages/Workspace.tsx re-runs src/app.tsx, which creates the app root, because they import each other:
   src/pages/Workspace.tsx
   -> src/stores/auth.ts
@@ -103,7 +115,7 @@ import {
 
 Importing the `hmr` entry installs these two as hooks on `ViewNode`, so views mounted after the import are tracked automatically. Import it before mounting anything. A production build that never imports it does no tracking work at all.
 
-- `__dolla_apply(newModule, exports)` applies the updated view exports to matching instances.
+- `__dolla_apply(newModule, exports, hot)` applies the updated view exports to matching instances. `exports` holds the old module's exports. If `hot` (the old module's `import.meta.hot`) is passed and an exported value changed, it calls `hot.invalidate()`.
 - `replaceView(node, view)` re-renders one registered `ViewNode` with a new view function in place. `__dolla_apply` calls it for every instance it finds.
 
 ## Limitations
@@ -111,4 +123,4 @@ Importing the `hmr` entry installs these two as hooks on `ViewNode`, so views mo
 - State local to a replaced view is lost. Move state you want to survive into a store or a context outside the replaced view.
 - A full page reload discards all application state, as expected.
 - HMR only applies to view modules and top-level `css` templates; changes to stores, utility modules, or global CSS may trigger a full reload depending on your bundler setup.
-- Other exported values, such as constants and config objects, are not updated in modules that import them.
+- A changed constant or config object reaches importers by running them again (see [Changed values](#changed-values)), so views in those modules lose their local state.

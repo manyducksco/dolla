@@ -1134,7 +1134,7 @@ export default function dollaPlugin() {
         );
         s.appendLeft(
           0,
-          `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }); }); }\n`,
+          `if (import.meta.hot) { import.meta.hot.accept((newModule) => { __dolla_apply(newModule, { ${entries.join(", ")} }, import.meta.hot); }); }\n`,
         );
         usesHelpers = true;
       }
