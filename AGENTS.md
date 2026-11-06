@@ -26,7 +26,10 @@ npx vitest run path/to/file.test.ts -t "name" # run matching tests
 npx vitest run                                # full suite
 npx tsc --noEmit -p .                         # typecheck
 npm run build && npm run bundle:check         # bundle size and tree-shaking budgets
+npm run test:e2e                              # HMR browser tests (builds and packs dolla first)
 ```
+
+Run `test:e2e` after changes to `vite-plugin.js` or `src/core/hmr.ts`. Each test writes a small app under `e2e/.work/`, installs the packed package into it, runs it on a Vite dev server in headless Chromium, edits its files and checks the page. Add a test to `e2e/hmr/hmr.spec.ts` for HMR behavior that unit tests can't show, such as what Vite does with the plugin's output. To see how another version behaves, point the tests at its checkout with `DOLLA_E2E_SOURCE=<path> npm run test:e2e`. The first run on a machine may need `npx playwright install chromium`.
 
 Run `bundle:check` after changes to `src/core`. It enforces gzip size budgets and runs before publishing. If a change goes over budget, report it rather than raising the budget yourself.
 

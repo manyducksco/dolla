@@ -7,3 +7,4 @@ coverage/
 tsconfig.tsbuildinfo
 esbuild-meta.json
 *.code-workspace
+e2e/.work/

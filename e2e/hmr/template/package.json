@@ -1,0 +1,8 @@
+{
+  "name": "dolla-hmr-e2e-app",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@manyducks.co/dolla": "*"
+  }
+}

@@ -8,6 +8,7 @@
   },
   "main": "dist/index.js",
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/node": "^25.6.0",
     "happy-dom": "^20.9.0",
     "prettier": "^3.8.3",
@@ -90,7 +91,8 @@
     "docs:check": "node scripts/check-docs.mjs",
     "bundle:check": "node scripts/check-tree-shaking.mjs",
     "start": "tsc --watch",
-    "prepublishOnly": "NODE_ENV=production npm run build && npm run bundle:check"
+    "prepublishOnly": "NODE_ENV=production npm run build && npm run bundle:check",
+    "test:e2e": "playwright test -c e2e"
   },
   "sideEffects": false,
   "type": "module",
