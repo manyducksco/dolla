@@ -111,9 +111,18 @@ describe("dollaPlugin — HMR injection", () => {
   });
 
   test("pre-bundles the HMR runtime so the first dev start doesn't reload", () => {
-    const config = (dollaPlugin() as any).config();
+    const config = (dollaPlugin() as any).config({});
     expect(config).toEqual({ optimizeDeps: { include: ["@manyducks.co/dolla/hmr"] } });
   });
+
+  test.each([["@manyducks.co/dolla"], ["@manyducks.co/dolla/hmr"]])(
+    "doesn't pre-bundle the HMR runtime when the app excludes %s",
+    (excluded) => {
+      // Pre-bundling it anyway would load a second copy of dolla next to the one the app uses.
+      const config = (dollaPlugin() as any).config({ optimizeDeps: { exclude: [excluded] } });
+      expect(config?.optimizeDeps?.include ?? []).not.toContain("@manyducks.co/dolla/hmr");
+    },
+  );
 
   test("imports the HMR helpers in a module that has its own accept call", () => {
     const out = runTransform(

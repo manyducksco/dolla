@@ -1057,7 +1057,12 @@ export default function dollaPlugin() {
     // Everything the plugin adds is for HMR, which a production build doesn't have. Vitest also
     // runs a dev server, in `test` mode, where wrapping every exported function only gets in the way.
     apply: (_config, env) => env.command === "serve" && env.mode !== "test",
-    config() {
+    config(config) {
+      // An app that excludes dolla from pre-bundling (`@manyducks.co/dolla` also excludes its
+      // subpaths) loads it as is. Pre-bundling the HMR runtime there would give it a copy of
+      // dolla of its own, which never sees the app's views.
+      const excluded = config.optimizeDeps?.exclude ?? [];
+      if (excluded.some((name) => HMR_MODULE === name || HMR_MODULE.startsWith(`${name}/`))) return;
       // The import of the HMR runtime is added by `transform`, which Vite's dependency scanner
       // doesn't run. Without this the first dev start finds it late and reloads the page.
       return { optimizeDeps: { include: [HMR_MODULE] } };
