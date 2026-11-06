@@ -19,7 +19,29 @@ export default defineConfig({
 
 The Vite plugin auto-injects HMR registration into exported view functions. When a module updates, active component instances receive the new view function and their DOM subtree is replaced in place. State inside those views is discarded.
 
-The plugin only runs on the dev server. Production builds are left untouched.
+The plugin only runs on the dev server. Production builds and Vitest runs are left untouched.
+
+## Views
+
+Views are replaced in place when they're exported in any of these forms:
+
+```js
+export function Home() {}
+export const Home = () => {};
+export default function Home() {}
+export default () => {};
+export default Home; // Home is a function declared in the module
+export { Home, Settings as SettingsPage };
+```
+
+Each export is wrapped in a stable function that calls the latest version of the view. The wrapper is assigned before other code in the module can capture the view, so views that a sibling export holds on to update too:
+
+```js
+export function Home() {}
+export const routes = [{ path: "/", view: Home }];
+```
+
+A view created by a function call (`export const Home = makeView()`) isn't wrapped. Its mounted instances are still replaced, but modules that import it keep rendering the old version until they reload.
 
 ## Stores
 
@@ -32,6 +54,8 @@ export function AuthStore(props, c) {}
 export const AuthStore = (props, c) => {};
 export const AuthStore = function (props, c) {};
 export default function AuthStore(props, c) {}
+export default AuthStore;
+export { AuthStore };
 ```
 
 A store kept private behind helpers keeps working too:
@@ -44,7 +68,16 @@ export const getAuth = (c) => getStore(c, AuthStore);
 
 When a module passes a function it declares to `addStore`, `getStore`, `hasStore` or `hasOwnStore` by name, the plugin tags that argument with the store's HMR id, so every version of the function shares one identity. This also covers import cycles, where a reloaded module's helpers can be called before the module has finished evaluating.
 
-Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`), stores exported in a separate statement (`export { AuthStore }`), and stores passed to dolla through another variable.
+Other stores get a new identity when their module reloads, and a fresh instance is created the next time a provider calls `addStore`. Until then, looking up the old instance with the new function fails. This covers stores created by a function call (`export const AuthStore = makeStore()`) and stores passed to dolla through another variable.
+
+Editing a store's module doesn't change instances that are already running. They keep the code they were created with until their provider mounts again, and new instances use the new code. The console lists stores (and other wrapped exports) that were reloaded without any mounted views:
+
+```text
+[dolla:hmr] hot reload: 0 view instances across 0 exports in 0.12ms
+  AuthStore (/src/stores/auth.ts): no mounted views; running instances keep the old code until they remount
+```
+
+When a view that provides a store hot-reloads, the store instance is kept, with its state, effects and lifecycle hooks intact. If the new version of the view no longer adds the store, the store is cleaned up.
 
 ## CSS templates
 
@@ -73,6 +106,20 @@ Every module accepts its own hot updates, so editing one doesn't re-run the modu
 Strings, numbers and other primitives are compared directly, and plain objects and arrays by their JSON. Other values, such as class instances, maps and `css` templates, never invalidate.
 
 Importers that run again are replaced like any other updated module: their views re-render in place and lose their local state. If the chain of importers reaches the module that calls `createRoot`, the app mounts again and its state is lost. That usually means the module is in an import cycle with the entry (see below).
+
+## Styled components
+
+A styled component from `@manyducks.co/dolla/styled` declared as the whole initializer of a top-level `const` keeps its identity across reloads, like a view:
+
+```js
+import { styled } from "@manyducks.co/dolla/styled";
+
+export const Button = styled.button`
+  color: var(--theme-accent);
+`;
+```
+
+Modules that import `Button` keep using the same component, mounted buttons are re-rendered with the new styles, and newly mounted ones use them too.
 
 ## Import cycles
 
@@ -122,5 +169,6 @@ Importing the `hmr` entry installs these two as hooks on `ViewNode`, so views mo
 
 - State local to a replaced view is lost. Move state you want to survive into a store or a context outside the replaced view.
 - A full page reload discards all application state, as expected.
-- HMR only applies to view modules and top-level `css` templates; changes to stores, utility modules, or global CSS may trigger a full reload depending on your bundler setup.
+- Exported utility functions update in place through their wrappers, so callers run the new code on their next call.
+- Running store instances keep their old code until their provider mounts again (see [Stores](#stores)).
 - A changed constant or config object reaches importers by running them again (see [Changed values](#changed-values)), so views in those modules lose their local state.
