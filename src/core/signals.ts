@@ -10,6 +10,9 @@ export interface ReactiveNode {
   _subsTail?: Link;
   _flags: ReactiveFlags;
   // Debug info, read only when an error is reported. See `setNodeDebug`.
+  // Effects and computed values are created with all three set to `undefined`,
+  // so that filling them in later doesn't give nodes of one kind different
+  // hidden classes. That would slow down every property read during propagation.
   _debugName?: string;
   _debugContext?: Context;
   _debugStack?: string;
@@ -782,6 +785,9 @@ export function createAtom<T>(value?: T, options?: { name?: string }) {
       _depsTail: undefined,
       _flags: ReactiveFlags.None,
       _getter: value as (previousValue?: T | undefined) => T,
+      _debugName: undefined,
+      _debugContext: undefined,
+      _debugStack: undefined,
     };
     setNodeDebug(node, options?.name);
     return [() => computedGetter(node), (next: T) => computedSetter(node, next)];
@@ -833,6 +839,9 @@ export function compose<T>(
     _depsTail: undefined,
     _flags: ReactiveFlags.None,
     _getter: getter,
+    _debugName: undefined,
+    _debugContext: undefined,
+    _debugStack: undefined,
   };
   setNodeDebug(node, options?.name);
   return () => computedGetter(node);
@@ -851,6 +860,9 @@ export function createEffect(fn: () => void, options?: { name?: string; context?
     _deps: undefined,
     _depsTail: undefined,
     _flags: ReactiveFlags.Watching | ReactiveFlags.RecursedCheck,
+    _debugName: undefined,
+    _debugContext: undefined,
+    _debugStack: undefined,
   };
   setNodeDebug(e, options?.name, options?.context);
   const prevSub = setActiveSub(e);
