@@ -36,7 +36,8 @@ export function createContext<State extends GenericState>(
  * This is a plain boolean read and is not reactive.
  */
 export function isMounted(context: Context): boolean {
-  return Object.hasOwn(context, MOUNTED);
+  // Only its own flag counts. A context also inherits its parent's.
+  return Object.hasOwn(context, MOUNTED) && context[MOUNTED] === true;
 }
 
 export function mountContext(context: Context) {
@@ -52,7 +53,8 @@ export function cleanupContext(context: Context) {
 
   if (!isMounted(context)) return;
 
-  delete context[MOUNTED];
+  // Set to false rather than deleted, because deleting a property slows down later access to the object.
+  context[MOUNTED] = false;
   _callListeners(context, CLEANUP_LISTENERS, "unmount");
 }
 

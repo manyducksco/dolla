@@ -127,9 +127,16 @@ export function runSafely(fn: () => void, info: SignalErrorInfo): void {
   try {
     fn();
   } catch (error) {
-    const signalError = toSignalError(error, info);
-    reportSignalError(signalError, info.context);
+    reportCaught(error, info);
   }
+}
+
+/**
+ * Reports an error that was caught around a user callback. For loops that
+ * can't afford a closure per call to `runSafely`.
+ */
+export function reportCaught(error: unknown, info: SignalErrorInfo): void {
+  reportSignalError(toSignalError(error, info), info.context);
 }
 
 function defaultReport(error: SignalError): void {

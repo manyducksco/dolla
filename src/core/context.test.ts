@@ -44,6 +44,50 @@ test("lifecycle", () => {
   expect(cleanupSpy).toHaveBeenCalledTimes(1);
 });
 
+test("a context is mounted only by its own lifecycle", () => {
+  const parent = createContext(null);
+  const child = createContext(parent);
+  const onParentMount = vi.fn();
+  const onChildMount = vi.fn();
+  const onChildCleanup = vi.fn();
+
+  // A mounted parent doesn't make its children mounted.
+  mountContext(parent);
+  expect(isMounted(child)).toBe(false);
+
+  onMount(child, onChildMount);
+  onCleanup(child, onChildCleanup);
+  mountContext(child);
+  expect(isMounted(child)).toBe(true);
+  expect(onChildMount).toHaveBeenCalledTimes(1);
+
+  // Nor does cleaning a child up affect its parent.
+  cleanupContext(child);
+  expect(isMounted(child)).toBe(false);
+  expect(isMounted(parent)).toBe(true);
+  expect(onChildCleanup).toHaveBeenCalledTimes(1);
+
+  // Cleaning up again does nothing.
+  cleanupContext(child);
+  expect(onChildCleanup).toHaveBeenCalledTimes(1);
+
+  // A context can be mounted again after cleanup, and so can one created under it meanwhile.
+  onMount(child, onChildMount);
+  mountContext(child);
+  expect(isMounted(child)).toBe(true);
+  expect(onChildMount).toHaveBeenCalledTimes(2);
+
+  cleanupContext(parent);
+  onMount(parent, onParentMount);
+  const later = createContext(parent);
+  expect(isMounted(parent)).toBe(false);
+  expect(isMounted(later)).toBe(false);
+  mountContext(parent);
+  expect(isMounted(parent)).toBe(true);
+  expect(isMounted(later)).toBe(false);
+  expect(onParentMount).toHaveBeenCalledTimes(1);
+});
+
 describe("onEffect", () => {
   test("returns a function that stops the effect early", () => {
     const c = createContext(null);

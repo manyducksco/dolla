@@ -4,7 +4,9 @@ import { createAtom } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
 import { css } from "../css.js";
 import { ElementNode } from "./element.js";
+import { DOMNode } from "./dom.js";
 import { createMarkup } from "../utils.js";
+import { setErrorHandler } from "../../errors.js";
 
 function setup() {
   const context = createContext(null);
@@ -87,6 +89,33 @@ describe("ElementNode", () => {
       const { context } = setup();
       const node = new ElementNode(context, "div", {});
       expect(() => node.unmount()).not.toThrow();
+    });
+
+    test("a child that throws while unmounting does not stop the rest of the teardown", () => {
+      const { context, container } = setup();
+      class BrokenNode extends DOMNode {
+        override unmount() {
+          throw new Error("boom");
+        }
+      }
+      const cleanup = vi.fn();
+      const reported = vi.fn();
+      const node = new ElementNode(context, "div", {
+        children: [new BrokenNode(context, document.createTextNode("x")), createMarkup("span", { ref: () => cleanup })],
+      });
+      node.mount(container);
+
+      setErrorHandler(reported);
+      try {
+        node.unmount();
+      } finally {
+        setErrorHandler(null);
+      }
+
+      expect(cleanup).toHaveBeenCalledTimes(1);
+      expect(reported).toHaveBeenCalledTimes(1);
+      expect(reported.mock.calls[0][0].phase).toBe("unmount");
+      expect(container.children.length).toBe(0);
     });
   });
 
@@ -546,6 +575,83 @@ describe("ElementNode", () => {
       expect(el.classList.contains("foo")).toBe(false);
       expect(el.classList.contains("bar")).toBe(false);
       expect(el.classList.contains("baz")).toBe(true);
+    });
+
+    test("removes the classes of a reactive string when the value becomes an object", () => {
+      const { context, container } = setup();
+      const [classes, setClasses] = createAtom<any>("foo bar");
+      const [isActive, setIsActive] = createAtom(true);
+      const node = new ElementNode(context, "div", { class: classes });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("class")).toBe("foo bar");
+
+      // The reactive entry means classes are added and removed one by one.
+      setClasses({ bar: true, active: isActive });
+      flushPendingUpdates();
+      expect(Array.from(el.classList).sort()).toEqual(["active", "bar"]);
+
+      setIsActive(false);
+      flushPendingUpdates();
+      expect(Array.from(el.classList)).toEqual(["bar"]);
+
+      setClasses("baz");
+      flushPendingUpdates();
+      expect(el.getAttribute("class")).toBe("baz");
+
+      // The reactive entry no longer applies once the value is a string again.
+      setIsActive(true);
+      flushPendingUpdates();
+      expect(el.getAttribute("class")).toBe("baz");
+    });
+
+    test("a reactive class can change between a string and a template", () => {
+      const { context, container } = setup();
+      const tpl = css`
+        color: red;
+      `;
+      const [classes, setClasses] = createAtom<any>("foo");
+      const node = new ElementNode(context, "div", { class: classes });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(Array.from(el.classList)).toEqual(["foo"]);
+
+      setClasses([tpl, "bar"]);
+      flushPendingUpdates();
+      expect(Array.from(el.classList).sort()).toEqual([tpl.className, "bar"].sort());
+
+      setClasses("baz qux");
+      flushPendingUpdates();
+      expect(Array.from(el.classList)).toEqual(["baz", "qux"]);
+
+      setClasses("");
+      flushPendingUpdates();
+      expect(el.classList.length).toBe(0);
+    });
+
+    test("writes a reactive class string without its extra spaces", () => {
+      const { context, container } = setup();
+      const [isActive, setIsActive] = createAtom(false);
+      const node = new ElementNode(context, "div", { class: () => `btn  ${isActive() ? "active" : ""}` });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.getAttribute("class")).toBe("btn");
+
+      setIsActive(true);
+      flushPendingUpdates();
+      expect(el.getAttribute("class")).toBe("btn active");
+    });
+
+    test("ignores an 'undefined' token in a reactive class string", () => {
+      const { context, container } = setup();
+      const [classes, setClasses] = createAtom("foo");
+      const node = new ElementNode(context, "div", { class: classes });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+
+      setClasses(`${undefined} bar`);
+      flushPendingUpdates();
+      expect(Array.from(el.classList)).toEqual(["bar"]);
     });
 
     test("keeps static classes that persist when the class object has reactive entries", () => {
@@ -1116,6 +1222,35 @@ describe("ElementNode", () => {
       expect(rect.namespaceURI).toBe("http://www.w3.org/2000/svg");
     });
 
+    test("an svg nested in an svg keeps its children in the SVG namespace", () => {
+      const { context, container } = setup();
+      const svg = new ElementNode(context, "svg", {
+        children: createMarkup("svg", { children: createMarkup("circle", { r: 2 }) }),
+      });
+      svg.mount(container);
+      expect(container.querySelector("circle")!.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    });
+
+    test("elements after an svg are created as HTML", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "div", {
+        children: [createMarkup("svg", { children: createMarkup("g", {}) }), createMarkup("p", { children: "text" })],
+      });
+      node.mount(container);
+      expect(container.querySelector("p")!.namespaceURI).toBe("http://www.w3.org/1999/xhtml");
+    });
+
+    test("an svg inside a foreignObject starts a new SVG tree", () => {
+      const { context, container } = setup();
+      const svg = new ElementNode(context, "svg", {
+        children: createMarkup("foreignObject", {
+          children: createMarkup("svg", { children: createMarkup("rect", {}) }),
+        }),
+      });
+      svg.mount(container);
+      expect(container.querySelector("rect")!.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    });
+
     test("foreignObject exits SVG namespace for its children", () => {
       const { context, container } = setup();
       const svg = new ElementNode(context, "svg", {
@@ -1239,6 +1374,102 @@ describe("ElementNode", () => {
       setColor("blue");
       flushPendingUpdates();
       expect(el.style.getPropertyValue(varName)).toBe("blue");
+    });
+  });
+
+  describe("css template lifecycle", () => {
+    test("binds values of a template that is first attached after mount", () => {
+      const { context, container } = setup();
+      const [color, setColor] = createAtom("red");
+      const read = vi.fn(() => color());
+      const tpl = css`
+        outline-color: ${read};
+      `;
+      const [classes, setClasses] = createAtom<any>("plain");
+      const node = new ElementNode(context, "div", { class: classes });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      const varName = `--${tpl.className}-0`;
+      expect(read).not.toHaveBeenCalled();
+
+      setClasses(tpl);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(true);
+      expect(el.style.getPropertyValue(varName)).toBe("red");
+
+      setColor("blue");
+      flushPendingUpdates();
+      expect(el.style.getPropertyValue(varName)).toBe("blue");
+
+      const calls = read.mock.calls.length;
+      node.unmount();
+      setColor("green");
+      flushPendingUpdates();
+      expect(read).toBeCalledTimes(calls);
+    });
+
+    test("stops a template's bindings when the element unmounts, not when its parent context does", () => {
+      const { context, container } = setup();
+      const [color, setColor] = createAtom("red");
+      const read = vi.fn(() => color());
+      const tpl = css`
+        border-color: ${read};
+      `;
+      const node = new ElementNode(context, "div", { class: tpl });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.getPropertyValue(`--${tpl.className}-0`)).toBe("red");
+
+      const calls = read.mock.calls.length;
+      node.unmount();
+      setColor("blue");
+      flushPendingUpdates();
+      expect(read).toBeCalledTimes(calls);
+    });
+
+    test("stops a conditional template's condition when the element unmounts", () => {
+      const { context, container } = setup();
+      const [on, setOn] = createAtom(true);
+      const condition = vi.fn(() => on());
+      const tpl = css`
+        text-decoration: underline;
+      `;
+      const node = new ElementNode(context, "div", { class: [tpl.when(condition)] });
+      node.mount(container);
+      const el = container.children[0] as HTMLElement;
+      expect(el.classList.contains(tpl.className)).toBe(true);
+
+      setOn(false);
+      flushPendingUpdates();
+      expect(el.classList.contains(tpl.className)).toBe(false);
+
+      const calls = condition.mock.calls.length;
+      node.unmount();
+      setOn(true);
+      flushPendingUpdates();
+      expect(condition).toBeCalledTimes(calls);
+    });
+
+    test("rebinds a template's values when the element is mounted again", () => {
+      const { context, container } = setup();
+      const [color, setColor] = createAtom("red");
+      const tpl = css`
+        caret-color: ${() => color()};
+      `;
+      const node = new ElementNode(context, "div", { class: tpl });
+      const varName = `--${tpl.className}-0`;
+
+      node.mount(container);
+      node.unmount();
+      setColor("blue");
+      node.mount(container);
+
+      const el = container.children[0] as HTMLElement;
+      expect(el.style.getPropertyValue(varName)).toBe("blue");
+
+      setColor("green");
+      flushPendingUpdates();
+      expect(el.style.getPropertyValue(varName)).toBe("green");
     });
   });
 

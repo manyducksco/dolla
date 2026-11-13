@@ -2,7 +2,7 @@ import { isArray, isFunction, isNumber, isObject, isString } from "../../../util
 import { cleanupContext, createContext, getNearestViewNode, mountContext, type Context } from "../../context.js";
 import type { Ref } from "../../ref.js";
 import { type Getter, subscribe, withoutOwner } from "../../signals.js";
-import { runSafely } from "../../errors.js";
+import { reportCaught, runSafely } from "../../errors.js";
 import { DEBUG } from "../../symbols.js";
 import { isConditionalTemplate, isCSSTemplate, type ConditionalTemplate, type CSSTemplate } from "../css-template.js";
 import { flushPendingUpdates, runUpdate, scheduleUpdate } from "../scheduler.js";
@@ -14,6 +14,10 @@ const IS_SVG = Symbol.for("$_IS_SVG");
 
 const EMPTY_TEMPLATE_SET = new Set<CSSTemplate>();
 const EMPTY_TEMPLATE_MAP = new Map<CSSTemplate, MaybeGetter<any>>();
+
+// Class text that isn't already what `getClassMap` would produce from it: extra
+// spaces, or an "undefined" from an interpolated value.
+const UNTIDY_CLASS_TEXT = /^ | $|  |undefined/;
 
 // SVG presentation attributes that must use kebab-case as attribute names.
 // When a matching camelCase key is encountered (e.g. `fillOpacity`), it is
@@ -76,9 +80,16 @@ export class ElementNode extends MarkupNode {
 
   readonly #props: Record<string, any>;
 
+  // The parent's context, unless this element needed one of its own: to enter
+  // or leave SVG for its children, or to hold the lifecycle of a CSS template.
+  // Most elements never do, and a context per element is costly to create.
   #context: Context;
-  #childNodes: MarkupNode[] = [];
-  #unsubscribers = new Set<() => void>();
+  #ownsContext = false;
+  #isSvg: boolean;
+
+  // Both are created on first use. Many elements have no children or nothing to unsubscribe.
+  #childNodes?: MarkupNode[];
+  #unsubscribers?: Set<() => void>;
 
   #refCleanup?: () => void;
 
@@ -87,11 +98,13 @@ export class ElementNode extends MarkupNode {
   // (detached) parent.
   #setUp = false;
 
+  // True once `mount` has mounted the context, until `unmount`.
+  #live = false;
+
   constructor(context: Context, tag: string, props: Record<string, any>) {
     super();
 
     this.#props = props;
-    this.#context = createContext(context);
 
     if (props) {
       const classes = props.class ?? props.className;
@@ -100,28 +113,53 @@ export class ElementNode extends MarkupNode {
       }
     }
 
-    if (tag === "svg") {
-      // This and all nested views will be created as SVG elements.
-      this.#context[IS_SVG] = true;
-    } else if (this.#context[IS_SVG] && tag === "foreignObject") {
-      // No longer in SVG.
-      this.#context[IS_SVG] = false;
+    const inSvg = Boolean(context[IS_SVG]);
+    // An `svg` creates itself and everything nested in it as SVG elements,
+    // until a `foreignObject` leaves SVG again.
+    const isSvg = tag === "svg" || (inSvg && tag !== "foreignObject");
+
+    this.#isSvg = isSvg;
+    if (isSvg === inSvg) {
+      this.#context = context;
+    } else {
+      this.#context = createContext(context, { [IS_SVG]: isSvg });
+      this.#ownsContext = true;
     }
 
     // Create node with the appropriate constructor.
-    if (this.#context[IS_SVG]) {
+    if (isSvg) {
       this.#root = document.createElementNS("http://www.w3.org/2000/svg", tag);
     } else {
       this.#root = document.createElement(tag);
     }
 
     // Add view name as a data attribute in debug mode.
-    if (this.#context[DEBUG]) {
-      const view = getNearestViewNode(this.#context);
+    if (context[DEBUG]) {
+      const view = getNearestViewNode(context);
       if (view) {
         this.#root.dataset.view = view.context.name;
       }
     }
+  }
+
+  /**
+   * Returns a context that belongs to this element alone, creating it on first
+   * use. Its lifecycle follows the element's, so what is registered on it is
+   * released when the element unmounts.
+   */
+  #ownContext(): Context {
+    if (!this.#ownsContext) {
+      this.#ownsContext = true;
+      this.#context = createContext(this.#context);
+      // `mount` has already passed the point where it mounts the context.
+      if (this.#live) mountContext(this.#context);
+    }
+    return this.#context;
+  }
+
+  /** Registers a function that stops something when the element unmounts. */
+  #onUnmount(stop: () => void) {
+    (this.#unsubscribers ??= new Set()).add(stop);
   }
 
   override getRoot(): ElementRoot {
@@ -145,9 +183,9 @@ export class ElementNode extends MarkupNode {
       this.#applyProps(this.#root, this.#props);
 
       if (this.#props.children) {
-        this.#childNodes = toMarkupNodes(this.#context, this.#props.children);
-        for (const child of this.#childNodes) {
-          child.mount(this.#root);
+        const children = (this.#childNodes = toMarkupNodes(this.#context, this.#props.children));
+        for (let i = 0; i < children.length; i++) {
+          children[i].mount(this.#root);
         }
       }
     }
@@ -165,13 +203,15 @@ export class ElementNode extends MarkupNode {
         }
       }
 
-      mountContext(this.#context);
+      if (this.#ownsContext) mountContext(this.#context);
+      this.#live = true;
       flushPendingUpdates();
     }
   }
 
   override unmount(skipDOM = false) {
     this.#setUp = false;
+    this.#live = false;
 
     if (!skipDOM && this.#root.parentNode) {
       this.#root.parentNode.removeChild(this.#root);
@@ -179,18 +219,30 @@ export class ElementNode extends MarkupNode {
 
     const info = { phase: "unmount", context: this.#context } as const;
 
-    for (const child of this.#childNodes) {
-      runSafely(() => child.unmount(true), info);
+    // Detach both lists before running them, so that nothing they call can change
+    // what is being iterated, and to release the memory.
+    const children = this.#childNodes;
+    if (children) {
+      this.#childNodes = undefined;
+      for (let i = 0; i < children.length; i++) {
+        try {
+          children[i].unmount(true);
+        } catch (error) {
+          reportCaught(error, info);
+        }
+      }
     }
 
     // Clear reactivity
-    const unsubscribers = Array.from(this.#unsubscribers);
-    this.#unsubscribers.clear();
-    for (const unsubscribe of unsubscribers) {
-      runSafely(unsubscribe, info);
+    const unsubscribers = this.#unsubscribers;
+    if (unsubscribers) {
+      this.#unsubscribers = undefined;
+      for (const unsubscribe of unsubscribers) {
+        runSafely(unsubscribe, info);
+      }
     }
 
-    cleanupContext(this.#context);
+    if (this.#ownsContext) cleanupContext(this.#context);
 
     // Clear ref
     if (this.#refCleanup) {
@@ -198,9 +250,6 @@ export class ElementNode extends MarkupNode {
       this.#refCleanup = undefined;
       runSafely(refCleanup, info);
     }
-
-    // Release memory
-    this.#childNodes.length = 0;
   }
 
   override move(parent: MountTarget, after?: Node | null) {
@@ -239,7 +288,7 @@ export class ElementNode extends MarkupNode {
 
   #attach<T>(value: Getter<T> | T, callback: (value: T) => void, label: string) {
     if (isFunction<Getter<T>>(value)) {
-      this.#unsubscribers.add(this.#subscribe(value, callback, label));
+      this.#onUnmount(this.#subscribe(value, callback, label));
     } else {
       // No need to schedule since DOM node is not connected yet.
       callback(value);
@@ -256,11 +305,11 @@ export class ElementNode extends MarkupNode {
         : undefined;
 
     element.addEventListener(eventName, listener, options);
-    this.#unsubscribers.add(() => element.removeEventListener(eventName, listener, options));
+    this.#onUnmount(() => element.removeEventListener(eventName, listener, options));
   }
 
   #applyProps(element: any, props: Record<string, unknown>) {
-    const isSvg = Boolean(this.#context[IS_SVG]);
+    const isSvg = this.#isSvg;
 
     for (const key in props) {
       if (key === "ref" || key === "children") continue;
@@ -302,7 +351,7 @@ export class ElementNode extends MarkupNode {
         element.setAttribute("class", value);
       } else if (isCSSTemplate(value)) {
         // A single template only needs attaching; there is nothing to track.
-        value.attach(this.#context, element);
+        value.attach(this.#ownContext(), element);
       } else {
         this.#applyClasses(element, value);
       }
@@ -330,7 +379,7 @@ export class ElementNode extends MarkupNode {
     }
 
     if (isFunction<Getter<unknown>>(value)) {
-      this.#unsubscribers.add(this.#subscribe(value, (current) => set(element, name, current), `element:${key}`));
+      this.#onUnmount(this.#subscribe(value, (current) => set(element, name, current), `element:${key}`));
     } else {
       set(element, name, value);
     }
@@ -394,7 +443,7 @@ export class ElementNode extends MarkupNode {
           },
           `element:style:${name}`,
         );
-        this.#unsubscribers.add(unsub);
+        this.#onUnmount(unsub);
         localUnsubs.add(unsub);
       }
     };
@@ -408,8 +457,28 @@ export class ElementNode extends MarkupNode {
     const attachedTemplates = new Set<CSSTemplate>();
     const templateDisposers = new Map<CSSTemplate, () => void>();
     const conditionSubs = new Map<CSSTemplate, () => void>();
+    // The class text last written by the string fast path, until `staticClasses` is rebuilt from it.
+    let writtenText: string | undefined;
 
     const apply = (current: unknown) => {
+      // Fast path: a string, with nothing reactive or templated to keep in sync,
+      // owns the whole attribute, so it can be written as is.
+      if (isString(current) && !localUnsubs.size && !attachedTemplates.size && !conditionSubs.size) {
+        writtenText = UNTIDY_CLASS_TEXT.test(current)
+          ? Object.keys(getClassMap(current))
+              .filter((name) => name !== "undefined")
+              .join(" ")
+          : current;
+        element.setAttribute("class", writtenText);
+        return;
+      }
+
+      if (writtenText !== undefined) {
+        staticClasses.clear();
+        for (const name of writtenText.split(" ")) if (name) staticClasses.add(name);
+        writtenText = undefined;
+      }
+
       this.#clearLocalSubs(localUnsubs);
 
       const { templates: currentTemplates, conditions, remaining: processedValue } = this.#extractTemplates(current);
@@ -482,7 +551,7 @@ export class ElementNode extends MarkupNode {
           element.classList.remove(name);
           unsub();
         };
-        this.#unsubscribers.add(wrapper);
+        this.#onUnmount(wrapper);
         localUnsubs.add(wrapper);
       }
     };
@@ -582,7 +651,7 @@ export class ElementNode extends MarkupNode {
     }
     for (const tpl of currentTemplates) {
       if (!attachedTemplates.has(tpl)) {
-        disposers.set(tpl, tpl.attach(this.#context, element));
+        disposers.set(tpl, tpl.attach(this.#ownContext(), element));
       }
     }
     attachedTemplates.clear();
@@ -620,7 +689,7 @@ export class ElementNode extends MarkupNode {
         if (unsub) {
           unsub();
           conditionSubs.delete(tpl);
-          this.#unsubscribers.delete(unsub);
+          this.#unsubscribers?.delete(unsub);
         }
       }
     }
@@ -634,7 +703,7 @@ export class ElementNode extends MarkupNode {
             `element:class:${tpl.className}`,
           );
           conditionSubs.set(tpl, unsub);
-          this.#unsubscribers.add(unsub);
+          this.#onUnmount(unsub);
         }
       } else {
         element.classList.toggle(tpl.className, Boolean(condition));
@@ -645,7 +714,7 @@ export class ElementNode extends MarkupNode {
   #clearLocalSubs(localUnsubs: Set<() => void>) {
     localUnsubs.forEach((unsub) => {
       unsub();
-      this.#unsubscribers.delete(unsub);
+      this.#unsubscribers?.delete(unsub);
     });
     localUnsubs.clear();
   }
