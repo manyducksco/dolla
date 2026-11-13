@@ -1,4 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
 import dollaPlugin from "./vite-plugin.js";
 import { __dolla_css, __dolla_export, __dolla_store } from "./src/core/hmr.js";
 import { css } from "./src/core/markup/css.js";
@@ -98,9 +101,69 @@ describe("dollaPlugin — HMR injection", () => {
     expect(result).toBeNull();
   });
 
+  // A linked checkout (npm or bun link, a workspace) is served from its real path, outside
+  // node_modules. Wrapping dolla's own modules makes them import the HMR runtime, which
+  // imports them, and the app fails on startup.
+  test.each(["dist/index.js", "dist/hmr.js", "dist/signals-abc123.js", "src/core/signals.ts", "src/jsx-runtime.js"])(
+    "returns null for dolla's own %s outside node_modules",
+    (file) => {
+      const code = `function a() {}\nfunction View() {}\nexport { a as b, View };\n`;
+      expect(runTransform(code, path.resolve(import.meta.dirname, file))).toBeNull();
+    },
+  );
+
+  test("still transforms an app that lives inside a dolla checkout", () => {
+    // The template app has a package.json of its own.
+    const id = path.resolve(import.meta.dirname, "e2e/hmr/template/src/App.tsx");
+    const result = runTransform(`export function App() { return null; }\n`, id);
+    expect(result).not.toBeNull();
+    expect(result!.code).toContain("__dolla_export");
+  });
+
   test("returns null for non-JS extensions", () => {
     const result = runTransform(`export const Foo = 1;\n`, "/abs/file.css");
     expect(result).toBeNull();
+  });
+
+  describe("with dolla installed in an app", () => {
+    const temp: string[] = [];
+
+    afterEach(() => {
+      for (const dir of temp.splice(0)) rmSync(dir, { recursive: true, force: true });
+    });
+
+    /** An app folder with dolla in its node_modules, as a copy or as a link to a folder outside it. */
+    function makeApp(install: "copy" | "link" | "link in a parent folder") {
+      const base = mkdtempSync(path.join(tmpdir(), "dolla-plugin-"));
+      temp.push(base);
+      const pkg = path.join(base, "checkout");
+      mkdirSync(pkg);
+      writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@manyducks.co/dolla" }));
+
+      const root = path.join(base, "workspace", "app");
+      const host = install === "link in a parent folder" ? path.dirname(root) : root;
+      const scope = path.join(host, "node_modules", "@manyducks.co");
+      mkdirSync(path.join(root, "src"), { recursive: true });
+      mkdirSync(scope, { recursive: true });
+      if (install === "copy") cpSync(pkg, path.join(scope, "dolla"), { recursive: true });
+      else symlinkSync(pkg, path.join(scope, "dolla"), "dir");
+      return root;
+    }
+
+    test("pre-bundles the HMR runtime when dolla is a copy in node_modules", () => {
+      const config = (dollaPlugin() as any).config({ root: makeApp("copy") });
+      expect(config).toEqual({ optimizeDeps: { include: ["@manyducks.co/dolla/hmr"] } });
+    });
+
+    // Vite serves a linked package from its real path without pre-bundling it. A pre-bundled
+    // HMR runtime would then carry a second copy of dolla, which never sees the app's views.
+    test.each(["link", "link in a parent folder"] as const)(
+      "doesn't pre-bundle the HMR runtime when dolla is a %s",
+      (install) => {
+        const config = (dollaPlugin() as any).config({ root: makeApp(install) });
+        expect(config?.optimizeDeps?.include ?? []).not.toContain("@manyducks.co/dolla/hmr");
+      },
+    );
   });
 
   test("only runs on the dev server, not in builds or Vitest", () => {

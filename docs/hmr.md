@@ -21,6 +21,8 @@ The Vite plugin auto-injects HMR registration into exported view functions. When
 
 The plugin only runs on the dev server. Production builds and Vitest runs are left untouched.
 
+It also works when Dolla is linked into the app (`npm link`, `bun link`, a workspace) instead of installed. Check that the whole app resolves to that one copy. If a second copy is left in a nested `node_modules`, part of the app runs on a different Dolla.
+
 ## Views
 
 Views are replaced in place when they're exported in any of these forms:

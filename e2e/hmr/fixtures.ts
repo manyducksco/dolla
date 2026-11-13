@@ -1,5 +1,5 @@
 import { test as base, expect, type Page } from "@playwright/test";
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createLogger, createServer, type ViteDevServer } from "vite";
 import { PACKAGE, WORK } from "../global-setup.js";
@@ -9,6 +9,11 @@ const TEMPLATE = path.join(import.meta.dirname, "template");
 type StartOptions = {
   /** Extra Vite config for the app, merged into its `vite.config.js`. */
   viteConfig?: Record<string, unknown>;
+  /**
+   * Installs dolla as a link to the package instead of a copy, as `npm link` or a
+   * workspace does. Vite then serves dolla from its real path, outside node_modules.
+   */
+  linked?: boolean;
 };
 
 export type App = {
@@ -63,6 +68,12 @@ export const test = base.extend<{ app: App }>({
       pageErrors,
       loads: () => loads,
       async start(options = {}) {
+        if (options.linked) {
+          const installed = path.join(dir, "node_modules", "@manyducks.co", "dolla");
+          rmSync(installed, { recursive: true });
+          symlinkSync(PACKAGE, installed, "dir");
+        }
+
         write(
           "vite.config.js",
           [

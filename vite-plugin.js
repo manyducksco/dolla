@@ -1,7 +1,9 @@
 import MagicString from "magic-string";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 
-const HMR_MODULE = "@manyducks.co/dolla/hmr";
+const PACKAGE_NAME = "@manyducks.co/dolla";
+const HMR_MODULE = `${PACKAGE_NAME}/hmr`;
 const HMR_HELPERS = ["__dolla_apply", "__dolla_export", "__dolla_store"];
 const HMR_ACCEPT_RE = /import\.meta\.hot\.accept\s*\(/;
 
@@ -1041,6 +1043,46 @@ function findRootCycle(changed, rootFiles) {
 }
 
 /*============================*\
+||       Linked Installs      ||
+\*============================*/
+
+// A linked dolla (`npm link`, `bun link`, a workspace) is not under node_modules as far as
+// Vite is concerned: it is served from its real path, as source, like the app's own files.
+
+/** Whether each directory seen so far belongs to a copy of dolla. */
+const dollaDirs = new Map();
+
+function isInDolla(dir) {
+  let known = dollaDirs.get(dir);
+  if (known === undefined) {
+    const manifest = path.join(dir, "package.json");
+    const parent = path.dirname(dir);
+    // The nearest package.json decides, so an app inside a dolla checkout is still an app.
+    if (existsSync(manifest)) known = readPackageName(manifest) === PACKAGE_NAME;
+    else known = parent !== dir && isInDolla(parent);
+    dollaDirs.set(dir, known);
+  }
+  return known;
+}
+
+function readPackageName(manifest) {
+  try {
+    return JSON.parse(readFileSync(manifest, "utf8")).name;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether the app at `root` gets dolla through a link to a folder outside node_modules. */
+function isDollaLinked(root) {
+  for (let dir = path.resolve(root); ; dir = path.dirname(dir)) {
+    const installed = path.join(dir, "node_modules", PACKAGE_NAME);
+    if (existsSync(installed)) return !realpathSync(installed).split(path.sep).includes("node_modules");
+    if (path.dirname(dir) === dir) return false;
+  }
+}
+
+/*============================*\
 ||         Plugin Default     ||
 \*============================*/
 
@@ -1063,6 +1105,8 @@ export default function dollaPlugin() {
       // dolla of its own, which never sees the app's views.
       const excluded = config.optimizeDeps?.exclude ?? [];
       if (excluded.some((name) => HMR_MODULE === name || HMR_MODULE.startsWith(`${name}/`))) return;
+      // Vite doesn't pre-bundle a linked dolla either, so the same goes for it.
+      if (isDollaLinked(config.root ?? process.cwd())) return;
       // The import of the HMR runtime is added by `transform`, which Vite's dependency scanner
       // doesn't run. Without this the first dev start finds it late and reloads the page.
       return { optimizeDeps: { include: [HMR_MODULE] } };
@@ -1097,6 +1141,9 @@ export default function dollaPlugin() {
     transform(code, id) {
       if (!/\.[jt]sx?$/.test(id)) return null;
       if (id.includes("node_modules")) return null;
+      // Dolla's own modules, reached through a link. Wrapping their exports would make them
+      // import the HMR runtime, which imports them, and the app would fail to start.
+      if (isInDolla(path.dirname(id))) return null;
 
       const s = new MagicString(code);
 

@@ -294,3 +294,36 @@ test("HMR works when the app excludes dolla from dependency optimization", async
   await expect(page.locator("#text")).toHaveText("two");
   await expectNoReload(page, app);
 });
+
+test("an app that links dolla from outside node_modules starts and updates in place", async ({ page, app }) => {
+  app.write("src/main.tsx", MAIN("App", "./App"));
+  app.write("src/App.tsx", `export function App() {\n  return <p id="text">one</p>;\n}\n`);
+  // Quack's config, which serves dolla as is.
+  await app.start({
+    linked: true,
+    viteConfig: { optimizeDeps: { exclude: ["@manyducks.co/dolla", "@manyducks.co/dolla/jsx-dev-runtime"] } },
+  });
+  await markPage(page);
+  expect(app.pageErrors).toEqual([]);
+
+  app.edit("src/App.tsx", (code) => code.replace("one", "two"));
+  await expect(page.locator("#text")).toHaveText("two");
+  await expectNoReload(page, app);
+  expect(app.pageErrors).toEqual([]);
+});
+
+test("an app that links dolla and lets Vite pre-bundle its dependencies starts and updates in place", async ({
+  page,
+  app,
+}) => {
+  app.write("src/main.tsx", MAIN("App", "./App"));
+  app.write("src/App.tsx", `export function App() {\n  return <p id="text">one</p>;\n}\n`);
+  await app.start({ linked: true });
+  await markPage(page);
+  expect(app.pageErrors).toEqual([]);
+
+  app.edit("src/App.tsx", (code) => code.replace("one", "two"));
+  await expect(page.locator("#text")).toHaveText("two");
+  await expectNoReload(page, app);
+  expect(app.pageErrors).toEqual([]);
+});
