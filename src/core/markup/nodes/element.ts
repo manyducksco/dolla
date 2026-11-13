@@ -114,15 +114,16 @@ export class ElementNode extends MarkupNode {
     }
 
     const inSvg = Boolean(context[IS_SVG]);
-    // An `svg` creates itself and everything nested in it as SVG elements,
-    // until a `foreignObject` leaves SVG again.
-    const isSvg = tag === "svg" || (inSvg && tag !== "foreignObject");
+    // An `svg` and everything nested in it are SVG elements. A `foreignObject`
+    // is one too, or the browser would not render it, but its children are HTML again.
+    const isSvg = inSvg || tag === "svg";
+    const childrenInSvg = isSvg && tag !== "foreignObject";
 
     this.#isSvg = isSvg;
-    if (isSvg === inSvg) {
+    if (childrenInSvg === inSvg) {
       this.#context = context;
     } else {
-      this.#context = createContext(context, { [IS_SVG]: isSvg });
+      this.#context = createContext(context, { [IS_SVG]: childrenInSvg });
       this.#ownsContext = true;
     }
 

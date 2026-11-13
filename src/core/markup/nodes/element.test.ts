@@ -1251,6 +1251,56 @@ describe("ElementNode", () => {
       expect(container.querySelector("rect")!.namespaceURI).toBe("http://www.w3.org/2000/svg");
     });
 
+    // A browser only renders the content of a `foreignObject` that is itself an SVG element.
+    test("foreignObject is an SVG element", () => {
+      const { context, container } = setup();
+      const [size, setSize] = createAtom(100);
+      const svg = new ElementNode(context, "svg", {
+        children: createMarkup("g", {
+          children: createMarkup("foreignObject", {
+            x: 10,
+            width: size,
+            height: 50,
+            class: "embed",
+            children: createMarkup("div", { children: "hello" }),
+          }),
+        }),
+      });
+      svg.mount(container);
+
+      const foreignObject = container.querySelector("foreignObject")!;
+      expect(foreignObject.namespaceURI).toBe("http://www.w3.org/2000/svg");
+      expect(foreignObject.localName).toBe("foreignObject");
+      expect(foreignObject.getAttribute("x")).toBe("10");
+      expect(foreignObject.getAttribute("width")).toBe("100");
+      expect(foreignObject.getAttribute("height")).toBe("50");
+      expect(foreignObject.getAttribute("class")).toBe("embed");
+
+      setSize(200);
+      flushPendingUpdates();
+      expect(foreignObject.getAttribute("width")).toBe("200");
+    });
+
+    test("a foreignObject outside an svg is left as an HTML element", () => {
+      const { context, container } = setup();
+      const node = new ElementNode(context, "foreignObject", { children: createMarkup("p", {}) });
+      node.mount(container);
+      expect(container.firstElementChild!.namespaceURI).toBe("http://www.w3.org/1999/xhtml");
+      expect(container.querySelector("p")!.namespaceURI).toBe("http://www.w3.org/1999/xhtml");
+    });
+
+    test("elements after a foreignObject are still SVG elements", () => {
+      const { context, container } = setup();
+      const svg = new ElementNode(context, "svg", {
+        children: [
+          createMarkup("foreignObject", { children: createMarkup("div", {}) }),
+          createMarkup("circle", { r: 2 }),
+        ],
+      });
+      svg.mount(container);
+      expect(container.querySelector("circle")!.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    });
+
     test("foreignObject exits SVG namespace for its children", () => {
       const { context, container } = setup();
       const svg = new ElementNode(context, "svg", {
