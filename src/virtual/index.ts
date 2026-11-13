@@ -142,11 +142,27 @@ export function createVirtualList<T>(props: VirtualListOptions<T>): [View, Virtu
   // rebuilt from this whenever the list changes.
   const heightsByKey = new Map<string | number, number>();
 
+  // The keys of the items the engine's measurements were last mapped to, in order.
+  let mappedKeys: (string | number)[] = [];
+
   function remapHeights(items: T[]) {
+    const keys: (string | number)[] = new Array(items.length);
+    for (let i = 0; i < items.length; i++) keys[i] = props.keyFn(items[i]);
+
+    // Measurements are held by index, so they are still right while every item
+    // that had one is at the same index: after an append, or a change to item
+    // data only. That is the usual update, and it skips the rebuild below.
+    let samePositions = keys.length >= mappedKeys.length;
+    for (let i = 0; samePositions && i < mappedKeys.length; i++) {
+      samePositions = keys[i] === mappedKeys[i];
+    }
+    mappedKeys = keys;
+    if (samePositions) return;
+
     const entries: { index: number; height: number }[] = [];
     const liveKeys = new Set<string | number>();
     for (let i = 0; i < items.length; i++) {
-      const key = props.keyFn(items[i]);
+      const key = keys[i];
       liveKeys.add(key);
       const height = heightsByKey.get(key);
       if (height !== undefined) entries.push({ index: i, height });

@@ -454,6 +454,42 @@ describe("createVirtualList", () => {
     expect(viewport.scrollTop).toBe(200);
   });
 
+  test("keeps measured heights when items are appended or only their data changes", async () => {
+    const [items, setItems] = createAtom(range(0, 4));
+    const { content, slots } = await setup({ items, poolSize: 10 });
+
+    MockResizeObserver.deliverAll(heightsBy((id) => (id === 0 ? 200 : 20), items));
+    flushPendingUpdates();
+    expect(content.style.height).toBe("260px");
+
+    // Two unmeasured items are added at the measured average, 65px.
+    setItems(range(0, 6));
+    flushPendingUpdates();
+    expect(content.style.height).toBe("390px");
+    expect(slotFor(slots, 4)!.style.transform).toBe("translateY(260px)");
+    expect(slotFor(slots, 5)!.style.transform).toBe("translateY(325px)");
+
+    // New objects with the same keys in the same places.
+    setItems(range(0, 6));
+    flushPendingUpdates();
+    expect(content.style.height).toBe("390px");
+    expect(slotFor(slots, 1)!.style.transform).toBe("translateY(200px)");
+  });
+
+  test("moves heights when an item is replaced without the length changing", async () => {
+    const [items, setItems] = createAtom(range(0, 4));
+    const { content, slots } = await setup({ items, poolSize: 10 });
+
+    MockResizeObserver.deliverAll(heightsBy((id) => (id === 0 ? 200 : 20), items));
+    flushPendingUpdates();
+
+    // Item 0 (200px) is replaced by an unmeasured item; the rest keep 20px each.
+    setItems([{ id: 9 }, ...range(1, 4)]);
+    flushPendingUpdates();
+    expect(content.style.height).toBe("80px");
+    expect(slotFor(slots, 1)!.style.transform).toBe("translateY(20px)");
+  });
+
   test("keeps heights with their items when the list is reordered", async () => {
     const [items, setItems] = createAtom(range(0, 4));
     const { slots } = await setup({ items, poolSize: 10 });
