@@ -79,9 +79,10 @@ export abstract class AnchoredNode<T> extends MarkupNode {
     this.#unsubscribe?.();
     this.#unsubscribe = undefined;
 
-    if (!skipDOM) this.#anchor?.parentNode?.removeChild(this.#anchor);
-    // Clear content even if something else already detached the anchor.
+    // Clear content even if something else already detached the anchor. The
+    // anchor is removed afterwards, so `clear` can still find the content by it.
     this.clear(skipDOM);
+    if (!skipDOM) this.#anchor?.parentNode?.removeChild(this.#anchor);
   }
 
   override move(parent: MountTarget, after?: Node | null) {

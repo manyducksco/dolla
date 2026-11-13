@@ -3,6 +3,8 @@ import { createContext } from "../../context.js";
 import { createAtom } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
 import { createMarkup } from "../utils.js";
+import { createPortal } from "../helpers.js";
+import { ElementNode } from "./element.js";
 import { RepeatNode } from "./repeat.js";
 
 type Item = { id: number; text: string };
@@ -395,6 +397,177 @@ describe("RepeatNode", () => {
     });
   });
 
+  describe("clearing", () => {
+    const makeItems = (count: number): Item[] => Array.from({ length: count }, (_, i) => ({ id: i, text: String(i) }));
+    const label = (item: () => Item) => createMarkup("span", { children: () => item().text });
+
+    /** Mounts a list between a `<b>` and an `<i>`. */
+    function setupBetweenSiblings(count: number, render: (item: () => Item) => any = label) {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>(makeItems(count));
+      const before = new ElementNode(context, "b", { children: "before" });
+      const after = new ElementNode(context, "i", { children: "after" });
+      const node = new RepeatNode(context, items, keyFn, render);
+      before.mount(container);
+      node.mount(container, before.getRoot());
+      after.mount(container, node.getLastNode());
+      return { container, node, setItems };
+    }
+
+    test("leaves the nodes around the list in place", () => {
+      const { container, setItems } = setupBetweenSiblings(5);
+      expect(container.textContent).toBe("before01234after");
+
+      setItems([]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("<b>before</b><i>after</i>");
+
+      setItems([{ id: 9, text: "nine" }]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("<b>before</b><span>nine</span><i>after</i>");
+    });
+
+    test("renders again after being cleared when the list is its parent's only content", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>(makeItems(5));
+      const node = new RepeatNode(context, items, keyFn, label);
+      node.mount(container);
+
+      setItems([]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("");
+      expect(node.isMounted()).toBe(true);
+
+      setItems(makeItems(3));
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("<span>0</span><span>1</span><span>2</span>");
+    });
+
+    test("unmounting leaves the nodes around the list in place", () => {
+      const { container, node } = setupBetweenSiblings(5);
+      node.unmount();
+      expect(container.innerHTML).toBe("<b>before</b><i>after</i>");
+      expect(container.childNodes.length).toBe(2);
+    });
+
+    test.each([
+      ["clearing", (setItems: (items: Item[]) => void) => setItems([])],
+      ["unmounting", (_: unknown, node: RepeatNode<Item>) => node.unmount()],
+    ])("%s runs the cleanup of every item and stops its updates", (_label, act) => {
+      const { context, container } = setup();
+      const cleanup = vi.fn();
+      const [text, setText] = createAtom("a");
+      const read = vi.fn(() => text());
+      const [items, setItems] = createAtom<Item[]>(makeItems(4));
+      const node = new RepeatNode(context, items, keyFn, () =>
+        createMarkup("span", { ref: () => cleanup, children: read }),
+      );
+      node.mount(container);
+      const calls = read.mock.calls.length;
+
+      act(setItems, node);
+      flushPendingUpdates();
+      expect(cleanup).toHaveBeenCalledTimes(4);
+      expect(container.querySelectorAll("span").length).toBe(0);
+
+      setText("b");
+      flushPendingUpdates();
+      expect(read).toBeCalledTimes(calls);
+    });
+
+    test("removes what items rendered through a portal", () => {
+      const target = document.createElement("div");
+      const { container, setItems } = setupBetweenSiblings(3, (item) =>
+        createPortal(target, createMarkup("em", { children: () => item().text })),
+      );
+      expect(target.textContent).toBe("012");
+
+      setItems([]);
+      flushPendingUpdates();
+      expect(target.innerHTML).toBe("");
+      expect(container.innerHTML).toBe("<b>before</b><i>after</i>");
+    });
+
+    test("removes items that render several nodes, text or nothing", () => {
+      const { container, setItems } = setupBetweenSiblings(4, (item) => {
+        const id = item().id;
+        if (id === 0) return [createMarkup("span", { children: "a" }), createMarkup("span", { children: "b" })];
+        if (id === 1) return () => item().text;
+        if (id === 2) return null;
+        return "plain";
+      });
+      expect(container.textContent).toBe("beforeab1plainafter");
+
+      setItems([]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("<b>before</b><i>after</i>");
+    });
+
+    // Removing rows one at a time is what makes clearing a long list slow.
+    test.each([
+      ["between other nodes", "<b>before</b><i>after</i>"],
+      ["at the end of its parent", "<b>before</b>"],
+    ])("removes a list %s as one range", (_label, remaining) => {
+      const { container, setItems } = setupBetweenSiblings(50);
+      if (!remaining.includes("<i>")) container.querySelector("i")!.remove();
+      const deleteContents = vi.spyOn(Range.prototype, "deleteContents");
+
+      try {
+        setItems([]);
+        flushPendingUpdates();
+        expect(deleteContents).toHaveBeenCalledTimes(1);
+      } finally {
+        deleteContents.mockRestore();
+      }
+      expect(container.innerHTML).toBe(remaining);
+    });
+
+    test("removes a single item directly", () => {
+      const { container, setItems } = setupBetweenSiblings(1);
+      const deleteContents = vi.spyOn(Range.prototype, "deleteContents");
+
+      try {
+        setItems([]);
+        flushPendingUpdates();
+        expect(deleteContents).not.toHaveBeenCalled();
+      } finally {
+        deleteContents.mockRestore();
+      }
+      expect(container.innerHTML).toBe("<b>before</b><i>after</i>");
+    });
+
+    test("still removes the list when a cleanup removes the node after it", () => {
+      const { context, container } = setup();
+      const [items, setItems] = createAtom<Item[]>(makeItems(3));
+      const after = new ElementNode(context, "i", { children: "after" });
+      const node = new RepeatNode(context, items, keyFn, (item) =>
+        createMarkup("span", {
+          ref: () => () => after.getRoot().remove(),
+          children: () => item().text,
+        }),
+      );
+      node.mount(container);
+      after.mount(container, node.getLastNode());
+
+      setItems([]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("");
+    });
+
+    test("still removes the list when a cleanup removes an item's own element", () => {
+      const { container, setItems } = setupBetweenSiblings(3, (item) =>
+        createMarkup("span", {
+          ref: (el: HTMLElement) => () => el.remove(),
+          children: () => item().text,
+        }),
+      );
+
+      setItems([]);
+      flushPendingUpdates();
+      expect(container.innerHTML).toBe("<b>before</b><i>after</i>");
+    });
+  });
+
   describe("move", () => {
     test("repositions the anchor text node after the target", () => {
       const { context, container } = setup();
@@ -514,6 +687,38 @@ describe("RepeatNode", () => {
 
       expect(texts()).toEqual(next.map((d) => d.text));
       expect(inserts.mock.calls.length).toBeLessThanOrEqual(2);
+    });
+
+    test("inserting and removing items without reordering only inserts the new nodes", () => {
+      let seed = 7;
+      const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+      const { data, setItems, inserts, texts } = setupList(30);
+      let current: Item[] = data;
+      let nextId = 100;
+
+      for (let round = 0; round < 50; round++) {
+        const next = current.filter(() => random() > 0.2);
+        let added = 0;
+        for (let i = 0; i < 3; i++, added++) {
+          next.splice(Math.floor(random() * (next.length + 1)), 0, { id: nextId, text: String(nextId++) });
+        }
+        inserts.mockClear();
+        setItems(next);
+        flushPendingUpdates();
+        expect(texts()).toEqual(next.map((d) => d.text));
+        expect(inserts).toBeCalledTimes(added);
+        current = next;
+      }
+    });
+
+    test("an update that only changes item data touches no DOM position", () => {
+      const { data, setItems, inserts, texts } = setupList(20);
+      const next = data.map((d) => (d.id % 3 === 0 ? { ...d, text: d.text + "!" } : d));
+      setItems(next);
+      flushPendingUpdates();
+
+      expect(texts()).toEqual(next.map((d) => d.text));
+      expect(inserts).not.toBeCalled();
     });
 
     test("random reorders, inserts and removals produce the right order", () => {

@@ -52,14 +52,43 @@ export class RepeatNode<T> extends AnchoredNode<Iterable<T>> {
   }
 
   protected override clear(skipDOM: boolean) {
+    // Removing many items from the page one at a time is slow. Instead they are
+    // torn down with their DOM left in place, and then everything between the
+    // anchor and the node that followed the last item is removed in one step.
+    const anchor = this.anchor;
+    const parent = anchor?.parentNode;
+    let last: Node | undefined;
+    let end: Node | null = null;
+    let bulk = false;
+
+    if (!skipDOM && parent && this.#nodes.length > 1) {
+      last = this.getLastNode();
+      if (last && last !== anchor && last.parentNode === parent) {
+        bulk = true;
+        end = last.nextSibling;
+      }
+    }
+
+    const info = { phase: "unmount", context: this.context } as const;
     for (const item of this.#connectedItems.values()) {
-      runSafely(() => item._node.unmount(skipDOM), {
-        phase: "unmount",
-        context: this.context,
-      });
+      runSafely(() => item._node.unmount(bulk || skipDOM), info);
     }
     this.#connectedItems.clear();
     this.#nodes = [];
+
+    if (!bulk || anchor!.parentNode !== parent) return;
+
+    const range = document.createRange();
+    range.selectNodeContents(parent!);
+    range.setStartAfter(anchor!);
+    if (end) {
+      // The list ends before `end`. A cleanup callback may have removed that
+      // node, or the last node of the list, so use whichever is still in place.
+      if (end.parentNode === parent) range.setEndBefore(end);
+      else if (last!.parentNode === parent) range.setEndAfter(last!);
+      else return;
+    }
+    range.deleteContents();
   }
 
   protected override update(iterable: Iterable<T>) {
@@ -71,6 +100,10 @@ export class RepeatNode<T> extends AnchoredNode<Iterable<T>> {
     }
 
     const nextItems = new Map<Key, ConnectedItem<T>>();
+    // Whether an item was created, and whether a kept item now comes before one it used to follow.
+    let created = false;
+    let moved = false;
+    let lastOrder = -1;
 
     batch(() => {
       // Prepare state and allocate new nodes.
@@ -87,9 +120,12 @@ export class RepeatNode<T> extends AnchoredNode<Iterable<T>> {
         let connected = this.#connectedItems.get(key);
 
         if (connected) {
+          if (connected._order <= lastOrder) moved = true;
+          lastOrder = connected._order;
           connected._setItem(itemVal);
           connected._setIndex(i);
         } else {
+          created = true;
           const [_item, _setItem] = createAtom(itemVal);
           const [_index, _setIndex] = createAtom(i);
 
@@ -125,6 +161,18 @@ export class RepeatNode<T> extends AnchoredNode<Iterable<T>> {
 
     const parent = this.anchor!.parentNode as MountTarget | null;
     if (!parent) return;
+
+    if (!moved) {
+      // The kept items are still in order, so the only DOM work is mounting new ones.
+      let referenceNode: Node = this.anchor!;
+      for (let i = 0; i < items.length; i++) {
+        const connected = items[i];
+        if (connected._order === -1) connected._node.mount(parent, referenceNode);
+        connected._order = i;
+        if (created) referenceNode = connected._node.getLastNode() ?? referenceNode;
+      }
+      return;
+    }
 
     const stable = findStableItems(items);
 
