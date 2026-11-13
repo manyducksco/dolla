@@ -164,10 +164,13 @@ function storeId(store: { name: string; [STORE_ID]?: symbol }): symbol {
 }
 
 /**
- * Hidden property stored on the store result so `addStore` can retrieve
- * the store's sub-context on re-registration (e.g. during HMR).
+ * Own property of a context: a Map from the id of each store added to it to
+ * that store's sub-context. `addStore` reads it when a store is registered
+ * again (e.g. during HMR), and the HMR runtime uses it to find a view's stores.
+ * It is kept here rather than on the value a store returns, because a store
+ * may return anything, including values that can't hold a property.
  */
-const STORE_CONTEXT = Symbol.for("$_STORE_CONTEXT");
+const STORE_CONTEXTS = Symbol.for("$_STORE_CONTEXTS");
 
 /**
  * Set on a view's context by the HMR runtime while it re-renders the view in place.
@@ -194,13 +197,18 @@ export function addStore<Props, Returns>(
     });
   };
 
+  // Only this context's own map. A parent's is inherited, but holds the parent's stores.
+  const storeContexts: Map<symbol, Context> = Object.hasOwn(context, STORE_CONTEXTS)
+    ? context[STORE_CONTEXTS]
+    : (context[STORE_CONTEXTS] = new Map());
+
   if (Object.hasOwn(context, id)) {
     // Re-register lifecycle listeners for the existing store so they
     // survive cleanupContext clearing MOUNT_LISTENERS during HMR.
-    const existing = context[id];
-    if (existing?.[STORE_CONTEXT]) bind(existing[STORE_CONTEXT]);
+    const existing = storeContexts.get(id);
+    if (existing) bind(existing);
     context[HMR_REPLACING]?.add(id);
-    return existing;
+    return context[id];
   }
 
   // Give the store its own context bound to this lifecycle.
@@ -216,7 +224,7 @@ export function addStore<Props, Returns>(
   } finally {
     popContext();
   }
-  if (result != null) (result as any)[STORE_CONTEXT] = storeContext;
+  storeContexts.set(id, storeContext);
   return (context[id] = result);
 }
 
@@ -224,9 +232,10 @@ export function addStore<Props, Returns>(
  * Gets the nearest instance of a store from up this context chain.
  */
 export function getStore<Returns>(context: Context, store: Store<any, Returns> & { [STORE_ID]?: symbol }): Returns {
-  const result = context[storeId(store)];
-  assert(result != null, `Store '${store.name}' is not provided by this context.`);
-  return result;
+  const id = storeId(store);
+  // Checked by key, not by value: a store may return `null` or nothing at all.
+  assert(id in context, `Store '${store.name}' is not provided by this context.`);
+  return context[id];
 }
 
 /**
@@ -235,7 +244,7 @@ export function getStore<Returns>(context: Context, store: Store<any, Returns> &
 export function hasStore(context: Context, store: Store<any, any> & { [STORE_ID]?: symbol }): boolean {
   // A store function that was never added has no symbol yet, so it can't be present.
   const id = store[STORE_ID];
-  return id !== undefined && context[id] != null;
+  return id !== undefined && id in context;
 }
 
 /**

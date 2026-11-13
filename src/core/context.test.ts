@@ -316,6 +316,71 @@ describe("stores", () => {
   });
 });
 
+describe("store return values", () => {
+  /** A store that returns `value` and counts its lifecycle. */
+  function makeStore<T>(value: T) {
+    const stats = { mounts: 0, cleanups: 0 };
+    const Store = function (_: {}, c: Context) {
+      onMount(c, () => stats.mounts++);
+      onCleanup(c, () => stats.cleanups++);
+      return value;
+    };
+    return { Store, stats };
+  }
+
+  test.each([
+    ["a frozen object", Object.freeze({ a: 1 })],
+    ["a sealed object", Object.seal({ a: 1 })],
+    ["a number", 5],
+    ["zero", 0],
+    ["a string", "text"],
+    ["an empty string", ""],
+    ["false", false],
+    ["a symbol", Symbol("value")],
+    ["a function", () => 1],
+    ["null", null],
+    ["nothing", undefined],
+  ])("a store may return %s", (_label, value) => {
+    const parent = createContext(null);
+    const child = createContext(parent);
+    const { Store, stats } = makeStore(value);
+
+    expect(addStore(parent, Store)).toBe(value);
+    expect(getStore(child, Store)).toBe(value);
+    expect(hasStore(child, Store)).toBe(true);
+    expect(hasOwnStore(parent, Store)).toBe(true);
+    expect(hasOwnStore(child, Store)).toBe(false);
+
+    mountContext(parent);
+    expect(stats.mounts).toBe(1);
+    cleanupContext(parent);
+    expect(stats.cleanups).toBe(1);
+  });
+
+  test("a store that returns nothing does not make other stores look provided", () => {
+    const context = createContext(null);
+    const { Store } = makeStore(undefined);
+    const { Store: Other } = makeStore(undefined);
+    addStore(context, Store);
+
+    expect(hasStore(context, Other)).toBe(false);
+    expect(() => getStore(context, Other)).toThrow("is not provided by this context");
+  });
+
+  test("leaves the returned value as the store made it", () => {
+    const shared = { count: 1 };
+    const first = createContext(null);
+    const second = createContext(null);
+    const { Store: A } = makeStore(shared);
+    const { Store: B } = makeStore(shared);
+
+    addStore(first, A);
+    addStore(second, B);
+
+    expect(Reflect.ownKeys(shared)).toEqual(["count"]);
+  });
+});
+
 describe("store identity", () => {
   function named<T extends Function>(name: string, fn: T): T {
     Object.defineProperty(fn, "name", { value: name });

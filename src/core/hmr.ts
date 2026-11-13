@@ -1,5 +1,5 @@
 import type { View } from "../types.js";
-import { cleanupContext, mountContext, onCleanup } from "./context.js";
+import { cleanupContext, mountContext, onCleanup, type Context } from "./context.js";
 import { runSafely } from "./errors.js";
 import { hotTemplate, type CSSTemplate } from "./markup/css.js";
 import { DOMNode } from "./markup/nodes/dom.js";
@@ -15,8 +15,8 @@ const liveViews = new Map<string, View<any>>();
 /** Same as `STORE_ID` in context.ts. Defined here so this module stays standalone. */
 const STORE_ID = Symbol.for("$_STORE_ID");
 
-/** Same as `STORE_CONTEXT` in context.ts. */
-const STORE_CONTEXT = Symbol.for("$_STORE_CONTEXT");
+/** Same as `STORE_CONTEXTS` in context.ts. */
+const STORE_CONTEXTS = Symbol.for("$_STORE_CONTEXTS");
 
 /** Same as `HMR_REPLACING` in context.ts. */
 const HMR_REPLACING = Symbol.for("$_HMR_REPLACING");
@@ -141,7 +141,10 @@ export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
   // Stores the view provides stay alive through the re-render. `addStore` skips their
   // cleanup while the marker is set and records the ones the new render adds again.
   const context = node.context;
-  const stores = Reflect.ownKeys(context).filter((key) => context[key as symbol]?.[STORE_CONTEXT]) as symbol[];
+  const storeContexts: Map<symbol, Context> = Object.hasOwn(context, STORE_CONTEXTS)
+    ? context[STORE_CONTEXTS]
+    : new Map();
+  const stores = Array.from(storeContexts.keys());
   const readded = new Set<symbol>();
   context[HMR_REPLACING] = readded;
 
@@ -169,7 +172,8 @@ export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
     // Stores the new view no longer adds are done.
     for (const id of stores) {
       if (readded.has(id)) continue;
-      cleanupContext(context[id][STORE_CONTEXT]);
+      cleanupContext(storeContexts.get(id)!);
+      storeContexts.delete(id);
       delete context[id];
     }
   } catch (e) {
@@ -178,7 +182,7 @@ export function replaceView<P>(node: ViewNode<P>, newView: View<P>): void {
     // still be cleaned up if the view unmounts before then.
     for (const id of stores) {
       if (readded.has(id)) continue;
-      const storeContext = context[id][STORE_CONTEXT];
+      const storeContext = storeContexts.get(id)!;
       onCleanup(context, () => {
         if (!Object.hasOwn(context, HMR_REPLACING)) cleanupContext(storeContext);
       });

@@ -496,6 +496,74 @@ describe("HMR replaceView", () => {
     expect(hasOwnStore(node.context, Store)).toBe(false);
   });
 
+  test.each([
+    ["a frozen object", Object.freeze({ value: 1 })],
+    ["a number", 7],
+    ["nothing", undefined],
+  ])("a store that returns %s survives a replace and is cleaned up when dropped", (_label, value) => {
+    const [count, setCount] = createAtom(0);
+    const stats = { effectRuns: 0, mounts: 0, cleanups: 0, instances: 0 };
+    const Store = function (_: any, c: Context) {
+      stats.instances++;
+      onEffect(c, () => {
+        count();
+        stats.effectRuns++;
+      });
+      onMount(c, () => stats.mounts++);
+      onCleanup(c, () => stats.cleanups++);
+      return value;
+    };
+    const id = nextId();
+    const View = __dolla_export(id, function (_: any, c: Context) {
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    const { node } = makeNode(View);
+
+    // The store stays alive while the view that provides it is replaced.
+    __dolla_apply({ View }, { View });
+    setCount(1);
+    flushPendingUpdates();
+    expect(stats).toEqual({ effectRuns: 2, mounts: 1, cleanups: 0, instances: 1 });
+    expect(hasOwnStore(node.context, Store)).toBe(true);
+
+    // A second replace must not lose track of it either.
+    __dolla_apply({ View }, { View });
+    setCount(2);
+    flushPendingUpdates();
+    expect(stats).toEqual({ effectRuns: 3, mounts: 1, cleanups: 0, instances: 1 });
+
+    // The next version of the view no longer adds it.
+    __dolla_export(id, function () {
+      return "w";
+    });
+    __dolla_apply({ View }, { View });
+    expect(stats.cleanups).toBe(1);
+    expect(hasOwnStore(node.context, Store)).toBe(false);
+
+    setCount(3);
+    flushPendingUpdates();
+    expect(stats.effectRuns).toBe(3);
+  });
+
+  test("a store that returns nothing is cleaned up when its view unmounts after a replace", () => {
+    const stats = { cleanups: 0 };
+    const Store = function (_: any, c: Context) {
+      onCleanup(c, () => stats.cleanups++);
+    };
+    const View = __dolla_export(nextId(), function (_: any, c: Context) {
+      addStore(c, Store);
+      return "v";
+    }) as any;
+    const { node } = makeNode(View);
+
+    __dolla_apply({ View }, { View });
+    expect(stats.cleanups).toBe(0);
+
+    node.unmount();
+    expect(stats.cleanups).toBe(1);
+  });
+
   test("a render that throws during replace leaves the store mounted", () => {
     const { Store, stats, setCount } = makeStore();
     const id = nextId();
