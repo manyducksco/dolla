@@ -122,14 +122,18 @@ export function getTranslate(context: Context): Translator {
 function createTranslator(options: TranslatorOptions): Translator {
   const formatters = new Map<string, Formatter>();
 
+  const numberFormat = reuseFormatters((locale, options) => new Intl.NumberFormat(locale, options));
+  const dateTimeFormat = reuseFormatters((locale, options) => new Intl.DateTimeFormat(locale, options));
+  const listFormat = reuseFormatters((locale, options) => new Intl.ListFormat(locale, options));
+
   formatters.set("number", (locale, value, options) => {
-    return new Intl.NumberFormat(locale, options).format(typeof value === "bigint" ? value : Number(value));
+    return numberFormat(locale, options).format(typeof value === "bigint" ? value : Number(value));
   });
   formatters.set("datetime", (locale, value, options) => {
-    return new Intl.DateTimeFormat(locale, options).format(new Date(value));
+    return dateTimeFormat(locale, options).format(new Date(value));
   });
   formatters.set("list", (locale, value, options) => {
-    return new Intl.ListFormat(locale, options).format(value);
+    return listFormat(locale, options).format(value);
   });
 
   if (options.formatters) {
@@ -235,6 +239,31 @@ function createTranslator(options: TranslatorOptions): Translator {
     setLocale,
     t,
     format,
+  };
+}
+
+/** The most formatters of one kind to keep. Reaching it means options vary without limit, so the cache starts over. */
+const MAX_REUSED_FORMATTERS = 200;
+
+/**
+ * Wraps a function that constructs an `Intl` formatter so that it returns the
+ * same formatter for the same locale and options. Constructing one costs many
+ * times more than formatting a value with it.
+ */
+function reuseFormatters<T>(
+  create: (locale: string, options: Record<string, any>) => T,
+): (locale: string, options: Record<string, any>) => T {
+  const cache = new Map<string, T>();
+
+  return (locale, options) => {
+    // Options objects are usually written inline, so they are matched by content.
+    const key = locale + JSON.stringify(options);
+    let formatter = cache.get(key);
+    if (!formatter) {
+      if (cache.size >= MAX_REUSED_FORMATTERS) cache.clear();
+      cache.set(key, (formatter = create(locale, options)));
+    }
+    return formatter;
   };
 }
 

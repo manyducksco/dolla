@@ -233,6 +233,92 @@ describe("format", () => {
   });
 });
 
+// Constructing an Intl formatter costs far more than formatting with one.
+describe("formatter reuse", () => {
+  const restore: (() => void)[] = [];
+
+  afterEach(() => {
+    for (const fn of restore.splice(0)) fn();
+  });
+
+  /** Counts how many formatters of one kind are constructed from here on. */
+  function countConstructed(kind: "NumberFormat" | "DateTimeFormat" | "ListFormat"): () => number {
+    const intl = Intl as any;
+    const Original = intl[kind];
+    let count = 0;
+    intl[kind] = class extends Original {
+      constructor(...args: any[]) {
+        super(...args);
+        count++;
+      }
+    };
+    restore.push(() => {
+      intl[kind] = Original;
+    });
+    return () => count;
+  }
+
+  const translations = { en: { total: "{{n | number(minimumFractionDigits: 2)}}" }, de: { total: "{{n | number}}" } };
+
+  test("formatting several values with equal options builds one formatter", async () => {
+    const { format } = await createTestTranslator({ locale: "en", translations });
+    const constructed = countConstructed("NumberFormat");
+
+    const [n, setN] = createAtom(1);
+    const first = format("number", n, { minimumFractionDigits: 2 });
+    expect(first()).toBe("1.00");
+    setN(2);
+    expect(first()).toBe("2.00");
+    // A separate call with its own, equal options object.
+    expect(format("number", 3, { minimumFractionDigits: 2 })()).toBe("3.00");
+
+    expect(constructed()).toBe(1);
+  });
+
+  test("a formatter in a template is built once across re-evaluations", async () => {
+    const { t } = await createTestTranslator({ locale: "en", translations });
+    const constructed = countConstructed("NumberFormat");
+
+    const [n, setN] = createAtom(1);
+    const total = t("total", { n });
+    expect(total()).toBe("1.00");
+    setN(2.5);
+    expect(total()).toBe("2.50");
+
+    expect(constructed()).toBe(1);
+  });
+
+  test("datetime and list formatters are reused too", async () => {
+    const { format } = await createTestTranslator({ locale: "en", translations });
+    const dates = countConstructed("DateTimeFormat");
+    const lists = countConstructed("ListFormat");
+
+    const options = { timeZone: "UTC", dateStyle: "medium" } as const;
+    expect(format("datetime", Date.UTC(2026, 0, 2), options)()).toBe("Jan 2, 2026");
+    expect(format("datetime", Date.UTC(2026, 0, 3), { ...options })()).toBe("Jan 3, 2026");
+    expect(format("list", ["a", "b"])()).toBe("a and b");
+    expect(format("list", ["c", "d", "e"])()).toBe("c, d, and e");
+
+    expect(dates()).toBe(1);
+    expect(lists()).toBe(1);
+  });
+
+  test("different options and locales get their own formatter", async () => {
+    const { format, setLocale } = await createTestTranslator({ locale: "en", translations });
+
+    const plain = format("number", 1234.5);
+    const fixed = format("number", 1234.5, { minimumFractionDigits: 2 });
+    const percent = format("number", 0.5, { style: "percent" });
+    expect([plain(), fixed(), percent()]).toEqual(["1,234.5", "1,234.50", "50%"]);
+
+    await setLocale("de");
+    expect([plain(), fixed()]).toEqual(["1.234,5", "1.234,50"]);
+
+    await setLocale("en");
+    expect([plain(), fixed(), percent()]).toEqual(["1,234.5", "1,234.50", "50%"]);
+  });
+});
+
 describe("locale caching", () => {
   const MINUTE = 60 * 1000;
 
