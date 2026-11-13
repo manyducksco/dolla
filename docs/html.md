@@ -243,6 +243,7 @@ Dolla chooses how to apply each prop:
 
 - If the key exists on the DOM element and is not an SVG element, it is set as a property.
 - Boolean properties also set or remove the attribute.
+- A few keys are set as attributes although the element has a property of that name, because the property can't hold the value: `list`, `form`, `width`, `height`, `draggable`, `spellcheck`, `translate` (written as `yes` or `no`) and `hidden="until-found"`.
 - Everything else is set as an attribute.
 - Keys starting with `prop:` are always set as properties.
 - Keys starting with `attr:` are always set as attributes (lowercased).

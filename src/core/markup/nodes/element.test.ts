@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createContext } from "../../context.js";
 import { createAtom } from "../../signals.js";
 import { flushPendingUpdates } from "../scheduler.js";
@@ -388,6 +388,190 @@ describe("ElementNode", () => {
       const el = container.children[0] as HTMLButtonElement;
       expect(el.disabled).toBe(false);
       expect(el.hasAttribute("disabled")).toBe(false);
+    });
+  });
+
+  // Each of these has a DOM property of the same name that can't take the value,
+  // so it must be written as an attribute.
+  describe("props whose DOM property can't hold the value", () => {
+    const restore: (() => void)[] = [];
+
+    afterEach(() => {
+      for (const fn of restore.splice(0)) fn();
+    });
+
+    /**
+     * Defines a property the way browsers do, for one test. happy-dom doesn't
+     * have `draggable`, `spellcheck` or `translate`, and its `width` and
+     * `height` accept any string where a browser converts to a number.
+     */
+    function defineProperty(proto: object, name: string, descriptor: PropertyDescriptor) {
+      const original = Object.getOwnPropertyDescriptor(proto, name);
+      Object.defineProperty(proto, name, { configurable: true, ...descriptor });
+      restore.push(() => {
+        if (original) Object.defineProperty(proto, name, original);
+        else delete (proto as any)[name];
+      });
+    }
+
+    /** A boolean property that reflects to an attribute holding `on` or `off`. */
+    function defineEnumerated(name: string, on: string, off: string) {
+      defineProperty(HTMLElement.prototype, name, {
+        get(this: HTMLElement) {
+          return this.getAttribute(name) === on;
+        },
+        set(this: HTMLElement, value: unknown) {
+          this.setAttribute(name, value ? on : off);
+        },
+      });
+    }
+
+    /** A numeric property that reflects to an attribute, like `width` on an image. */
+    function defineNumeric(proto: object, name: string) {
+      defineProperty(proto, name, {
+        get(this: HTMLElement) {
+          return parseInt(this.getAttribute(name) ?? "", 10) || 0;
+        },
+        set(this: HTMLElement, value: unknown) {
+          this.setAttribute(name, String(Number(value) >>> 0));
+        },
+      });
+    }
+
+    function mount(tag: string, props: Record<string, any>) {
+      const { context, container } = setup();
+      new ElementNode(context, tag, props).mount(container);
+      return container.children[0] as HTMLElement;
+    }
+
+    // `list` and `form` are read-only properties that return the linked element.
+    test.each([
+      ["input", "list", "options"],
+      ["input", "form", "signup"],
+      ["button", "form", "signup"],
+      ["select", "form", "signup"],
+      ["textarea", "form", "signup"],
+    ])("<%s %s> is written as an attribute", (tag, key, value) => {
+      expect(mount(tag, { [key]: value }).getAttribute(key)).toBe(value);
+    });
+
+    test("a reactive list attribute updates and is removed", () => {
+      const [list, setList] = createAtom<string | undefined>("first");
+      const el = mount("input", { list });
+      expect(el.getAttribute("list")).toBe("first");
+
+      setList("second");
+      flushPendingUpdates();
+      expect(el.getAttribute("list")).toBe("second");
+
+      setList(undefined);
+      flushPendingUpdates();
+      expect(el.hasAttribute("list")).toBe(false);
+    });
+
+    test("width and height keep a value that isn't a plain number", () => {
+      defineNumeric(HTMLImageElement.prototype, "width");
+      defineNumeric(HTMLImageElement.prototype, "height");
+      const [height, setHeight] = createAtom<string | number | null>("50%");
+
+      const el = mount("img", { width: "100%", height });
+      expect(el.getAttribute("width")).toBe("100%");
+      expect(el.getAttribute("height")).toBe("50%");
+
+      setHeight(240);
+      flushPendingUpdates();
+      expect(el.getAttribute("height")).toBe("240");
+
+      setHeight(null);
+      flushPendingUpdates();
+      expect(el.hasAttribute("height")).toBe(false);
+
+      expect(mount("img", { width: 300 }).getAttribute("width")).toBe("300");
+      expect(mount("canvas", { width: 300, height: 150 }).getAttribute("height")).toBe("150");
+    });
+
+    // Without the attribute these fall back to a default, which for images and
+    // links (draggable) and text fields (spellcheck) is "on".
+    test.each(["draggable", "spellcheck"])("%s is written out as true or false", (key) => {
+      defineEnumerated(key, "true", "false");
+      const [value, setValue] = createAtom<boolean | undefined>(false);
+
+      expect(mount("img", { [key]: false }).getAttribute(key)).toBe("false");
+      expect(mount("img", { [key]: true }).getAttribute(key)).toBe("true");
+      expect(mount("img", { [key]: undefined }).hasAttribute(key)).toBe(false);
+
+      const el = mount("img", { [key]: value });
+      expect(el.getAttribute(key)).toBe("false");
+
+      setValue(true);
+      flushPendingUpdates();
+      expect(el.getAttribute(key)).toBe("true");
+
+      setValue(undefined);
+      flushPendingUpdates();
+      expect(el.hasAttribute(key)).toBe(false);
+    });
+
+    test("spellCheck, as it is named in the JSX types, is written out as true or false", () => {
+      defineEnumerated("spellcheck", "true", "false");
+      expect(mount("textarea", { spellCheck: false }).getAttribute("spellcheck")).toBe("false");
+      expect(mount("textarea", { spellCheck: true }).getAttribute("spellcheck")).toBe("true");
+    });
+
+    test("translate is written as yes or no", () => {
+      defineEnumerated("translate", "yes", "no");
+      const [value, setValue] = createAtom<boolean | undefined>(false);
+
+      expect(mount("p", { translate: true }).getAttribute("translate")).toBe("yes");
+      expect(mount("p", { translate: "no" }).getAttribute("translate")).toBe("no");
+
+      const el = mount("p", { translate: value });
+      expect(el.getAttribute("translate")).toBe("no");
+
+      setValue(true);
+      flushPendingUpdates();
+      expect(el.getAttribute("translate")).toBe("yes");
+
+      setValue(undefined);
+      flushPendingUpdates();
+      expect(el.hasAttribute("translate")).toBe(false);
+    });
+
+    test("hidden keeps the until-found value", () => {
+      const [hidden, setHidden] = createAtom<boolean | "until-found">("until-found");
+
+      expect(mount("div", { hidden: "until-found" }).getAttribute("hidden")).toBe("until-found");
+      expect(mount("div", { hidden: true }).getAttribute("hidden")).toBe("");
+      expect(mount("div", { hidden: false }).hasAttribute("hidden")).toBe(false);
+
+      const el = mount("div", { hidden });
+      expect(el.getAttribute("hidden")).toBe("until-found");
+
+      setHidden(true);
+      flushPendingUpdates();
+      expect(el.getAttribute("hidden")).toBe("");
+      expect(el.hidden).toBe(true);
+
+      setHidden(false);
+      flushPendingUpdates();
+      expect(el.hasAttribute("hidden")).toBe(false);
+      expect(el.hidden).toBe(false);
+
+      setHidden("until-found");
+      flushPendingUpdates();
+      expect(el.getAttribute("hidden")).toBe("until-found");
+    });
+
+    test("the prop: prefix still sets the property", () => {
+      defineNumeric(HTMLImageElement.prototype, "width");
+      expect(mount("img", { "prop:width": 40 }).getAttribute("width")).toBe("40");
+      expect(mount("img", { "prop:width": "100%" }).getAttribute("width")).toBe("0");
+    });
+
+    test("SVG elements take width, height and the others as plain attributes", () => {
+      const el = mount("svg", { width: "100%", height: 24 });
+      expect(el.getAttribute("width")).toBe("100%");
+      expect(el.getAttribute("height")).toBe("24");
     });
   });
 

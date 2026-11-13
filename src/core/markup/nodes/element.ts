@@ -72,6 +72,27 @@ const SVG_PRESENTATION_ATTRS = new Set([
 
 type ElementRoot = HTMLElement | SVGElement;
 
+type PropSetter = (element: any, name: string, value: any) => void;
+
+// Props of HTML elements that are not assigned to the DOM property of the same
+// name, because that property can't hold the value:
+// - `list` and `form` are read-only and return the linked element.
+// - `width` and `height` are numbers on some elements, which turns "100%" into 0.
+// - `draggable` and `spellcheck` are booleans, but their attribute has to say
+//   "true" or "false". Leaving it out means the browser decides.
+// - `translate` is a boolean whose attribute says "yes" or "no".
+// - `hidden` is a boolean, which loses the "until-found" value.
+const PROP_SETTERS = new Map<string, PropSetter>([
+  ["list", setAttribute],
+  ["form", setAttribute],
+  ["width", setAttribute],
+  ["height", setAttribute],
+  ["draggable", setAttribute],
+  ["spellcheck", setAttribute],
+  ["translate", applyTranslate],
+  ["hidden", applyHidden],
+]);
+
 /**
  * Renders an HTML or SVG element.
  */
@@ -361,9 +382,12 @@ export class ElementNode extends MarkupNode {
 
     // Pick the setter once. Static values are set directly, without a closure.
     let name = key;
-    let set: (element: any, name: string, value: any) => void;
+    let set: PropSetter;
+    const special = isSvg ? undefined : PROP_SETTERS.get(key);
 
-    if (key === "for") {
+    if (special) {
+      set = special;
+    } else if (key === "for") {
       set = applyFor;
     } else if (key.startsWith("prop:")) {
       name = key.substring(5);
@@ -835,6 +859,18 @@ function applyFor(element: any, _name: string, value: unknown) {
     element.removeAttribute("for");
   } else {
     element.htmlFor = value;
+  }
+}
+
+function applyTranslate(element: Element, name: string, value: unknown) {
+  setAttribute(element, name, value == null || isString(value) ? value : value ? "yes" : "no");
+}
+
+function applyHidden(element: Element, name: string, value: unknown) {
+  if (value === "until-found") {
+    element.setAttribute(name, value);
+  } else {
+    applyBooleanProperty(element, name, value);
   }
 }
 
