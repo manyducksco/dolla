@@ -43,10 +43,17 @@ export function isString(value: unknown): value is string {
  * Returns true if `value` is a function (but not a class).
  */
 export function isFunction<T = (...args: unknown[]) => unknown>(value: unknown): value is T {
+  if (typeof value !== "function") return false;
+
   // Arrow functions, methods, async and bound functions have no `prototype`, so
   // they can't be classes. That covers almost every getter, letting hot signal
-  // paths skip the costly class check.
-  return typeof value === "function" && (value.prototype === undefined || !isClass(value));
+  // paths skip the class checks.
+  if (value.prototype === undefined) return true;
+
+  // A `function` declaration has a writable `prototype`, which a class never
+  // has. That settles views written as declarations without reading their
+  // source text, leaving the slow check to classes and built-in constructors.
+  return Object.getOwnPropertyDescriptor(value, "prototype")?.writable || !isClass(value);
 }
 
 function isClass(value: unknown): boolean {
